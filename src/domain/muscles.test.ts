@@ -25,3 +25,18 @@ describe('catalog coverage', () => {
     expect(CATALOG.filter((n) => muscleVector(n) == null)).toEqual([]);
   });
 });
+
+describe('keyword fallback word boundaries', () => {
+  it('does not read "machine" as chin-ups or "narrow" as rows', () => {
+    expect(muscleVector('Hack Squat Machine')?.Quads).toBe(1);
+    expect(muscleVector('Smith Machine Squat')?.Quads).toBe(1);
+    expect(muscleVector('Pec Deck Machine')?.Chest).toBe(1);
+    expect(muscleVector('Machine Fly')?.Chest).toBe(1);
+    expect(muscleVector('Leg Press Machine')?.Quads).toBe(1);
+    expect(muscleVector('Machine Incline Press')?.Chest).toBe(1);
+    expect(muscleVector('Hip thrust machine')?.Glutes).toBe(1);
+    expect(muscleVector('Narrow Grip Bench Press')?.Chest).toBe(1);
+    expect(muscleVector('Neutral Grip Chin')?.Lats).toBe(1);
+    expect(muscleVector('T-Bar Row')?.['Mid-Back']).toBe(1);
+  });
+});

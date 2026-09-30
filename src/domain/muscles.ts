@@ -44,14 +44,18 @@ const TABLE: Record<string, Vector> = {
   'standing calf raise': { Calves: 1 }, 'seated calf raise': { Calves: 1 }, 'db calf raise': { Calves: 1 },
 };
 
+// Order matters (leg curl before curl; press before row), and words need boundaries: "machine"
+// contains "chin" and "narrow" contains "row".
 const KEYWORDS: [RegExp, Vector][] = [
-  [/leg curl|ham curl|nordic/i, LEGCURL], [/wrist curl/i, { Forearms: 1 }], [/curl/i, B],
-  [/pushdown|push down|kickback|skull|triceps? ext|french press/i, T],
-  [/lateral raise|side raise|upright row/i, SD], [/rear delt|reverse fly|face pull/i, RD],
-  [/pulldown|pull-up|pullup|chin/i, PULLDOWN], [/row/i, ROW_MID],
-  [/fly|pec deck/i, { Chest: 1 }], [/bench|chest press|push-?up|dip/i, PRESS], [/overhead press|shoulder press|military/i, OHP],
-  [/squat|leg press|lunge|step-?up/i, SQUAT], [/deadlift|good morning|hinge/i, HINGE], [/leg ext/i, { Quads: 1 }],
-  [/calf/i, { Calves: 1 }], [/crunch|sit-?up|plank|leg raise|ab /i, A], [/hip thrust|glute/i, { Glutes: 1, Hamstrings: 0.5 }],
+  [/\bleg curl|\bham(string)? curl|\bnordic/i, LEGCURL], [/\bwrist curl/i, { Forearms: 1 }], [/\bcurl/i, B],
+  [/pushdown|push down|kickback|skull|\btriceps? ext|french press/i, T],
+  [/lateral raise|side raise|upright row/i, SD], [/rear delt|reverse fly|reverse pec|face pull/i, RD],
+  [/\bsquat|leg press|\blunge|step-?up|\bhack\b/i, SQUAT], [/deadlift|good morning|\bhinge|\brdl\b/i, HINGE], [/leg ext/i, { Quads: 1 }],
+  [/\bcalf|\bcalves/i, { Calves: 1 }], [/hip thrust|\bglute/i, { Glutes: 1, Hamstrings: 0.5 }],
+  [/\bfly\b|\bflyes?\b|pec deck/i, { Chest: 1 }], [/overhead press|shoulder press|military|\bohp\b/i, OHP],
+  [/bench|chest press|incline.*\bpress|push-?up|\bdips?\b/i, PRESS],
+  [/pulldown|pull-?up|\bchin(-?ups?)?\b/i, PULLDOWN], [/\brows?\b/i, ROW_MID],
+  [/crunch|sit-?up|plank|leg raise|\babs?\b/i, A],
 ];
 
 export function muscleVector(name: string): Vector | null {

@@ -29,10 +29,30 @@ const shortfall = (set: SetEntry, prior: number): number => (set.weight >= prior
 /** Recent bests are rarely taken to failure, so "matched my best" still leaves reps in reserve; ~2 is typical. */
 export const DEFAULT_RIR_OFFSET = 2;
 
-/** Learn the offset from sets where RIR was logged: mean(logged − shortfall), once there are 3, clamped 0..3. */
+const isFirstAtWeight = (set: SetEntry, sessionSets: SetEntry[]) =>
+  !sessionSets.some((x) => x.setNo < set.setNo && x.weight === set.weight && isWorking(x));
+
+/**
+ * Learn the offset from first working sets where RIR was logged: mean(logged − shortfall), once there are 3,
+ * clamped 0..3. Later sets at a weight are fatigue-confounded (the same reason `estimateRir` skips them).
+ * One pass, oldest session first, carrying the last three sessions' best e1RM as the prior.
+ */
 export function rirOffset(entries: SetEntry[], exercise: string): number {
-  const diffs = entries.filter((x) => sameExercise(x.exercise, exercise) && x.rir != null && isWorking(x) && x.weight > 0 && !x.flags.includes('bodyweight'))
-    .flatMap((x) => { const prior = priorE1rm(entries, exercise, x.date); return prior == null ? [] : [(x.rir as number) - shortfall(x, prior)]; });
+  const window: (number | null)[] = [];
+  const diffs: number[] = [];
+  for (const session of [...sessionsFor(entries, exercise)].reverse()) {
+    const known = window.filter((v): v is number => v != null);
+    const prior = known.length ? Math.max(...known) : null;
+    if (prior != null) {
+      for (const x of session.sets) {
+        if (x.rir == null || !isWorking(x) || x.weight <= 0 || x.flags.includes('bodyweight') || !isFirstAtWeight(x, session.sets)) continue;
+        diffs.push(x.rir - shortfall(x, prior));
+      }
+    }
+    const vals = session.sets.map(e1rm).filter((v): v is number => v != null);
+    window.push(vals.length ? Math.max(...vals) : null);
+    if (window.length > 3) window.shift();
+  }
   if (diffs.length < 3) return DEFAULT_RIR_OFFSET;
   return clamp(Math.round(diffs.reduce((a, b) => a + b, 0) / diffs.length), 0, 3);
 }
@@ -47,7 +67,7 @@ export function estimateRir(set: SetEntry, sessionSets: SetEntry[], prior: numbe
   const next = sessionSets.find((x) => x.setNo === set.setNo + 1 && x.weight === set.weight && x.reps != null);
   if (next && (set.reps as number) - (next.reps as number) >= 3) return 1;
   if (prior == null) return null;
-  if (sessionSets.some((x) => x.setNo < set.setNo && x.weight === set.weight && isWorking(x))) return null;
+  if (!isFirstAtWeight(set, sessionSets)) return null;
   return clamp(Math.round(shortfall(set, prior) + offset), 0, 5);
 }
 

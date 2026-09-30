@@ -56,7 +56,7 @@ export function ExerciseScreen({ name, store, settings, onBack }: { name: string
       <div className="chips" role="group" aria-label="Rep max">
         {[3, 5, 6, 8, 10].map((k) => <button key={k} type="button" className="chip" aria-pressed={n === k} onClick={() => setN(k)}>{k}RM</button>)}
       </div>
-      <p className="muted small">{cal.tests ? `${cal.formula === 'wd' ? 'Weight-adjusted formula' : 'Epley'} · calibrated · ${plural(cal.tests, 'test')}` : 'Epley · no tests yet'}</p>
+      <p className="muted small">{cal.tests ? `${cal.formula === 'wd' ? 'Weight-adjusted formula' : 'Epley'} · calibrated · ${plural(cal.tests, 'test')}${cal.errorPct != null ? ` · ±${Math.round(cal.errorPct)}%` : ''}` : 'Epley · no tests yet'}</p>
       {due && <p className="card note-card">Time for a test: pick a weight you can do about 8–12 times, go to failure with good form, and tick <b>Test</b>. It tunes these estimates.</p>}
       <SettingsEditor key={name} name={name} settings={settings} />
       <section className="card">

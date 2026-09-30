@@ -119,3 +119,13 @@ describe('priorE1rm and prCheck', () => {
     expect(prCheck([part, next], next)).toEqual({ e1rm: false, reps: false });
   });
 });
+
+describe('rirOffset learns from first sets only', () => {
+  it('ignores later same-weight sets, which are fatigue-confounded', () => {
+    const base = [s('2026-01-01', 1, 30, 10)];
+    const days = ['2026-01-08', '2026-01-15', '2026-01-22'];
+    const first = days.map((d) => s(d, 1, 30, 10, { rir: 2 }));
+    const later = days.map((d) => s(d, 2, 30, 6, { rir: 2 })); // 4 short of best at RIR 2 → would drag the mean offset from 2 to 0
+    expect(rirOffset([...base, ...first, ...later], 'Curl')).toBe(2);
+  });
+});
