@@ -5,6 +5,7 @@ import type { Profile } from '../domain/profile';
 import type { DayPlan, Program } from '../domain/program';
 import type { BodyDay } from '../domain/body';
 import type { PhotoMeta } from '../domain/photos';
+import type { SyncConfig } from '../domain/sync';
 
 const STORE = 'sets';
 let dbp: Promise<IDBPDatabase> | null = null;
@@ -13,7 +14,7 @@ let onBlocked: (() => void) | null = null;
 export const setBlockedHandler = (fn: (() => void) | null) => { onBlocked = fn; };
 
 function db(): Promise<IDBPDatabase> {
-  return (dbp ??= openDB('gym-tracker', 6, {
+  return (dbp ??= openDB('gym-tracker', 7, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) d.createObjectStore(STORE, { keyPath: 'id' }).createIndex('date', 'date');
       if (oldVersion < 2) d.createObjectStore('settings', { keyPath: 'key' });
@@ -22,6 +23,7 @@ function db(): Promise<IDBPDatabase> {
       if (oldVersion < 5) d.createObjectStore('body', { keyPath: 'date' });
       // Metadata apart from the image blobs, so listing the timeline never reads the images.
       if (oldVersion < 6) { d.createObjectStore('photos', { keyPath: 'id' }).createIndex('date', 'date'); d.createObjectStore('photoBlobs'); }
+      if (oldVersion < 7) d.createObjectStore('config', { keyPath: 'key' });
     },
     blocked() { onBlocked?.(); },
     // A newer version of the app is upgrading the database: step aside, and reload to pick up the new code.
@@ -89,4 +91,19 @@ export async function putPhoto(meta: PhotoMeta, full: Blob, thumb: Blob): Promis
 export async function deletePhoto(id: string): Promise<void> {
   const tx = (await db()).transaction(['photos', 'photoBlobs'], 'readwrite');
   await Promise.all([tx.objectStore('photos').delete(id), tx.objectStore('photoBlobs').delete(`${id}:full`), tx.objectStore('photoBlobs').delete(`${id}:thumb`), tx.done]);
+}
+
+export const getSyncConfig = async (): Promise<SyncConfig | undefined> => (await db()).get('config', 'sync');
+export const putSyncConfig = async (c: SyncConfig): Promise<void> => { await (await db()).put('config', c); };
+export const deleteSyncConfig = async (): Promise<void> => { await (await db()).delete('config', 'sync'); };
+/** Ids of sets deleted on this phone, so sync never brings them back. */
+export async function getTombstones(): Promise<Set<string>> {
+  const x: { ids: string[] } | undefined = await (await db()).get('config', 'deleted');
+  return new Set(x?.ids ?? []);
+}
+export async function addTombstone(id: string): Promise<void> {
+  const tx = (await db()).transaction('config', 'readwrite');
+  const cur: { ids: string[] } | undefined = await tx.store.get('deleted');
+  const ids = new Set(cur?.ids ?? []).add(id);
+  await Promise.all([tx.store.put({ key: 'deleted', ids: [...ids] }), tx.done]);
 }

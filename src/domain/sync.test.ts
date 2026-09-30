@@ -122,6 +122,14 @@ describe('sync', () => {
     expect(ids(parseCsv(gh.store.get('app/sets.csv')!.text).entries)).toEqual([kept.id]);
   });
 
+  it('still backs up a set re-logged under a deleted set’s id', async () => {
+    const relogged = set('2026-09-29');
+    const gh = fakeGitHub({ 'app/sets.csv': toCsv([{ ...relogged, weight: 99 }]) });
+    await run(gh, [relogged], [], new Set([relogged.id]));
+    const pushed = parseCsv(gh.store.get('app/sets.csv')!.text).entries;
+    expect(pushed.map((x) => [x.id, x.weight])).toEqual([[relogged.id, 50]]);
+  });
+
   it('pushes nothing when the pull fails', async () => {
     const gh = fakeGitHub({ 'history.csv': 'x' }, { 'GET app/sets.csv': 401 });
     await expect(run(gh, [set('2026-09-29')])).rejects.toMatchObject({ kind: 'auth' });

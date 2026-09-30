@@ -96,7 +96,8 @@ export async function sync(deps: {
   if (incoming.size) await deps.importSets([...incoming.values()]);
   if (bodyIn.length) await deps.importBody(bodyIn);
 
-  const sets = [...deps.sets.filter((e) => !deps.deleted.has(e.id)), ...incoming.values()];
+  // Tombstones only stop sets coming back in; anything still on the phone is live, even under a reused id.
+  const sets = [...deps.sets, ...incoming.values()];
   const body = [...bodyBy.values()].map((d) => ({ ...d }));
   for (const d of bodyIn) { const cur = body.find((x) => x.date === d.date); if (cur) Object.assign(cur, d); else body.push(d); }
   const message = `Backup from phone ${deps.now.toISOString()}`;

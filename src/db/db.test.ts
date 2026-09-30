@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { deletePhoto, deleteSet, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
+import { addTombstone, deletePhoto, deleteSet, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
 
@@ -153,5 +153,37 @@ describe('db v6', () => {
     await deletePhoto('2026-09-01:front');
     expect((await getPhotoMetas()).map((x) => x.id)).toEqual(['2026-09-02:front']);
     expect(await getPhotoBlob('2026-09-01:front', 'full')).toBeUndefined();
+  });
+});
+
+describe('db v7', () => {
+  it('upgrades v6 keeping every store', async () => {
+    const v6 = await openDB('gym-tracker', 6, { upgrade(d) {
+      d.createObjectStore('sets', { keyPath: 'id' }).createIndex('date', 'date');
+      for (const [s, k] of [['settings', 'key'], ['profile', 'key'], ['program', 'key'], ['body', 'date']]) d.createObjectStore(s, { keyPath: k });
+      d.createObjectStore('photos', { keyPath: 'id' }).createIndex('date', 'date');
+      d.createObjectStore('photoBlobs');
+    } });
+    await v6.put('sets', { id: 'a', date: '2026-01-01', seq: 0, exercise: 'Curl', setNo: 1, weight: 30, reps: 10, flags: [], source: 's' });
+    await v6.put('settings', { key: 'curl', repMin: 8, repMax: 12, increment: 5 });
+    await v6.put('profile', { ...defaultProfile() });
+    await v6.put('body', { date: '2026-09-01', weight: 180 });
+    await v6.put('photos', { id: '2026-09-01:front', date: '2026-09-01', pose: 'front', width: 1, height: 1, addedAt: 'x' });
+    v6.close();
+    expect(await getAllSets()).toHaveLength(1);
+    expect(await getAllSettings()).toHaveLength(1);
+    expect(await getProfile()).toBeDefined();
+    expect(await getBody()).toHaveLength(1);
+    expect(await getPhotoMetas()).toHaveLength(1);
+    expect(await getSyncConfig()).toBeUndefined();
+    expect(await getTombstones()).toEqual(new Set());
+  });
+  it('stores the sync config and deleted-set ids', async () => {
+    await putSyncConfig({ key: 'sync', repo: 'a/b', token: 't', branch: 'main' });
+    expect((await getSyncConfig())?.repo).toBe('a/b');
+    await deleteSyncConfig();
+    expect(await getSyncConfig()).toBeUndefined();
+    await addTombstone('x'); await addTombstone('y'); await addTombstone('x');
+    expect(await getTombstones()).toEqual(new Set(['x', 'y']));
   });
 });

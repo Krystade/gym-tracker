@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { deleteSet, getAllSets, putMany, putSet, setBlockedHandler } from '../db/db';
+import { deleteSet, getAllSets, putMany, putSet, setBlockedHandler, addTombstone } from '../db/db';
 import { buildAppSet, type NewSetInput } from '../domain/buildSet';
 import type { SetEntry } from '../domain/types';
 
@@ -39,7 +39,7 @@ export function useSets() {
   }, []);
 
   const remove = useCallback(async (id: string): Promise<boolean> => {
-    try { await deleteSet(id); } catch (err) { fail('Deleting', err); return false; }
+    try { await deleteSet(id); await addTombstone(id); } catch (err) { fail('Deleting', err); return false; }
     setEntries((xs) => xs.filter((x) => x.id !== id));
     return true;
   }, []);
