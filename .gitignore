@@ -47,3 +47,8 @@ originals/
 notes*.txt
 log*.txt
 journal*.txt
+*.txt
+!*.sample.txt
+!robots.txt
+*notes*.md
+*journal*.md
