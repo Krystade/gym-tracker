@@ -6,6 +6,7 @@ import { exerciseNames, sameExercise } from '../domain/stats';
 import { fmtDate } from '../domain/format';
 import { ExerciseCard } from './ExerciseCard';
 import { ExercisePicker } from './ExercisePicker';
+import { swapSuggestions } from '../domain/care';
 import { TodayPlan, todayPlanFor } from './TodayPlan';
 
 export function TodayScreen({ store, settings, programs, date, onOpen, onOpenProgram }: {
@@ -21,7 +22,7 @@ export function TodayScreen({ store, settings, programs, date, onOpen, onOpenPro
 
   if (picking) return <ExercisePicker recent={exerciseNames(store.entries)} onCancel={() => setPicking(false)}
     onPick={(n) => { addCard(n); setPicking(false); }} />;
-  if (swapFor && plan) return <ExercisePicker recent={exerciseNames(store.entries)} onCancel={() => setSwapFor(null)}
+  if (swapFor && plan) return <ExercisePicker recent={exerciseNames(store.entries)} suggested={swapSuggestions(swapFor, store.entries, date)} onCancel={() => setSwapFor(null)}
     onPick={(n) => { void programs.savePlan({ ...plan, swaps: { ...plan.swaps, [swapFor]: n } }); addCard(n); setSwapFor(null); }} />;
 
   return (

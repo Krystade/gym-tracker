@@ -64,12 +64,12 @@ export function ExerciseCard({ exercise, date, store, settings, onOpen }: {
       </ol>
       {pr && <p role="status" className="pr">{pr}</p>}
       {editing ? (
-        <SetForm key={editing.id} initial={editing} submitLabel="Save"
+        <SetForm key={editing.id} exercise={exercise} initial={editing} submitLabel="Save"
           onCancel={() => setEditing(null)}
           onDelete={async () => { if (confirm(`Delete set ${editing.setNo}?`) && (await store.remove(editing.id))) setEditing(null); }}
           onSubmit={async (v) => { const ok = await store.update({ ...editing, ...v }); if (ok) setEditing(null); return ok; }} />
       ) : (
-        <SetForm key="new" initial={initial} submitLabel="Add set" onSubmit={addSet} />
+        <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} />
       )}
     </section>
   );

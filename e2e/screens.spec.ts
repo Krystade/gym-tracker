@@ -37,6 +37,9 @@ test('screens at iPhone 13 mini size', async ({ page }) => {
   await page.evaluate(() => window.scrollTo(0, 900));
   await check(page, '0-picker');
   await page.getByRole('button', { name: 'Cable Curl' }).first().click();
+  await page.getByRole('button', { name: 'Pain', exact: true }).click();
+  await page.getByRole('group', { name: 'Pain severity' }).getByRole('button', { name: 'Moderate' }).click();
+  await check(page, '9-pain-form');
   await page.getByRole('button', { name: 'Add set' }).click();
   await check(page, '1-today');
   await page.getByRole('button', { name: 'History' }).click();
@@ -51,7 +54,12 @@ test('screens at iPhone 13 mini size', async ({ page }) => {
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('heading', { name: 'Weekly volume' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add back-resilience block' }).click();
+  await expect(page.getByRole('list', { name: 'Day A exercises' })).toContainText('Bird Dog');
   await check(page, '7-program');
   await page.getByRole('button', { name: '‹ Back' }).click();
   await check(page, '8-today-plan');
+  await page.getByRole('region', { name: 'Today’s plan' }).getByRole('button', { name: 'Swap' }).first().click();
+  await expect(page.getByRole('list', { name: 'Suggested swaps' })).toBeVisible();
+  await check(page, '10-swap');
 });

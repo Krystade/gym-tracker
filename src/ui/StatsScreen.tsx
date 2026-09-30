@@ -11,6 +11,7 @@ import { BarChart } from './charts/BarChart';
 import { MuscleBars } from './charts/MuscleBars';
 import { Calendar } from './charts/Calendar';
 import { ChartTable } from './charts/ChartTable';
+import { CareCard } from './CareCard';
 
 const tons = (n: number) => (n >= 1000 ? `${fmtWeight(Math.round(n / 100) / 10)}k` : fmtWeight(Math.round(n)));
 const fmt = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
@@ -89,6 +90,7 @@ export function StatsScreen({ store, profile, programs, today }: { store: SetsSt
         <h2>Calendar</h2>
         <Calendar days={days} />
       </section>
+      <CareCard entries={store.entries} today={today} />
       <Priorities profile={profile} />
     </>
   );

@@ -7,6 +7,7 @@ import { defaultSettings } from '../domain/progression';
 import { exerciseNames } from '../domain/stats';
 import { MuscleBars } from './charts/MuscleBars';
 import { ExercisePicker } from './ExercisePicker';
+import { BACK_BLOCK, isHold } from '../domain/care';
 
 export function ProgramScreen({ programs, profile, entries, onBack }: { programs: ProgramStore; profile: ProfileStore; entries: SetEntry[]; onBack: () => void }) {
   const p = programs.program;
@@ -42,10 +43,10 @@ export function ProgramScreen({ programs, profile, entries, onBack }: { programs
       {p && p.days.map((day, di) => (
         <section className="card" key={day.name}>
           <h2>{day.name} · {day.slots.reduce((a, x) => a + x.sets, 0)} sets</h2>
-          <ol className="prog-slots">
+          <ol className="prog-slots" aria-label={`${day.name} exercises`}>
             {day.slots.map((slot, si) => (
               <li key={slot.exercise}>
-                <span className="prog-name"><b>{slot.exercise}</b><span className="muted small">{slot.repMin}–{slot.repMax} reps</span></span>
+                <span className="prog-name"><b>{slot.exercise}</b><span className="muted small">{slot.repMin}–{slot.repMax}{isHold(slot.exercise) ? ' s hold' : ' reps'}</span></span>
                 <button aria-label={`Fewer sets of ${slot.exercise}`} disabled={slot.sets <= 1} onClick={() => edit((x) => { x.days[di].slots[si].sets--; })}>−</button>
                 <span className="prog-sets">{slot.sets}</span>
                 <button aria-label={`More sets of ${slot.exercise}`} disabled={slot.sets >= MAX_SETS_PER_DAY + 2} onClick={() => edit((x) => { x.days[di].slots[si].sets++; })}>+</button>
@@ -56,6 +57,14 @@ export function ProgramScreen({ programs, profile, entries, onBack }: { programs
           <button className="wide" onClick={() => setAddTo(di)}>Add exercise to {day.name}</button>
         </section>
       ))}
+      {p && (
+        <section className="card">
+          <h2>Back resilience</h2>
+          <p className="muted small">McGill’s big 3 (bird dog, side plank, curl-up) as timed holds, 2 sets of 20–40 s on every day. Core endurance work helps with non-specific low back pain.</p>
+          <button className="wide" disabled={p.days.every((dd) => BACK_BLOCK.every((b) => dd.slots.some((sl) => sl.exercise === b.exercise)))}
+            onClick={() => edit((x) => { for (const dd of x.days) for (const b of BACK_BLOCK) if (!dd.slots.some((sl) => sl.exercise === b.exercise)) dd.slots.push({ ...b }); })}>Add back-resilience block</button>
+        </section>
+      )}
       {p && (
         <section className="card">
           <h2>Weekly volume</h2>

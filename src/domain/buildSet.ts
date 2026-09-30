@@ -1,8 +1,8 @@
 import { setId } from './ids';
 import { canonicalName, sameExercise } from './stats';
-import type { Flag, SetEntry } from './types';
+import type { Flag, Region, SetEntry } from './types';
 
-export interface NewSetInput { date: string; exercise: string; weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string }
+export interface NewSetInput { date: string; exercise: string; weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3 }
 
 /** partial and bodyweight follow from the numbers, so an edit that fills in reps or adds weight clears them. */
 export function derivedFlags(flags: Flag[], weight: number, reps: number | null): Flag[] {
@@ -20,5 +20,7 @@ export function buildAppSet(existing: SetEntry[], input: NewSetInput, now: Date)
     exercise, setNo, weight: input.weight, reps: input.reps, flags, source: 'app',
     ...(input.rir !== undefined && { rir: input.rir }),
     ...(input.note?.trim() && { note: input.note.trim() }),
+    ...(flags.includes('pain') && input.painRegion && { painRegion: input.painRegion }),
+    ...(flags.includes('pain') && input.painSeverity && { painSeverity: input.painSeverity }),
   };
 }

@@ -100,3 +100,14 @@ describe('painReport', () => {
     expect(painReport([s('2026-09-29', 'Cable Curl', { flags: ['pain'] })], '2026-09-30', 2)[0].region).toBe('other');
   });
 });
+
+describe('pain fields on new sets', () => {
+  it('are kept only while the set is flagged pain', async () => {
+    const { buildAppSet } = await import('./buildSet');
+    const now = new Date('2026-09-30T12:00:00Z');
+    const a = buildAppSet([], { date: '2026-09-30', exercise: 'Cable Curl', weight: 50, reps: 10, flags: ['pain'], painRegion: 'elbow', painSeverity: 2 }, now);
+    expect(a).toMatchObject({ painRegion: 'elbow', painSeverity: 2 });
+    const b = buildAppSet([], { date: '2026-09-30', exercise: 'Cable Curl', weight: 50, reps: 10, flags: [], painRegion: 'elbow', painSeverity: 2 }, now);
+    expect('painRegion' in b || 'painSeverity' in b).toBe(false);
+  });
+});

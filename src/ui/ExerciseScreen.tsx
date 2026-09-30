@@ -8,6 +8,8 @@ import { estimateRir, priorE1rm, rirOffset } from '../domain/progression';
 import { fmtDate, fmtSet, fmtWeight, plural } from '../domain/format';
 import { LineChart } from './LineChart';
 import { SetRowContent } from './SetRow';
+import { SwapSuggestions } from './SwapSuggestions';
+import { swapSuggestions } from '../domain/care';
 
 const lb = (n: number) => fmtWeight(Math.round(n));
 
@@ -58,6 +60,7 @@ export function ExerciseScreen({ name, store, settings, onBack }: { name: string
       </div>
       <p className="muted small">{cal.tests ? `${cal.formula === 'wd' ? 'Weight-adjusted formula' : 'Epley'} · calibrated · ${plural(cal.tests, 'test')}${cal.errorPct != null ? ` · ±${Math.round(cal.errorPct)}%` : ''}` : 'Epley · no tests yet'}</p>
       {due && <p className="card note-card">Time for a test: pick a weight you can do about 8–12 times, go to failure with good form, and tick <b>Test</b>. It tunes these estimates.</p>}
+      <SwapSuggestions items={swapSuggestions(name, store.entries, localDate(new Date()))} />
       <SettingsEditor key={name} name={name} settings={settings} />
       <section className="card">
         <LineChart points={series} />
