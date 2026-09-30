@@ -3,6 +3,7 @@ import type { SetEntry } from '../domain/types';
 import type { ExerciseSettings } from '../domain/progression';
 import type { Profile } from '../domain/profile';
 import type { DayPlan, Program } from '../domain/program';
+import type { BodyDay } from '../domain/body';
 
 const STORE = 'sets';
 let dbp: Promise<IDBPDatabase> | null = null;
@@ -11,12 +12,13 @@ let onBlocked: (() => void) | null = null;
 export const setBlockedHandler = (fn: (() => void) | null) => { onBlocked = fn; };
 
 function db(): Promise<IDBPDatabase> {
-  return (dbp ??= openDB('gym-tracker', 4, {
+  return (dbp ??= openDB('gym-tracker', 5, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) d.createObjectStore(STORE, { keyPath: 'id' }).createIndex('date', 'date');
       if (oldVersion < 2) d.createObjectStore('settings', { keyPath: 'key' });
       if (oldVersion < 3) d.createObjectStore('profile', { keyPath: 'key' });
       if (oldVersion < 4) d.createObjectStore('program', { keyPath: 'key' });
+      if (oldVersion < 5) d.createObjectStore('body', { keyPath: 'date' });
     },
     blocked() { onBlocked?.(); },
     // A newer version of the app is upgrading the database: step aside, and reload to pick up the new code.
@@ -59,4 +61,11 @@ export async function putMany(entries: SetEntry[]): Promise<{ added: number; upd
 export async function requestPersistence(): Promise<boolean | null> {
   if (!navigator.storage?.persist) return null;
   return (await navigator.storage.persisted()) || navigator.storage.persist();
+}
+
+export const getBody = async (): Promise<BodyDay[]> => (await db()).getAll('body');
+export const putBody = async (d: BodyDay): Promise<void> => { await (await db()).put('body', d); };
+export async function putBodyMany(days: BodyDay[]): Promise<void> {
+  const tx = (await db()).transaction('body', 'readwrite');
+  await Promise.all([...days.map((d) => tx.store.put(d)), tx.done]);
 }

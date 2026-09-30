@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { deleteSet, getAllSets, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
+import { deleteSet, getAllSets, getBody, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
 
@@ -96,5 +96,31 @@ describe('db v4', () => {
     const plans = await getDayPlans();
     expect(plans).toHaveLength(1);
     expect(plans[0].day).toBe(1);
+  });
+});
+
+describe('db v5', () => {
+  it('upgrades v4 keeping every store, with no body data yet', async () => {
+    const v4 = await openDB('gym-tracker', 4, { upgrade(d) {
+      d.createObjectStore('sets', { keyPath: 'id' }).createIndex('date', 'date');
+      d.createObjectStore('settings', { keyPath: 'key' });
+      d.createObjectStore('profile', { keyPath: 'key' });
+      d.createObjectStore('program', { keyPath: 'key' });
+    } });
+    await v4.put('sets', { id: 'a', date: '2026-01-01', seq: 0, exercise: 'Curl', setNo: 1, weight: 30, reps: 10, flags: [], source: 's' });
+    await v4.put('settings', { key: 'curl', repMin: 8, repMax: 12, increment: 5 });
+    await v4.put('profile', { ...defaultProfile() });
+    await v4.put('program', { key: 'program', perSession: 14, createdAt: 'x', days: [] });
+    v4.close();
+    expect(await getAllSets()).toHaveLength(1);
+    expect(await getAllSettings()).toHaveLength(1);
+    expect(await getProfile()).toBeDefined();
+    expect(await getProgram()).toBeDefined();
+    expect(await getBody()).toEqual([]);
+  });
+  it('stores one body day per date', async () => {
+    await putBody({ date: '2026-09-30', weight: 180 });
+    await putBodyMany([{ date: '2026-09-30', weight: 181, protein: 150 }, { date: '2026-09-29', weight: 179 }]);
+    expect(await getBody()).toEqual([{ date: '2026-09-29', weight: 179 }, { date: '2026-09-30', weight: 181, protein: 150 }]);
   });
 });
