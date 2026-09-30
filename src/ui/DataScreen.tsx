@@ -12,9 +12,12 @@ export function DataScreen({ store }: { store: SetsStore }) {
   const sessions = sessionsByDate(store.entries);
 
   async function onFile(file: File) {
-    const { entries, errors } = parseCsv(await file.text(), file.name.replace(/\.csv$/i, ''));
+    setResult(null);
+    let text: string;
+    try { text = await file.text(); } catch (e) { setResult({ added: 0, updated: 0, errors: [{ row: 0, message: `Could not read the file: ${String(e)}` }] }); return; }
+    const { entries, errors } = parseCsv(text, file.name.replace(/\.csv$/i, ''));
     const r = await store.importEntries(entries);
-    setResult({ ...r, errors });
+    if (r) setResult({ ...r, errors });
   }
 
   const [fallback, setFallback] = useState<string | null>(null);

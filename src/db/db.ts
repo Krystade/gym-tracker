@@ -21,7 +21,7 @@ export async function putMany(entries: SetEntry[]): Promise<{ added: number; upd
   const tx = (await db()).transaction(STORE, 'readwrite');
   const existing = new Set((await tx.store.getAllKeys()) as string[]);
   let added = 0;
-  for (const e of entries) { if (!existing.has(e.id)) added++; existing.add(e.id); void tx.store.put(e); }
+  for (const e of entries) { if (!existing.has(e.id)) added++; existing.add(e.id); tx.store.put(e).catch(() => {}); } // tx.done carries the failure
   await tx.done;
   return { added, updated: entries.length - added };
 }

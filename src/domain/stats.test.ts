@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
 import { bestSet, canonicalName, currentE1rm, e1rm, e1rmSeries, estimateWeightForReps, exerciseNames, lastSession, sessionsByDate, sessionsFor } from './stats';
-import { buildAppSet } from './buildSet';
+import { buildAppSet, derivedFlags } from './buildSet';
 import { fmtSet, fmtWeight } from './format';
 
 let seq = 0;
@@ -19,6 +19,8 @@ describe('e1rm', () => {
     expect(e1rm(s('d', 'x', 1, 100, null, { flags: ['partial'] }))).toBeNull();
     expect(e1rm(s('d', 'x', 1, 100, 10, { flags: ['warmup'] }))).toBeNull();
     expect(e1rm(s('d', 'x', 1, 50, 25))).toBeNull();
+    expect(e1rm(s('d', 'x', 1, 100, 10, { flags: ['partial'] }))).toBeNull();
+    expect(e1rm(s('d', 'x', 1, 25, 10, { flags: ['bodyweight'] }))).toBeNull();
   });
   it('inverts for an N-rep weight', () => {
     expect(estimateWeightForReps(120, 6)).toBeCloseTo(100, 5);
@@ -64,6 +66,12 @@ describe('buildAppSet', () => {
     expect(e).toMatchObject({ exercise: 'Cable Curl', setNo: 2, id: 'app|2026-02-01|cable curl|2', weight: 52.5, source: 'app', seq: now.getTime() });
     expect(canonicalName(existing, 'CABLE CURL')).toBe('Cable Curl');
     expect(canonicalName(existing, 'New Thing ')).toBe('New Thing');
+  });
+  it('derives partial and bodyweight from reps and weight, clearing stale ones on edit', () => {
+    expect(derivedFlags(['partial', 'pain'], 50, 8)).toEqual(['pain']);
+    expect(derivedFlags(['pain'], 50, null)).toEqual(['pain', 'partial']);
+    expect(derivedFlags(['bodyweight'], 20, 8)).toEqual([]);
+    expect(derivedFlags([], 0, 8)).toEqual(['bodyweight']);
   });
   it('flags zero weight as bodyweight', () => {
     expect(buildAppSet([], { date: '2026-02-01', exercise: 'Pull-up', weight: 0, reps: 8, flags: [] }, now).flags).toEqual(['bodyweight']);

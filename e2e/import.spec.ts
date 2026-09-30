@@ -22,3 +22,13 @@ test('import is idempotent and feeds history, lifts and chart', async ({ page })
   await expect(chart.locator('circle')).toHaveCount(2);
   await expect(page.getByText('80 × ?')).toBeVisible();
 });
+
+test('a failed import write shows an error instead of doing nothing', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await page.evaluate(() => {
+    IDBObjectStore.prototype.put = function () { throw new DOMException('Quota exceeded', 'QuotaExceededError'); };
+  });
+  await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
+  await expect(page.getByRole('alert')).toContainText(/Import failed/);
+});

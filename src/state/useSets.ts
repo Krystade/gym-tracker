@@ -40,8 +40,9 @@ export function useSets() {
     return true;
   }, []);
 
-  const importEntries = useCallback(async (list: SetEntry[]) => {
-    const result = await putMany(list);
+  const importEntries = useCallback(async (list: SetEntry[]): Promise<{ added: number; updated: number } | null> => {
+    let result;
+    try { result = await putMany(list); } catch (err) { setError(`Import failed — your existing sets are unchanged. ${String(err)}`); return null; }
     await reload();
     return result;
   }, [reload]);

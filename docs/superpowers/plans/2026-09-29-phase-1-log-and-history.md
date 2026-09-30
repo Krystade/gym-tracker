@@ -1712,13 +1712,13 @@ Runs entirely in `C:\Users\jackp\projects\gym-data` → private `Krystade/gym-da
 from convert import parse_sets, parse_notes, parse_cell, flags_for
 
 def test_sets_with_inline_note_attach_to_preceding_set():
-    s = parse_sets("85x11 70x12 dropped weight to focus on form 70x12")
-    assert [(x["weight"], x["reps"]) for x in s] == [(85, 11), (70, 12), (70, 12)]
-    assert s[1]["note"] == "dropped weight to focus on form"
+    s = parse_sets("90x10 75x11 lighter to fix form 75x11")
+    assert [(x["weight"], x["reps"]) for x in s] == [(90, 10), (75, 11), (75, 11)]
+    assert s[1]["note"] == "lighter to fix form"
 
 def test_comma_separated_decimal_and_partial():
-    s = parse_sets("52.5x12, 60x12, 100x")
-    assert [(x["weight"], x["reps"]) for x in s] == [(52.5, 12), (60, 12), (100, None)]
+    s = parse_sets("42.5x11, 50x11, 90x")
+    assert [(x["weight"], x["reps"]) for x in s] == [(42.5, 11), (50, 11), (90, None)]
     assert "partial" in s[2]["flags"]
 
 def test_bodyweight_and_question_mark():
@@ -1731,10 +1731,10 @@ def test_pain_words_flag_pain():
     assert flags_for("felt good") == []
 
 def test_notes_dates_skips_and_names():
-    text = "3/30/26\nSeated Row\t85x11 70x12\nFace Pull\tSkip\n6/2\nPushdowns: 60x20, 80x12\nRun: 1.5 miles in 15:30\n"
+    text = "1/5/26\nSeated Row\t90x10 75x11\nFace Pull\tSkip\n2/9\nPushdowns: 50x15, 70x10\nWalk: 2 miles\n"
     rows, unparsed = parse_notes(text)
-    assert {(r["date"], r["as_written"]) for r in rows} == {("2026-03-30", "Seated Row"), ("2026-06-02", "Pushdowns")}
-    assert unparsed == ["Run: 1.5 miles in 15:30"]
+    assert {(r["date"], r["as_written"]) for r in rows} == {("2026-01-05", "Seated Row"), ("2026-02-09", "Pushdowns")}
+    assert unparsed == ["Walk: 2 miles"]
 
 def test_xlsx_cells():
     assert parse_cell("55×12") == (55, 12, [], None)
@@ -1776,7 +1776,7 @@ def num(s: str) -> float | int:
     return int(f) if f.is_integer() else f
 
 def parse_sets(text: str) -> list[dict]:
-    """'85x11 70x12 note text 70x12' → sets; text after a set (until the next set) is that set's note."""
+    """'90x10 75x11 note text 75x11' → sets; text after a set (until the next set) is that set's note."""
     matches = list(SET_RE.finditer(text))
     sets = []
     for i, m in enumerate(matches):

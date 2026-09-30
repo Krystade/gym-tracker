@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Flag } from '../domain/types';
+import { derivedFlags } from '../domain/buildSet';
 
 export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string }
 const TOGGLES: [Flag, string][] = [['pain', 'Pain'], ['unsure', 'Unsure'], ['warmup', 'Warm-up'], ['double_pulley', '2× pulley']];
@@ -25,7 +26,7 @@ export function SetForm({ initial, submitLabel, onSubmit, onDelete, onCancel }: 
   const [weight, setWeight] = useState(String(initial.weight));
   const [reps, setReps] = useState(initial.reps == null ? '' : String(initial.reps));
   const [rir, setRir] = useState<number | undefined>(initial.rir);
-  const [flags, setFlags] = useState<Flag[]>(initial.flags.filter((f) => f !== 'bodyweight'));
+  const [flags, setFlags] = useState<Flag[]>(initial.flags.filter((f) => f !== 'bodyweight' && f !== 'partial'));
   const [note, setNote] = useState(initial.note ?? '');
   const w = Number(weight);
   const r = reps.trim() === '' ? null : Number(reps);
@@ -33,7 +34,7 @@ export function SetForm({ initial, submitLabel, onSubmit, onDelete, onCancel }: 
 
   async function submit() {
     if (!valid) return;
-    const ok = await onSubmit({ weight: w, reps: r, rir, flags: r === null && !flags.includes('partial') ? [...flags, 'partial'] : flags, note: note.trim() || undefined });
+    const ok = await onSubmit({ weight: w, reps: r, rir, flags: derivedFlags(flags, w, r), note: note.trim() || undefined });
     if (ok) { setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setRir(undefined); }
   }
 
