@@ -38,3 +38,6 @@ exports/
 *.db
 gym-backup*.json
 !**/*.sample.csv
+
+# Local agent workspace
+.superpowers/
