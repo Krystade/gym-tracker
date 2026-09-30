@@ -35,3 +35,9 @@ export function weightNear(date: string, points: { date: string; trend: number }
   }
   return best ? best.t : null;
 }
+
+/** A camera shot is always today's; a library photo takes the date field (blank → today), never a future date. */
+export function photoDate(source: 'camera' | 'library', field: string, today: string): string | null {
+  if (source === 'camera' || !field) return today;
+  return field > today ? null : field;
+}

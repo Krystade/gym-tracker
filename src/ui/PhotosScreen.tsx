@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getPhotoBlob } from '../db/db';
-import { comparePair, fitSize, photoId, POSES, timeline, weightNear, type PhotoMeta, type Pose } from '../domain/photos';
+import { comparePair, fitSize, photoDate, photoId, POSES, timeline, weightNear, type PhotoMeta, type Pose } from '../domain/photos';
+import { localDate } from '../domain/ids';
 import { trend } from '../domain/body';
 import { fmtDate } from '../domain/format';
 import type { PhotosStore } from '../state/usePhotos';
@@ -48,18 +49,28 @@ export function PhotosScreen({ photos, body, today, onBack }: { photos: PhotosSt
   const [open, setOpen] = useState<PhotoMeta | null>(null);
   const [cmpPose, setCmpPose] = useState<Pose>('front');
   const [pick, setPick] = useState<[string, string] | null>(null);
+  const [shareFile, setShareFile] = useState<File | null>(null);
+  useEffect(() => {
+    setShareFile(null);
+    if (!open) return;
+    let live = true;
+    void getPhotoBlob(open.id, 'full').then((b) => { if (live && b) setShareFile(new File([b], `progress-${open.date}-${open.pose}.jpg`, { type: 'image/jpeg' })); });
+    return () => { live = false; };
+  }, [open, photos.version]);
   const points = trend(body.days);
   const weight = (d: string) => { const w = weightNear(d, points); return w == null ? null : `${w.toFixed(1)} lb`; };
 
-  async function onFile(file: File) {
-    const id = photoId(date, pose);
-    if (photos.metas.some((m) => m.id === id) && !confirm(`Replace the ${pose} photo for ${date}?`)) return;
+  async function onFile(file: File, source: 'camera' | 'library') {
+    const when = photoDate(source, date, localDate(new Date()));
+    if (!when) { setMsg('That date is in the future — pick today or earlier.'); return; }
+    const id = photoId(when, pose);
+    if (photos.metas.some((m) => m.id === id) && !confirm(`Replace the ${pose} photo for ${when}?`)) return;
     setBusy(true); setMsg(null);
     try {
       const img = await decode(file);
       const [full, thumb] = [await encode(img, 1600), await encode(img, 320)];
-      const ok = await photos.add({ id, date, pose, width: full.width, height: full.height, addedAt: new Date().toISOString() }, full.blob, thumb.blob);
-      if (ok) setMsg(`Saved ${pose} photo for ${date}.`);
+      const ok = await photos.add({ id, date: when, pose, width: full.width, height: full.height, addedAt: new Date().toISOString() }, full.blob, thumb.blob);
+      if (ok) setMsg(`Saved ${pose} photo for ${when}.`);
     } catch (e) { setMsg(`Could not read that image: ${String(e)}`); }
     finally { setBusy(false); }
   }
@@ -74,10 +85,10 @@ export function PhotosScreen({ photos, body, today, onBack }: { photos: PhotosSt
       <p className="muted">{weight(open.date) ? `Trend weight ${weight(open.date)}` : 'No weigh-in within 3 days'}</p>
       <div className="photo-full"><Img id={open.id} kind="full" version={photos.version} label={alt(open)} /></div>
       <div className="form-actions">
-        <button onClick={async () => {
-          const b = await getPhotoBlob(open.id, 'full');
-          const f = b && new File([b], `progress-${open.date}-${open.pose}.jpg`, { type: 'image/jpeg' });
-          try { if (f && navigator.canShare?.({ files: [f] })) await navigator.share({ files: [f] }); else setMsg('Sharing isn’t available here — long-press the photo to save it.'); } catch { /* cancelled */ }
+        <button disabled={!shareFile} onClick={() => {
+          // Called straight from the tap: the share sheet needs the user's gesture, so the file was read in advance.
+          if (!shareFile || !navigator.canShare?.({ files: [shareFile] })) { setMsg('Sharing isn’t available here — long-press the photo to save it.'); return; }
+          navigator.share({ files: [shareFile] }).catch((e: Error) => { if (e.name !== 'AbortError') setMsg(`Couldn’t open the share sheet (${e.name}) — long-press the photo to save it.`); });
         }}>Save to Photos</button>
         <button className="danger" onClick={async () => { if (confirm(`Delete the ${open.pose} photo for ${open.date}? This can’t be undone.`) && (await photos.remove(open.id))) setOpen(null); }}>Delete photo</button>
       </div>
@@ -94,13 +105,13 @@ export function PhotosScreen({ photos, body, today, onBack }: { photos: PhotosSt
         <div className="chips" role="group" aria-label="Pose">
           {POSES.map((p) => <button key={p} type="button" className="chip" aria-pressed={pose === p} onClick={() => setPose(p)}>{cap(p)}</button>)}
         </div>
-        <label className="photo-date">Date<input type="date" aria-label="Photo date" value={date} max={today} onChange={(e) => setDate(e.target.value || today)} /></label>
+        <label className="photo-date">Date for library photos<input type="date" aria-label="Photo date" value={date} max={today} onChange={(e) => setDate(e.target.value || today)} /></label>
         <div className="photo-add">
           <label className={`button primary${busy ? ' disabled' : ''}`}>Take photo
-            <input type="file" accept="image/*" capture="environment" hidden disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onFile(f); }} />
+            <input type="file" accept="image/*" capture="environment" hidden disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onFile(f, 'camera'); }} />
           </label>
           <label className={`button${busy ? ' disabled' : ''}`}>From library
-            <input type="file" accept="image/*" hidden disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onFile(f); }} />
+            <input type="file" accept="image/*" hidden disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onFile(f, 'library'); }} />
           </label>
         </div>
         {msg && <p className="muted small" role="status">{msg}</p>}

@@ -18,13 +18,20 @@ export function detectCsv(text: string): CsvKind {
   return 'unknown';
 }
 
-/** ISO dates as-is; US M/D/YYYY converted. */
+/** ISO dates as-is; US M/D/YYYY converted. Either way the day must exist (no Feb 30, no month 13). */
 function isoDate(s: string): string | null {
   const t = s.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t) && !Number.isNaN(Date.parse(t))) return t;
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t);
-  return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : null;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  const us = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t);
+  const [y, mo, d] = iso ? [iso[1], iso[2], iso[3]].map(Number) : us ? [us[3], us[1], us[2]].map(Number) : [];
+  if (y === undefined) return null;
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
+
+/** Same bounds as a typed weigh-in, so one stray 0 can't drag the trend. */
+export const WEIGHT_RANGE = [50, 700] as const;
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -53,6 +60,7 @@ export function parseBodyFile(text: string): { kind: CsvKind; days: BodyDay[]; e
       if (c < 0 || v === '') continue;
       const n = Number(v.replace(/,/g, ''));
       if (!Number.isFinite(n) || n < 0) { errors.push({ row, message: `Bad ${k} "${v}"` }); return; }
+      if (k === 'weight' && (n < WEIGHT_RANGE[0] || n > WEIGHT_RANGE[1])) { errors.push({ row, message: `Weight ${v} is outside ${WEIGHT_RANGE[0]}–${WEIGHT_RANGE[1]} lb` }); return; }
       vals[k] = n;
     }
     if (!Object.keys(vals).length) return;

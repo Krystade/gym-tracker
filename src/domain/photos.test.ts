@@ -38,3 +38,13 @@ describe('weightNear', () => {
     expect(weightNear('2026-09-20', pts)).toBeNull();
   });
 });
+
+describe('photoDate', () => {
+  it('files a camera shot under today whatever the date field says, and a library photo under the field', async () => {
+    const { photoDate } = await import('./photos');
+    expect(photoDate('camera', '2026-08-01', '2026-09-30')).toBe('2026-09-30');
+    expect(photoDate('library', '2026-08-01', '2026-09-30')).toBe('2026-08-01');
+    expect(photoDate('library', '2026-10-05', '2026-09-30')).toBeNull();
+    expect(photoDate('library', '', '2026-09-30')).toBe('2026-09-30');
+  });
+});

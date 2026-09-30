@@ -95,3 +95,16 @@ describe('proteinCheck', () => {
     expect(proteinCheck([{ date: '2026-09-01', protein: 50 }], 180, '2026-09-30')).toBeNull();
   });
 });
+
+describe('Phase 6 review fixes', () => {
+  it('rejects dates that don’t exist', () => {
+    const r = parseBodyFile('Date,Weight\n13/45/2026,180\n2026-02-30,181\n2026-02-28,182\n2/29/2028,183\n');
+    expect(r.errors.map((e) => e.row)).toEqual([2, 3]);
+    expect(r.days.map((d) => d.date)).toEqual(['2026-02-28', '2028-02-29']);
+  });
+  it('holds imported weights to the same 50–700 lb range as a typed weigh-in', () => {
+    const r = parseBodyFile('Date,Weight\n2026-09-01,0\n2026-09-02,82\n2026-09-03,49\n2026-09-04,701\n');
+    expect(r.errors.map((e) => e.row)).toEqual([2, 4, 5]);
+    expect(r.days).toEqual([{ date: '2026-09-02', weight: 82 }]);
+  });
+});

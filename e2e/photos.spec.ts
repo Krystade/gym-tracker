@@ -53,3 +53,25 @@ test('photos stay on the device: add, compare, delete, never exported', async ({
   const text = await page.evaluate(() => (window as unknown as { copied: string }).copied);
   expect(text).not.toMatch(/blob:|data:image|2026-09-20/);
 });
+
+test('Save to Photos shares the file, and says so when sharing fails', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { shared: string[]; failShare: boolean };
+    w.shared = []; w.failShare = false;
+    Object.defineProperty(navigator, 'canShare', { value: () => true });
+    Object.defineProperty(navigator, 'share', { value: async (d: { files: File[] }) => {
+      if (w.failShare) throw new DOMException('no activation', 'NotAllowedError');
+      w.shared.push(d.files[0].name);
+    } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Stats' }).click();
+  await page.getByRole('region', { name: 'Progress photos' }).getByRole('button', { name: 'Open photos' }).click();
+  await addPhoto(page, '2026-08-01', '#446');
+  await page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: 'Front, 2026-08-01' }).click();
+  await page.getByRole('button', { name: 'Save to Photos' }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { shared: string[] }).shared)).toEqual(['progress-2026-08-01-front.jpg']);
+  await page.evaluate(() => { (window as unknown as { failShare: boolean }).failShare = true; });
+  await page.getByRole('button', { name: 'Save to Photos' }).click();
+  await expect(page.getByRole('status')).toContainText('Couldn’t open the share sheet');
+});
