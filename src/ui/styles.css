@@ -200,3 +200,10 @@ h3 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600;
 .tl-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .tl-thumb { display: grid; gap: 4px; padding: 4px; justify-items: center; }
 .tl-thumb img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; }
+
+/* sync */
+.sync-form { display: grid; gap: 8px; }
+.sync-form label { display: grid; gap: 4px; color: var(--muted); font-size: 13px; }
+.sync-form input { min-height: 44px; }
+.sync-form ol { padding-left: 18px; margin: 6px 0; }
+.sync-saved { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; overflow-wrap: anywhere; }

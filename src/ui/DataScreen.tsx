@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { ProfileStore } from '../state/useProfile';
 import type { BodyStore } from '../state/useBody';
+import type { SyncStore } from '../state/useSync';
+import { SyncCard } from './SyncCard';
 import { parseBodyFile, toBodyCsv, type CsvKind } from '../domain/body';
 import { parseProfileJson } from '../domain/profile';
 import { parseCsv, toCsv, type CsvError } from '../domain/csv';
@@ -11,7 +13,7 @@ import { plural } from '../domain/format';
 
 const KIND: Partial<Record<CsvKind, string>> = { body: 'Body data', 'mfp-weight': 'MyFitnessPal weight', 'mfp-nutrition': 'MyFitnessPal nutrition' };
 
-export function DataScreen({ store, profile, body }: { store: SetsStore; profile: ProfileStore; body: BodyStore }) {
+export function DataScreen({ store, profile, body, sync }: { store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore }) {
   const [bodyMsgs, setBodyMsgs] = useState<{ ok: boolean; text: string }[]>([]);
   const [result, setResult] = useState<{ added: number; updated: number; errors: CsvError[] } | null>(null);
   const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -97,6 +99,7 @@ export function DataScreen({ store, profile, body }: { store: SetsStore; profile
           ? <p className="muted" role="status">{bodyFallback}</p>
           : <textarea className="csv" aria-label="Body CSV export" readOnly value={bodyFallback} onFocus={(e) => e.currentTarget.select()} />)}
       </section>
+      <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} />
       <p className="muted small">Build {__BUILD_ID__} · {__BUILT_AT__.slice(0, 16).replace('T', ' ')} UTC</p>
     </>
   );

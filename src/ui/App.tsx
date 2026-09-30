@@ -5,6 +5,7 @@ import { useProfile } from '../state/useProfile';
 import { useProgram } from '../state/useProgram';
 import { useBody } from '../state/useBody';
 import { usePhotos } from '../state/usePhotos';
+import { useSync } from '../state/useSync';
 import { PhotosScreen } from './PhotosScreen';
 import { ProgramScreen } from './ProgramScreen';
 import { localDate } from '../domain/ids';
@@ -25,6 +26,7 @@ export default function App() {
   const programs = useProgram();
   const body = useBody();
   const photos = usePhotos();
+  const sync = useSync(store, body);
   const [programOpen, setProgramOpen] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('today');
@@ -49,7 +51,7 @@ export default function App() {
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />
-          : <DataScreen store={store} profile={profile} body={body} />}
+          : <DataScreen store={store} profile={profile} body={body} sync={sync} />}
       </main>
       <nav className="tabs" aria-label="Sections">
         {TABS.map(([t, label]) => (
