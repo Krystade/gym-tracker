@@ -48,7 +48,11 @@ export interface Calibration { formula: Formula; factor: number; tests: number; 
  * ratios agree best once the factor is applied (their spread); with one test either would fit exactly, so Epley.
  */
 export function calibrate(entries: SetEntry[], exercise: string, beforeDate = '9999-12-31'): Calibration {
-  const tests = entries.filter((s) => sameExercise(s.exercise, exercise) && isTest(s) && usable(s) && s.date < beforeDate);
+  const mine = entries.filter((s) => sameExercise(s.exercise, exercise) && s.date < beforeDate);
+  // A test counts at face value only while recent: 6 weeks before the latest session, so a layoff doesn't pin the peak.
+  const latest = mine.reduce((a, s) => (s.date > a ? s.date : a), '');
+  const cutoff = latest ? new Date(Date.parse(latest) - 42 * 864e5).toISOString().slice(0, 10) : '';
+  const tests = mine.filter((s) => isTest(s) && usable(s) && s.date >= cutoff);
   const fit = (f: Formula) => {
     const ratios = tests.map((t) => {
       const predicted = rawE1rm(entries, exercise, f, t.date);
@@ -70,7 +74,11 @@ export function calibrate(entries: SetEntry[], exercise: string, beforeDate = '9
 export function calibratedE1rm(entries: SetEntry[], exercise: string, beforeDate = '9999-12-31'): number | null {
   const c = calibrate(entries, exercise, beforeDate);
   const raw = rawE1rm(entries, exercise, c.formula, beforeDate);
-  const tests = entries.filter((s) => sameExercise(s.exercise, exercise) && isTest(s) && usable(s) && s.date < beforeDate)
+  const mine = entries.filter((s) => sameExercise(s.exercise, exercise) && s.date < beforeDate);
+  // A test counts at face value only while recent: 6 weeks before the latest session, so a layoff doesn't pin the peak.
+  const latest = mine.reduce((a, s) => (s.date > a ? s.date : a), '');
+  const cutoff = latest ? new Date(Date.parse(latest) - 42 * 864e5).toISOString().slice(0, 10) : '';
+  const tests = mine.filter((s) => isTest(s) && usable(s) && s.date >= cutoff)
     .map((s) => oneRm(c.formula, s.weight, testReps(s))).filter((v): v is number => v != null);
   const vals = [...(raw == null ? [] : [raw * c.factor]), ...tests];
   return vals.length ? Math.max(...vals) : null;

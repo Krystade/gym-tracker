@@ -40,3 +40,12 @@ describe('keyword fallback word boundaries', () => {
     expect(muscleVector('T-Bar Row')?.['Mid-Back']).toBe(1);
   });
 });
+
+describe('rows that mention a bench', () => {
+  it('are back work, not chest', () => {
+    for (const n of ['Incline Bench Row', 'Bench Supported Row', 'Bench-Supported DB Row']) {
+      expect(muscleVector(n)?.['Mid-Back'], n).toBe(1);
+      expect(muscleVector(n)?.Chest ?? 0, n).toBe(0);
+    }
+  });
+});

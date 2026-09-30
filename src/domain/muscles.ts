@@ -44,7 +44,7 @@ const TABLE: Record<string, Vector> = {
   'standing calf raise': { Calves: 1 }, 'seated calf raise': { Calves: 1 }, 'db calf raise': { Calves: 1 },
 };
 
-// Order matters (leg curl before curl; press before row), and words need boundaries: "machine"
+// Order matters (leg curl before curl; row before bench, so a bench-supported row is back work), and words need boundaries: "machine"
 // contains "chin" and "narrow" contains "row".
 const KEYWORDS: [RegExp, Vector][] = [
   [/\bleg curl|\bham(string)? curl|\bnordic/i, LEGCURL], [/\bwrist curl/i, { Forearms: 1 }], [/\bcurl/i, B],
@@ -53,8 +53,9 @@ const KEYWORDS: [RegExp, Vector][] = [
   [/\bsquat|leg press|\blunge|step-?up|\bhack\b/i, SQUAT], [/deadlift|good morning|\bhinge|\brdl\b/i, HINGE], [/leg ext/i, { Quads: 1 }],
   [/\bcalf|\bcalves/i, { Calves: 1 }], [/hip thrust|\bglute/i, { Glutes: 1, Hamstrings: 0.5 }],
   [/\bfly\b|\bflyes?\b|pec deck/i, { Chest: 1 }], [/overhead press|shoulder press|military|\bohp\b/i, OHP],
+  [/\brows?\b/i, ROW_MID],
   [/bench|chest press|incline.*\bpress|push-?up|\bdips?\b/i, PRESS],
-  [/pulldown|pull-?up|\bchin(-?ups?)?\b/i, PULLDOWN], [/\brows?\b/i, ROW_MID],
+  [/pulldown|pull-?up|\bchin(-?ups?)?\b/i, PULLDOWN],
   [/crunch|sit-?up|plank|leg raise|\babs?\b/i, A],
 ];
 

@@ -9,7 +9,8 @@ export interface Slot { exercise: string; sets: number; repMin: number; repMax: 
 export interface ProgramDay { name: string; slots: Slot[] }
 export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string }
 /** What happened to the program on one date: which day was run, and what was skipped or swapped. */
-export interface DayPlan { key: string; date: string; day: number; skips: string[]; swaps: Record<string, string> }
+/** `slots` is the day as planned when the session was logged, so later program edits don't rewrite history. */
+export interface DayPlan { key: string; date: string; day: number; skips: string[]; swaps: Record<string, string>; slots?: Slot[] }
 
 export const MAX_SETS_PER_DAY = 4;
 /** Sets are allocated in pairs so no exercise is ever programmed for a single set. */
@@ -66,7 +67,9 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
     const goal = profile.targets[profile.tiers[m]][bound];
     return goal > 0 ? (TIER_WEIGHT[profile.tiers[m]] * (goal - achieved[m])) / goal : 0;
   };
-  for (let pairs = Math.floor((days * perSession) / UNIT); pairs > 0; pairs--) {
+  // Whole pairs per day, so an odd sets-per-session never pushes a day over it.
+  const dayCap = Math.floor(perSession / UNIT) * UNIT;
+  for (let pairs = days * Math.floor(perSession / UNIT); pairs > 0; pairs--) {
     const open = MUSCLES.filter((m) => !saturated.has(m));
     const below = (bound: 0 | 1) => open.filter((m) => score(m, bound) > 0).sort((a, b) => score(b, bound) - score(a, bound));
     const m = below(0)[0] ?? below(1)[0];
@@ -83,7 +86,8 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   // Pair by pair onto the lightest day that can still take one.
   for (const ex of order) {
     for (let k = weekly.get(ex)!; k > 0; k -= UNIT) {
-      const d = totals.map((t, i) => [t, i]).filter(([, i]) => (perDay[i].get(ex) ?? 0) + UNIT <= MAX_SETS_PER_DAY).sort((a, b) => a[0] - b[0])[0][1];
+      const d = totals.map((t, i) => [t, i]).filter(([t, i]) => t + UNIT <= dayCap && (perDay[i].get(ex) ?? 0) + UNIT <= MAX_SETS_PER_DAY).sort((a, b) => a[0] - b[0])[0]?.[1];
+      if (d === undefined) break;
       perDay[d].set(ex, (perDay[d].get(ex) ?? 0) + UNIT);
       totals[d] += UNIT;
     }
@@ -118,13 +122,31 @@ export function nextDay(p: Program, plans: DayPlan[], entries: SetEntry[], today
 export function adherence(p: Program, plans: DayPlan[], entries: SetEntry[], since: string, today: string): { planned: number; done: number } {
   let planned = 0, done = 0;
   for (const x of plans) {
-    if (x.date < since || x.date > today || !p.days[x.day] || !trainedOn(entries, x.date)) continue;
-    for (const slot of p.days[x.day].slots) {
+    const slots = x.slots ?? p.days[x.day]?.slots;
+    if (x.date < since || x.date > today || !slots || !trainedOn(entries, x.date)) continue;
+    // Each logged set counts toward one slot, so a swap onto an exercise already planned can't be counted twice.
+    const left = entries.filter((e) => e.date === x.date && isWorking(e));
+    for (const slot of slots) {
       planned += slot.sets;
       if (x.skips.includes(slot.exercise)) continue;
       const target = x.swaps[slot.exercise] ?? slot.exercise;
-      done += Math.min(slot.sets, entries.filter((e) => e.date === x.date && sameExercise(e.exercise, target) && isWorking(e)).length);
+      for (let k = 0; k < slot.sets; k++) {
+        const i = left.findIndex((e) => sameExercise(e.exercise, target));
+        if (i < 0) break;
+        left.splice(i, 1);
+        done++;
+      }
     }
   }
   return { planned, done };
+}
+
+/** The plan to store for `date` once working sets are logged: fixes the rotation and snapshots the day's slots. Null when nothing needs saving. */
+export function planToRecord(p: Program, plans: DayPlan[], entries: SetEntry[], date: string): DayPlan | null {
+  if (!trainedOn(entries, date)) return null;
+  const stored = plans.find((x) => x.date === date);
+  if (stored?.slots) return null;
+  const base = stored ?? { key: `day:${date}`, date, day: nextDay(p, plans, entries, date), skips: [], swaps: {} };
+  const day = p.days[base.day] ?? p.days[0];
+  return day ? { ...base, day: p.days[base.day] ? base.day : 0, slots: structuredClone(day.slots) } : null;
 }

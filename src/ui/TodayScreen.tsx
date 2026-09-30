@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { planToRecord } from '../domain/program';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import type { ProgramStore } from '../state/useProgram';
@@ -18,6 +19,12 @@ export function TodayScreen({ store, settings, programs, date, onOpen, onOpenPro
   const logged = exerciseNames(store.entries.filter((e) => e.date === date)).reverse();
   const cards = [...logged, ...extra.filter((x) => !logged.some((l) => sameExercise(l, x)))];
   const plan = todayPlanFor(programs, store.entries, date);
+  // Record the day once a working set is logged, so rotation and adherence don't depend on tapping the plan.
+  useEffect(() => {
+    if (!programs.program) return;
+    const r = planToRecord(programs.program, programs.plans, store.entries, date);
+    if (r) void programs.savePlan(r);
+  }, [programs.program, programs.plans, programs.savePlan, store.entries, date]);
   const addCard = (n: string) => setExtra((xs) => (xs.some((x) => sameExercise(x, n)) ? xs : [...xs, n]));
 
   if (picking) return <ExercisePicker recent={exerciseNames(store.entries)} onCancel={() => setPicking(false)}

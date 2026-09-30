@@ -22,7 +22,7 @@ export function TodayPlan({ program, plan, entries, onChange, onOpen, onSwap }: 
       {program.days.length > 1 && (
         <div className="chips" role="group" aria-label="Program day">
           {program.days.map((d, i) => (
-            <button key={d.name} type="button" className="chip" aria-pressed={i === plan.day} onClick={() => onChange({ ...plan, day: i, skips: [], swaps: {} })}>{d.name}</button>
+            <button key={d.name} type="button" className="chip" aria-pressed={i === plan.day} onClick={() => onChange({ ...plan, day: i, skips: [], swaps: {}, slots: undefined })}>{d.name}</button>
           ))}
         </div>
       )}

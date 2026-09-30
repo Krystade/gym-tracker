@@ -81,3 +81,15 @@ describe('review fixes', () => {
     expect(calibratedE1rm(e, 'Curl')).toBeCloseTo(46, 1);
   });
 });
+
+describe('stale tests', () => {
+  it('stop counting at face value once they are more than 6 weeks older than the latest session', () => {
+    let q = 0;
+    const t = (date: string, weight: number, reps: number, flags: SetEntry['flags'] = []): SetEntry => ({ id: `st${q}`, date, seq: q++, exercise: 'Cable Curl', setNo: 1, weight, reps, flags, source: 't', rir: flags.includes('test') ? 0 : 2 });
+    const e = [t('2024-03-01', 60, 12, ['test']), t('2026-09-20', 30, 10), t('2026-09-27', 30, 10)];
+    const v = calibratedE1rm(e, 'Cable Curl')!;
+    expect(v).toBeLessThan(50);
+    const fresh = [...e, t('2026-09-10', 40, 12, ['test'])];
+    expect(calibratedE1rm(fresh, 'Cable Curl')!).toBeGreaterThan(50);
+  });
+});

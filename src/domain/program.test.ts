@@ -108,3 +108,38 @@ describe('adherence', () => {
     expect(adherence(PROG, [plan(d, 0, { swaps: { 'Cable Pushdown': 'Rope Pushdown' } })], extra, '2026-09-01', '2026-09-30').done).toBe(5);
   });
 });
+
+describe('Phase 4 review fixes', () => {
+  it('never puts more than sets-per-session on a day, for every days × sets the screen accepts', () => {
+    const profiles = [defaultProfile(), withTiers({ Biceps: 1, Triceps: 1, Abs: 1, 'Side Delts': 2, 'Rear Delts': 2 }, 4)];
+    for (const prof of profiles) for (let days = 1; days <= 6; days++) for (let per = 8; per <= 20; per++) {
+      const p = buildProgram(prof, [], { days, perSession: per }, NOW);
+      for (let d = 0; d < days; d++) expect(total(p, d), `${days}×${per} day ${d}`).toBeLessThanOrEqual(per);
+    }
+  });
+  it('gives each logged set to one slot when a swap targets an exercise already planned', () => {
+    const d = '2026-09-29';
+    const curls = [s(d, 'Cable Curl'), s(d, 'Cable Curl'), s(d, 'Cable Curl')];
+    expect(adherence(PROG, [plan(d, 0, { swaps: { 'Cable Pushdown': 'Cable Curl' } })], curls, '2026-09-01', '2026-09-30')).toEqual({ planned: 6, done: 3 });
+  });
+  it('scores a past day against the slots it was planned with, not the program as edited since', () => {
+    const d = '2026-09-29';
+    const logged = [s(d, 'Cable Curl'), s(d, 'Cable Curl'), s(d, 'Cable Curl')];
+    const snap = plan(d, 0, { slots: [{ exercise: 'Cable Curl', sets: 3, repMin: 10, repMax: 15 }] });
+    const edited: Program = { ...PROG, days: [{ name: 'Day A', slots: [{ exercise: 'Leg Press', sets: 4, repMin: 8, repMax: 12 }] }, PROG.days[1]] };
+    expect(adherence(edited, [snap], logged, '2026-09-01', '2026-09-30')).toEqual({ planned: 3, done: 3 });
+    const gone: Program = { ...PROG, days: [PROG.days[0]] };
+    expect(adherence(gone, [{ ...snap, day: 1 }], logged, '2026-09-01', '2026-09-30')).toEqual({ planned: 3, done: 3 });
+  });
+  it('records the plan for a date once working sets are logged, with the day’s slots', async () => {
+    const { planToRecord } = await import('./program');
+    const d = '2026-09-29';
+    expect(planToRecord(PROG, [], [], d)).toBeNull();
+    const r = planToRecord(PROG, [], [s(d, 'Cable Curl')], d)!;
+    expect(r).toMatchObject({ key: `day:${d}`, date: d, day: 0, skips: [], swaps: {} });
+    expect(r.slots).toEqual(PROG.days[0].slots);
+    expect(planToRecord(PROG, [r], [s(d, 'Cable Curl')], d)).toBeNull();
+    const old = plan(d, 1);
+    expect(planToRecord(PROG, [old], [s(d, 'Cable Curl')], d)).toMatchObject({ day: 1, slots: PROG.days[1].slots });
+  });
+});
