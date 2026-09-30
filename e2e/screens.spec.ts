@@ -8,6 +8,21 @@ async function check(page: Page, name: string) {
   const small = await page.evaluate(() => [...document.querySelectorAll('button, input:not([type=file]), label.button')]
     .map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height < 44).length);
   expect(small).toBe(0);
+  // In the DOM is not on the screen: an ancestor with overflow can clip text that toBeVisible() still reports visible.
+  const clipped = await page.evaluate(() => [...document.querySelectorAll('.screen p, .screen h1, .screen h2, .screen button, .screen input, .screen label')]
+    .filter((el) => el.getBoundingClientRect().height > 0)
+    .flatMap((el) => {
+      const r = el.getBoundingClientRect();
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        const cs = getComputedStyle(p);
+        if ([cs.overflowX, cs.overflowY].every((v) => v === 'visible')) continue;
+        const pr = p.getBoundingClientRect();
+        if (r.top < pr.top - 1 || r.bottom > pr.bottom + 1 || r.left < pr.left - 1 || r.right > pr.right + 1)
+          return [`${el.tagName} "${(el.textContent ?? '').slice(0, 30)}" clipped by .${p.className}`];
+      }
+      return [];
+    }));
+  expect(clipped).toEqual([]);
   await page.screenshot({ path: `screenshots/${name}.png`, fullPage: name !== '0-picker' });
 }
 
