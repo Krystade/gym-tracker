@@ -74,10 +74,17 @@ export async function putBodyMany(days: BodyDay[]): Promise<void> {
 }
 
 export const getPhotoMetas = async (): Promise<PhotoMeta[]> => (await db()).getAll('photos');
-export const getPhotoBlob = async (id: string, kind: 'full' | 'thumb'): Promise<Blob | undefined> => (await db()).get('photoBlobs', `${id}:${kind}`);
+// Stored as ArrayBuffers: WebKit rejects Blobs in IndexedDB in ephemeral sessions (private browsing, test browsers).
+interface StoredImage { type: string; data: ArrayBuffer }
+export async function getPhotoBlob(id: string, kind: 'full' | 'thumb'): Promise<Blob | undefined> {
+  const x: StoredImage | undefined = await (await db()).get('photoBlobs', `${id}:${kind}`);
+  return x && new Blob([x.data], { type: x.type });
+}
 export async function putPhoto(meta: PhotoMeta, full: Blob, thumb: Blob): Promise<void> {
+  // Read the images before opening the transaction: it would auto-commit while awaiting them.
+  const [f, t]: StoredImage[] = await Promise.all([full, thumb].map(async (b) => ({ type: b.type, data: await b.arrayBuffer() })));
   const tx = (await db()).transaction(['photos', 'photoBlobs'], 'readwrite');
-  await Promise.all([tx.objectStore('photos').put(meta), tx.objectStore('photoBlobs').put(full, `${meta.id}:full`), tx.objectStore('photoBlobs').put(thumb, `${meta.id}:thumb`), tx.done]);
+  await Promise.all([tx.objectStore('photos').put(meta), tx.objectStore('photoBlobs').put(f, `${meta.id}:full`), tx.objectStore('photoBlobs').put(t, `${meta.id}:thumb`), tx.done]);
 }
 export async function deletePhoto(id: string): Promise<void> {
   const tx = (await db()).transaction(['photos', 'photoBlobs'], 'readwrite');

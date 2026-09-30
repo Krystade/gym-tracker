@@ -14,6 +14,8 @@ import { ChartTable } from './charts/ChartTable';
 import { CareCard } from './CareCard';
 import { BodyCard } from './BodyCard';
 import type { BodyStore } from '../state/useBody';
+import type { PhotosStore } from '../state/usePhotos';
+import { PhotosCard } from './PhotosScreen';
 
 const tons = (n: number) => (n >= 1000 ? `${fmtWeight(Math.round(n / 100) / 10)}k` : fmtWeight(Math.round(n)));
 const fmt = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
@@ -45,9 +47,11 @@ function Priorities({ profile }: { profile: ProfileStore }) {
   );
 }
 
-export function StatsScreen({ store, profile, programs, body, today }: { store: SetsStore; profile: ProfileStore; programs: ProgramStore; body: BodyStore; today: string }) {
+export function StatsScreen({ store, profile, programs, body, photos, today, onOpenPhotos }: {
+  store: SetsStore; profile: ProfileStore; programs: ProgramStore; body: BodyStore; photos: PhotosStore; today: string; onOpenPhotos: () => void;
+}) {
   const p = profile.profile;
-  if (!store.entries.length) return (<><h1>Stats</h1><p className="muted">No sessions yet — log a workout or import your history on the Data tab.</p><BodyCard body={body} today={today} /></>);
+  if (!store.entries.length) return (<><h1>Stats</h1><p className="muted">No sessions yet — log a workout or import your history on the Data tab.</p><BodyCard body={body} today={today} /><PhotosCard photos={photos} onOpen={onOpenPhotos} /></>);
   const weeks = weeklySummary(store.entries, 12, today);
   const st = streak(weeklySummary(store.entries, 104, today), p.weeklyGoal);
   const thisWeek = weeks.at(-1)!;
@@ -93,6 +97,7 @@ export function StatsScreen({ store, profile, programs, body, today }: { store: 
         <Calendar days={days} />
       </section>
       <BodyCard body={body} today={today} />
+      <PhotosCard photos={photos} onOpen={onOpenPhotos} />
       <CareCard entries={store.entries} today={today} />
       <Priorities profile={profile} />
     </>

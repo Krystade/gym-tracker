@@ -4,6 +4,8 @@ import { useSettings } from '../state/useSettings';
 import { useProfile } from '../state/useProfile';
 import { useProgram } from '../state/useProgram';
 import { useBody } from '../state/useBody';
+import { usePhotos } from '../state/usePhotos';
+import { PhotosScreen } from './PhotosScreen';
 import { ProgramScreen } from './ProgramScreen';
 import { localDate } from '../domain/ids';
 import { TodayScreen } from './TodayScreen';
@@ -22,7 +24,9 @@ export default function App() {
   const profile = useProfile();
   const programs = useProgram();
   const body = useBody();
+  const photos = usePhotos();
   const [programOpen, setProgramOpen] = useState(false);
+  const [photosOpen, setPhotosOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('today');
   const [exercise, setExercise] = useState<string | null>(null);
   const [date, setDate] = useState(() => localDate(new Date()));
@@ -35,20 +39,21 @@ export default function App() {
 
   return (
     <div className="app">
-      {(store.error ?? programs.error ?? body.error) && <div role="alert" className="banner">{store.error ?? programs.error ?? body.error}</div>}
+      {(store.error ?? programs.error ?? body.error ?? photos.error) && <div role="alert" className="banner">{store.error ?? programs.error ?? body.error ?? photos.error}</div>}
       <main className="screen">
         {store.loading ? <p className="muted">Loading…</p>
+          : photosOpen ? <PhotosScreen photos={photos} body={body} today={date} onBack={() => setPhotosOpen(false)} />
           : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} onBack={() => setProgramOpen(false)} />
           : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} onBack={() => setExercise(null)} />
           : tab === 'today' ? <TodayScreen store={store} settings={settings} programs={programs} body={body} date={date} onOpen={open} onOpenProgram={() => { setProgramOpen(true); window.scrollTo(0, 0); }} />
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
-          : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} today={date} />
+          : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />
           : <DataScreen store={store} profile={profile} body={body} />}
       </main>
       <nav className="tabs" aria-label="Sections">
         {TABS.map(([t, label]) => (
-          <button key={t} aria-current={tab === t && !exercise && !programOpen ? 'page' : undefined} onClick={() => { setTab(t); setExercise(null); setProgramOpen(false); }}>{label}</button>
+          <button key={t} aria-current={tab === t && !exercise && !programOpen && !photosOpen ? 'page' : undefined} onClick={() => { setTab(t); setExercise(null); setProgramOpen(false); setPhotosOpen(false); }}>{label}</button>
         ))}
       </nav>
     </div>

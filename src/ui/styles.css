@@ -183,3 +183,20 @@ h3 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600;
 .chart .bw-sel { stroke: var(--muted); stroke-dasharray: 3 3; }
 .bw-band { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; margin: 0 0 8px; }
 .bw-band.ok { color: var(--ok); } .bw-band.warn { color: var(--warn); }
+
+/* photos */
+.photo-date { display: grid; gap: 4px; margin: 8px 0; color: var(--muted); font-size: 13px; }
+.photo-date input { min-height: 44px; }
+.photo-add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.photo-add .disabled { opacity: 0.5; pointer-events: none; }
+.photo-full img, .compare img { display: block; width: 100%; height: auto; border-radius: 10px; background: var(--surface-2); }
+.photo-ph { display: block; aspect-ratio: 3 / 4; border-radius: 10px; background: var(--surface-2); }
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.compare figure { margin: 0; display: grid; gap: 6px; }
+.compare select { min-height: 44px; width: 100%; }
+.compare figcaption { text-align: center; }
+.tl-day { padding: 6px 0; border-top: 1px solid var(--line); }
+.tl-day:first-of-type { border-top: 0; }
+.tl-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tl-thumb { display: grid; gap: 4px; padding: 4px; justify-items: center; }
+.tl-thumb img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; }
