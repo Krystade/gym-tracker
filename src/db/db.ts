@@ -1,13 +1,15 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import type { SetEntry } from '../domain/types';
+import type { ExerciseSettings } from '../domain/progression';
 
 const STORE = 'sets';
 let dbp: Promise<IDBPDatabase> | null = null;
 
 function db(): Promise<IDBPDatabase> {
-  return (dbp ??= openDB('gym-tracker', 1, {
-    upgrade(d) {
-      d.createObjectStore(STORE, { keyPath: 'id' }).createIndex('date', 'date');
+  return (dbp ??= openDB('gym-tracker', 2, {
+    upgrade(d, oldVersion) {
+      if (oldVersion < 1) d.createObjectStore(STORE, { keyPath: 'id' }).createIndex('date', 'date');
+      if (oldVersion < 2) d.createObjectStore('settings', { keyPath: 'key' });
     },
   }));
 }
@@ -16,6 +18,9 @@ export const resetDbForTests = () => { dbp = null; };
 export const getAllSets = async (): Promise<SetEntry[]> => (await db()).getAll(STORE);
 export const putSet = async (e: SetEntry): Promise<void> => { await (await db()).put(STORE, e); };
 export const deleteSet = async (id: string): Promise<void> => { await (await db()).delete(STORE, id); };
+
+export const getAllSettings = async (): Promise<ExerciseSettings[]> => (await db()).getAll('settings');
+export const putSettings = async (s: ExerciseSettings): Promise<void> => { await (await db()).put('settings', s); };
 
 export async function putMany(entries: SetEntry[]): Promise<{ added: number; updated: number }> {
   const tx = (await db()).transaction(STORE, 'readwrite');
