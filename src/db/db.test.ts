@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { deleteSet, getAllSets, getBody, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
+import { deletePhoto, deleteSet, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
 
@@ -122,5 +122,36 @@ describe('db v5', () => {
     await putBody({ date: '2026-09-30', weight: 180 });
     await putBodyMany([{ date: '2026-09-30', weight: 181, protein: 150 }, { date: '2026-09-29', weight: 179 }]);
     expect(await getBody()).toEqual([{ date: '2026-09-29', weight: 179 }, { date: '2026-09-30', weight: 181, protein: 150 }]);
+  });
+});
+
+describe('db v6', () => {
+  const meta = (date: string) => ({ id: `${date}:front`, date, pose: 'front' as const, width: 2, height: 3, addedAt: 'x' });
+  it('upgrades v5 keeping every store, with no photos yet', async () => {
+    const v5 = await openDB('gym-tracker', 5, { upgrade(d) {
+      d.createObjectStore('sets', { keyPath: 'id' }).createIndex('date', 'date');
+      for (const [s, k] of [['settings', 'key'], ['profile', 'key'], ['program', 'key'], ['body', 'date']]) d.createObjectStore(s, { keyPath: k });
+    } });
+    await v5.put('sets', { id: 'a', date: '2026-01-01', seq: 0, exercise: 'Curl', setNo: 1, weight: 30, reps: 10, flags: [], source: 's' });
+    await v5.put('program', { key: 'program', perSession: 14, createdAt: 'x', days: [] });
+    await v5.put('body', { date: '2026-09-01', weight: 180 });
+    v5.close();
+    expect(await getAllSets()).toHaveLength(1);
+    expect(await getProgram()).toBeDefined();
+    expect(await getBody()).toHaveLength(1);
+    expect(await getPhotoMetas()).toEqual([]);
+  });
+  it('keeps one photo per id, returns metas without image data, and deletes both', async () => {
+    await putPhoto(meta('2026-09-01'), new Blob(['full-1']), new Blob(['t-1']));
+    await putPhoto(meta('2026-09-01'), new Blob(['full-2']), new Blob(['t-2']));
+    await putPhoto(meta('2026-09-02'), new Blob(['f']), new Blob(['t']));
+    const metas = await getPhotoMetas();
+    expect(metas.map((x) => x.id).sort()).toEqual(['2026-09-01:front', '2026-09-02:front']);
+    expect(Object.keys(metas[0]).sort()).toEqual(['addedAt', 'date', 'height', 'id', 'pose', 'width']);
+    expect(await (await getPhotoBlob('2026-09-01:front', 'full'))!.text()).toBe('full-2');
+    expect(await (await getPhotoBlob('2026-09-01:front', 'thumb'))!.text()).toBe('t-2');
+    await deletePhoto('2026-09-01:front');
+    expect((await getPhotoMetas()).map((x) => x.id)).toEqual(['2026-09-02:front']);
+    expect(await getPhotoBlob('2026-09-01:front', 'full')).toBeUndefined();
   });
 });

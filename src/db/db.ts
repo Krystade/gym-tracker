@@ -4,6 +4,7 @@ import type { ExerciseSettings } from '../domain/progression';
 import type { Profile } from '../domain/profile';
 import type { DayPlan, Program } from '../domain/program';
 import type { BodyDay } from '../domain/body';
+import type { PhotoMeta } from '../domain/photos';
 
 const STORE = 'sets';
 let dbp: Promise<IDBPDatabase> | null = null;
@@ -12,13 +13,15 @@ let onBlocked: (() => void) | null = null;
 export const setBlockedHandler = (fn: (() => void) | null) => { onBlocked = fn; };
 
 function db(): Promise<IDBPDatabase> {
-  return (dbp ??= openDB('gym-tracker', 5, {
+  return (dbp ??= openDB('gym-tracker', 6, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) d.createObjectStore(STORE, { keyPath: 'id' }).createIndex('date', 'date');
       if (oldVersion < 2) d.createObjectStore('settings', { keyPath: 'key' });
       if (oldVersion < 3) d.createObjectStore('profile', { keyPath: 'key' });
       if (oldVersion < 4) d.createObjectStore('program', { keyPath: 'key' });
       if (oldVersion < 5) d.createObjectStore('body', { keyPath: 'date' });
+      // Metadata apart from the image blobs, so listing the timeline never reads the images.
+      if (oldVersion < 6) { d.createObjectStore('photos', { keyPath: 'id' }).createIndex('date', 'date'); d.createObjectStore('photoBlobs'); }
     },
     blocked() { onBlocked?.(); },
     // A newer version of the app is upgrading the database: step aside, and reload to pick up the new code.
@@ -68,4 +71,15 @@ export const putBody = async (d: BodyDay): Promise<void> => { await (await db())
 export async function putBodyMany(days: BodyDay[]): Promise<void> {
   const tx = (await db()).transaction('body', 'readwrite');
   await Promise.all([...days.map((d) => tx.store.put(d)), tx.done]);
+}
+
+export const getPhotoMetas = async (): Promise<PhotoMeta[]> => (await db()).getAll('photos');
+export const getPhotoBlob = async (id: string, kind: 'full' | 'thumb'): Promise<Blob | undefined> => (await db()).get('photoBlobs', `${id}:${kind}`);
+export async function putPhoto(meta: PhotoMeta, full: Blob, thumb: Blob): Promise<void> {
+  const tx = (await db()).transaction(['photos', 'photoBlobs'], 'readwrite');
+  await Promise.all([tx.objectStore('photos').put(meta), tx.objectStore('photoBlobs').put(full, `${meta.id}:full`), tx.objectStore('photoBlobs').put(thumb, `${meta.id}:thumb`), tx.done]);
+}
+export async function deletePhoto(id: string): Promise<void> {
+  const tx = (await db()).transaction(['photos', 'photoBlobs'], 'readwrite');
+  await Promise.all([tx.objectStore('photos').delete(id), tx.objectStore('photoBlobs').delete(`${id}:full`), tx.objectStore('photoBlobs').delete(`${id}:thumb`), tx.done]);
 }
