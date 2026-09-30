@@ -44,6 +44,14 @@ Guards:
 
 ## Stack and hosting
 
+**Target device: iPhone 13 mini (iOS Safari, 375×812 CSS px, notch and home
+indicator).** Every screen is designed and checked at that size first:
+`viewport-fit=cover`, `env(safe-area-inset-*)` padding, tap targets ≥ 44 px,
+inputs ≥ 16 px font (so iOS does not zoom on focus), no horizontal scroll,
+`100dvh` rather than `100vh`. Installed via Safari → Share → Add to Home
+Screen. Note: the installed app's storage is separate from Safari's — history
+must be imported from inside the installed app.
+
 Same shape as `lotus-tracker`: Vite + React + TypeScript, `vite-plugin-pwa`
 (offline, installable, `autoUpdate`), Vitest, Playwright (headless). GitHub
 Pages via `.github/workflows/deploy.yml` on push to `main`; CI runs `npm test`
@@ -116,7 +124,8 @@ the public repo.
    - History screen: sessions by date, expandable.
    - Exercise screen: every set grouped by date, top-set e1RM line chart
      (hand-rolled SVG), best set, PR markers.
-   - Data screen: import standard CSV, export CSV, persisted-storage status,
+   - Data screen: import standard CSV, export CSV (via the iOS share sheet,
+     `navigator.share({ files })`, falling back to a download link), persisted-storage status,
      build stamp, set counts.
    - Installable, works offline.
 2. **Progressive overload.** RIR logging UI polish, estimated RIR, per-exercise
@@ -124,11 +133,22 @@ the public repo.
 3. **Analytics.** Muscle-contribution matrix; weekly effective sets per muscle
    against priority-tier targets; tonnage and e1RM trends; calendar heat map,
    streaks, sessions per week.
+   - **Estimated rep maxes:** e1RM and e6RM (any eNRM) per exercise, with trend.
+   - **Calibration tests:** a "test day" mode logs an actual AMRAP or rep-max
+     set on a schedule (e.g. every 4–6 weeks per key lift). Each test is
+     compared to the prediction at that date; the per-exercise error fits a
+     personal correction to the estimator (Epley vs Brzycki blend, plus a
+     bias), so the estimates get more accurate over time. The app shows the
+     prediction accuracy history.
 4. **Program.** Priority tiers → a weekly plan sized to ~12–16 sets/session;
    "today's workout" with skip/swap; adherence tracking.
-5. **Variants & joint care.** Swap suggestions ranked by muscle-vector
-   similarity; pain-flag analytics per exercise and load; suggestions steer away
-   from exercises that repeatedly draw pain flags.
+5. **Variants, joint & back care.** Swap suggestions ranked by muscle-vector
+   similarity; pain flags carry a body region (e.g. elbow, lower back) and a
+   0–3 severity; per-region analytics by exercise and load; suggestions steer
+   away from exercises that repeatedly draw pain flags. A back-resilience block
+   (core-stability and hinge-pattern work, tracked like any exercise, with
+   hold-time sets) can be slotted into the program. Not medical advice — the
+   app records and surfaces patterns; it doesn't diagnose.
 6. **Body weight & MyFitnessPal.** Manual weigh-ins and a trend line; MFP data
    via its CSV export or an unofficial local script, both ending in a file
    import. A spike decides the route before build.
@@ -152,9 +172,10 @@ Each phase gets its own plan; this spec is refined at the start of each.
 
 - Vitest: CSV parse/serialize round-trip (quoting, flags, nulls), import
   dedupe, e1RM, last-session and best-set selectors, the privacy guard.
-- Playwright (headless, phone viewport): add exercise → log sets → reload →
+- Playwright (headless, iPhone 13 mini device profile: 375×812, WebKit, touch): add exercise → log sets → reload →
   sets persist; import sample CSV → history and chart render.
-- Visual check: headless screenshots at 390×844, read as PNG before calling a
+- Visual check: headless WebKit screenshots at 375×812 with simulated safe-area
+  insets, plus a check that `scrollWidth <= clientWidth` on every screen; read as PNG before calling a
   screen done.
 - After deploy: `gh run list`, and confirm the served bundle has the new build
   stamp.
