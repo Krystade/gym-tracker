@@ -47,4 +47,11 @@ test('screens at iPhone 13 mini size', async ({ page }) => {
   await check(page, '5-exercise');
   await page.getByRole('button', { name: 'Stats' }).click();
   await check(page, '6-stats');
+  await page.getByRole('button', { name: 'Today' }).click();
+  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await expect(page.getByRole('heading', { name: 'Weekly volume' })).toBeVisible();
+  await check(page, '7-program');
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  await check(page, '8-today-plan');
 });

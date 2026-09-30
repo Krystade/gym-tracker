@@ -1,23 +1,39 @@
 import { useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
+import type { ProgramStore } from '../state/useProgram';
 import { exerciseNames, sameExercise } from '../domain/stats';
 import { fmtDate } from '../domain/format';
 import { ExerciseCard } from './ExerciseCard';
 import { ExercisePicker } from './ExercisePicker';
+import { TodayPlan, todayPlanFor } from './TodayPlan';
 
-export function TodayScreen({ store, settings, date, onOpen }: { store: SetsStore; settings: SettingsStore; date: string; onOpen: (name: string) => void }) {
+export function TodayScreen({ store, settings, programs, date, onOpen, onOpenProgram }: {
+  store: SetsStore; settings: SettingsStore; programs: ProgramStore; date: string; onOpen: (name: string) => void; onOpenProgram: () => void;
+}) {
   const [picking, setPicking] = useState(false);
+  const [swapFor, setSwapFor] = useState<string | null>(null);
   const [extra, setExtra] = useState<string[]>([]);
   const logged = exerciseNames(store.entries.filter((e) => e.date === date)).reverse();
   const cards = [...logged, ...extra.filter((x) => !logged.some((l) => sameExercise(l, x)))];
+  const plan = todayPlanFor(programs, store.entries, date);
+  const addCard = (n: string) => setExtra((xs) => (xs.some((x) => sameExercise(x, n)) ? xs : [...xs, n]));
 
   if (picking) return <ExercisePicker recent={exerciseNames(store.entries)} onCancel={() => setPicking(false)}
-    onPick={(n) => { setExtra((xs) => [...xs, n]); setPicking(false); }} />;
+    onPick={(n) => { addCard(n); setPicking(false); }} />;
+  if (swapFor && plan) return <ExercisePicker recent={exerciseNames(store.entries)} onCancel={() => setSwapFor(null)}
+    onPick={(n) => { void programs.savePlan({ ...plan, swaps: { ...plan.swaps, [swapFor]: n } }); addCard(n); setSwapFor(null); }} />;
 
   return (
     <>
-      <h1>{fmtDate(date)}</h1>
+      <div className="today-head">
+        <h1>{fmtDate(date)}</h1>
+        <button onClick={onOpenProgram}>Program</button>
+      </div>
+      {programs.program && plan && (
+        <TodayPlan program={programs.program} plan={plan} entries={store.entries}
+          onChange={(p) => void programs.savePlan(p)} onOpen={addCard} onSwap={setSwapFor} />
+      )}
       {cards.length === 0 && <p className="muted">Nothing logged yet today.</p>}
       {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} store={store} settings={settings} onOpen={onOpen} />)}
       <button className="primary wide" onClick={() => setPicking(true)}>Add exercise</button>

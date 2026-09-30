@@ -1,0 +1,52 @@
+import type { SetEntry } from '../domain/types';
+import { isWorking } from '../domain/progression';
+import { nextDay, type DayPlan, type Program } from '../domain/program';
+import { sameExercise } from '../domain/stats';
+import type { ProgramStore } from '../state/useProgram';
+
+export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: string): DayPlan | null => {
+  if (!store.program) return null;
+  return store.plans.find((x) => x.date === date)
+    ?? { key: `day:${date}`, date, day: nextDay(store.program, store.plans, entries, date), skips: [], swaps: {} };
+};
+
+export function TodayPlan({ program, plan, entries, onChange, onOpen, onSwap }: {
+  program: Program; plan: DayPlan; entries: SetEntry[];
+  onChange: (p: DayPlan) => void; onOpen: (exercise: string) => void; onSwap: (original: string) => void;
+}) {
+  const day = program.days[plan.day] ?? program.days[0];
+  const doneOf = (ex: string) => entries.filter((e) => e.date === plan.date && sameExercise(e.exercise, ex) && isWorking(e)).length;
+  return (
+    <section className="card plan" aria-label="Today’s plan">
+      <h2>Today’s plan · {day.name}</h2>
+      {program.days.length > 1 && (
+        <div className="chips" role="group" aria-label="Program day">
+          {program.days.map((d, i) => (
+            <button key={d.name} type="button" className="chip" aria-pressed={i === plan.day} onClick={() => onChange({ ...plan, day: i, skips: [], swaps: {} })}>{d.name}</button>
+          ))}
+        </div>
+      )}
+      <ol className="plan-slots" aria-label="Planned exercises">
+        {day.slots.map((slot) => {
+          const skipped = plan.skips.includes(slot.exercise);
+          const target = plan.swaps[slot.exercise] ?? slot.exercise;
+          const done = doneOf(target);
+          return (
+            <li key={slot.exercise} className={skipped ? 'skipped' : done >= slot.sets ? 'done' : ''}>
+              <button className="plan-name" data-exercise={target} disabled={skipped} onClick={() => { onChange(plan); onOpen(target); }}>
+                <b>{target}</b>
+                {target !== slot.exercise && <span className="muted small">for {slot.exercise}</span>}
+                <span className="muted small">{slot.repMin}–{slot.repMax} reps</span>
+              </button>
+              <span className="plan-count">{skipped ? 'Skipped' : `${Math.min(done, slot.sets)}/${slot.sets}`}</span>
+              <button type="button" onClick={() => onChange({ ...plan, skips: skipped ? plan.skips.filter((x) => x !== slot.exercise) : [...plan.skips, slot.exercise] })}>
+                {skipped ? 'Undo' : 'Skip'}
+              </button>
+              {!skipped && <button type="button" onClick={() => onSwap(slot.exercise)}>Swap</button>}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
