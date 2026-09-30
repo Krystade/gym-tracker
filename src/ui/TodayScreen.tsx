@@ -9,9 +9,11 @@ import { ExerciseCard } from './ExerciseCard';
 import { ExercisePicker } from './ExercisePicker';
 import { swapSuggestions } from '../domain/care';
 import { TodayPlan, todayPlanFor } from './TodayPlan';
+import { WeighIn } from './WeighIn';
+import type { BodyStore } from '../state/useBody';
 
-export function TodayScreen({ store, settings, programs, date, onOpen, onOpenProgram }: {
-  store: SetsStore; settings: SettingsStore; programs: ProgramStore; date: string; onOpen: (name: string) => void; onOpenProgram: () => void;
+export function TodayScreen({ store, settings, programs, body, date, onOpen, onOpenProgram }: {
+  store: SetsStore; settings: SettingsStore; programs: ProgramStore; body: BodyStore; date: string; onOpen: (name: string) => void; onOpenProgram: () => void;
 }) {
   const [picking, setPicking] = useState(false);
   const [swapFor, setSwapFor] = useState<string | null>(null);
@@ -38,6 +40,7 @@ export function TodayScreen({ store, settings, programs, date, onOpen, onOpenPro
         <h1>{fmtDate(date)}</h1>
         <button onClick={onOpenProgram}>Program</button>
       </div>
+      <WeighIn body={body} date={date} />
       {programs.program && plan && (
         <TodayPlan program={programs.program} plan={plan} entries={store.entries}
           onChange={(p) => void programs.savePlan(p)} onOpen={addCard} onSwap={setSwapFor} />

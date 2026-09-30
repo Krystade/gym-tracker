@@ -174,3 +174,12 @@ h3 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600;
 .care-ex, .swaps ul { list-style: none; margin: 0; padding: 0; }
 .care-ex li, .swaps li > div, .swaps li > button { display: grid; justify-items: start; justify-content: start; gap: 2px; padding: 6px 0; text-align: left; }
 .swaps li > button { width: 100%; padding: 8px 10px; margin: 4px 0; }
+
+/* body weight */
+.weigh { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 12px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.weigh form { display: flex; gap: 8px; width: 100%; }
+.weigh input { flex: 1; }
+.chart .bw-pt { fill: var(--muted); opacity: 0.55; }
+.chart .bw-sel { stroke: var(--muted); stroke-dasharray: 3 3; }
+.bw-band { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; margin: 0 0 8px; }
+.bw-band.ok { color: var(--ok); } .bw-band.warn { color: var(--warn); }

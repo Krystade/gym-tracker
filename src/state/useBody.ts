@@ -1,24 +1,27 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getBody, putBody, putBodyMany } from '../db/db';
 import { mergeBody, type BodyDay } from '../domain/body';
 
 export function useBody() {
   const [days, setDays] = useState<BodyDay[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Several files import back to back within one render; each merge must see the previous one.
+  const current = useRef<BodyDay[]>([]);
+  const commit = (xs: BodyDay[]) => { current.current = xs; setDays(xs); };
   useEffect(() => {
-    void getBody().then(setDays).catch((e) => setError(`Could not load body weight: ${String(e)}`));
+    void getBody().then(commit).catch((e) => setError(`Could not load body weight: ${String(e)}`));
   }, []);
   const save = useCallback(async (d: BodyDay): Promise<boolean> => {
-    const next = mergeBody(days, [d]).find((x) => x.date === d.date)!;
-    try { await putBody(next); setDays((xs) => mergeBody(xs, [next])); setError(null); return true; }
+    const merged = mergeBody(current.current, [d]);
+    try { await putBody(merged.find((x) => x.date === d.date)!); commit(merged); setError(null); return true; }
     catch (e) { setError(`Saving the weigh-in failed: ${String(e)}`); return false; }
-  }, [days]);
+  }, []);
   const importDays = useCallback(async (incoming: BodyDay[]): Promise<boolean> => {
-    const merged = mergeBody(days, incoming);
-    const touched = merged.filter((d) => incoming.some((x) => x.date === d.date));
-    try { await putBodyMany(touched); setDays(merged); setError(null); return true; }
+    const merged = mergeBody(current.current, incoming);
+    const dates = new Set(incoming.map((x) => x.date));
+    try { await putBodyMany(merged.filter((d) => dates.has(d.date))); commit(merged); setError(null); return true; }
     catch (e) { setError(`Importing body data failed: ${String(e)}`); return false; }
-  }, [days]);
+  }, []);
   return { days, error, save, importDays };
 }
 export type BodyStore = ReturnType<typeof useBody>;

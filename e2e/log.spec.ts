@@ -35,7 +35,7 @@ test('filling in reps on a partial set clears the partial flag', async ({ page }
 
   await row.getByRole('button').click();
   await page.getByRole('textbox', { name: 'Reps' }).first().fill('8');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(row).toHaveText(/50 × 8/);
   await expect(row).not.toHaveText(/partial/);
 });

@@ -31,6 +31,8 @@ test('screens at iPhone 13 mini size', async ({ page }) => {
   await page.getByRole('button', { name: 'Data' }).click();
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText('Imported 6 new, 0 updated')).toBeVisible();
+  await page.getByLabel('Import CSV').setInputFiles([path.join(import.meta.dirname, 'fixtures', 'mfp-weight.sample.csv'), path.join(import.meta.dirname, 'fixtures', 'mfp-nutrition.sample.csv')]);
+  await expect(page.getByText('MyFitnessPal nutrition: 3 days')).toBeVisible();
   await check(page, '4-data');
   await page.getByRole('button', { name: 'Today' }).click();
   await page.getByRole('button', { name: 'Add exercise' }).click();
@@ -41,6 +43,7 @@ test('screens at iPhone 13 mini size', async ({ page }) => {
   await page.getByRole('group', { name: 'Pain severity' }).getByRole('button', { name: 'Moderate' }).click();
   await check(page, '9-pain-form');
   await page.getByRole('button', { name: 'Add set' }).click();
+  await expect(page.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem')).toHaveCount(1);
   await check(page, '1-today');
   await page.getByRole('button', { name: 'History' }).click();
   await check(page, '2-history');
