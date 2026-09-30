@@ -30,4 +30,6 @@ test('screens at iPhone 13 mini size', async ({ page }) => {
   await check(page, '3-lifts');
   await page.getByRole('button', { name: /Cable Curl/ }).click();
   await check(page, '5-exercise');
+  await page.getByRole('button', { name: 'Stats' }).click();
+  await check(page, '6-stats');
 });

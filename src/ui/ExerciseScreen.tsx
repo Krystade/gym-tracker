@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
-import { bestSet, currentE1rm, e1rmSeries, estimateWeightForReps, sessionsFor } from '../domain/stats';
+import { bestSet, e1rmSeries, sessionsFor } from '../domain/stats';
+import { calibrate, calibratedE1rm, testDue, weightForReps } from '../domain/estimators';
+import { localDate } from '../domain/ids';
 import { estimateRir, priorE1rm, rirOffset } from '../domain/progression';
-import { fmtDate, fmtSet, fmtWeight } from '../domain/format';
+import { fmtDate, fmtSet, fmtWeight, plural } from '../domain/format';
 import { LineChart } from './LineChart';
 import { SetRowContent } from './SetRow';
 
@@ -35,8 +37,11 @@ function SettingsEditor({ name, settings }: { name: string; settings: SettingsSt
 export function ExerciseScreen({ name, store, settings, onBack }: { name: string; store: SetsStore; settings: SettingsStore; onBack: () => void }) {
   const sessions = sessionsFor(store.entries, name);
   const series = e1rmSeries(store.entries, name);
-  const current = currentE1rm(series);
   const best = bestSet(store.entries, name);
+  const cal = calibrate(store.entries, name);
+  const current = calibratedE1rm(store.entries, name);
+  const [n, setN] = useState(6);
+  const due = testDue(store.entries, name, localDate(new Date()));
   const offset = rirOffset(store.entries, name);
   return (
     <>
@@ -44,10 +49,15 @@ export function ExerciseScreen({ name, store, settings, onBack }: { name: string
       <h1>{name}</h1>
       <div className="tiles">
         <div className="tile"><span>Est. 1RM</span><b>{current ? lb(current) : '—'}</b></div>
-        <div className="tile"><span>Est. 6RM</span><b>{current ? lb(estimateWeightForReps(current, 6)) : '—'}</b></div>
+        <div className="tile"><span>Est. {n}RM</span><b>{current ? lb(weightForReps(cal.formula, current, n)) : '—'}</b></div>
         <div className="tile"><span>Best set{best ? ` · ${best.set.date}` : ''}</span><b>{best ? fmtSet(best.set) : '—'}</b></div>
         <div className="tile"><span>Sessions</span><b>{sessions.length}</b></div>
       </div>
+      <div className="chips" role="group" aria-label="Rep max">
+        {[3, 5, 6, 8, 10].map((k) => <button key={k} type="button" className="chip" aria-pressed={n === k} onClick={() => setN(k)}>{k}RM</button>)}
+      </div>
+      <p className="muted small">{cal.tests ? `${cal.formula === 'wd' ? 'Weight-adjusted formula' : 'Epley'} · calibrated · ${plural(cal.tests, 'test')}` : 'Epley · no tests yet'}</p>
+      {due && <p className="card note-card">Time for a test: pick a weight you can do about 8–12 times, go to failure with good form, and tick <b>Test</b>. It tunes these estimates.</p>}
       <SettingsEditor key={name} name={name} settings={settings} />
       <section className="card">
         <LineChart points={series} />

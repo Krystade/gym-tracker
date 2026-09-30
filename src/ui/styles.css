@@ -25,11 +25,11 @@ p { margin: 6px 0; }
 
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   padding-bottom: var(--sab); background: var(--bg);
   border-top: 1px solid var(--line);
 }
-.tabs button { min-height: 56px; background: none; border: 0; color: var(--muted); font-size: 15px; font-weight: 600; }
+.tabs button { min-height: 56px; padding: 0 2px; background: none; border: 0; color: var(--muted); font-size: 14px; font-weight: 600; }
 .tabs button[aria-current='page'] { color: var(--accent); }
 
 button, .button {
@@ -117,3 +117,31 @@ li.set-row { display: flex; align-items: center; gap: 8px; border: 1px solid var
 .settings-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .settings-grid label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .settings-grid input { min-width: 0; }
+
+/* Stats */
+h2 { font-size: 17px; margin: 0 0 8px; }
+h3 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.chart .bar { fill: var(--accent); }
+.chart .bar.sel { fill: #ffd27a; }
+.chart .goal { stroke: var(--muted); stroke-dasharray: 4 4; stroke-width: 1; }
+.chart .cell { cursor: pointer; }
+.chart .cell.sel { stroke: var(--text); stroke-width: 1.5; }
+.readout { font-size: 13px; color: var(--muted); min-height: 1.4em; }
+.mrow { display: grid; grid-template-columns: 82px 1fr 30px 84px; align-items: center; gap: 6px; min-height: 30px; font-size: 13px; }
+.mname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mtrack { position: relative; height: 10px; background: var(--surface-2); border-radius: 5px; }
+.mband { position: absolute; top: -3px; bottom: -3px; border: 1px solid var(--muted); border-radius: 4px; }
+.mbar { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 5px; }
+.mval { text-align: right; font-variant-numeric: tabular-nums; }
+.mstat { color: var(--muted); white-space: nowrap; font-size: 12px; }
+.mstat.under b { color: #d03b3b; } .mstat.on b { color: #0ca30c; } .mstat.over b { color: #fab219; }
+.cal-legend { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.cal-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.chart-table summary { min-height: 44px; display: flex; align-items: center; color: var(--muted); font-size: 14px; cursor: pointer; }
+.chart-table table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.chart-table caption { text-align: left; color: var(--muted); padding: 4px 0; }
+.chart-table td, .chart-table th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.prio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.prio-grid label, .goal-row { display: grid; gap: 4px; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.prio-grid select { min-height: 44px; font-size: 16px; background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 0 8px; }
+.note-card { border-color: var(--accent); }

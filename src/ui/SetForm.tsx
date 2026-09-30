@@ -3,7 +3,7 @@ import type { Flag } from '../domain/types';
 import { derivedFlags } from '../domain/buildSet';
 
 export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string }
-const TOGGLES: [Flag, string][] = [['pain', 'Pain'], ['unsure', 'Unsure'], ['warmup', 'Warm-up'], ['double_pulley', '2× pulley']];
+const TOGGLES: [Flag, string][] = [['pain', 'Pain'], ['unsure', 'Unsure'], ['warmup', 'Warm-up'], ['double_pulley', '2× pulley'], ['test', 'Test']];
 
 function Stepper({ label, value, onChange, step, mode }: { label: string; value: string; onChange: (v: string) => void; step: number; mode: 'decimal' | 'numeric' }) {
   const bump = (d: number) => { const n = Number(value) || 0; onChange(String(Math.max(0, Math.round((n + d) * 100) / 100))); };
@@ -34,7 +34,7 @@ export function SetForm({ initial, submitLabel, onSubmit, onDelete, onCancel }: 
 
   async function submit() {
     if (!valid) return;
-    const ok = await onSubmit({ weight: w, reps: r, rir, flags: derivedFlags(flags, w, r), note: note.trim() || undefined });
+    const ok = await onSubmit({ weight: w, reps: r, rir: rir ?? (flags.includes('test') ? 0 : undefined), flags: derivedFlags(flags, w, r), note: note.trim() || undefined });
     if (ok) { setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setRir(undefined); }
   }
 
