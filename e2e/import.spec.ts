@@ -32,3 +32,12 @@ test('a failed import write shows an error instead of doing nothing', async ({ p
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByRole('alert')).toContainText(/Import failed/);
 });
+
+test('imports a priority profile file and rejects a bad one', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await page.getByLabel('Import CSV').setInputFiles(path.join(import.meta.dirname, 'fixtures', 'profile.sample.json'));
+  await expect(page.getByText('Profile imported: 2 muscles prioritised')).toBeVisible();
+  await page.getByLabel('Import CSV').setInputFiles(path.join(import.meta.dirname, 'fixtures', 'bad-profile.sample.json'));
+  await expect(page.getByText('Unknown muscle "Wings"')).toBeVisible();
+});

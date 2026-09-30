@@ -1,20 +1,31 @@
 import { useEffect, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
+import type { ProfileStore } from '../state/useProfile';
+import { parseProfileJson } from '../domain/profile';
 import { parseCsv, toCsv, type CsvError } from '../domain/csv';
 import { exerciseNames, sessionsByDate } from '../domain/stats';
 import { localDate } from '../domain/ids';
 import { plural } from '../domain/format';
 
-export function DataScreen({ store }: { store: SetsStore }) {
+export function DataScreen({ store, profile }: { store: SetsStore; profile: ProfileStore }) {
   const [result, setResult] = useState<{ added: number; updated: number; errors: CsvError[] } | null>(null);
+  const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [persisted, setPersisted] = useState<boolean | null>(null);
   useEffect(() => { void navigator.storage?.persisted?.().then(setPersisted); }, []);
   const sessions = sessionsByDate(store.entries);
 
   async function onFile(file: File) {
-    setResult(null);
+    setResult(null); setProfileMsg(null);
     let text: string;
     try { text = await file.text(); } catch (e) { setResult({ added: 0, updated: 0, errors: [{ row: 0, message: `Could not read the file: ${String(e)}` }] }); return; }
+    if (/\.json$/i.test(file.name)) {
+      const r = parseProfileJson(text);
+      if ('error' in r) { setProfileMsg({ ok: false, text: r.error }); return; }
+      try { await profile.save(r.profile); } catch (e) { setProfileMsg({ ok: false, text: `Saving the profile failed: ${String(e)}` }); return; }
+      const n = Object.values(r.profile.tiers).filter((t) => t !== 3).length;
+      setProfileMsg({ ok: true, text: `Profile imported: ${n} muscles prioritised` });
+      return;
+    }
     const { entries, errors } = parseCsv(text, file.name.replace(/\.csv$/i, ''));
     const r = await store.importEntries(entries);
     if (r) setResult({ ...r, errors });
@@ -45,8 +56,10 @@ export function DataScreen({ store }: { store: SetsStore }) {
       </section>
       <section className="card">
         <label className="button primary wide">Import CSV
-          <input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onFile(f); }} />
+          <input type="file" accept=".csv,.json,text/csv,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onFile(f); }} />
         </label>
+        <p className="muted small">History CSV, or a priority profile .json.</p>
+        {profileMsg && <p role="status" className={profileMsg.ok ? '' : 'warn'}>{profileMsg.text}</p>}
         {result && (
           <div role="status">
             <p>Imported {result.added} new, {result.updated} updated</p>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSets } from '../state/useSets';
 import { useSettings } from '../state/useSettings';
+import { useProfile } from '../state/useProfile';
 import { localDate } from '../domain/ids';
 import { TodayScreen } from './TodayScreen';
 import { HistoryScreen } from './HistoryScreen';
@@ -14,6 +15,7 @@ const TABS: [Tab, string][] = [['today', 'Today'], ['history', 'History'], ['lif
 export default function App() {
   const store = useSets();
   const settings = useSettings();
+  const profile = useProfile();
   const [tab, setTab] = useState<Tab>('today');
   const [exercise, setExercise] = useState<string | null>(null);
   const [date, setDate] = useState(() => localDate(new Date()));
@@ -33,7 +35,7 @@ export default function App() {
           : tab === 'today' ? <TodayScreen store={store} settings={settings} date={date} onOpen={open} />
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
-          : <DataScreen store={store} />}
+          : <DataScreen store={store} profile={profile} />}
       </main>
       <nav className="tabs" aria-label="Sections">
         {TABS.map(([t, label]) => (
