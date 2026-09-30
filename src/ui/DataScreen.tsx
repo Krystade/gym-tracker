@@ -3,6 +3,7 @@ import type { SetsStore } from '../state/useSets';
 import { parseCsv, toCsv, type CsvError } from '../domain/csv';
 import { exerciseNames, sessionsByDate } from '../domain/stats';
 import { localDate } from '../domain/ids';
+import { plural } from '../domain/format';
 
 export function DataScreen({ store }: { store: SetsStore }) {
   const [result, setResult] = useState<{ added: number; updated: number; errors: CsvError[] } | null>(null);
@@ -33,7 +34,7 @@ export function DataScreen({ store }: { store: SetsStore }) {
     <>
       <h1>Data</h1>
       <section className="card">
-        <p>{store.entries.length} sets · {sessions.length} sessions · {exerciseNames(store.entries).length} lifts</p>
+        <p>{plural(store.entries.length, 'set')} · {plural(sessions.length, 'session')} · {plural(exerciseNames(store.entries).length, 'lift')}</p>
         {sessions.length > 0 && <p className="muted">{sessions.at(-1)!.date} → {sessions[0].date}</p>}
         <p className={persisted === false ? 'warn' : 'muted'}>
           {persisted ? 'Storage is persistent.' : persisted === false ? 'Storage not marked persistent — export a backup regularly.' : 'Storage status unknown.'}

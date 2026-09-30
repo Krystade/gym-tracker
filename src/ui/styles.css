@@ -9,7 +9,9 @@
   -webkit-text-size-adjust: 100%;
 }
 *, *::before, *::after { box-sizing: border-box; min-width: 0; }
-html, body { margin: 0; background: var(--bg); color: var(--text); overflow-x: hidden; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+/* clip, not hidden: hidden on html+body makes body the scroll container, which breaks window scroll and sticky headers. */
+body { overflow-x: clip; }
 body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
 h1 { font-size: 22px; margin: 4px 0 12px; }
 p { margin: 6px 0; }
@@ -24,8 +26,8 @@ p { margin: 6px 0; }
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
   display: grid; grid-template-columns: repeat(4, 1fr);
-  padding-bottom: var(--sab); background: rgba(14, 17, 22, 0.94);
-  border-top: 1px solid var(--line); backdrop-filter: blur(12px);
+  padding-bottom: var(--sab); background: var(--bg);
+  border-top: 1px solid var(--line);
 }
 .tabs button { min-height: 56px; background: none; border: 0; color: var(--muted); font-size: 15px; font-weight: 600; }
 .tabs button[aria-current='page'] { color: var(--accent); }
@@ -75,7 +77,11 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
 .form-actions { display: flex; gap: 8px; }
 .form-actions .primary { flex: 1; }
 
-.picker-head { display: grid; grid-template-columns: 1fr auto; gap: 8px; position: sticky; top: 0; padding-top: 4px; background: var(--bg); z-index: 2; }
+.picker-head {
+  display: grid; grid-template-columns: 1fr auto; gap: 8px; position: sticky; top: 0; z-index: 2; background: var(--bg);
+  /* Stick below the notch: pad by the inset, and pull up by the same amount so the resting layout is unchanged. */
+  margin: calc(-1 * var(--sat) - 12px) -16px 0; padding: calc(var(--sat) + 12px) 16px 8px;
+}
 .picker-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; }
 .picker-list button { width: 100%; justify-content: flex-start; text-align: left; font-weight: 500; }
 
@@ -101,3 +107,7 @@ details.day > summary::-webkit-details-marker { display: none; }
 
 .errors { font-size: 13px; color: var(--warn); padding-left: 18px; }
 textarea.csv { min-height: 160px; padding: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+
+/* Read-only set rows (exercise history) are <li>, not buttons, so give them the button row layout. */
+li.set-row { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; }
+.set-no { flex: none; }

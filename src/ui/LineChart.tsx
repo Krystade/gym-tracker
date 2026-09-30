@@ -1,7 +1,7 @@
 import type { SeriesPoint } from '../domain/stats';
 import { fmtWeight } from '../domain/format';
 
-const W = 340, H = 180, L = 36, R = 8, T = 10, B = 24;
+const W = 340, H = 180, L = 40, R = 10, T = 12, B = 26;
 const t = (d: string) => new Date(d + 'T00:00:00').getTime();
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 
@@ -16,8 +16,8 @@ export function LineChart({ points }: { points: SeriesPoint[] }) {
   return (
     <svg className="chart" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Estimated 1RM over time">
       <line x1={L} x2={W - R} y1={H - B} y2={H - B} className="axis" />
-      <text x={L - 4} y={T + 4} className="lbl" textAnchor="end">{fmtWeight(Math.round(y1))}</text>
-      <text x={L - 4} y={H - B} className="lbl" textAnchor="end">{fmtWeight(Math.round(y0))}</text>
+      <text x={L - 8} y={T + 4} className="lbl" textAnchor="end">{fmtWeight(Math.round(y1))}</text>
+      <text x={L - 8} y={H - B - 2} className="lbl" textAnchor="end">{fmtWeight(Math.round(y0))}</text>
       <text x={L} y={H - 6} className="lbl">{md(points[0].date)}</text>
       <text x={W - R} y={H - 6} className="lbl" textAnchor="end">{md(points.at(-1)!.date)}</text>
       <polyline className="line" fill="none" points={points.map((p) => `${X(t(p.date))},${Y(p.e1rm)}`).join(' ')} />

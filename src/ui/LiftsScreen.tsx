@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import { exerciseNames, sessionsFor } from '../domain/stats';
-import { fmtDate } from '../domain/format';
+import { fmtDate, plural } from '../domain/format';
 
 export function LiftsScreen({ store, onOpen }: { store: SetsStore; onOpen: (name: string) => void }) {
   const [q, setQ] = useState('');
@@ -17,7 +17,7 @@ export function LiftsScreen({ store, onOpen }: { store: SetsStore; onOpen: (name
           return (
             <button key={n} className="row-button" onClick={() => onOpen(n)}>
               <b>{n}</b>
-              <span className="muted">{s.length} sessions · last {fmtDate(s[0].date)}</span>
+              <span className="muted">{plural(s.length, 'session')} · last {fmtDate(s[0].date)}</span>
             </button>
           );
         })}

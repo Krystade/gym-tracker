@@ -6,3 +6,4 @@ export function fmtDate(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 }
+export const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;

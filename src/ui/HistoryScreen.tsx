@@ -1,7 +1,7 @@
 // src/ui/HistoryScreen.tsx
 import type { SetsStore } from '../state/useSets';
 import { sessionsByDate, sameExercise } from '../domain/stats';
-import { fmtDate, fmtSet } from '../domain/format';
+import { fmtDate, fmtSet, plural } from '../domain/format';
 import type { SetEntry } from '../domain/types';
 
 function byExercise(sets: SetEntry[]): [string, SetEntry[]][] {
@@ -23,7 +23,7 @@ export function HistoryScreen({ store, onOpen }: { store: SetsStore; onOpen: (na
         const groups = byExercise(s.sets);
         return (
           <details className="day" key={s.date} open={i === 0}>
-            <summary>{fmtDate(s.date)} · {groups.length} exercises · {s.sets.length} sets</summary>
+            <summary>{fmtDate(s.date)} · {plural(groups.length, 'exercise')} · {plural(s.sets.length, 'set')}</summary>
             <div className="day-body">
               {groups.map(([name, sets]) => (
                 <button key={name} className="row-button" onClick={() => onOpen(name)}>
