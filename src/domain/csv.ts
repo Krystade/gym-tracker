@@ -1,7 +1,7 @@
 import { normalizeName, setId } from './ids';
-import { isFlag, type Flag, type SetEntry } from './types';
+import { isFlag, isRegion, type Flag, type SetEntry } from './types';
 
-export const CSV_HEADER = ['date', 'exercise', 'as_written', 'set', 'weight_lb', 'reps', 'rir', 'flags', 'note', 'source'] as const;
+export const CSV_HEADER = ['date', 'exercise', 'as_written', 'set', 'weight_lb', 'reps', 'rir', 'flags', 'note', 'source', 'pain_region', 'pain_severity'] as const;
 const REQUIRED = ['date', 'exercise', 'set', 'weight_lb', 'reps'];
 
 export interface CsvError { row: number; message: string }
@@ -16,7 +16,7 @@ export function toCsv(entries: SetEntry[]): string {
   for (const e of [...entries].sort(compareEntries)) {
     lines.push(
       [e.date, e.exercise, e.asWritten ?? '', String(e.setNo), String(e.weight), e.reps == null ? '' : String(e.reps),
-        e.rir == null ? '' : String(e.rir), e.flags.join(';'), e.note ?? '', e.source].map(esc).join(','),
+        e.rir == null ? '' : String(e.rir), e.flags.join(';'), e.note ?? '', e.source, e.painRegion ?? '', e.painSeverity == null ? '' : String(e.painSeverity)].map(esc).join(','),
     );
   }
   return lines.join('\r\n') + '\r\n';
@@ -78,6 +78,11 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     const flagParts = col(r, 'flags').split(';').map((f) => f.trim()).filter(Boolean);
     const bad = flagParts.filter((f) => !isFlag(f));
     if (bad.length) return fail(`Unknown flag "${bad.join(';')}"`);
+    const regionRaw = col(r, 'pain_region').trim().toLowerCase();
+    if (regionRaw && !isRegion(regionRaw)) return fail(`Unknown pain region "${regionRaw}"`);
+    const sevRaw = col(r, 'pain_severity').trim();
+    const sev = sevRaw === '' ? undefined : Number(sevRaw);
+    if (sev !== undefined && !(sev === 1 || sev === 2 || sev === 3)) return fail(`Pain severity must be 1-3, got "${sevRaw}"`);
     const source = col(r, 'source').trim() || defaultSource;
     const asWritten = col(r, 'as_written');
     const note = col(r, 'note');
@@ -88,6 +93,8 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
       ...(rir !== undefined && { rir }),
       ...(asWritten !== '' && { asWritten }),
       ...(note !== '' && { note }),
+      ...(regionRaw && isRegion(regionRaw) && { painRegion: regionRaw }),
+      ...(sev !== undefined && { painSeverity: sev as 1 | 2 | 3 }),
     });
   });
   return { entries, errors };

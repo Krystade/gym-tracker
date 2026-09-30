@@ -84,6 +84,7 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
     return { kind: 'repeat', weight: w, reps: st.repMin, last: last.sets, text: `Repeat ${lb(w)} and log every rep` };
   }
   const top = Math.max(...working.map((x) => x.weight));
+  const unit = working.some((x) => x.flags.includes('hold')) ? 's' : '';
   const atTop = working.filter((x) => x.weight === top);
   const minReps = Math.min(...atTop.map((x) => x.reps as number));
   if (top > 0 && minReps >= st.repMax) {
@@ -92,7 +93,7 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
   }
   // Bodyweight has no weight to add, so its rep target is not capped by the range.
   const reps = top === 0 ? minReps + 1 : Math.min(minReps + 1, st.repMax);
-  return { kind: 'reps', weight: top, reps, last: last.sets, text: `${lb(top)} × ${reps}+ on every set` };
+  return { kind: 'reps', weight: top, reps, last: last.sets, text: `${lb(top)} × ${reps}${unit}+ on every set` };
 }
 
 export interface PrResult { e1rm: boolean; reps: boolean }

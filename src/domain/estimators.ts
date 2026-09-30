@@ -29,7 +29,7 @@ export function weightForReps(f: Formula, oneRmLb: number, r: number): number {
   return (lo + hi) / 2;
 }
 
-const usable = (s: SetEntry) => s.reps != null && s.weight > 0 && !s.flags.some((f) => f === 'warmup' || f === 'partial' || f === 'bodyweight');
+const usable = (s: SetEntry) => s.reps != null && s.weight > 0 && !s.flags.some((f) => f === 'warmup' || f === 'partial' || f === 'bodyweight' || f === 'hold');
 const isTest = (s: SetEntry) => s.flags.includes('test');
 /** A test set's true capacity: the reps done plus any reps it was stopped short of. */
 const testReps = (s: SetEntry) => (s.reps as number) + (s.rir ?? 0);

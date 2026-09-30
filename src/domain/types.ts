@@ -1,6 +1,10 @@
-export const FLAGS = ['bodyweight', 'partial', 'unsure', 'pain', 'double_pulley', 'warmup', 'test'] as const;
+export const FLAGS = ['bodyweight', 'partial', 'unsure', 'pain', 'double_pulley', 'warmup', 'test', 'hold'] as const;
 export type Flag = (typeof FLAGS)[number];
 export const isFlag = (s: string): s is Flag => (FLAGS as readonly string[]).includes(s);
+
+export const REGIONS = ['elbow', 'lower back', 'shoulder', 'wrist', 'knee', 'other'] as const;
+export type Region = (typeof REGIONS)[number];
+export const isRegion = (s: string): s is Region => (REGIONS as readonly string[]).includes(s);
 
 export interface SetEntry {
   /** Deterministic: `${source}|${date}|${exercise lowercased}|${setNo}` — re-imports overwrite rather than duplicate. */
@@ -17,5 +21,8 @@ export interface SetEntry {
   rir?: number;
   flags: Flag[];
   note?: string;
+  /** Where a `pain`-flagged set hurt, and how much: 1 mild (≤3/10), 2 moderate (4–5/10), 3 sharp (>5/10). */
+  painRegion?: Region;
+  painSeverity?: 1 | 2 | 3;
   source: string; // 'app' or an import label
 }

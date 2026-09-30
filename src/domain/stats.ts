@@ -6,7 +6,7 @@ export const sameExercise = (a: string, b: string) => key(a) === key(b);
 
 export function e1rm(s: SetEntry): number | null {
   if (s.weight <= 0 || s.reps == null || s.reps < 1 || s.reps > 20) return null;
-  if (s.flags.some((f) => f === 'bodyweight' || f === 'partial' || f === 'warmup')) return null;
+  if (s.flags.some((f) => f === 'bodyweight' || f === 'partial' || f === 'warmup' || f === 'hold')) return null;
   return s.reps === 1 ? s.weight : s.weight * (1 + s.reps / 30);
 }
 

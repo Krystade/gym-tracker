@@ -37,7 +37,7 @@ export function weeklySummary(entries: SetEntry[], weeks: number, today: string)
     if (i == null) continue;
     const w = out[i];
     if (!e.flags.includes('warmup')) w.sets += 1;
-    if (e.weight > 0 && e.reps != null) w.tonnage += e.weight * e.reps;
+    if (e.weight > 0 && e.reps != null && !e.flags.includes('hold')) w.tonnage += e.weight * e.reps;
     (days.get(w.week) ?? days.set(w.week, new Set()).get(w.week)!).add(e.date);
   }
   for (const w of out) w.sessions = days.get(w.week)?.size ?? 0;
