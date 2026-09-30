@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { REGIONS, type Flag, type Region } from '../domain/types';
 import { derivedFlags } from '../domain/buildSet';
-import { isHold, likelyRegion } from '../domain/care';
+import { isHold, likelyRegion, painDefaults } from '../domain/care';
 
 export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3 }
 const SEVERITY: [1 | 2 | 3, string][] = [[1, 'Mild'], [2, 'Moderate'], [3, 'Sharp']];
@@ -31,8 +31,8 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   const [rir, setRir] = useState<number | undefined>(initial.rir);
   const [flags, setFlags] = useState<Flag[]>(initial.flags.filter((f) => f !== 'bodyweight' && f !== 'partial'));
   const [note, setNote] = useState(initial.note ?? '');
-  const [region, setRegion] = useState<Region>(initial.painRegion ?? likelyRegion(exercise));
-  const [severity, setSeverity] = useState<1 | 2 | 3>(initial.painSeverity ?? 1);
+  const [region, setRegion] = useState<Region | undefined>(() => painDefaults(initial, exercise).region);
+  const [severity, setSeverity] = useState<1 | 2 | 3 | undefined>(() => painDefaults(initial, exercise).severity);
   const hold = isHold(exercise);
   const pain = flags.includes('pain');
   const w = Number(weight);

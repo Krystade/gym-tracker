@@ -72,7 +72,7 @@ describe('holds', () => {
   });
   it('get a seconds target', () => {
     const t = nextTarget([h], 'Side Plank', { key: 'side plank', repMin: 20, repMax: 40, increment: 5 }, '2026-09-30');
-    expect(t?.text).toBe('BW × 31s+ on every set');
+    expect(t?.text).toBe('BW × 35s+ on every set');
   });
   it('make up the back block', () => {
     expect(BACK_BLOCK.map((x) => x.exercise)).toEqual(['Bird Dog', 'Side Plank', 'McGill Curl-Up']);
@@ -109,5 +109,34 @@ describe('pain fields on new sets', () => {
     expect(a).toMatchObject({ painRegion: 'elbow', painSeverity: 2 });
     const b = buildAppSet([], { date: '2026-09-30', exercise: 'Cable Curl', weight: 50, reps: 10, flags: [], painRegion: 'elbow', painSeverity: 2 }, now);
     expect('painRegion' in b || 'painSeverity' in b).toBe(false);
+  });
+});
+
+describe('Phase 5 review fixes', () => {
+  it('never calls a longer hold a rep PR', async () => {
+    const { prCheck } = await import('./progression');
+    const a = s('2026-09-28', 'Side Plank', { weight: 0, reps: 30, flags: ['bodyweight', 'hold'] });
+    const b = s('2026-09-29', 'Side Plank', { weight: 0, reps: 45, flags: ['bodyweight', 'hold'] });
+    expect(prCheck([a, b], b)).toEqual({ e1rm: false, reps: false });
+  });
+  it('gives holds a seconds range and seconds in every target', async () => {
+    const { defaultSettings } = await import('./progression');
+    expect(defaultSettings('Plate Pinch Hold')).toMatchObject({ repMin: 20, repMax: 40 });
+    const st = defaultSettings('Plate Pinch Hold');
+    const done = [s('2026-09-28', 'Plate Pinch Hold', { weight: 25, reps: 40, flags: ['hold'] })];
+    expect(nextTarget(done, 'Plate Pinch Hold', st, '2026-09-30')?.text).toBe('Go up: 30 lb × 20s+');
+  });
+  it('keeps unknown pain details unknown when editing an old pain set', async () => {
+    const { painDefaults } = await import('./care');
+    expect(painDefaults({ flags: ['pain'] }, 'Skullcrusher')).toEqual({ region: undefined, severity: undefined });
+    expect(painDefaults({ flags: ['pain'], painRegion: 'wrist', painSeverity: 3 }, 'Skullcrusher')).toEqual({ region: 'wrist', severity: 3 });
+    expect(painDefaults({ flags: [] }, 'Skullcrusher')).toEqual({ region: 'elbow', severity: 1 });
+  });
+  it('keeps a region rising through the start of a new week', () => {
+    const p = (date: string) => s(date, 'Skullcrusher', { flags: ['pain'], painRegion: 'elbow' });
+    // Complete weeks of 7, 14, 21 Sep: 1, 2, 3 pain sets. Viewed Monday 28 Sep, the new week has none yet.
+    const e = [p('2026-09-08'), p('2026-09-15'), p('2026-09-16'), p('2026-09-22'), p('2026-09-23'), p('2026-09-24')];
+    expect(painReport(e, '2026-09-27', 8)[0].rising).toBe(true);
+    expect(painReport(e, '2026-09-28', 8)[0].rising).toBe(true);
   });
 });

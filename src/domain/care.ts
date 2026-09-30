@@ -3,7 +3,7 @@ import { CATALOG } from './catalog';
 import { muscleVector, MUSCLES } from './muscles';
 import type { Slot } from './program';
 import { exerciseNames, sameExercise } from './stats';
-import type { Region, SetEntry } from './types';
+import type { Flag, Region, SetEntry } from './types';
 
 // Not medical advice: these helpers record and surface patterns; they never diagnose.
 
@@ -52,6 +52,12 @@ export function recentPain(entries: SetEntry[], today: string, days = 60): { byE
   return { byExercise, regions };
 }
 
+/** Form defaults: a new pain entry guesses the region and starts mild; an old pain set without details stays unknown until tapped. */
+export function painDefaults(initial: { flags: Flag[]; painRegion?: Region; painSeverity?: 1 | 2 | 3 }, exercise: string): { region?: Region; severity?: 1 | 2 | 3 } {
+  const had = initial.flags.includes('pain');
+  return { region: initial.painRegion ?? (had ? undefined : likelyRegion(exercise)), severity: initial.painSeverity ?? (had ? undefined : 1) };
+}
+
 export interface Suggestion { name: string; score: number; why: string }
 
 /** Same-muscle alternatives, ranked by similarity, pushed down if they hurt recently or load a region that did. */
@@ -98,8 +104,9 @@ export function painReport(entries: SetEntry[], today: string, weeks = 8): Regio
     const n = weekly.length;
     return {
       region, weekly, total: sets.length,
-      // Two consecutive weekly increases, so one bad set doesn't raise an alarm.
-      rising: n >= 3 && weekly[n - 3] < weekly[n - 2] && weekly[n - 2] < weekly[n - 1],
+      // Two consecutive weekly increases, so one bad set doesn't raise an alarm; checked on complete weeks too,
+      // so the warning doesn't vanish each Monday while the new week is still empty.
+      rising: [n - 1, n - 2].some((k) => k >= 2 && weekly[k - 2] < weekly[k - 1] && weekly[k - 1] < weekly[k]),
       byExercise: [...ex.entries()].map(([exercise, xs]) => ({
         exercise, sets: xs.length,
         maxSeverity: Math.max(0, ...xs.map((x) => x.painSeverity ?? 0)),

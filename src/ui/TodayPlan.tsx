@@ -2,6 +2,7 @@ import type { SetEntry } from '../domain/types';
 import { isWorking } from '../domain/progression';
 import { nextDay, type DayPlan, type Program } from '../domain/program';
 import { sameExercise } from '../domain/stats';
+import { isHold } from '../domain/care';
 import type { ProgramStore } from '../state/useProgram';
 
 export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: string): DayPlan | null => {
@@ -36,7 +37,7 @@ export function TodayPlan({ program, plan, entries, onChange, onOpen, onSwap }: 
               <button className="plan-name" data-exercise={target} disabled={skipped} onClick={() => { onChange(plan); onOpen(target); }}>
                 <b>{target}</b>
                 {target !== slot.exercise && <span className="muted small">for {slot.exercise}</span>}
-                <span className="muted small">{slot.repMin}–{slot.repMax} reps</span>
+                <span className="muted small">{slot.repMin}–{slot.repMax}{isHold(slot.exercise) ? ' s hold' : ' reps'}</span>
               </button>
               <span className="plan-count">{skipped ? 'Skipped' : `${Math.min(done, slot.sets)}/${slot.sets}`}</span>
               <button type="button" onClick={() => onChange({ ...plan, skips: skipped ? plan.skips.filter((x) => x !== slot.exercise) : [...plan.skips, slot.exercise] })}>

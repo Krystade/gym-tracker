@@ -1,6 +1,7 @@
 import { normalizeName } from './ids';
 import { e1rm, sameExercise, sessionsFor } from './stats';
 import type { SetEntry } from './types';
+import { isHold } from './care';
 
 export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number }
 
@@ -9,6 +10,8 @@ export const settingsKey = (name: string): string => normalizeName(name).toLower
 const ISOLATION = /(curl|raise|fly|flye|extension|pushdown|push down|kickback|crunch|calf|face pull|rear delt|shrug|pec deck|pull-in|pullover|wrist|leg raise|sit-up|rotation|abduction|adduction)/i;
 
 export function defaultSettings(name: string): ExerciseSettings {
+  // Holds count seconds: 20–40 s, as in the back-resilience block.
+  if (isHold(name)) return { key: settingsKey(name), repMin: 20, repMax: 40, increment: 5 };
   const iso = ISOLATION.test(name);
   return { key: settingsKey(name), repMin: iso ? 10 : 8, repMax: iso ? 15 : 12, increment: 5 };
 }
@@ -89,16 +92,18 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
   const minReps = Math.min(...atTop.map((x) => x.reps as number));
   if (top > 0 && minReps >= st.repMax) {
     const w = top + st.increment;
-    return { kind: 'increase', weight: w, reps: st.repMin, last: last.sets, text: `Go up: ${lb(w)} × ${st.repMin}+` };
+    return { kind: 'increase', weight: w, reps: st.repMin, last: last.sets, text: `Go up: ${lb(w)} × ${st.repMin}${unit}+` };
   }
-  // Bodyweight has no weight to add, so its rep target is not capped by the range.
-  const reps = top === 0 ? minReps + 1 : Math.min(minReps + 1, st.repMax);
+  // Bodyweight has no weight to add, so its rep target is not capped by the range. Holds step in 5 s, like the stepper.
+  const step = unit ? 5 : 1;
+  const reps = top === 0 ? minReps + step : Math.min(minReps + step, st.repMax);
   return { kind: 'reps', weight: top, reps, last: last.sets, text: `${lb(top)} × ${reps}${unit}+ on every set` };
 }
 
 export interface PrResult { e1rm: boolean; reps: boolean }
 
 export function prCheck(entries: SetEntry[], set: SetEntry): PrResult {
+  if (set.flags.includes('hold')) return { e1rm: false, reps: false };
   const earlier = entries.filter((x) => x.id !== set.id && sameExercise(x.exercise, set.exercise)
     && (x.date < set.date || (x.date === set.date && x.seq < set.seq)));
   const v = e1rm(set);
