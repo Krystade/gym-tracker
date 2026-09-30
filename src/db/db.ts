@@ -5,6 +5,9 @@ import type { Profile } from '../domain/profile';
 
 const STORE = 'sets';
 let dbp: Promise<IDBPDatabase> | null = null;
+let onBlocked: (() => void) | null = null;
+/** Called when an upgrade waits on another open copy of the app (e.g. a Safari tab beside the installed app). */
+export const setBlockedHandler = (fn: (() => void) | null) => { onBlocked = fn; };
 
 function db(): Promise<IDBPDatabase> {
   return (dbp ??= openDB('gym-tracker', 3, {
@@ -13,6 +16,14 @@ function db(): Promise<IDBPDatabase> {
       if (oldVersion < 2) d.createObjectStore('settings', { keyPath: 'key' });
       if (oldVersion < 3) d.createObjectStore('profile', { keyPath: 'key' });
     },
+    blocked() { onBlocked?.(); },
+    // A newer version of the app is upgrading the database: step aside, and reload to pick up the new code.
+    blocking() {
+      void dbp?.then((d) => d.close());
+      dbp = null;
+      if (typeof location !== 'undefined') location.reload();
+    },
+    terminated() { dbp = null; },
   }));
 }
 

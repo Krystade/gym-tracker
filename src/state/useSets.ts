@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { deleteSet, getAllSets, putMany, putSet } from '../db/db';
+import { deleteSet, getAllSets, putMany, putSet, setBlockedHandler } from '../db/db';
 import { buildAppSet, type NewSetInput } from '../domain/buildSet';
 import type { SetEntry } from '../domain/types';
 
@@ -15,7 +15,11 @@ export function useSets() {
     catch (e) { setError(`Could not read saved sets: ${String(e)}`); }
     finally { setLoading(false); }
   }, []);
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    setBlockedHandler(() => setError('Updating the app’s storage — close any other Gym Tracker tabs or windows to finish.'));
+    void reload();
+    return () => setBlockedHandler(null);
+  }, [reload]);
 
   const fail = (what: string, e: unknown) => { setError(`${what} failed — nothing was lost from the form. ${String(e)}`); };
 

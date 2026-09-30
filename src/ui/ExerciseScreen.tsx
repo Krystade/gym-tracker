@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import { bestSet, currentE1rm, e1rmSeries, estimateWeightForReps, sessionsFor } from '../domain/stats';
-import { estimateRir, priorE1rm } from '../domain/progression';
+import { estimateRir, priorE1rm, rirOffset } from '../domain/progression';
 import { fmtDate, fmtSet, fmtWeight } from '../domain/format';
 import { LineChart } from './LineChart';
 import { SetRowContent } from './SetRow';
@@ -37,6 +37,7 @@ export function ExerciseScreen({ name, store, settings, onBack }: { name: string
   const series = e1rmSeries(store.entries, name);
   const current = currentE1rm(series);
   const best = bestSet(store.entries, name);
+  const offset = rirOffset(store.entries, name);
   return (
     <>
       <button onClick={onBack}>‹ Back</button>
@@ -59,7 +60,7 @@ export function ExerciseScreen({ name, store, settings, onBack }: { name: string
             <p><b>{fmtDate(s.date)}</b></p>
             <ol className="sets">
               {s.sets.map((x) => (
-                <li key={x.id} className="set-row"><SetRowContent s={x} estRir={estimateRir(x, s.sets, prior)} /></li>
+                <li key={x.id} className="set-row"><SetRowContent s={x} estRir={estimateRir(x, s.sets, prior, offset)} /></li>
               ))}
             </ol>
           </section>

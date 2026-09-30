@@ -1,5 +1,5 @@
 import { normalizeName } from './ids';
-import { e1rm, sessionsFor } from './stats';
+import { e1rm, sameExercise, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 
 export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number }
@@ -13,7 +13,7 @@ export function defaultSettings(name: string): ExerciseSettings {
   return { key: settingsKey(name), repMin: iso ? 10 : 8, repMax: iso ? 15 : 12, increment: 5 };
 }
 
-export const isWorking = (s: SetEntry): boolean => !s.flags.includes('warmup') && !s.flags.includes('partial') && s.reps != null;
+export const isWorking = (s: SetEntry): boolean => !s.flags.includes('warmup') && !s.flags.includes('partial') && s.reps != null && s.reps > 0;
 
 export function priorE1rm(entries: SetEntry[], exercise: string, beforeDate: string): number | null {
   const vals = sessionsFor(entries, exercise).filter((x) => x.date < beforeDate).slice(0, 3)
@@ -23,14 +23,32 @@ export function priorE1rm(entries: SetEntry[], exercise: string, beforeDate: str
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
-/** Estimated reps in reserve for a set without a logged RIR; null when it can't be estimated. */
-export function estimateRir(set: SetEntry, sessionSets: SetEntry[], prior: number | null): number | null {
-  if (set.rir != null || set.reps == null || set.weight <= 0 || set.flags.includes('bodyweight') || set.flags.includes('partial')) return null;
+/** Reps the prior e1RM predicts at this weight, minus reps done: how far short of the recent best the set was. */
+const shortfall = (set: SetEntry, prior: number): number => (set.weight >= prior ? 1 : 30 * (prior / set.weight - 1)) - (set.reps as number);
+
+/** Recent bests are rarely taken to failure, so "matched my best" still leaves reps in reserve; ~2 is typical. */
+export const DEFAULT_RIR_OFFSET = 2;
+
+/** Learn the offset from sets where RIR was logged: mean(logged − shortfall), once there are 3, clamped 0..3. */
+export function rirOffset(entries: SetEntry[], exercise: string): number {
+  const diffs = entries.filter((x) => sameExercise(x.exercise, exercise) && x.rir != null && isWorking(x) && x.weight > 0 && !x.flags.includes('bodyweight'))
+    .flatMap((x) => { const prior = priorE1rm(entries, exercise, x.date); return prior == null ? [] : [(x.rir as number) - shortfall(x, prior)]; });
+  if (diffs.length < 3) return DEFAULT_RIR_OFFSET;
+  return clamp(Math.round(diffs.reduce((a, b) => a + b, 0) / diffs.length), 0, 3);
+}
+
+/**
+ * Estimated reps in reserve for a set without a logged RIR; null when it can't be estimated honestly.
+ * Only the first working set at a weight gets a prior-based estimate: later sets lose reps to fatigue,
+ * which would read as *more* reserve.
+ */
+export function estimateRir(set: SetEntry, sessionSets: SetEntry[], prior: number | null, offset = DEFAULT_RIR_OFFSET): number | null {
+  if (set.rir != null || !isWorking(set) || set.weight <= 0 || set.flags.includes('bodyweight')) return null;
   const next = sessionSets.find((x) => x.setNo === set.setNo + 1 && x.weight === set.weight && x.reps != null);
-  if (next && set.reps - (next.reps as number) >= 3) return 1;
+  if (next && (set.reps as number) - (next.reps as number) >= 3) return 1;
   if (prior == null) return null;
-  const predicted = set.weight >= prior ? 1 : 30 * (prior / set.weight - 1);
-  return clamp(Math.round(predicted - set.reps), 0, 5);
+  if (sessionSets.some((x) => x.setNo < set.setNo && x.weight === set.weight && isWorking(x))) return null;
+  return clamp(Math.round(shortfall(set, prior) + offset), 0, 5);
 }
 
 export interface Target { kind: 'increase' | 'reps' | 'repeat'; weight: number; reps: number; last: SetEntry[]; text: string }
@@ -60,13 +78,13 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
 export interface PrResult { e1rm: boolean; reps: boolean }
 
 export function prCheck(entries: SetEntry[], set: SetEntry): PrResult {
-  const earlier = entries.filter((x) => x.id !== set.id && x.exercise.toLowerCase() === set.exercise.toLowerCase()
+  const earlier = entries.filter((x) => x.id !== set.id && sameExercise(x.exercise, set.exercise)
     && (x.date < set.date || (x.date === set.date && x.seq < set.seq)));
   const v = e1rm(set);
   const best = Math.max(-Infinity, ...earlier.map(e1rm).filter((n): n is number => n != null));
   const repsBest = Math.max(-Infinity, ...earlier.filter((x) => x.weight >= set.weight && x.reps != null && !x.flags.includes('warmup')).map((x) => x.reps as number));
   return {
-    e1rm: v != null && earlier.length > 0 && v > best,
-    reps: set.reps != null && earlier.length > 0 && !set.flags.includes('warmup') && set.reps > repsBest,
+    e1rm: v != null && Number.isFinite(best) && v > best,
+    reps: set.reps != null && Number.isFinite(repsBest) && !set.flags.includes('warmup') && set.reps > repsBest,
   };
 }

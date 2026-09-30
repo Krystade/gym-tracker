@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import { bestSet, e1rm, lastSession, sameExercise } from '../domain/stats';
-import { estimateRir, isWorking, nextTarget, prCheck, priorE1rm } from '../domain/progression';
+import { estimateRir, isWorking, nextTarget, prCheck, priorE1rm, rirOffset } from '../domain/progression';
 import { fmtDate, fmtSet, fmtWeight } from '../domain/format';
 import type { Flag, SetEntry } from '../domain/types';
 import { SetForm, type SetFormValue } from './SetForm';
@@ -26,6 +26,7 @@ export function ExerciseCard({ exercise, date, store, settings, onOpen }: {
   const st = settings.get(exercise);
   const target = nextTarget(store.entries, exercise, st, date);
   const prior = priorE1rm(store.entries, exercise, date);
+  const offset = rirOffset(store.entries, exercise);
   const seed = today.at(-1);
   const pulley: Flag[] = (seed ?? last?.sets.find(isWorking))?.flags.includes('double_pulley') ? ['double_pulley'] : [];
   const initial: SetFormValue = seed ? { weight: seed.weight, reps: seed.reps ?? st.repMin, flags: pulley }
@@ -54,7 +55,7 @@ export function ExerciseCard({ exercise, date, store, settings, onOpen }: {
         {today.map((s) => (
           <li key={s.id}>
             <button className="set-row" onClick={() => setEditing(s)}>
-              <SetRowContent s={s} estRir={estimateRir(s, today, prior)} />
+              <SetRowContent s={s} estRir={estimateRir(s, today, prior, offset)} />
             </button>
           </li>
         ))}

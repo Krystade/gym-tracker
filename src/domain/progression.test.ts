@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { defaultSettings, estimateRir, isWorking, nextTarget, prCheck, priorE1rm, settingsKey } from './progression';
+import { defaultSettings, estimateRir, isWorking, nextTarget, prCheck, priorE1rm, rirOffset, settingsKey } from './progression';
 
 let seq = 0;
 const s = (date: string, setNo: number, weight: number, reps: number | null, over: Partial<SetEntry> = {}): SetEntry => ({
@@ -59,11 +59,18 @@ describe('nextTarget', () => {
 });
 
 describe('estimateRir', () => {
-  it('estimates from prior e1RM, clamped 0..5', () => {
-    // prior e1RM 40 → at 30 lb Epley predicts 10 reps; 8 done → ~2
-    expect(estimateRir(s('d', 1, 30, 8), [], 40)).toBe(2);
+  it('estimates from prior e1RM plus an offset for non-failure training sets, clamped 0..5', () => {
+    // prior e1RM 40 → at 30 lb Epley predicts 10 reps; 8 done → 2 short of the recent best, +2 offset → ~4
+    expect(estimateRir(s('d', 1, 30, 8), [], 40)).toBe(4);
+    expect(estimateRir(s('d', 1, 30, 8), [], 40, 0)).toBe(2);
     expect(estimateRir(s('d', 1, 30, 12), [], 40)).toBe(0);
     expect(estimateRir(s('d', 1, 5, 12), [], 40)).toBe(5);
+  });
+  it('only estimates the first working set at a weight; later ones are fatigue-confounded', () => {
+    const a = s('d', 1, 30, 10), b = s('d', 2, 30, 9), c = s('d', 3, 30, 8);
+    expect(estimateRir(a, [a, b, c], 40)).toBe(2);
+    expect(estimateRir(b, [a, b, c], 40)).toBeNull();
+    expect(estimateRir(c, [a, b, c], 40)).toBeNull();
   });
   it('treats a set followed by a 3+ rep drop at the same weight as near failure', () => {
     const a = s('d', 1, 30, 10), b = s('d', 2, 30, 6);
@@ -73,6 +80,21 @@ describe('estimateRir', () => {
     expect(estimateRir(s('d', 1, 30, 8, { rir: 2 }), [], 40)).toBeNull();
     expect(estimateRir(s('d', 1, 0, 8, { flags: ['bodyweight'] }), [], 40)).toBeNull();
     expect(estimateRir(s('d', 1, 30, 8), [], null)).toBeNull();
+  });
+  it('learns the offset from logged RIR once there are 3 samples', () => {
+    const base = [s('2026-01-01', 1, 30, 10)]; // prior e1RM 40 → 10 reps predicted at 30 lb
+    const logged = ['2026-01-08', '2026-01-15', '2026-01-22'].map((d) => s(d, 1, 30, 10, { rir: 0 }));
+    expect(rirOffset(base, 'Curl')).toBe(2);
+    expect(rirOffset([...base, ...logged], 'Curl')).toBe(0);
+    expect(rirOffset([...base, ...logged.map((x) => ({ ...x, rir: 5 }))], 'Curl')).toBe(3);
+  });
+});
+
+describe('zero-rep sets', () => {
+  it('are not working sets and do not drag the target down', () => {
+    expect(isWorking(s('d', 1, 100, 0))).toBe(false);
+    const t = nextTarget([s('2026-01-01', 1, 100, 8), s('2026-01-01', 2, 100, 0)], 'Curl', { key: 'curl', repMin: 8, repMax: 12, increment: 5 }, '2026-01-08');
+    expect(t?.text).toBe('100 lb × 9+ on every set');
   });
 });
 
@@ -89,5 +111,11 @@ describe('priorE1rm and prCheck', () => {
     expect(prCheck([...e, repOnly], repOnly)).toEqual({ e1rm: false, reps: true });
     const none = s('2026-01-22', 3, 30, 9);
     expect(prCheck([...e, none], none)).toEqual({ e1rm: false, reps: false });
+  });
+  it('does not call the first working set after warm-ups or partials a PR', () => {
+    const wu = s('2026-02-01', 1, 20, 15, { flags: ['warmup'], exercise: 'Row' }), first = s('2026-02-01', 2, 60, 10, { exercise: 'Row' });
+    expect(prCheck([wu, first], first)).toEqual({ e1rm: false, reps: false });
+    const part = s('2026-02-02', 1, 40, null, { flags: ['partial'], exercise: 'Press' }), next = s('2026-02-02', 2, 40, 8, { exercise: 'Press' });
+    expect(prCheck([part, next], next)).toEqual({ e1rm: false, reps: false });
   });
 });

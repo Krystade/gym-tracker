@@ -60,3 +60,13 @@ describe('db v3', () => {
     expect((await getProfile())?.tiers.Biceps).toBe(1);
   });
 });
+
+describe('db version changes', () => {
+  it('closes its connection when a newer version opens elsewhere, so the upgrade is not blocked', async () => {
+    await getAllSets(); // our connection is now open
+    const newer = openDB('gym-tracker', 99);
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('upgrade blocked')), 500));
+    const d = await Promise.race([newer, timeout]) as Awaited<typeof newer>;
+    d.close();
+  });
+});
