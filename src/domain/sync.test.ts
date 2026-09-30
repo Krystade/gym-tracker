@@ -8,14 +8,14 @@ import { setId } from './ids';
 const CFG: SyncConfig = { key: 'sync', repo: 'someone/private-data', token: 'test-token-123', branch: 'main' };
 
 /** An in-memory stand-in for the Contents API. */
-function fakeGitHub(files: Record<string, string> = {}, fail: Partial<Record<string, number>> = {}) {
+function fakeGitHub(files: Record<string, string> = {}, fail: Partial<Record<string, number>> = {}, beforeFirstPut?: (store: Map<string, { text: string; sha: string }>) => void) {
   const store = new Map(Object.entries(files).map(([p, t]) => [p, { text: t, sha: `sha-${p}-0` }]));
-  const calls: { method: string; url: string; headers: Record<string, string>; body?: { message: string; content: string; sha?: string; branch: string } }[] = [];
+  const calls: { method: string; url: string; headers: Record<string, string>; cache?: RequestCache; body?: { message: string; content: string; sha?: string; branch: string } }[] = [];
   let conflictOnce = fail.conflictOnce === 1;
   const fetchFn = async (url: string, init: RequestInit = {}): Promise<Response> => {
     const method = init.method ?? 'GET';
     const body = init.body ? JSON.parse(String(init.body)) : undefined;
-    calls.push({ method, url, headers: init.headers as Record<string, string>, body });
+    calls.push({ method, url, headers: init.headers as Record<string, string>, cache: init.cache, body });
     const path = decodeURIComponent(new URL(url).pathname.replace(/^\/repos\/[^/]+\/[^/]+\/contents\//, ''));
     const code = fail[`${method} ${path}`];
     if (code === -1) throw new TypeError('Failed to fetch');
@@ -24,6 +24,7 @@ function fakeGitHub(files: Record<string, string> = {}, fail: Partial<Record<str
       const f = store.get(path);
       return f ? Response.json({ encoding: 'base64', content: toB64(f.text).replace(/(.{60})/g, '$1\n'), sha: f.sha }) : new Response('{}', { status: 404 });
     }
+    if (beforeFirstPut) { const f = beforeFirstPut; beforeFirstPut = undefined; f(store); }
     const cur = store.get(path);
     if (conflictOnce && path === 'app/body.csv') { conflictOnce = false; store.set(path, { text: cur?.text ?? '', sha: `${cur?.sha ?? 'x'}-moved` }); return new Response('{}', { status: 409 }); }
     if (cur && body.sha !== cur.sha) return new Response('{}', { status: 409 });
@@ -87,7 +88,7 @@ describe('sync', () => {
     const got = { sets: [] as SetEntry[], body: [] as BodyDay[] };
     const r = await sync({
       client: repoClient(CFG, gh.fetchFn), sets: local, body, deleted,
-      importSets: async (e) => { got.sets.push(...e); }, importBody: async (d) => { got.body.push(...d); },
+      importSets: async (e) => { got.sets.push(...e); return { added: e.length, updated: 0 }; }, importBody: async (d) => { got.body.push(...d); return true; },
       now: new Date('2026-09-30T12:00:00Z'),
     });
     return { r, got };
@@ -133,6 +134,56 @@ describe('sync', () => {
   it('pushes nothing when the pull fails', async () => {
     const gh = fakeGitHub({ 'history.csv': 'x' }, { 'GET app/sets.csv': 401 });
     await expect(run(gh, [set('2026-09-29')])).rejects.toMatchObject({ kind: 'auth' });
+    expect(gh.calls.some((x) => x.method === 'PUT')).toBe(false);
+  });
+});
+
+describe('Phase 8 review fixes', () => {
+  const deps = (gh: ReturnType<typeof fakeGitHub>, sets: SetEntry[], over: Partial<Parameters<typeof sync>[0]> = {}) => ({
+    client: repoClient(CFG, gh.fetchFn), sets, body: [] as BodyDay[], deleted: new Set<string>(),
+    importSets: async () => ({ added: 0, updated: 0 }), importBody: async () => true, now: new Date('2026-09-30T12:00:00Z'), ...over,
+  });
+
+  it('never answers from the browser cache, so a second sync sees the sha the first one wrote', async () => {
+    const gh = fakeGitHub({ 'app/sets.csv': 'a' });
+    const c = repoClient(CFG, gh.fetchFn);
+    await c.get('app/sets.csv');
+    await c.upsert('app/sets.csv', 'b', 'm');
+    expect(gh.calls.length).toBeGreaterThan(0);
+    for (const x of gh.calls) expect(x.cache).toBe('no-store');
+  });
+
+  it('refuses to overwrite a backup file it can’t fully read', async () => {
+    const good = set('2026-09-01');
+    const badRow = toCsv([good]) + '2026-09-02,Cable Curl,,1,50,10,,superset,,backup,,\r\n';
+    for (const files of <Record<string, string>[]>[
+      { 'app/sets.csv': badRow },
+      { 'app/sets.csv': toCsv([good]).replace('weight_lb', 'kilos') },
+      { 'app/body.csv': 'date,mass\n2026-09-01,180\n' },
+      { 'app/body.csv': 'date,weight_lb,calories,protein_g\n2026-09-01,abc,,\n' },
+    ]) {
+      const gh = fakeGitHub(files);
+      await expect(sync(deps(gh, [set('2026-09-29')]))).rejects.toThrow(/app\/(sets|body)\.csv/);
+      expect(gh.calls.some((x) => x.method === 'PUT')).toBe(false);
+    }
+  });
+
+  it('on a conflict, pulls again and keeps what the other writer added', async () => {
+    const theirs = set('2026-09-15'), mine = set('2026-09-29');
+    const gh = fakeGitHub({ 'app/sets.csv': toCsv([]) }, {}, (store) => {
+      const cur = store.get('app/sets.csv')!;
+      store.set('app/sets.csv', { text: toCsv([theirs]), sha: `${cur.sha}-other` });
+    });
+    const imported: SetEntry[] = [];
+    await sync(deps(gh, [mine], { importSets: async (e) => { imported.push(...e); return { added: e.length, updated: 0 }; } }));
+    expect(ids(parseCsv(gh.store.get('app/sets.csv')!.text).entries)).toEqual(ids([theirs, mine]));
+    expect(ids(imported)).toEqual([theirs.id]);
+  });
+
+  it('stops before pushing when the phone couldn’t save what was pulled', async () => {
+    const gh = fakeGitHub({ 'app/sets.csv': toCsv([set('2026-09-01')]), 'app/body.csv': toBodyCsv([{ date: '2026-09-01', weight: 180 }]) });
+    await expect(sync(deps(gh, [], { importSets: async () => null }))).rejects.toThrow(/saving/i);
+    await expect(sync(deps(gh, [], { importBody: async () => false }))).rejects.toThrow(/saving/i);
     expect(gh.calls.some((x) => x.method === 'PUT')).toBe(false);
   });
 });

@@ -9,6 +9,8 @@ export interface SyncConfig { key: 'sync'; repo: string; token: string; branch: 
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export class SyncError extends Error {
+  /** Set on a push conflict: the merged state, so a retry doesn't pull the same rows in twice. */
+  pulled?: { sets: SetEntry[]; body: BodyDay[]; counts: [number, number] };
   constructor(public kind: 'auth' | 'access' | 'network' | 'conflict' | 'other', message: string) { super(message); }
 }
 
@@ -30,7 +32,8 @@ export function repoClient(cfg: SyncConfig, fetchFn: Fetch) {
 
   async function call(u: string, init: RequestInit): Promise<Response> {
     let r: Response;
-    try { r = await fetchFn(u, init); } catch { throw new SyncError('network', 'Couldn’t reach GitHub — check the connection and try again.'); }
+    // no-store: GitHub's responses are cacheable for a minute, and a cached GET hands back a sha we've already replaced.
+    try { r = await fetchFn(u, { ...init, cache: 'no-store' }); } catch { throw new SyncError('network', 'Couldn’t reach GitHub — check the connection and try again.'); }
     if (r.status === 401) throw new SyncError('auth', 'GitHub rejected the token — it may have expired. Paste a new one.');
     if (r.status === 403) throw new SyncError('access', 'The token can’t write to that repo — give it Contents: Read and write on it.');
     if (r.status === 409) throw new SyncError('conflict', 'The backup changed while syncing — try again.');
@@ -69,39 +72,71 @@ export function repoClient(cfg: SyncConfig, fetchFn: Fetch) {
 
 export const SETS_PATH = 'app/sets.csv', BODY_PATH = 'app/body.csv', HISTORY_PATH = 'history.csv';
 
-/** Pull everything first (a failed pull pushes nothing), merge — the phone wins where both sides have a value — then push. */
-export async function sync(deps: {
+/** A file this build can't fully read is never overwritten: its unreadable rows would vanish from the backup. */
+function unreadable(path: string, errors: { row: number; message: string }[]): never {
+  const e = errors[0];
+  throw new SyncError('other', `Can’t read ${path}${e.row ? ` row ${e.row}` : ''}: ${e.message}. Nothing was changed — fix it on GitHub, or update the app.`);
+}
+
+type SyncDeps = {
   client: ReturnType<typeof repoClient>; sets: SetEntry[]; body: BodyDay[]; deleted: Set<string>;
-  importSets: (e: SetEntry[]) => Promise<unknown>; importBody: (d: BodyDay[]) => Promise<unknown>; now: Date;
-}): Promise<{ pulledSets: number; pulledBody: number; pushedSets: number; pushedBody: number }> {
+  importSets: (e: SetEntry[]) => Promise<{ added: number; updated: number } | null>; importBody: (d: BodyDay[]) => Promise<boolean>; now: Date;
+};
+type SyncResult = { pulledSets: number; pulledBody: number; pushedSets: number; pushedBody: number };
+
+/** Pull everything first (a failed pull pushes nothing), merge — the phone wins where both sides have a value — then push.
+ *  If the backup moves underneath us, the whole pull→merge→push runs once more, so the other writer's rows are kept. */
+export async function sync(deps: SyncDeps): Promise<SyncResult> {
+  try { return await syncOnce(deps); }
+  catch (e) {
+    if (!(e instanceof SyncError && e.kind === 'conflict' && e.pulled)) throw e;
+    const again = await syncOnce({ ...deps, sets: e.pulled.sets, body: e.pulled.body });
+    return { ...again, pulledSets: again.pulledSets + e.pulled.counts[0], pulledBody: again.pulledBody + e.pulled.counts[1] };
+  }
+}
+
+async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
   const { client } = deps;
   const history = await client.get(HISTORY_PATH);
   const remoteSets = await client.get(SETS_PATH);
   const remoteBody = await client.get(BODY_PATH);
 
+  const parsedSets = remoteSets ? parseCsv(remoteSets.text, 'backup') : null;
+  if (parsedSets?.errors.length) unreadable(SETS_PATH, parsedSets.errors);
+  const parsedBody = remoteBody?.text.trim() ? parseBodyFile(remoteBody.text) : null;
+  if (parsedBody && parsedBody.kind !== 'body') unreadable(BODY_PATH, [{ row: 1, message: 'the header isn’t date,weight_lb,calories,protein_g' }]);
+  if (parsedBody?.errors.length) unreadable(BODY_PATH, parsedBody.errors);
+
   const have = new Set(deps.sets.map((e) => e.id));
   const incoming = new Map<string, SetEntry>();
-  for (const f of [history, remoteSets]) {
-    if (!f) continue;
-    for (const e of parseCsv(f.text, 'backup').entries) if (!have.has(e.id) && !deps.deleted.has(e.id)) incoming.set(e.id, e);
+  // history.csv is only read, never written, so rows it can't parse are skipped rather than blocking the sync.
+  for (const entries of [history ? parseCsv(history.text, 'backup').entries : [], parsedSets?.entries ?? []]) {
+    for (const e of entries) if (!have.has(e.id) && !deps.deleted.has(e.id)) incoming.set(e.id, e);
   }
   const bodyBy = new Map(deps.body.map((d) => [d.date, d]));
   const bodyIn: BodyDay[] = [];
-  for (const d of remoteBody ? parseBodyFile(remoteBody.text).days : []) {
+  for (const d of parsedBody?.days ?? []) {
     const mine = bodyBy.get(d.date);
     const fill: BodyDay = { date: d.date };
     for (const k of ['weight', 'calories', 'protein'] as const) if (d[k] != null && mine?.[k] == null) fill[k] = d[k];
     if (Object.keys(fill).length > 1) bodyIn.push(fill);
   }
-  if (incoming.size) await deps.importSets([...incoming.values()]);
-  if (bodyIn.length) await deps.importBody(bodyIn);
+  const saveFailed = () => new SyncError('other', 'Saving the pulled data on this phone failed — nothing was pushed. Try again.');
+  if (incoming.size && (await deps.importSets([...incoming.values()])) == null) throw saveFailed();
+  if (bodyIn.length && (await deps.importBody(bodyIn)) === false) throw saveFailed();
 
   // Tombstones only stop sets coming back in; anything still on the phone is live, even under a reused id.
   const sets = [...deps.sets, ...incoming.values()];
   const body = [...bodyBy.values()].map((d) => ({ ...d }));
   for (const d of bodyIn) { const cur = body.find((x) => x.date === d.date); if (cur) Object.assign(cur, d); else body.push(d); }
   const message = `Backup from phone ${deps.now.toISOString()}`;
-  await client.upsert(SETS_PATH, toCsv(sets), message, remoteSets?.sha ?? null);
-  await client.upsert(BODY_PATH, toBodyCsv(body), message, remoteBody?.sha ?? null);
+  try {
+    await client.put(SETS_PATH, toCsv(sets), remoteSets?.sha, message);
+    await client.put(BODY_PATH, toBodyCsv(body), remoteBody?.sha, message);
+  } catch (e) {
+    // What was pulled is already on the phone; the retry starts from there.
+    if (e instanceof SyncError && e.kind === 'conflict') e.pulled = { sets, body, counts: [incoming.size, bodyIn.length] };
+    throw e;
+  }
   return { pulledSets: incoming.size, pulledBody: bodyIn.length, pushedSets: sets.length, pushedBody: body.length };
 }
