@@ -1,0 +1,40 @@
+# --- Build / tooling ---
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+.vite
+coverage
+screenshots
+test-results
+playwright-report
+tsconfig.tsbuildinfo
+.env*
+
+# --- PERSONAL DATA: never in this public repo ---
+# Training history, body weight, photos and spreadsheets live on the device
+# and in the private Krystade/gym-data repo. Only synthetic fixtures named
+# *.sample.* may be committed.
+data/
+private/
+gym-data/
+exports/
+*.csv
+*.tsv
+*.xls
+*.xlsx
+*.xlsm
+*.ods
+*.numbers
+*.jpg
+*.jpeg
+*.heic
+*.heif
+*.webp
+*.mov
+*.mp4
+*.sqlite
+*.db
+gym-backup*.json
+!**/*.sample.csv
