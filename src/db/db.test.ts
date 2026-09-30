@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { deleteSet, getAllSets, getAllSettings, getProfile, putMany, putProfile, putSet, putSettings, resetDbForTests } from './db';
+import { deleteSet, getAllSets, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
 
@@ -68,5 +68,33 @@ describe('db version changes', () => {
     const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('upgrade blocked')), 500));
     const d = await Promise.race([newer, timeout]) as Awaited<typeof newer>;
     d.close();
+  });
+});
+
+describe('db v4', () => {
+  it('upgrades v3 keeping sets, settings and profile, with no program yet', async () => {
+    const v3 = await openDB('gym-tracker', 3, { upgrade(d) {
+      d.createObjectStore('sets', { keyPath: 'id' }).createIndex('date', 'date');
+      d.createObjectStore('settings', { keyPath: 'key' });
+      d.createObjectStore('profile', { keyPath: 'key' });
+    } });
+    await v3.put('sets', { id: 'a', date: '2026-01-01', seq: 0, exercise: 'Curl', setNo: 1, weight: 30, reps: 10, flags: [], source: 's' });
+    await v3.put('settings', { key: 'curl', repMin: 8, repMax: 12, increment: 5 });
+    await v3.put('profile', { ...defaultProfile() });
+    v3.close();
+    expect(await getAllSets()).toHaveLength(1);
+    expect(await getAllSettings()).toHaveLength(1);
+    expect(await getProfile()).toBeDefined();
+    expect(await getProgram()).toBeUndefined();
+    expect(await getDayPlans()).toEqual([]);
+  });
+  it('stores the program and one day plan per date', async () => {
+    await putProgram({ key: 'program', perSession: 14, createdAt: 'x', days: [] });
+    await putDayPlan({ key: 'day:2026-09-30', date: '2026-09-30', day: 0, skips: [], swaps: {} });
+    await putDayPlan({ key: 'day:2026-09-30', date: '2026-09-30', day: 1, skips: ['Cable Curl'], swaps: {} });
+    expect((await getProgram())?.perSession).toBe(14);
+    const plans = await getDayPlans();
+    expect(plans).toHaveLength(1);
+    expect(plans[0].day).toBe(1);
   });
 });

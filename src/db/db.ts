@@ -2,6 +2,7 @@ import { openDB, type IDBPDatabase } from 'idb';
 import type { SetEntry } from '../domain/types';
 import type { ExerciseSettings } from '../domain/progression';
 import type { Profile } from '../domain/profile';
+import type { DayPlan, Program } from '../domain/program';
 
 const STORE = 'sets';
 let dbp: Promise<IDBPDatabase> | null = null;
@@ -10,11 +11,12 @@ let onBlocked: (() => void) | null = null;
 export const setBlockedHandler = (fn: (() => void) | null) => { onBlocked = fn; };
 
 function db(): Promise<IDBPDatabase> {
-  return (dbp ??= openDB('gym-tracker', 3, {
+  return (dbp ??= openDB('gym-tracker', 4, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) d.createObjectStore(STORE, { keyPath: 'id' }).createIndex('date', 'date');
       if (oldVersion < 2) d.createObjectStore('settings', { keyPath: 'key' });
       if (oldVersion < 3) d.createObjectStore('profile', { keyPath: 'key' });
+      if (oldVersion < 4) d.createObjectStore('program', { keyPath: 'key' });
     },
     blocked() { onBlocked?.(); },
     // A newer version of the app is upgrading the database: step aside, and reload to pick up the new code.
@@ -37,6 +39,13 @@ export const putSettings = async (s: ExerciseSettings): Promise<void> => { await
 
 export const getProfile = async (): Promise<Profile | undefined> => (await db()).get('profile', 'profile');
 export const putProfile = async (p: Profile): Promise<void> => { await (await db()).put('profile', p); };
+
+export const getProgram = async (): Promise<Program | undefined> => (await db()).get('program', 'program');
+export const putProgram = async (p: Program): Promise<void> => { await (await db()).put('program', p); };
+/** Day plans share the program store under 'day:YYYY-MM-DD' keys. */
+export const getDayPlans = async (): Promise<DayPlan[]> =>
+  (await (await db()).getAll('program', IDBKeyRange.bound('day:', 'day:￿'))) as DayPlan[];
+export const putDayPlan = async (p: DayPlan): Promise<void> => { await (await db()).put('program', p); };
 
 export async function putMany(entries: SetEntry[]): Promise<{ added: number; updated: number }> {
   const tx = (await db()).transaction(STORE, 'readwrite');
