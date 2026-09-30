@@ -5,7 +5,7 @@ const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv')
 async function check(page: Page, name: string) {
   await page.evaluate(() => { document.documentElement.style.setProperty('--sat', '47px'); document.documentElement.style.setProperty('--sab', '34px'); });
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
-  const small = await page.evaluate(() => [...document.querySelectorAll('button:not(.chip), input:not([type=file]), label.button')]
+  const small = await page.evaluate(() => [...document.querySelectorAll('button, input:not([type=file]), label.button')]
     .map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height < 44).length);
   expect(small).toBe(0);
   await page.screenshot({ path: `screenshots/${name}.png`, fullPage: name !== '0-picker' });

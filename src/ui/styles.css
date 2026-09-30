@@ -69,10 +69,10 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
 .stepper { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .stepper > div { display: grid; grid-template-columns: 44px 1fr 44px; gap: 4px; }
 .stepper input { text-align: center; font-size: 20px; font-weight: 700; padding: 0 4px; }
-.stepper button { padding: 0; font-size: 22px; }
+.stepper button { padding: 0; font-size: 22px; touch-action: manipulation; }
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 44px; }
 .chip-label { font-size: 13px; color: var(--muted); margin-right: 2px; }
-.chip { min-height: 36px; padding: 0 12px; border-radius: 18px; font-size: 14px; font-weight: 600; }
+.chip { min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: 22px; touch-action: manipulation; font-size: 14px; font-weight: 600; }
 .chip[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .form-actions { display: flex; gap: 8px; }
 .form-actions .primary { flex: 1; }

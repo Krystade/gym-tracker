@@ -1,6 +1,7 @@
 /** Personal data (history, weight, photos, spreadsheets, backups) must never be tracked in this public repo. */
 export const FORBIDDEN = [
-  /(^|\/)(data|private|gym-data|exports)\//i,
+  /(^|\/)(data|private|gym-data|exports|originals)\//i,
+  /(^|\/)(notes|log|journal)[^/]*\.txt$/i,
   /\.(csv|tsv|xlsx?|xlsm|ods|numbers|jpe?g|heic|heif|webp|mov|mp4|sqlite|db)$/i,
   /(^|\/)gym-backup[^/]*\.json$/i,
 ];

@@ -41,3 +41,9 @@ gym-backup*.json
 
 # Local agent workspace
 .superpowers/
+
+# Raw training notes
+originals/
+notes*.txt
+log*.txt
+journal*.txt
