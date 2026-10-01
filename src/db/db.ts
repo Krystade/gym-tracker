@@ -18,6 +18,7 @@ const conns = new Map<string, Promise<IDBPDatabase>>();
 let current = MAIN;
 /** Every db function below calls db() synchronously, before its first await, so it is bound to the profile active at the call. */
 export const setProfileDb = (id: string) => { current = id; };
+export const activeProfileDb = () => current;
 let onBlocked: (() => void) | null = null;
 /** Called when an upgrade waits on another open copy of the app (e.g. a Safari tab beside the installed app). */
 export const setBlockedHandler = (fn: (() => void) | null) => { onBlocked = fn; };

@@ -69,7 +69,7 @@ export function ExerciseCard({ exercise, date, store, settings, onOpen }: {
           onDelete={async () => { if (confirm(`Delete set ${editing.setNo}?`) && (await store.remove(editing.id))) setEditing(null); }}
           onSubmit={async (v) => { const ok = await store.update({ ...editing, ...v }); if (ok) setEditing(null); return ok; }} />
       ) : (
-        <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} />
+        <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft />
       )}
     </section>
   );

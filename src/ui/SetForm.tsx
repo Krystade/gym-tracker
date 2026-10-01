@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { activeProfileDb } from '../db/db';
+import { localDate } from '../domain/ids';
+import { clearDraft, getDraft, saveDraft } from '../state/drafts';
 import { REGIONS, type Flag, type Region } from '../domain/types';
 import { derivedFlags } from '../domain/buildSet';
 import { isHold, likelyRegion, painDefaults } from '../domain/care';
@@ -22,17 +25,28 @@ function Stepper({ label, value, onChange, step, mode }: { label: string; value:
   );
 }
 
-export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel }: {
+interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; note: string; region?: Region; severity?: 1 | 2 | 3 }
+
+/** `keepDraft`: what's typed survives leaving the screen or switching profile, until it's saved (the new-set form). */
+export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false }: {
   exercise: string; initial: SetFormValue; submitLabel: string;
-  onSubmit: (v: SetFormValue) => Promise<boolean>; onDelete?: () => void; onCancel?: () => void;
+  onSubmit: (v: SetFormValue) => Promise<boolean>; onDelete?: () => void; onCancel?: () => void; keepDraft?: boolean;
 }) {
-  const [weight, setWeight] = useState(String(initial.weight));
-  const [reps, setReps] = useState(initial.reps == null ? '' : String(initial.reps));
-  const [rir, setRir] = useState<number | undefined>(initial.rir);
-  const [flags, setFlags] = useState<Flag[]>(initial.flags.filter((f) => f !== 'bodyweight' && f !== 'partial'));
-  const [note, setNote] = useState(initial.note ?? '');
-  const [region, setRegion] = useState<Region | undefined>(() => painDefaults(initial, exercise).region);
-  const [severity, setSeverity] = useState<1 | 2 | 3 | undefined>(() => painDefaults(initial, exercise).severity);
+  const [owner] = useState(() => ({ profile: activeProfileDb(), date: localDate(new Date()) }));
+  const [d] = useState(() => (keepDraft ? getDraft<Draft>(owner.profile, exercise, owner.date) : undefined));
+  const [weight, setWeight] = useState(d?.weight ?? String(initial.weight));
+  const [reps, setReps] = useState(d?.reps ?? (initial.reps == null ? '' : String(initial.reps)));
+  const [rir, setRir] = useState<number | undefined>(d ? d.rir : initial.rir);
+  const [flags, setFlags] = useState<Flag[]>(d?.flags ?? initial.flags.filter((f) => f !== 'bodyweight' && f !== 'partial'));
+  const [note, setNote] = useState(d?.note ?? initial.note ?? '');
+  const [region, setRegion] = useState<Region | undefined>(() => (d ? d.region : painDefaults(initial, exercise).region));
+  const [severity, setSeverity] = useState<1 | 2 | 3 | undefined>(() => (d ? d.severity : painDefaults(initial, exercise).severity));
+  // Only a form the user has touched leaves a draft, so an untouched one keeps following the suggested next set.
+  const dirty = useRef(d != null);
+  const touch = <T,>(set: (v: T) => void) => (v: T) => { dirty.current = true; set(v); };
+  useEffect(() => {
+    if (keepDraft && dirty.current) saveDraft<Draft>(owner.profile, exercise, owner.date, { weight, reps, rir, flags, note, region, severity });
+  }, [keepDraft, owner, exercise, weight, reps, rir, flags, note, region, severity]);
   const hold = isHold(exercise);
   const pain = flags.includes('pain');
   const w = Number(weight);
@@ -46,39 +60,40 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       weight: w, reps: r, rir: rir ?? (flags.includes('test') ? 0 : undefined), flags: derivedFlags(withHold, w, r), note: note.trim() || undefined,
       painRegion: pain ? region : undefined, painSeverity: pain ? severity : undefined,
     });
+    if (ok && keepDraft) { clearDraft(owner.profile, exercise); dirty.current = false; }
     if (ok) { setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); }
   }
 
   return (
     <form className="set-form" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       <div className="steppers">
-        <Stepper label="Weight" value={weight} onChange={setWeight} step={5} mode="decimal" />
-        <Stepper label={hold ? 'Seconds' : 'Reps'} value={reps} onChange={setReps} step={hold ? 5 : 1} mode="numeric" />
+        <Stepper label="Weight" value={weight} onChange={touch(setWeight)} step={5} mode="decimal" />
+        <Stepper label={hold ? 'Seconds' : 'Reps'} value={reps} onChange={touch(setReps)} step={hold ? 5 : 1} mode="numeric" />
       </div>
       <div className="chips" role="group" aria-label="RIR">
         <span className="chip-label">RIR</span>
         {[0, 1, 2, 3, 4].map((n) => (
-          <button type="button" key={n} className="chip" aria-pressed={rir === n} onClick={() => setRir(rir === n ? undefined : n)}>{n === 4 ? '4+' : n}</button>
+          <button type="button" key={n} className="chip" aria-pressed={rir === n} onClick={() => touch(setRir)(rir === n ? undefined : n)}>{n === 4 ? '4+' : n}</button>
         ))}
       </div>
       <div className="chips" role="group" aria-label="Flags">
         {TOGGLES.map(([f, label]) => (
-          <button type="button" key={f} className="chip" aria-pressed={flags.includes(f)} onClick={() => setFlags(flags.includes(f) ? flags.filter((x) => x !== f) : [...flags, f])}>{label}</button>
+          <button type="button" key={f} className="chip" aria-pressed={flags.includes(f)} onClick={() => touch(setFlags)(flags.includes(f) ? flags.filter((x) => x !== f) : [...flags, f])}>{label}</button>
         ))}
       </div>
       {pain && (
         <>
           <div className="chips" role="group" aria-label="Pain region">
             <span className="chip-label">Where</span>
-            {REGIONS.map((x) => <button type="button" key={x} className="chip" aria-pressed={region === x} onClick={() => setRegion(x)}>{cap(x)}</button>)}
+            {REGIONS.map((x) => <button type="button" key={x} className="chip" aria-pressed={region === x} onClick={() => touch(setRegion)(x)}>{cap(x)}</button>)}
           </div>
           <div className="chips" role="group" aria-label="Pain severity">
             <span className="chip-label">How bad</span>
-            {SEVERITY.map(([n, label]) => <button type="button" key={n} className="chip" aria-pressed={severity === n} onClick={() => setSeverity(n)}>{label}</button>)}
+            {SEVERITY.map(([n, label]) => <button type="button" key={n} className="chip" aria-pressed={severity === n} onClick={() => touch(setSeverity)(n)}>{label}</button>)}
           </div>
         </>
       )}
-      <input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+      <input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => touch(setNote)(e.target.value)} />
       <div className="form-actions">
         {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
         {onDelete && <button type="button" className="danger" onClick={onDelete}>Delete</button>}

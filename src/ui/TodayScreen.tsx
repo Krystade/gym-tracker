@@ -6,6 +6,10 @@ import type { ProgramStore } from '../state/useProgram';
 import { exerciseNames, sameExercise } from '../domain/stats';
 import { fmtDate } from '../domain/format';
 import { ExerciseCard } from './ExerciseCard';
+import { activeProfileDb } from '../db/db';
+import { getDraft, saveDraft } from '../state/drafts';
+
+const CARDS = '#cards';
 import { ExercisePicker } from './ExercisePicker';
 import { swapSuggestions } from '../domain/care';
 import { TodayPlan, todayPlanFor } from './TodayPlan';
@@ -20,7 +24,10 @@ export function TodayScreen({ store, settings, programs, body, gyms, date, onOpe
 }) {
   const [picking, setPicking] = useState(false);
   const [swapFor, setSwapFor] = useState<string | null>(null);
-  const [extra, setExtra] = useState<string[]>([]);
+  // Cards added but not logged yet: kept per profile for the day, so leaving the tab or switching profile keeps them.
+  const [owner] = useState(activeProfileDb);
+  const [extra, setExtra] = useState<string[]>(() => getDraft<string[]>(owner, CARDS, date) ?? []);
+  useEffect(() => { saveDraft(owner, CARDS, date, extra); }, [owner, date, extra]);
   const logged = exerciseNames(store.entries.filter((e) => e.date === date)).reverse();
   const cards = [...logged, ...extra.filter((x) => !logged.some((l) => sameExercise(l, x)))];
   const plan = todayPlanFor(programs, store.entries, date);

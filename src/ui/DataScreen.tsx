@@ -4,6 +4,8 @@ import type { ProfileStore } from '../state/useProfile';
 import type { BodyStore } from '../state/useBody';
 import type { SyncStore } from '../state/useSync';
 import { SyncCard } from './SyncCard';
+import { PeopleCard } from './PeopleCard';
+import type { PeopleStore } from '../state/usePeople';
 import { parseBodyFile, toBodyCsv, type CsvKind } from '../domain/body';
 import { parseProfileJson } from '../domain/profile';
 import { parseAliasesJson } from '../domain/notes';
@@ -15,7 +17,7 @@ import { plural } from '../domain/format';
 
 const KIND: Partial<Record<CsvKind, string>> = { body: 'Body data', 'mfp-weight': 'MyFitnessPal weight', 'mfp-nutrition': 'MyFitnessPal nutrition' };
 
-export function DataScreen({ store, profile, body, sync, onOpenPaste }: { store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; onOpenPaste: () => void }) {
+export function DataScreen({ store, profile, body, sync, people, onOpenPaste }: { store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; people: PeopleStore; onOpenPaste: () => void }) {
   const [bodyMsgs, setBodyMsgs] = useState<{ ok: boolean; text: string }[]>([]);
   const [result, setResult] = useState<{ added: number; updated: number; errors: CsvError[] } | null>(null);
   const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -109,6 +111,7 @@ export function DataScreen({ store, profile, body, sync, onOpenPaste }: { store:
           : <textarea className="csv" aria-label="Body CSV export" readOnly value={bodyFallback} onFocus={(e) => e.currentTarget.select()} />)}
       </section>
       <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} />
+      <PeopleCard people={people} />
       <p className="muted small">Build {__BUILD_ID__} · {__BUILT_AT__.slice(0, 16).replace('T', ' ')} UTC</p>
     </>
   );
