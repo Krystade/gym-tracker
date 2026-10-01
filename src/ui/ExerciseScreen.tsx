@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
-import { bestSet, e1rmSeries, sessionsFor } from '../domain/stats';
+import { bestSet, e1rmSeries, exerciseNames, sessionsFor } from '../domain/stats';
+import type { GymsStore } from '../state/useGyms';
+import { availableSet } from '../domain/equipment';
+import { CATALOG } from '../domain/catalog';
 import { calibrate, calibratedE1rm, testDue, weightForReps } from '../domain/estimators';
 import { localDate } from '../domain/ids';
 import { estimateRir, priorE1rm, rirOffset } from '../domain/progression';
@@ -36,7 +39,7 @@ function SettingsEditor({ name, settings }: { name: string; settings: SettingsSt
   );
 }
 
-export function ExerciseScreen({ name, store, settings, onBack }: { name: string; store: SetsStore; settings: SettingsStore; onBack: () => void }) {
+export function ExerciseScreen({ name, store, settings, gyms, onBack }: { name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; onBack: () => void }) {
   const sessions = sessionsFor(store.entries, name);
   const series = e1rmSeries(store.entries, name);
   const best = bestSet(store.entries, name);
@@ -60,7 +63,7 @@ export function ExerciseScreen({ name, store, settings, onBack }: { name: string
       </div>
       <p className="muted small">{cal.tests ? `${cal.formula === 'wd' ? 'Weight-adjusted formula' : 'Epley'} · calibrated · ${plural(cal.tests, 'test')}${cal.errorPct != null ? ` · ±${Math.round(cal.errorPct)}%` : ''}` : 'Epley · no tests yet'}</p>
       {due && <p className="card note-card">Time for a test: pick a weight you can do about 8–12 times, go to failure with good form, and tick <b>Test</b>. It tunes these estimates.</p>}
-      <SwapSuggestions items={swapSuggestions(name, store.entries, localDate(new Date()))} />
+      <SwapSuggestions items={swapSuggestions(name, store.entries, localDate(new Date()), 5, gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined)} />
       <SettingsEditor key={name} name={name} settings={settings} />
       <section className="card">
         <LineChart points={series} />

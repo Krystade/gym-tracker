@@ -232,3 +232,18 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: 16px;
 .paste-actions { margin-left: auto; display: flex; gap: 6px; }
 .mini { min-height: 44px; padding: 0 12px; font-size: 14px; }
 .paste-footer { position: sticky; bottom: calc(var(--sab) + 64px); padding: 8px 0; background: linear-gradient(transparent, var(--bg) 30%); }
+
+/* Gyms */
+.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.field input { font-size: 16px; min-height: 44px; }
+.gear { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+.gear legend { font-weight: 700; padding: 0 4px; }
+.check { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 15px; }
+.check input { width: 22px; height: 22px; flex: none; }
+.gym-ex { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+.gym-ex li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
+.gym-ex li > button.primary { width: 100%; }
+.share-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.share-row span { flex: 1; }
+.picker-divider { padding: 8px 4px 0; }
+.prog-name .tag { align-self: flex-start; width: max-content; }

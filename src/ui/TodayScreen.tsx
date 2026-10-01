@@ -11,9 +11,12 @@ import { swapSuggestions } from '../domain/care';
 import { TodayPlan, todayPlanFor } from './TodayPlan';
 import { WeighIn } from './WeighIn';
 import type { BodyStore } from '../state/useBody';
+import type { GymsStore } from '../state/useGyms';
+import { availableSet } from '../domain/equipment';
+import { CATALOG } from '../domain/catalog';
 
-export function TodayScreen({ store, settings, programs, body, date, onOpen, onOpenProgram }: {
-  store: SetsStore; settings: SettingsStore; programs: ProgramStore; body: BodyStore; date: string; onOpen: (name: string) => void; onOpenProgram: () => void;
+export function TodayScreen({ store, settings, programs, body, gyms, date, onOpen, onOpenProgram }: {
+  store: SetsStore; settings: SettingsStore; programs: ProgramStore; body: BodyStore; gyms: GymsStore; date: string; onOpen: (name: string) => void; onOpenProgram: () => void;
 }) {
   const [picking, setPicking] = useState(false);
   const [swapFor, setSwapFor] = useState<string | null>(null);
@@ -29,9 +32,10 @@ export function TodayScreen({ store, settings, programs, body, date, onOpen, onO
   }, [programs.program, programs.plans, programs.savePlan, store.entries, date]);
   const addCard = (n: string) => setExtra((xs) => (xs.some((x) => sameExercise(x, n)) ? xs : [...xs, n]));
 
-  if (picking) return <ExercisePicker recent={exerciseNames(store.entries)} onCancel={() => setPicking(false)}
+  const available = gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined;
+  if (picking) return <ExercisePicker recent={exerciseNames(store.entries)} gym={gyms.active} onCancel={() => setPicking(false)}
     onPick={(n) => { addCard(n); setPicking(false); }} />;
-  if (swapFor && plan) return <ExercisePicker recent={exerciseNames(store.entries)} suggested={swapSuggestions(swapFor, store.entries, date)} onCancel={() => setSwapFor(null)}
+  if (swapFor && plan) return <ExercisePicker recent={exerciseNames(store.entries)} gym={gyms.active} suggested={swapSuggestions(swapFor, store.entries, date, 5, available)} onCancel={() => setSwapFor(null)}
     onPick={(n) => { void programs.savePlan({ ...plan, swaps: { ...plan.swaps, [swapFor]: n } }); addCard(n); setSwapFor(null); }} />;
 
   return (

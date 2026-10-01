@@ -6,6 +6,7 @@ import { useProgram } from '../state/useProgram';
 import { useBody } from '../state/useBody';
 import { usePhotos } from '../state/usePhotos';
 import { useSync } from '../state/useSync';
+import { useGyms } from '../state/useGyms';
 import { PhotosScreen } from './PhotosScreen';
 import { PasteScreen } from './PasteScreen';
 import { ProgramScreen } from './ProgramScreen';
@@ -28,6 +29,7 @@ export default function App() {
   const body = useBody();
   const photos = usePhotos();
   const sync = useSync(store, body);
+  const gyms = useGyms();
   const [programOpen, setProgramOpen] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -43,14 +45,14 @@ export default function App() {
 
   return (
     <div className="app">
-      {(store.error ?? programs.error ?? body.error ?? photos.error) && <div role="alert" className="banner">{store.error ?? programs.error ?? body.error ?? photos.error}</div>}
+      {(store.error ?? programs.error ?? body.error ?? photos.error ?? gyms.error) && <div role="alert" className="banner">{store.error ?? programs.error ?? body.error ?? photos.error ?? gyms.error}</div>}
       <main className="screen">
         {store.loading ? <p className="muted">Loading…</p>
           : pasteOpen ? <PasteScreen store={store} today={date} onBack={() => setPasteOpen(false)} onDone={() => { setPasteOpen(false); setTab('history'); window.scrollTo(0, 0); }} />
           : photosOpen ? <PhotosScreen photos={photos} body={body} today={date} onBack={() => setPhotosOpen(false)} />
-          : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} onBack={() => setProgramOpen(false)} />
-          : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} onBack={() => setExercise(null)} />
-          : tab === 'today' ? <TodayScreen store={store} settings={settings} programs={programs} body={body} date={date} onOpen={open} onOpenProgram={() => { setProgramOpen(true); window.scrollTo(0, 0); }} />
+          : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} onBack={() => setProgramOpen(false)} />
+          : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} onBack={() => setExercise(null)} />
+          : tab === 'today' ? <TodayScreen store={store} settings={settings} programs={programs} body={body} gyms={gyms} date={date} onOpen={open} onOpenProgram={() => { setProgramOpen(true); window.scrollTo(0, 0); }} />
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />

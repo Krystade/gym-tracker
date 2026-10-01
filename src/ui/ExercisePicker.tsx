@@ -4,13 +4,17 @@ import { normalizeName } from '../domain/ids';
 import { sameExercise } from '../domain/stats';
 import type { Suggestion } from '../domain/care';
 import { SwapSuggestions } from './SwapSuggestions';
+import { canDo, type Gym } from '../domain/equipment';
 
-export function ExercisePicker({ recent, onPick, onCancel, suggested = [] }: { recent: string[]; onPick: (name: string) => void; onCancel: () => void; suggested?: Suggestion[] }) {
+export function ExercisePicker({ recent, onPick, onCancel, suggested = [], gym = null }: { recent: string[]; onPick: (name: string) => void; onCancel: () => void; suggested?: Suggestion[]; gym?: Gym | null }) {
   const [q, setQ] = useState('');
   const query = normalizeName(q);
   const all = [...recent, ...CATALOG.filter((c) => !recent.some((r) => sameExercise(r, c)))];
   const matches = query ? all.filter((n) => n.toLowerCase().includes(query.toLowerCase())) : all;
   const exact = matches.some((n) => sameExercise(n, query));
+  // What the gym can't do goes last, under a divider; unknown gear stays in the main list.
+  const here = matches.filter((n) => canDo(gym, n) !== false), away = matches.filter((n) => canDo(gym, n) === false);
+  const item = (n: string) => <li key={n}><button onClick={() => onPick(n)}>{n}{recent.includes(n) && <span className="muted"> · logged</span>}</button></li>;
   return (
     <div className="picker">
       <div className="picker-head">
@@ -20,7 +24,9 @@ export function ExercisePicker({ recent, onPick, onCancel, suggested = [] }: { r
       {!query && <SwapSuggestions items={suggested} onPick={onPick} />}
       <ul className="picker-list">
         {query && !exact && <li><button className="primary" onClick={() => onPick(query)}>Add “{query}”</button></li>}
-        {matches.slice(0, 60).map((n) => <li key={n}><button onClick={() => onPick(n)}>{n}{recent.includes(n) && <span className="muted"> · logged</span>}</button></li>)}
+        {here.slice(0, 60).map(item)}
+        {gym && away.length > 0 && <li className="picker-divider muted small">Not at {gym.name}</li>}
+        {gym && away.slice(0, 30).map(item)}
       </ul>
     </div>
   );

@@ -6,6 +6,7 @@ import type { DayPlan, Program } from '../domain/program';
 import type { BodyDay } from '../domain/body';
 import type { PhotoMeta } from '../domain/photos';
 import type { SyncConfig } from '../domain/sync';
+import type { Gym } from '../domain/equipment';
 
 const STORE = 'sets';
 let dbp: Promise<IDBPDatabase> | null = null;
@@ -114,3 +115,10 @@ export async function getAliases(): Promise<Record<string, string>> {
   return x?.map ?? {};
 }
 export const putAliases = async (map: Record<string, string>): Promise<void> => { await (await db()).put('config', { key: 'aliases', map }); };
+
+/** Gyms and which one is active. Shared by everyone using this phone once profiles exist. */
+export async function getGyms(): Promise<{ gyms: Gym[]; active?: string }> {
+  const x: { gyms: Gym[]; active?: string } | undefined = await (await db()).get('config', 'gyms');
+  return { gyms: x?.gyms ?? [], active: x?.active };
+}
+export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void> => { await (await db()).put('config', { key: 'gyms', ...v }); };

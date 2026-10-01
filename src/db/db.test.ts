@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
+import { getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
 
@@ -193,5 +193,14 @@ describe('name mappings', () => {
     expect(await getAliases()).toEqual({});
     await putAliases({ 'cable pushdown': 'Cable Pushdown' });
     expect(await getAliases()).toEqual({ 'cable pushdown': 'Cable Pushdown' });
+  });
+});
+
+describe('gyms', () => {
+  it('round-trip with the active gym, and start empty', async () => {
+    expect(await getGyms()).toEqual({ gyms: [], active: undefined });
+    const g = { id: 'a', name: 'Home', equipment: ['dumbbells' as const], exclude: [], include: ['Zercher Squat'] };
+    await putGyms({ gyms: [g], active: 'a' });
+    expect(await getGyms()).toEqual({ gyms: [g], active: 'a' });
   });
 });
