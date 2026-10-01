@@ -7,6 +7,7 @@ import { useBody } from '../state/useBody';
 import { usePhotos } from '../state/usePhotos';
 import { useSync } from '../state/useSync';
 import { PhotosScreen } from './PhotosScreen';
+import { PasteScreen } from './PasteScreen';
 import { ProgramScreen } from './ProgramScreen';
 import { localDate } from '../domain/ids';
 import { TodayScreen } from './TodayScreen';
@@ -29,6 +30,7 @@ export default function App() {
   const sync = useSync(store, body);
   const [programOpen, setProgramOpen] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('today');
   const [exercise, setExercise] = useState<string | null>(null);
   const [date, setDate] = useState(() => localDate(new Date()));
@@ -44,6 +46,7 @@ export default function App() {
       {(store.error ?? programs.error ?? body.error ?? photos.error) && <div role="alert" className="banner">{store.error ?? programs.error ?? body.error ?? photos.error}</div>}
       <main className="screen">
         {store.loading ? <p className="muted">Loading…</p>
+          : pasteOpen ? <PasteScreen store={store} today={date} onBack={() => setPasteOpen(false)} onDone={() => { setPasteOpen(false); setTab('history'); window.scrollTo(0, 0); }} />
           : photosOpen ? <PhotosScreen photos={photos} body={body} today={date} onBack={() => setPhotosOpen(false)} />
           : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} onBack={() => setProgramOpen(false)} />
           : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} onBack={() => setExercise(null)} />
@@ -51,11 +54,11 @@ export default function App() {
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />
-          : <DataScreen store={store} profile={profile} body={body} sync={sync} />}
+          : <DataScreen store={store} profile={profile} body={body} sync={sync} onOpenPaste={() => { setPasteOpen(true); window.scrollTo(0, 0); }} />}
       </main>
       <nav className="tabs" aria-label="Sections">
         {TABS.map(([t, label]) => (
-          <button key={t} aria-current={tab === t && !exercise && !programOpen && !photosOpen ? 'page' : undefined} onClick={() => { setTab(t); setExercise(null); setProgramOpen(false); setPhotosOpen(false); }}>{label}</button>
+          <button key={t} aria-current={tab === t && !exercise && !programOpen && !photosOpen && !pasteOpen ? 'page' : undefined} onClick={() => { setTab(t); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); }}>{label}</button>
         ))}
       </nav>
     </div>

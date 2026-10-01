@@ -15,7 +15,7 @@ import { plural } from '../domain/format';
 
 const KIND: Partial<Record<CsvKind, string>> = { body: 'Body data', 'mfp-weight': 'MyFitnessPal weight', 'mfp-nutrition': 'MyFitnessPal nutrition' };
 
-export function DataScreen({ store, profile, body, sync }: { store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore }) {
+export function DataScreen({ store, profile, body, sync, onOpenPaste }: { store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; onOpenPaste: () => void }) {
   const [bodyMsgs, setBodyMsgs] = useState<{ ok: boolean; text: string }[]>([]);
   const [result, setResult] = useState<{ added: number; updated: number; errors: CsvError[] } | null>(null);
   const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -86,7 +86,8 @@ export function DataScreen({ store, profile, body, sync }: { store: SetsStore; p
         <label className="button primary wide">Import CSV
           <input type="file" multiple accept=".csv,.json,text/csv,application/json" hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; if (fs.length) void onFiles(fs); }} />
         </label>
-        <p className="muted small">History CSV, a priority profile .json, body.csv, or MyFitnessPal’s export (unzip it in Files, then pick Measurement-Summary and Nutrition-Summary together).</p>
+        <button className="wide" onClick={onOpenPaste}>Paste from notes</button>
+        <p className="muted small">History CSV, a name-mappings or priority profile .json, body.csv, or MyFitnessPal’s export (unzip it in Files, then pick Measurement-Summary and Nutrition-Summary together).</p>
         {bodyMsgs.map((m) => <p key={m.text} role="status" className={m.ok ? '' : 'warn'}>{m.text}</p>)}
         {profileMsg && <p role="status" className={profileMsg.ok ? '' : 'warn'}>{profileMsg.text}</p>}
         {result && (

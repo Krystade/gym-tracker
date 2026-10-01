@@ -207,3 +207,28 @@ h3 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600;
 .sync-form input { min-height: 44px; }
 .sync-form ol { padding-left: 18px; margin: 6px 0; }
 .sync-saved { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; overflow-wrap: anywhere; }
+
+/* Paste from notes */
+.paste-label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: 16px; line-height: 1.4; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
+.paste-help summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.paste-help pre { font-size: 13px; white-space: pre-wrap; background: var(--surface-2); padding: 8px; border-radius: 8px; overflow-wrap: anywhere; }
+.paste-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+.paste-date { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.paste-date h2 { font-size: 16px; margin: 0; }
+.paste-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.paste-line.dim { opacity: 0.55; }
+.paste-line.bad { border-color: var(--warn); }
+.paste-line.editing { border-color: var(--accent); }
+.paste-line.editing input { flex: 1 1 100%; font-size: 16px; min-height: 44px; }
+.paste-raw { flex: 1 1 100%; overflow-wrap: anywhere; }
+.paste-name { flex: 1 1 100%; font-size: 16px; min-height: 44px; font-weight: 600; }
+.paste-sets { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 100%; }
+.paste-set { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; font-weight: 600; background: var(--surface-2); border-radius: 8px; padding: 4px 8px; }
+.paste-set .tag { font-style: normal; }
+.paste-preview { flex: 1 1 100%; }
+.paste-existing { flex: 1 1 100%; display: flex; align-items: center; gap: 8px; min-height: 44px; color: var(--warn); }
+.paste-existing input { width: 22px; height: 22px; }
+.paste-actions { margin-left: auto; display: flex; gap: 6px; }
+.mini { min-height: 44px; padding: 0 12px; font-size: 14px; }
+.paste-footer { position: sticky; bottom: calc(var(--sab) + 64px); padding: 8px 0; background: linear-gradient(transparent, var(--bg) 30%); }
