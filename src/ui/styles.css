@@ -247,3 +247,4 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: 16px;
 .share-row span { flex: 1; }
 .picker-divider { padding: 8px 4px 0; }
 .prog-name .tag { align-self: flex-start; width: max-content; }
+.paste-notes { flex: 1 1 100%; overflow-wrap: anywhere; }

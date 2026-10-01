@@ -48,3 +48,15 @@ test('paste from notes: review, fix a line, map a name, add once', async ({ page
   await page.getByRole('button', { name: /Barbell Squat/ }).click();
   await expect(page.getByText('135 × 5').first()).toBeVisible();
 });
+
+test('paste review shows every date a set lands on, and the notes it read', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await page.getByRole('button', { name: 'Paste from notes' }).click();
+  await page.getByLabel('Workout notes').fill('9/28/26\nBench: 135x8 felt heavy\n9/29/26 Row 100x10\nCurl 30x10');
+  await page.getByRole('button', { name: 'Read notes' }).click();
+  await expect(page.getByRole('heading', { name: /Sep 28, 2026/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Sep 29, 2026/ })).toBeVisible();
+  await expect(page.getByText('felt heavy')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add 3 sets from 2 days' })).toBeVisible();
+});

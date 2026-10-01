@@ -130,6 +130,9 @@ export function PasteScreen({ store, today, onBack, onDone }: { store: SetsStore
             <span key={i} className="paste-set">{chip(s)}{s.flags.filter((f) => BADGE[f]).map((f) => <i key={f} className="tag">{BADGE[f]}</i>)}{s.rir != null && <i className="tag">RIR {s.rir}</i>}</span>
           ))}
         </span>
+        {l.sets!.some((s) => s.note) && (
+          <span className="paste-notes muted small">{l.sets!.map((s, i) => (s.note ? `Set ${i + 1}: ${s.note}` : null)).filter(Boolean).join(' · ')}</span>
+        )}
         {group && (
           <label className="paste-existing small">
             <input type="checkbox" checked={include.has(group.key)} onChange={(e) => setInclude((s) => { const n = new Set(s); if (e.target.checked) n.add(group.key); else n.delete(group.key); return n; })} />
@@ -148,7 +151,17 @@ export function PasteScreen({ store, today, onBack, onDone }: { store: SetsStore
       <h1>Check before adding</h1>
       <p className="muted small">Tap a name to change it (remembered next time). Edit a line to fix it; Ignore leaves it out.{unparsed > 0 && <b className="warn"> {plural(unparsed, 'line')} couldn’t be read.</b>}</p>
       <datalist id="known-exercises">{known.map((k) => <option key={k} value={k} />)}</datalist>
-      <ul className="paste-list">{lines.map(row)}</ul>
+      <ul className="paste-list">{(() => {
+        // A header wherever the date changes, not only on date lines: "9/29 Row 100x10" moves everything after it.
+        let shown: string | null = null;
+        return lines.flatMap((l) => {
+          if (l.kind === 'blank') return [];
+          if (l.kind === 'date') { shown = l.date; return [row(l)]; }
+          const head = l.date !== shown ? <li key={`d${l.index}`} className="paste-date"><h2>{fmtDate(l.date)}</h2></li> : null;
+          shown = l.date;
+          return head ? [head, row(l)] : [row(l)];
+        });
+      })()}</ul>
       <div className="paste-footer">
         <button className="primary wide" disabled={busy || badName || built.entries.length === 0} onClick={() => void add()}>
           {built.entries.length ? `Add ${plural(built.entries.length, 'set')} from ${plural(days, 'day')}` : 'Nothing to add'}

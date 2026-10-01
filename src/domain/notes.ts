@@ -8,6 +8,10 @@ export interface NoteSet { weight: number; reps: number | null; flags: Flag[]; n
 
 // weight×reps[×sets]: "-" = assisted, "bw" = bodyweight, "45s" = a pair of 45s, "40s" after reps = seconds, "?" = unsure.
 const SET_RE = /(?<![\w.:])(-)?(bw|\d+(?:\.\d+)?)(s)?\s*[x×*]\s*(\d+)?(s)?(?:\s*[x×*]\s*(\d+)(?!\s*s\b))?(\?)?(?![\w.])/gi;
+// "3x10 @ 135": sets × reps at a weight.
+const AT_RE = /(?<![\w.])(\d{1,2})\s*[x×*]\s*(\d{1,3})\s*@\s*(\d{2,}(?:\.\d+)?)\s*(?:lbs?\b)?/gi; // "@2" alone is RIR, so a weight has 2+ digits
+// ", 8, 7" or "/8/7" right after a set: more sets at that weight (not RIR, seconds or another weight×reps).
+const MORE_RE = /^\s*[,/]\s*(\d{1,3})(?![\d.]|\s*[x×*]|\s*(?:rir|rpe|s\b|secs?\b|min|lbs?\b|kg|%|sets?\b|reps?\b))/i;
 // Hold exercises also take a bare duration: "45s", "30 sec", "1:05".
 const HOLD_RE = /(?<![\w.:])(?:(\d+)\s*(?:s|secs?|seconds)\b|(\d+):([0-5]\d)(?!\d))/gi;
 
@@ -27,7 +31,13 @@ interface Token { start: number; end: number; sets: NoteSet[] }
 
 function tokens(text: string, hold: boolean): Token[] {
   const out: Token[] = [];
+  for (const m of text.matchAll(AT_RE)) {
+    const n = Number(m[1]), reps = Number(m[2]), weight = Number(m[3]);
+    const flags: Flag[] = [...(hold ? ['hold' as const] : []), ...(weight === 0 ? ['bodyweight' as const] : [])];
+    out.push({ start: m.index, end: m.index + m[0].length, sets: Array.from({ length: Math.max(1, n) }, () => ({ weight, reps, flags: [...flags] })) });
+  }
   for (const m of text.matchAll(SET_RE)) {
+    if (out.some((t) => m.index < t.end && m.index + m[0].length > t.start)) continue;
     const [, minus, w, , repsRaw, secs, count, unsure] = m;
     const assisted = !!minus;
     const weight = assisted || /^bw$/i.test(w) ? 0 : Number(w);
@@ -38,7 +48,15 @@ function tokens(text: string, hold: boolean): Token[] {
     if (reps == null) flags.push('partial');
     if (unsure) flags.push('unsure');
     const one = (): NoteSet => ({ weight, reps, flags: [...flags], ...(assisted && { note: `assisted -${w} lb` }) });
-    out.push({ start: m.index, end: m.index + m[0].length, sets: Array.from({ length: count ? Math.max(1, Number(count)) : 1 }, one) });
+    const sets = Array.from({ length: count ? Math.max(1, Number(count)) : 1 }, one);
+    let end = m.index + m[0].length;
+    if (reps != null && !count) {
+      for (let more = MORE_RE.exec(text.slice(end)); more; more = MORE_RE.exec(text.slice(end))) {
+        sets.push({ ...one(), reps: Number(more[1]) });
+        end += more[0].length;
+      }
+    }
+    out.push({ start: m.index, end, sets });
   }
   if (hold) {
     for (const m of text.matchAll(HOLD_RE)) {
@@ -83,10 +101,13 @@ export function readSets(text: string, hold: boolean): { lead: string; sets: Not
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+// Real spellings only, so "Decline" or "Marching" never read as a month.
+const MONTH_WORD = String.raw`(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?(?![a-z])`;
 const WEEKDAY = String.raw`(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+)?`;
-const NUMERIC = new RegExp(String.raw`^${WEEKDAY}(?:(\d{4})-(\d{1,2})-(\d{1,2})|(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2}|\d{4}))?)(?![\d/x×*.])`, 'i');
-const MONTH_FIRST = new RegExp(String.raw`^${WEEKDAY}(${MONTHS.join('|')})[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?`, 'i');
-const DAY_FIRST = new RegExp(String.raw`^${WEEKDAY}(\d{1,2})(?:st|nd|rd|th)?\s+(${MONTHS.join('|')})[a-z]*\.?(?:,?\s+(\d{4}))?(?![\w])`, 'i');
+// A dashed date needs its year: "8-10" is a rep range, "12-10-8" a rep scheme.
+const NUMERIC = new RegExp(String.raw`^${WEEKDAY}(?:(\d{4})-(\d{1,2})-(\d{1,2})|(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?|(\d{1,2})-(\d{1,2})-(\d{2}|\d{4}))(?![\d/x×*.\-])`, 'i');
+const MONTH_FIRST = new RegExp(String.raw`^${WEEKDAY}${MONTH_WORD}\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?`, 'i');
+const DAY_FIRST = new RegExp(String.raw`^${WEEKDAY}(\d{1,2})(?:st|nd|rd|th)?\s+${MONTH_WORD}(?:,?\s+(\d{4}))?(?![\w])`, 'i');
 
 function validDate(y: number, m: number, d: number): string | null {
   const dt = new Date(Date.UTC(y, m - 1, d));
@@ -102,7 +123,10 @@ export function parseNoteDate(text: string, today: string): { date: string; rest
   if (m) {
     len = m[0].length;
     if (m[1]) { y = Number(m[1]); mo = Number(m[2]); d = Number(m[3]); }
-    else { mo = Number(m[4]); d = Number(m[5]); if (m[6]) y = m[6].length === 2 ? 2000 + Number(m[6]) : Number(m[6]); }
+    else {
+      const [mm, dd, yy] = m[4] ? [m[4], m[5], m[6]] : [m[7], m[8], m[9]];
+      mo = Number(mm); d = Number(dd); if (yy) y = yy.length === 2 ? 2000 + Number(yy) : Number(yy);
+    }
   } else if ((m = MONTH_FIRST.exec(t))) {
     len = m[0].length; mo = MONTHS.indexOf(m[1].slice(0, 3).toLowerCase()) + 1; d = Number(m[2]); if (m[3]) y = Number(m[3]);
   } else if ((m = DAY_FIRST.exec(t))) {
@@ -165,22 +189,29 @@ export function parseNotes(text: string, today: string, isHold: (name: string) =
   let current: string | undefined; // the exercise a bare "80x10" line continues
   const out: NoteLine[] = [];
   text.split(/\r?\n/).forEach((raw, index) => {
-    let line = raw.trim();
+    // List markers from Notes: "• ", "- ", "☐ ", "1. ", "2) ".
+    let line = raw.trim().replace(/^(?:[-*•◦▪☐☑✓✔]|\d{1,2}[.)])\s+/, '');
     const push = (l: Omit<NoteLine, 'index' | 'raw' | 'date'>) => out.push({ index, raw, date, ...l });
     if (!line) { push({ kind: 'blank' }); return; }
     const d = parseNoteDate(line, today);
     if (d) {
-      date = d.date; current = undefined;
-      if (!d.rest || !/\d/.test(d.rest)) { push({ kind: 'date' }); return; }
-      line = d.rest; // "9/30 Smith squat 135x8": a date and a sets line in one
+      if (!d.rest || !/\d/.test(d.rest)) { date = d.date; current = undefined; push({ kind: 'date' }); return; }
+      // "9/30 Smith squat 135x8": a date and a sets line in one — but only if the rest really is sets.
+      const after = splitName(d.rest);
+      if (/[a-z]/i.test(after.name) && readSets(after.rest, false).sets.length) { date = d.date; current = undefined; line = d.rest; }
     }
-    const { name: rawName, rest, sep } = splitName(line);
+    const split = splitName(line);
+    const { rest, sep } = split;
+    // "Bench (WU) 95x10…": the marker belongs to the first set, not the name.
+    const warmName = !WARMUP_ONLY.test(split.name) && split.name.search(WARMUP_RE) > 0;
+    const rawName = warmName ? tidy(split.name.replace(WARMUP_RE, ' ').replace(/\s+/g, ' ')) : split.name;
     if (SKIP_RE.test(rest) || (!sep && /\s(?:skip|skipped)$/i.test(line))) { push({ kind: 'skip', name: rawName.replace(/\s+(?:skip|skipped)$/i, '') }); current = undefined; return; }
     if (!sep && !/\d/.test(line)) { push({ kind: 'heading', name: line }); current = line; return; }
     const continuation = !/[a-z]/i.test(rawName) || WARMUP_ONLY.test(rawName);
     const name = continuation ? current : rawName;
     const body = continuation ? `${rawName} ${rest}`.trim() : rest;
     const r = readSets(body, name ? isHold(name) : false);
+    if (warmName && r.sets[0] && !r.sets[0].flags.includes('warmup')) r.sets[0].flags.push('warmup');
     if (!name || !r.sets.length) {
       push({ kind: 'unparsed', name, reason: name ? 'No sets found — write them like 85x10' : 'No exercise name — put it before the sets, like "Curl: 30x10"' });
       return;
@@ -222,10 +253,12 @@ export function toEntries(lines: NoteLine[], resolve: (name: string) => string, 
   const entries: SetEntry[] = [];
   for (const g of groups.values()) {
     if (g.existing && !opts.include.has(g.key)) continue;
+    // "Add anyway" adds: its sets come after the ones already logged that day, so none is overwritten.
+    const after = g.existing ? Math.max(0, ...existing.filter((e) => e.date === g.date && sameExercise(e.exercise, g.exercise)).map((e) => e.setNo)) : 0;
     g.sets_.forEach(({ line, s }, i) => {
       const flags = [...s.flags];
       if (doublePulley.has(nameKey(g.exercise)) && !flags.includes('double_pulley')) flags.push('double_pulley');
-      const setNo = i + 1;
+      const setNo = after + i + 1;
       entries.push({
         id: setId('notes', g.date, g.exercise, setNo), date: g.date, seq: line.index * 100 + i, exercise: g.exercise, setNo,
         weight: s.weight, reps: s.reps, flags, source: 'notes',

@@ -190,3 +190,54 @@ describe('parseAliasesJson', () => {
     expect(parseAliasesJson('not json')).toBeNull();
   });
 });
+
+describe('Phase 9 review fixes', () => {
+  const dates = (text: string) => parseNotes(text, TODAY, () => false).filter((l) => l.kind === 'sets').map((l) => [l.name, l.date]);
+  it('doesn’t read exercise names, rep schemes or ranges as dates', () => {
+    expect(dates('9/28\nDecline 20 x 10\nCurl 30x10')).toEqual([['Decline', '2026-09-28'], ['Curl', '2026-09-28']]);
+    expect(dates('9/28\n12-10-8\nCurl 30x10')).toEqual([['Curl', '2026-09-28']]);
+    expect(parseNotes('9/28\n8-10 reps\nMarching 10 min', TODAY, () => false).map((l) => l.kind)).toEqual(['date', 'unparsed', 'unparsed']);
+    expect(parseNoteDate('March 3', TODAY)?.date).toBe('2026-03-03');
+    expect(parseNoteDate('Sept 3', TODAY)?.date).toBe('2026-09-03');
+  });
+  it('keeps a date-and-sets line on its date', () => {
+    expect(dates('9/28\n9/29 Bench 135x8\nCurl 30x10')).toEqual([['Bench', '2026-09-29'], ['Curl', '2026-09-29']]);
+  });
+  it('numbers "add anyway" sets after the ones already logged', () => {
+    const lines = parseNotes('9/28\nBench: 155x5', TODAY, () => false);
+    const existing = [1, 2].map((n): SetEntry => ({ id: setId('notes', '2026-09-28', 'Bench', n), date: '2026-09-28', seq: n, exercise: 'Bench', setNo: n, weight: 135, reps: 8, flags: [], source: 'notes' }));
+    const key = toEntries(lines, (n) => n, { ignored: new Set(), include: new Set() }, existing).groups[0].key;
+    const { entries } = toEntries(lines, (n) => n, { ignored: new Set(), include: new Set([key]) }, existing);
+    expect(entries.map((e) => e.setNo)).toEqual([3]);
+    expect(existing.map((e) => e.id)).not.toContain(entries[0].id);
+  });
+  it('reads repeated reps after a set as more sets at that weight', () => {
+    expect(brief('135 x 8, 8, 7')).toEqual([[135, 8, ''], [135, 8, ''], [135, 7, '']]);
+    expect(brief('135 x 8/8/7')).toEqual([[135, 8, ''], [135, 8, ''], [135, 7, '']]);
+    expect(readSets('100x12, 2 rir', false).sets.map((s) => [s.reps, s.rir])).toEqual([[12, 2]]);
+    expect(brief('60x12, 60x10')).toEqual([[60, 12, ''], [60, 10, '']]);
+  });
+  it('reads sets×reps @ weight', () => {
+    expect(brief('3x10 @ 135')).toEqual([[135, 10, ''], [135, 10, ''], [135, 10, '']]);
+    expect(brief('2 x 5 @225lbs')).toEqual([[225, 5, ''], [225, 5, '']]);
+  });
+  it('strips list markers before the name', () => {
+    expect(dates('9/28\nSquat 225x5\n•\tBench 135x8\n1. Row 100x10\n2) Curl 30x10\n- Dips 0x10')).toEqual([
+      ['Squat', '2026-09-28'], ['Bench', '2026-09-28'], ['Row', '2026-09-28'], ['Curl', '2026-09-28'], ['Dips', '2026-09-28'],
+    ]);
+  });
+  it('takes a warm-up marker out of the name and flags the first set', () => {
+    for (const t of ['Bench (WU) 95x10, 135x8', 'Bench warm up 95x10 135x8']) {
+      const [l] = parseNotes(t, TODAY, () => false);
+      expect(l.name).toBe('Bench');
+      expect(l.sets!.map((s) => s.flags.includes('warmup'))).toEqual([true, false]);
+    }
+  });
+});
+
+describe('Phase 9 review fixes: neighbours', () => {
+  it('keeps "@2" as RIR and "3 sets" as words', () => {
+    expect(readSets('35x10 @2', false).sets.map((s) => [s.weight, s.reps, s.rir])).toEqual([[35, 10, 2]]);
+    expect(brief('225x5, 3 sets')).toEqual([[225, 5, '']]);
+  });
+});
