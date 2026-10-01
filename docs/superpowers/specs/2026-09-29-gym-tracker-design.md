@@ -158,6 +158,27 @@ the public repo.
 8. **Private sync.** Optional push/pull of the standard CSV to `gym-data` via a
    fine-grained token the user pastes in; replaces manual export as the backup.
 
+9. **Paste from notes.** Paste a free-text workout log straight from the
+   Notes app (date lines, then `Exercise: 85x11 70x12 note…` lines). Every
+   line is shown parsed before anything is saved; a line that doesn't parse,
+   or parses wrongly, is fixed by editing its text in place, and an
+   unrecognised exercise name is mapped once to a known one (remembered on the
+   device). Days already in the log are flagged and left out by default.
+10. **Gym inventory & a better builder.** Each gym lists the equipment it has
+    (plus per-exercise exclusions and additions, e.g. lifts you know that need
+    nothing listed); the builder and swap suggestions only use what the active
+    gym can do. Priority 3–4 muscles together get a capped share of weekly
+    sets (default 20 %), so the plan is spent on what you prioritised.
+11. **Profiles.** Several people on one phone (e.g. a training partner) with a
+    one-tap switch. Each profile has its own log, priorities, program, body
+    weight and photos; gyms are shared. Private backup goes to the same repo,
+    each extra profile under its own folder.
+
+**Wishlist (not scheduled):** a friends list showing other people's activity.
+It needs a shared server or a shared repo, which conflicts with the
+on-device privacy model — designed only after profiles exist, and opt-in per
+person.
+
 Each phase gets its own plan; this spec is refined at the start of each.
 
 ## Error handling
