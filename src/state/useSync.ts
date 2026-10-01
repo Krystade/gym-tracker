@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { deleteSyncConfig, getSyncConfig, getTombstones, MAIN, putSyncConfig, type Person } from '../db/db';
+import { deleteSyncConfig, getSyncConfig, MAIN, putSyncConfig, type Person } from '../db/db';
+import { useDb } from './profileDb';
 import { pathsFor, repoClient, sync, SyncError, type SyncConfig } from '../domain/sync';
 import type { SetsStore } from './useSets';
 import type { BodyStore } from './useBody';
@@ -8,6 +9,7 @@ export type SyncStatus = { kind: 'idle' } | { kind: 'running' } | { kind: 'done'
 
 /** The repo and token are shared; where in the repo this profile's files go depends on `person`. */
 export function useSync(store: SetsStore, body: BodyStore, person: Person) {
+  const db = useDb();
   const [config, setConfig] = useState<SyncConfig | null>(null);
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
   useEffect(() => { void getSyncConfig().then((c) => setConfig(c ?? null)).catch(() => setConfig(null)); }, []);
@@ -23,7 +25,7 @@ export function useSync(store: SetsStore, body: BodyStore, person: Person) {
     setStatus({ kind: 'running' });
     try {
       const r = await sync({
-        client: repoClient(config, (u, i) => fetch(u, i)), sets: store.entries, body: body.days, deleted: await getTombstones(),
+        client: repoClient(config, (u, i) => fetch(u, i)), sets: store.entries, body: body.days, deleted: await db.getTombstones(),
         importSets: (e) => store.importEntries(e), importBody: (d) => body.importDays(d), now: new Date(),
         paths: pathsFor(person.id === MAIN ? null : person.slug),
       });

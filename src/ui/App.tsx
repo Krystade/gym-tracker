@@ -10,6 +10,7 @@ import { useGyms, type GymsStore } from '../state/useGyms';
 import { usePeople, type PeopleStore } from '../state/usePeople';
 import type { Person } from '../db/db';
 import { ProfileBar } from './ProfileBar';
+import { ProfileDbProvider } from '../state/profileDb';
 import { PhotosScreen } from './PhotosScreen';
 import { PasteScreen } from './PasteScreen';
 import { ProgramScreen } from './ProgramScreen';
@@ -49,7 +50,9 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
 
   return (
     <div className="app">
-      <PersonScreens key={people.active!.id} person={people.active!} people={people} gyms={gyms} nav={nav} />
+      <ProfileDbProvider key={people.active!.id} id={people.active!.id}>
+        <PersonScreens person={people.active!} people={people} gyms={gyms} nav={nav} />
+      </ProfileDbProvider>
       <nav className="tabs" aria-label="Sections">
         {TABS.map(([t, label]) => (
           <button key={t} aria-current={tab === t && !exercise && !programOpen && !photosOpen && !pasteOpen ? 'page' : undefined} onClick={() => { setTab(t); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); }}>{label}</button>

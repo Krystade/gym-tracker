@@ -61,3 +61,38 @@ test('private backup: save settings, sync through a mocked GitHub, token stays h
   await expect(card.getByRole('status')).toContainText('GitHub rejected the token');
   expect(await page.content()).not.toContain(TOKEN);
 });
+
+test('switching profile while a sync is pulling keeps what it pulled with the person who started it', async ({ page }) => {
+  const files = new Map<string, string>([['history.csv', HISTORY]]);
+  let release!: () => void;
+  const held = new Promise<void>((r) => { release = r; });
+  let holding = true;
+  await page.route('https://api.github.com/**', async (route) => {
+    const req = route.request();
+    const p = decodeURIComponent(new URL(req.url()).pathname.replace(/^\/repos\/someone\/backup\/contents\//, ''));
+    if (req.method() === 'GET') {
+      if (p === 'app/body.csv' && holding) await held; // the last read before the import
+      const f = files.get(p);
+      return f ? route.fulfill({ json: { encoding: 'base64', content: Buffer.from(f).toString('base64'), sha: 'x' } }) : route.fulfill({ status: 404, json: {} });
+    }
+    return route.fulfill({ status: 201, json: {} });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
+  await page.getByRole('button', { name: 'Add Sam' }).click();
+  const bar = page.getByRole('group', { name: 'Who’s training' });
+  await bar.getByRole('button', { name: /Me/ }).click();
+  const card = page.getByRole('region', { name: 'Private backup' });
+  await card.getByRole('textbox', { name: 'Repository' }).fill('someone/backup');
+  await card.getByLabel('Access token').fill(TOKEN);
+  await card.getByRole('button', { name: 'Save' }).click();
+  await card.getByRole('button', { name: 'Sync now' }).click();
+  await bar.getByRole('button', { name: /Sam/ }).click();
+  await expect(bar.getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  holding = false; release();
+  await page.waitForTimeout(500);
+  await expect(page.getByText(/^0 sets/)).toBeVisible();
+  await bar.getByRole('button', { name: /Me/ }).click();
+  await expect(page.getByText(/^6 sets/)).toBeVisible();
+});

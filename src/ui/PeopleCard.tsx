@@ -13,7 +13,7 @@ export function PeopleCard({ people }: { people: PeopleStore }) {
   const [confirm, setConfirm] = useState('');
   const folder = slug ?? toSlug(name);
   const taken = people.people.map((p) => p.slug);
-  const err = name.trim() ? slugError(folder, taken) : null;
+  const err = name.trim() ? slugError(folder, taken, people.retired) : null;
   const target = people.people.find((p) => p.id === deleting);
 
   return (

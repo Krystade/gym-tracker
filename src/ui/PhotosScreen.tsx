@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getPhotoBlob } from '../db/db';
+import { useDb } from '../state/profileDb';
 import { comparePair, fitSize, photoDate, photoId, POSES, timeline, weightNear, type PhotoMeta, type Pose } from '../domain/photos';
 import { localDate } from '../domain/ids';
 import { trend } from '../domain/body';
@@ -12,11 +12,12 @@ const alt = (m: { pose: Pose; date: string }) => `${cap(m.pose)}, ${m.date}`;
 
 /** An object URL for a stored image, revoked when the view goes away or the photo changes. */
 function useBlobUrl(id: string | null, kind: 'full' | 'thumb', version: number): string | null {
+  const db = useDb();
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!id) { setUrl(null); return; }
     let u: string | null = null, live = true;
-    void getPhotoBlob(id, kind).then((b) => { if (live && b) { u = URL.createObjectURL(b); setUrl(u); } });
+    void db.getPhotoBlob(id, kind).then((b) => { if (live && b) { u = URL.createObjectURL(b); setUrl(u); } });
     return () => { live = false; if (u) URL.revokeObjectURL(u); };
   }, [id, kind, version]);
   return url;
@@ -42,6 +43,7 @@ function encode(img: HTMLImageElement, max: number): Promise<{ blob: Blob; width
 }
 
 export function PhotosScreen({ photos, body, today, onBack }: { photos: PhotosStore; body: BodyStore; today: string; onBack: () => void }) {
+  const db = useDb();
   const [pose, setPose] = useState<Pose>('front');
   const [date, setDate] = useState(today);
   const [busy, setBusy] = useState(false);
@@ -54,7 +56,7 @@ export function PhotosScreen({ photos, body, today, onBack }: { photos: PhotosSt
     setShareFile(null);
     if (!open) return;
     let live = true;
-    void getPhotoBlob(open.id, 'full').then((b) => { if (live && b) setShareFile(new File([b], `progress-${open.date}-${open.pose}.jpg`, { type: 'image/jpeg' })); });
+    void db.getPhotoBlob(open.id, 'full').then((b) => { if (live && b) setShareFile(new File([b], `progress-${open.date}-${open.pose}.jpg`, { type: 'image/jpeg' })); });
     return () => { live = false; };
   }, [open, photos.version]);
   const points = trend(body.days);

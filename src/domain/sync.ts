@@ -74,11 +74,12 @@ export interface SyncPaths { sets: string; body: string; history?: string }
 /** The first profile keeps app/ and reads history.csv (its imported notes); every other profile has its own folder and no history. */
 export const pathsFor = (slug: string | null): SyncPaths =>
   slug == null ? { sets: 'app/sets.csv', body: 'app/body.csv', history: 'history.csv' } : { sets: `profiles/${slug}/sets.csv`, body: `profiles/${slug}/body.csv` };
-/** Why a profile's backup folder name can't be used, or null. `taken`: the other profiles' slugs. */
-export function slugError(slug: string, taken: string[]): string | null {
+/** Why a profile's backup folder name can't be used, or null. `taken`: the other profiles' slugs; `retired`: deleted profiles', whose files stay in the repo. */
+export function slugError(slug: string, taken: string[], retired: string[] = []): string | null {
   if (!/^[a-z0-9-]{1,30}$/.test(slug)) return 'Use 1–30 lower-case letters, digits or dashes.';
   if (['app', 'profiles'].includes(slug)) return `“${slug}” is used by the backup itself.`;
   if (taken.includes(slug)) return 'Another profile already uses that folder.';
+  if (retired.includes(slug)) return `profiles/${slug}/ still holds an old backup from a deleted profile — pick another folder.`;
   return null;
 }
 

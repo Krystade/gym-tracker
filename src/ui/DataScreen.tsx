@@ -9,7 +9,7 @@ import type { PeopleStore } from '../state/usePeople';
 import { parseBodyFile, toBodyCsv, type CsvKind } from '../domain/body';
 import { parseProfileJson } from '../domain/profile';
 import { parseAliasesJson } from '../domain/notes';
-import { getAliases, putAliases } from '../db/db';
+import { useDb } from '../state/profileDb';
 import { parseCsv, toCsv, type CsvError } from '../domain/csv';
 import { exerciseNames, sessionsByDate } from '../domain/stats';
 import { localDate } from '../domain/ids';
@@ -18,6 +18,7 @@ import { plural } from '../domain/format';
 const KIND: Partial<Record<CsvKind, string>> = { body: 'Body data', 'mfp-weight': 'MyFitnessPal weight', 'mfp-nutrition': 'MyFitnessPal nutrition' };
 
 export function DataScreen({ store, profile, body, sync, people, onOpenPaste }: { store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; people: PeopleStore; onOpenPaste: () => void }) {
+  const db = useDb();
   const [bodyMsgs, setBodyMsgs] = useState<{ ok: boolean; text: string }[]>([]);
   const [result, setResult] = useState<{ added: number; updated: number; errors: CsvError[] } | null>(null);
   const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -36,7 +37,7 @@ export function DataScreen({ store, profile, body, sync, people, onOpenPaste }: 
     if (/\.json$/i.test(file.name)) {
       const al = parseAliasesJson(text);
       if (al) {
-        try { await putAliases({ ...(await getAliases()), ...al.aliases }); } catch (e) { setProfileMsg({ ok: false, text: `Saving the name mappings failed: ${String(e)}` }); return; }
+        try { await db.putAliases({ ...(await db.getAliases()), ...al.aliases }); } catch (e) { setProfileMsg({ ok: false, text: `Saving the name mappings failed: ${String(e)}` }); return; }
         setProfileMsg({ ok: true, text: `Name mappings imported: ${Object.keys(al.aliases).length}${al.skipped ? ` (${al.skipped} skipped)` : ''}` });
         return;
       }

@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { deletePersonData, getAllSets, getGyms, getPeople, getPhotoMetas, getSyncConfig, MAIN, putPeople, putPhoto, putSet, putSyncConfig, resetDbForTests, setProfileDb } from './db';
+import { boundDb, deletePersonData, getAllSets, getGyms, getPeople, getPhotoMetas, getSyncConfig, MAIN, putPeople, putPhoto, putSet, putSyncConfig, resetDbForTests, setProfileDb } from './db';
 import { parseCsv } from '../domain/csv';
 
 const CSV = 'date,exercise,set,weight_lb,reps,note,source\n2026-01-05,Cable Curl,1,52.5,12,,s\n';
@@ -24,7 +24,7 @@ async function oldPhone() {
 describe('profiles', () => {
   it('starts with one profile on the existing database, and a second profile starts empty', async () => {
     await oldPhone();
-    expect(await getPeople()).toEqual({ people: [{ id: MAIN, name: 'Me', slug: 'me' }], active: MAIN });
+    expect(await getPeople()).toEqual({ people: [{ id: MAIN, name: 'Me', slug: 'me' }], active: MAIN, retired: [] });
     expect(await getAllSets()).toHaveLength(1);
     await putPeople([{ id: MAIN, name: 'Me', slug: 'me' }, { id: 'b', name: 'Sam', slug: 'sam' }], 'b');
     setProfileDb('b');
@@ -72,5 +72,21 @@ describe('profiles', () => {
     setProfileDb(MAIN);
     expect(await getAllSets()).toHaveLength(1);
     await expect(deletePersonData(MAIN)).rejects.toThrow();
+  });
+});
+
+describe('Phase 11 review fixes', () => {
+  it('pins a profile’s calls to it even when they start after a switch (a sync pulling, a photo encoding)', async () => {
+    const a = boundDb(MAIN);
+    expect(boundDb(MAIN)).toBe(a); // stable, so hooks can depend on it
+    setProfileDb('b');
+    await a.putMany([SET]);
+    await a.addTombstone('x');
+    await a.putPhoto({ id: 'p1', date: '2026-01-05', pose: 'front' } as never, new Blob(['x']), new Blob(['y']));
+    expect(await getAllSets()).toEqual([]);
+    expect(await getPhotoMetas()).toEqual([]);
+    expect(await boundDb('b').getTombstones()).toEqual(new Set());
+    expect(await a.getAllSets()).toHaveLength(1);
+    expect(await a.getTombstones()).toEqual(new Set(['x']));
   });
 });

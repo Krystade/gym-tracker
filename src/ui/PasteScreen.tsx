@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
-import { getAliases, putAliases } from '../db/db';
+import { useDb } from '../state/profileDb';
 import { CATALOG } from '../domain/catalog';
 import { isHold } from '../domain/care';
 import { fmtDate, fmtWeight, plural } from '../domain/format';
@@ -22,6 +22,7 @@ const chip = (s: NoteSet): string =>
 const BADGE: Partial<Record<string, string>> = { warmup: 'warm-up', pain: 'pain', unsure: '?', partial: 'partial', double_pulley: '2×pulley' };
 
 export function PasteScreen({ store, today, onBack, onDone }: { store: SetsStore; today: string; onBack: () => void; onDone: () => void }) {
+  const db = useDb();
   const [text, setText] = useState('');
   const [raws, setRaws] = useState<string[] | null>(null);
   const [aliases, setAliases] = useState<Record<string, string>>({});
@@ -31,7 +32,7 @@ export function PasteScreen({ store, today, onBack, onDone }: { store: SetsStore
   const [editing, setEditing] = useState<number | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { void getAliases().then(setAliases).catch(() => setAliases({})); }, []);
+  useEffect(() => { void db.getAliases().then(setAliases).catch(() => setAliases({})); }, []);
 
   const known = useMemo(() => [...new Set([...exerciseNames(store.entries), ...CATALOG])], [store.entries]);
   const match = (name: string) => matchExercise(name, known, aliases);
@@ -51,7 +52,7 @@ export function PasteScreen({ store, today, onBack, onDone }: { store: SetsStore
       if (Object.keys(changed).length) {
         const merged = { ...aliases, ...changed };
         setAliases(merged);
-        try { await putAliases(merged); } catch { /* mappings are a convenience; the sets are saved */ }
+        try { await db.putAliases(merged); } catch { /* mappings are a convenience; the sets are saved */ }
       }
       setDone(`Added ${plural(built.entries.length, 'set')} from ${plural(days, 'day')} (${r.added} new, ${r.updated} updated).`);
     }

@@ -258,3 +258,5 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: 16px;
 .people li { display: flex; gap: 8px; align-items: center; }
 .people input { flex: 1; min-height: 44px; font-size: 16px; }
 .confirm-delete { border: 1px solid var(--danger); border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+/* With the profile bar showing, the picker's search sticks just below it instead of under it. */
+.screen:has(.profile-bar) .picker-head { top: calc(var(--sat) + 57px); margin-top: 0; padding-top: 8px; }

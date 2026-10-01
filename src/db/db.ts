@@ -73,11 +73,12 @@ function shared(): Promise<IDBPDatabase> {
   })().catch((e) => { sharedp = null; throw e; }));
 }
 
-export async function getPeople(): Promise<{ people: Person[]; active: string }> {
-  const x: { people: Person[]; active: string } | undefined = await (await shared()).get('kv', 'people');
-  return { people: x?.people ?? [{ id: MAIN, name: 'Me', slug: 'me' }], active: x?.active ?? MAIN };
+/** `retired`: backup folders of deleted profiles; their files stay in the repo, so no new profile may reuse them. */
+export async function getPeople(): Promise<{ people: Person[]; active: string; retired: string[] }> {
+  const x: { people: Person[]; active: string; retired?: string[] } | undefined = await (await shared()).get('kv', 'people');
+  return { people: x?.people ?? [{ id: MAIN, name: 'Me', slug: 'me' }], active: x?.active ?? MAIN, retired: x?.retired ?? [] };
 }
-export const putPeople = async (people: Person[], active: string): Promise<void> => { await (await shared()).put('kv', { key: 'people', people, active }); };
+export const putPeople = async (people: Person[], active: string, retired: string[] = []): Promise<void> => { await (await shared()).put('kv', { key: 'people', people, active, retired }); };
 /** Deletes everything one profile logged on this phone. The main profile's database is never deleted. */
 export async function deletePersonData(id: string): Promise<void> {
   if (id === MAIN) throw new Error('The first profile’s data can’t be deleted here.');
@@ -177,3 +178,26 @@ export async function getGyms(): Promise<{ gyms: Gym[]; active?: string }> {
   return { gyms: x?.gyms ?? [], active: x?.active };
 }
 export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void> => { await (await shared()).put('kv', { key: 'gyms', ...v }); };
+
+// Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
+const PER_PROFILE = {
+  getAllSets, putSet, deleteSet, putMany, getAllSettings, putSettings, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
+  getBody, putBody, putBodyMany, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, addTombstone, getAliases, putAliases,
+};
+export type ProfileDb = typeof PER_PROFILE;
+const bound = new Map<string, ProfileDb>();
+/**
+ * The db functions pinned to one profile. Each picks its database synchronously, so setting `current` around the call pins it —
+ * including a call made long after a switch, like a sync importing what it pulled or a photo saved after encoding.
+ */
+export function boundDb(id: string): ProfileDb {
+  let b = bound.get(id);
+  if (!b) {
+    b = Object.fromEntries(Object.entries(PER_PROFILE).map(([k, f]) => [k, (...args: unknown[]) => {
+      const prev = current; current = id;
+      try { return (f as (...a: unknown[]) => unknown)(...args); } finally { current = prev; }
+    }])) as ProfileDb;
+    bound.set(id, b);
+  }
+  return b;
+}

@@ -219,3 +219,10 @@ describe('sync per profile', () => {
     for (const bad of ['', 'Sam', 'sam/..', 'a b', 'x'.repeat(31), 'app', 'profiles', 'me']) expect(slugError(bad, ['me']), bad).not.toBeNull();
   });
 });
+
+describe('Phase 11 review fixes', () => {
+  it('refuses a deleted profile’s folder, which still holds its backup', () => {
+    expect(slugError('sam', ['me'], ['sam'])).toMatch(/still holds an old backup/);
+    expect(slugError('sam-2', ['me'], ['sam'])).toBeNull();
+  });
+});
