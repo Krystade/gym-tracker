@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fromB64, repoClient, sync, SyncError, toB64, TOKEN_URL, type SyncConfig } from './sync';
+import { fromB64, pathsFor, repoClient, slugError, sync, SyncError, toB64, TOKEN_URL, type SyncConfig } from './sync';
 import { parseCsv, toCsv } from './csv';
 import { parseBodyFile, toBodyCsv, type BodyDay } from './body';
 import type { SetEntry } from './types';
@@ -193,5 +193,29 @@ describe('token link', () => {
     const u = new URL(TOKEN_URL);
     expect(u.origin + u.pathname).toBe('https://github.com/settings/personal-access-tokens/new');
     expect(Object.fromEntries(u.searchParams)).toEqual({ name: 'Gym Tracker backup', description: 'Sync from the Gym Tracker app', expires_in: '366', contents: 'write' });
+  });
+});
+
+describe('sync per profile', () => {
+  it('keeps the first profile on app/ with history.csv', () => {
+    expect(pathsFor(null)).toEqual({ sets: 'app/sets.csv', body: 'app/body.csv', history: 'history.csv' });
+  });
+  it('backs another profile up under profiles/<slug>/ and never reads history.csv', async () => {
+    const gh = fakeGitHub({ 'history.csv': toCsv([set('2025-01-01', 'notes')]), 'app/sets.csv': toCsv([set('2026-09-01')]) });
+    const got: SetEntry[] = [];
+    const r = await sync({
+      client: repoClient(CFG, gh.fetchFn), sets: [set('2026-09-29')], body: [{ date: '2026-09-29', weight: 120 }], deleted: new Set(),
+      importSets: async (e) => { got.push(...e); return { added: e.length, updated: 0 }; }, importBody: async () => true,
+      now: new Date('2026-09-30T12:00:00Z'), paths: pathsFor('sam'),
+    });
+    expect(got).toEqual([]);
+    expect(r).toMatchObject({ pulledSets: 0, pushedSets: 1, pushedBody: 1 });
+    expect([...gh.store.keys()].sort()).toEqual(['app/sets.csv', 'history.csv', 'profiles/sam/body.csv', 'profiles/sam/sets.csv']);
+    expect(gh.calls.some((x) => x.url.includes('history.csv') || x.url.includes('/app/'))).toBe(false);
+  });
+  it('accepts only short, unique, lower-case slugs that aren’t app', () => {
+    expect(slugError('sam', ['me'])).toBeNull();
+    expect(slugError('sam-2', ['me', 'sam'])).toBeNull();
+    for (const bad of ['', 'Sam', 'sam/..', 'a b', 'x'.repeat(31), 'app', 'profiles', 'me']) expect(slugError(bad, ['me']), bad).not.toBeNull();
   });
 });

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig } from '../db/db';
-import { repoClient, sync, SyncError, type SyncConfig } from '../domain/sync';
+import { deleteSyncConfig, getSyncConfig, getTombstones, MAIN, putSyncConfig, type Person } from '../db/db';
+import { pathsFor, repoClient, sync, SyncError, type SyncConfig } from '../domain/sync';
 import type { SetsStore } from './useSets';
 import type { BodyStore } from './useBody';
 
 export type SyncStatus = { kind: 'idle' } | { kind: 'running' } | { kind: 'done'; text: string } | { kind: 'error'; text: string };
 
-export function useSync(store: SetsStore, body: BodyStore) {
+/** The repo and token are shared; where in the repo this profile's files go depends on `person`. */
+export function useSync(store: SetsStore, body: BodyStore, person: Person) {
   const [config, setConfig] = useState<SyncConfig | null>(null);
   const [status, setStatus] = useState<SyncStatus>({ kind: 'idle' });
   useEffect(() => { void getSyncConfig().then((c) => setConfig(c ?? null)).catch(() => setConfig(null)); }, []);
@@ -24,6 +25,7 @@ export function useSync(store: SetsStore, body: BodyStore) {
       const r = await sync({
         client: repoClient(config, (u, i) => fetch(u, i)), sets: store.entries, body: body.days, deleted: await getTombstones(),
         importSets: (e) => store.importEntries(e), importBody: (d) => body.importDays(d), now: new Date(),
+        paths: pathsFor(person.id === MAIN ? null : person.slug),
       });
       const next = { ...config, lastSync: new Date().toISOString() };
       await putSyncConfig(next); setConfig(next);
@@ -31,7 +33,7 @@ export function useSync(store: SetsStore, body: BodyStore) {
     } catch (e) {
       setStatus({ kind: 'error', text: e instanceof SyncError ? e.message : `Sync failed: ${String(e)}` });
     }
-  }, [config, store, body]);
+  }, [config, store, body, person]);
 
   return { config, status, saveConfig, forget, run };
 }

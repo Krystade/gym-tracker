@@ -70,7 +70,17 @@ export function repoClient(cfg: SyncConfig, fetchFn: Fetch) {
   return { get, put, upsert };
 }
 
-export const SETS_PATH = 'app/sets.csv', BODY_PATH = 'app/body.csv', HISTORY_PATH = 'history.csv';
+export interface SyncPaths { sets: string; body: string; history?: string }
+/** The first profile keeps app/ and reads history.csv (its imported notes); every other profile has its own folder and no history. */
+export const pathsFor = (slug: string | null): SyncPaths =>
+  slug == null ? { sets: 'app/sets.csv', body: 'app/body.csv', history: 'history.csv' } : { sets: `profiles/${slug}/sets.csv`, body: `profiles/${slug}/body.csv` };
+/** Why a profile's backup folder name can't be used, or null. `taken`: the other profiles' slugs. */
+export function slugError(slug: string, taken: string[]): string | null {
+  if (!/^[a-z0-9-]{1,30}$/.test(slug)) return 'Use 1–30 lower-case letters, digits or dashes.';
+  if (['app', 'profiles'].includes(slug)) return `“${slug}” is used by the backup itself.`;
+  if (taken.includes(slug)) return 'Another profile already uses that folder.';
+  return null;
+}
 
 /** A file this build can't fully read is never overwritten: its unreadable rows would vanish from the backup. */
 function unreadable(path: string, errors: { row: number; message: string }[]): never {
@@ -81,6 +91,7 @@ function unreadable(path: string, errors: { row: number; message: string }[]): n
 type SyncDeps = {
   client: ReturnType<typeof repoClient>; sets: SetEntry[]; body: BodyDay[]; deleted: Set<string>;
   importSets: (e: SetEntry[]) => Promise<{ added: number; updated: number } | null>; importBody: (d: BodyDay[]) => Promise<boolean>; now: Date;
+  paths?: SyncPaths;
 };
 type SyncResult = { pulledSets: number; pulledBody: number; pushedSets: number; pushedBody: number };
 
@@ -97,7 +108,8 @@ export async function sync(deps: SyncDeps): Promise<SyncResult> {
 
 async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
   const { client } = deps;
-  const history = await client.get(HISTORY_PATH);
+  const { sets: SETS_PATH, body: BODY_PATH, history: HISTORY_PATH } = deps.paths ?? pathsFor(null);
+  const history = HISTORY_PATH ? await client.get(HISTORY_PATH) : null;
   const remoteSets = await client.get(SETS_PATH);
   const remoteBody = await client.get(BODY_PATH);
 
