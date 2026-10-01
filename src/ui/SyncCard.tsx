@@ -1,3 +1,4 @@
+import { TOKEN_URL } from '../domain/sync';
 import { useState } from 'react';
 import type { SyncStore } from '../state/useSync';
 import { fmtDate } from '../domain/format';
@@ -35,10 +36,9 @@ export function SyncCard({ sync, newestSet }: { sync: SyncStore; newestSet: stri
           <details className="small">
             <summary>How to make a token</summary>
             <ol>
-              <li>GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token.</li>
+              <li><a href={TOKEN_URL} target="_blank" rel="noopener noreferrer">Open GitHub’s token form</a> — name, a one-year expiry and <b>Contents: Read and write</b> are filled in.</li>
               <li>Repository access: <b>Only select repositories</b> → your private data repo.</li>
-              <li>Permissions → Repository → <b>Contents: Read and write</b>. Nothing else.</li>
-              <li>Pick an expiry (up to a year), generate, copy, paste here.</li>
+              <li>Tap <b>Generate token</b>, copy it, come back and paste it here.</li>
             </ol>
           </details>
         </form>

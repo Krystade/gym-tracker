@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fromB64, repoClient, sync, SyncError, toB64, type SyncConfig } from './sync';
+import { fromB64, repoClient, sync, SyncError, toB64, TOKEN_URL, type SyncConfig } from './sync';
 import { parseCsv, toCsv } from './csv';
 import { parseBodyFile, toBodyCsv, type BodyDay } from './body';
 import type { SetEntry } from './types';
@@ -185,5 +185,13 @@ describe('Phase 8 review fixes', () => {
     await expect(sync(deps(gh, [], { importSets: async () => null }))).rejects.toThrow(/saving/i);
     await expect(sync(deps(gh, [], { importBody: async () => false }))).rejects.toThrow(/saving/i);
     expect(gh.calls.some((x) => x.method === 'PUT')).toBe(false);
+  });
+});
+
+describe('token link', () => {
+  it('opens GitHub’s new-token form with a name, a year’s expiry and only Contents: write', () => {
+    const u = new URL(TOKEN_URL);
+    expect(u.origin + u.pathname).toBe('https://github.com/settings/personal-access-tokens/new');
+    expect(Object.fromEntries(u.searchParams)).toEqual({ name: 'Gym Tracker backup', description: 'Sync from the Gym Tracker app', expires_in: '366', contents: 'write' });
   });
 });

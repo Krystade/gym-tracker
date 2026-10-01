@@ -32,6 +32,10 @@ test('private backup: save settings, sync through a mocked GitHub, token stays h
   await page.goto('/');
   await page.getByRole('button', { name: 'Data' }).click();
   const card = page.getByRole('region', { name: 'Private backup' });
+  await card.getByText('How to make a token').click();
+  const link = card.getByRole('link', { name: 'Open GitHub’s token form' });
+  await expect(link).toHaveAttribute('href', /^https:\/\/github\.com\/settings\/personal-access-tokens\/new\?.*contents=write/);
+  await expect(link).toHaveAttribute('target', '_blank');
   await card.getByRole('textbox', { name: 'Repository' }).fill('someone/backup');
   await card.getByLabel('Access token').fill(TOKEN);
   await card.getByRole('button', { name: 'Save' }).click();

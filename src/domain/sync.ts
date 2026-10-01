@@ -140,3 +140,6 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
   }
   return { pulledSets: incoming.size, pulledBody: bodyIn.length, pushedSets: sets.length, pushedBody: body.length };
 }
+
+/** GitHub's new-token form, pre-filled (template URL). The repository still has to be picked there: GitHub doesn't take it as a parameter. */
+export const TOKEN_URL = 'https://github.com/settings/personal-access-tokens/new?name=Gym+Tracker+backup&description=Sync+from+the+Gym+Tracker+app&expires_in=366&contents=write';
