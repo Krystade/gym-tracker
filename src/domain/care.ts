@@ -61,10 +61,10 @@ export function painDefaults(initial: { flags: Flag[]; painRegion?: Region; pain
 export interface Suggestion { name: string; score: number; why: string }
 
 /** Same-muscle alternatives, ranked by similarity, pushed down if they hurt recently or load a region that did. */
-export function swapSuggestions(exercise: string, entries: SetEntry[], today: string, limit = 5): Suggestion[] {
+export function swapSuggestions(exercise: string, entries: SetEntry[], today: string, limit = 5, available?: Set<string>): Suggestion[] {
   const pain = recentPain(entries, today);
   const logged = exerciseNames(entries);
-  const pool = [...logged, ...CATALOG.filter((c) => !logged.some((l) => sameExercise(l, c)))].filter((n) => !sameExercise(n, exercise));
+  const pool = [...logged, ...CATALOG.filter((c) => !logged.some((l) => sameExercise(l, c)))].filter((n) => !sameExercise(n, exercise) && (!available || available.has(n)));
   const out: Suggestion[] = [];
   for (const name of pool) {
     const sim = similarity(exercise, name);

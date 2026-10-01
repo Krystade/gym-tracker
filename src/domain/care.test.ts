@@ -140,3 +140,13 @@ describe('Phase 5 review fixes', () => {
     expect(painReport(e, '2026-09-28', 8)[0].rising).toBe(true);
   });
 });
+
+describe('swapSuggestions at a gym', () => {
+  it('only suggests what the gym can do', () => {
+    const all = swapSuggestions('Cable Pushdown', [], '2026-09-30', 10).map((x) => x.name);
+    const available = new Set(all.filter((n) => !/cable|rope/i.test(n)));
+    const here = swapSuggestions('Cable Pushdown', [], '2026-09-30', 10, available).map((x) => x.name);
+    expect(here.length).toBeGreaterThan(0);
+    for (const n of here) expect(available.has(n), n).toBe(true);
+  });
+});
