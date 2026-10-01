@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { addTombstone, deletePhoto, deleteSet, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
+import { getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
 
@@ -185,5 +185,13 @@ describe('db v7', () => {
     expect(await getSyncConfig()).toBeUndefined();
     await addTombstone('x'); await addTombstone('y'); await addTombstone('x');
     expect(await getTombstones()).toEqual(new Set(['x', 'y']));
+  });
+});
+
+describe('name mappings', () => {
+  it('round-trip, and start empty', async () => {
+    expect(await getAliases()).toEqual({});
+    await putAliases({ 'cable pushdown': 'Cable Pushdown' });
+    expect(await getAliases()).toEqual({ 'cable pushdown': 'Cable Pushdown' });
   });
 });

@@ -236,3 +236,18 @@ export function toEntries(lines: NoteLine[], resolve: (name: string) => string, 
   }
   return { entries, groups: [...groups.values()].map(({ sets_: _, ...g }) => g) };
 }
+
+/** A `{"type":"gym-tracker-aliases","aliases":{name: exercise}}` file; null for any other text. */
+export function parseAliasesJson(text: string): { aliases: Record<string, string>; skipped: number } | null {
+  let raw: unknown;
+  try { raw = JSON.parse(text); } catch { return null; }
+  const o = raw as { type?: unknown; aliases?: unknown };
+  if (o?.type !== 'gym-tracker-aliases' || typeof o.aliases !== 'object' || !o.aliases) return null;
+  const aliases: Record<string, string> = {};
+  let skipped = 0;
+  for (const [k, v] of Object.entries(o.aliases)) {
+    if (typeof v === 'string' && v.trim() && nameKey(k)) aliases[nameKey(k)] = normalizeName(v);
+    else skipped++;
+  }
+  return { aliases, skipped };
+}

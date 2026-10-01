@@ -107,3 +107,10 @@ export async function addTombstone(id: string): Promise<void> {
   const ids = new Set(cur?.ids ?? []).add(id);
   await Promise.all([tx.store.put({ key: 'deleted', ids: [...ids] }), tx.done]);
 }
+
+/** Note-name → exercise mappings the user confirmed while pasting notes. On this device only. */
+export async function getAliases(): Promise<Record<string, string>> {
+  const x: { map: Record<string, string> } | undefined = await (await db()).get('config', 'aliases');
+  return x?.map ?? {};
+}
+export const putAliases = async (map: Record<string, string>): Promise<void> => { await (await db()).put('config', { key: 'aliases', map }); };

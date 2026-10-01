@@ -6,6 +6,8 @@ import type { SyncStore } from '../state/useSync';
 import { SyncCard } from './SyncCard';
 import { parseBodyFile, toBodyCsv, type CsvKind } from '../domain/body';
 import { parseProfileJson } from '../domain/profile';
+import { parseAliasesJson } from '../domain/notes';
+import { getAliases, putAliases } from '../db/db';
 import { parseCsv, toCsv, type CsvError } from '../domain/csv';
 import { exerciseNames, sessionsByDate } from '../domain/stats';
 import { localDate } from '../domain/ids';
@@ -30,6 +32,12 @@ export function DataScreen({ store, profile, body, sync }: { store: SetsStore; p
     let text: string;
     try { text = await file.text(); } catch (e) { setResult({ added: 0, updated: 0, errors: [{ row: 0, message: `Could not read the file: ${String(e)}` }] }); return; }
     if (/\.json$/i.test(file.name)) {
+      const al = parseAliasesJson(text);
+      if (al) {
+        try { await putAliases({ ...(await getAliases()), ...al.aliases }); } catch (e) { setProfileMsg({ ok: false, text: `Saving the name mappings failed: ${String(e)}` }); return; }
+        setProfileMsg({ ok: true, text: `Name mappings imported: ${Object.keys(al.aliases).length}${al.skipped ? ` (${al.skipped} skipped)` : ''}` });
+        return;
+      }
       const r = parseProfileJson(text);
       if ('error' in r) { setProfileMsg({ ok: false, text: r.error }); return; }
       try { await profile.save(r.profile); } catch (e) { setProfileMsg({ ok: false, text: `Saving the profile failed: ${String(e)}` }); return; }

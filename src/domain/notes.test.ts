@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchExercise, nameKey, nameSimilarity, parseNoteDate, parseNotes, readSets, toEntries } from './notes';
+import { matchExercise, parseAliasesJson, nameKey, nameSimilarity, parseNoteDate, parseNotes, readSets, toEntries } from './notes';
 import { setId } from './ids';
 import type { SetEntry } from './types';
 
@@ -178,5 +178,15 @@ describe('toEntries', () => {
     expect(r.entries.filter((e) => e.exercise === 'Lat Pulldown')).toHaveLength(2);
     const key = r.groups.find((g) => g.date === '2026-09-30')!.key;
     expect(toEntries(lines, resolve, { ignored: new Set(), include: new Set([key]) }, existing).entries.some((e) => e.date === '2026-09-30')).toBe(true);
+  });
+});
+
+describe('parseAliasesJson', () => {
+  it('reads a mappings file, folding its keys', () => {
+    expect(parseAliasesJson('{"type":"gym-tracker-aliases","aliases":{"Push Downs":"Cable Pushdown","x":1}}')).toEqual({ aliases: { [nameKey('Push Downs')]: 'Cable Pushdown' }, skipped: 1 });
+  });
+  it('ignores other JSON', () => {
+    expect(parseAliasesJson('{"type":"gym-tracker-profile"}')).toBeNull();
+    expect(parseAliasesJson('not json')).toBeNull();
   });
 });
