@@ -1,5 +1,6 @@
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
-import type { Profile, Tier } from './profile';
+import { DEFAULT_LOW_SHARE, type Profile, type Tier } from './profile';
+import { normalizeName } from './ids';
 import { defaultSettings, isWorking } from './progression';
 import { sameExercise } from './stats';
 import { addDays } from './analytics';
@@ -7,7 +8,7 @@ import type { SetEntry } from './types';
 
 export interface Slot { exercise: string; sets: number; repMin: number; repMax: number }
 export interface ProgramDay { name: string; slots: Slot[] }
-export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string }
+export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string; newToYou?: string[]; unavailable?: Muscle[] }
 /** What happened to the program on one date: which day was run, and what was skipped or swapped. */
 /** `slots` is the day as planned when the session was logged, so later program edits don't rewrite history. */
 export interface DayPlan { key: string; date: string; day: number; skips: string[]; swaps: Record<string, string>; slots?: Slot[] }
@@ -17,19 +18,32 @@ export const MAX_SETS_PER_DAY = 4;
 const UNIT = 2;
 const TIER_WEIGHT: Record<Tier, number> = { 1: 4, 2: 3, 3: 2, 4: 1 };
 
-/** Fallback exercise per muscle when the history has none that trains it directly. All are in CATALOG. */
-export const DEFAULT_PICK: Record<Muscle, string> = {
-  Chest: 'Machine Chest Press', Triceps: 'Cable Pushdown', Biceps: 'Cable Curl', 'Front Delts': 'Machine Shoulder Press',
-  'Side Delts': 'Cable Lateral Raise', 'Rear Delts': 'Reverse Pec Deck', Lats: 'Lat Pulldown', 'Mid-Back': 'Chest-Supported Row',
-  Traps: 'Face Pull', Erectors: 'Back Extension', Quads: 'Leg Press', Hamstrings: 'Seated Leg Curl', Glutes: 'Hip Thrust',
-  Calves: 'Seated Calf Raise', Abs: 'Cable Crunch', Forearms: 'Wrist Curl', Adductors: 'Hip Adduction Machine', Abductors: 'Hip Abduction Machine',
+/** Catalog lifts per muscle, most suitable first: the fallback when the history has no lift for it that this gym can do. All train the muscle directly, except Traps. */
+export const PREFERENCE: Record<Muscle, string[]> = {
+  Chest: ['Machine Chest Press', 'Flat DB Press', 'Bench Press', 'Incline DB Press', 'Smith Flat Press', 'Push-up'],
+  Triceps: ['Cable Pushdown', 'Overhead Cable Extension', 'Rope Pushdown', 'Overhead DB Triceps Extension', 'DB Kickback', 'Triceps Press Machine'],
+  Biceps: ['Cable Curl', 'DB Curl', 'Incline DB Curl', 'Hammer Curl', 'Preacher Curl', 'Machine Biceps Curl'],
+  'Front Delts': ['Machine Shoulder Press', 'Arnold Press', 'Overhead Press', 'Front Raise'],
+  'Side Delts': ['Cable Lateral Raise', 'DB Lateral Raise', 'Machine Lateral Raise'],
+  'Rear Delts': ['Reverse Pec Deck', 'Cable Rear Delt Fly', 'Face Pull'],
+  Lats: ['Lat Pulldown', 'Pull-up', 'Close-Grip Lat Pulldown', 'Straight-Arm Pulldown', 'Lat Pull-In'],
+  'Mid-Back': ['Chest-Supported Row', 'Seated Cable Row', 'Kneeling DB Row'],
+  Traps: ['Face Pull'], // no catalog lift trains traps directly; kept as the long-standing default
+  Erectors: ['Back Extension', 'Bird Dog'],
+  Quads: ['Leg Press', 'Leg Extension', 'Smith Squat', 'Bulgarian Split Squat', 'Barbell Squat'],
+  Hamstrings: ['Seated Leg Curl', 'Lying Leg Curl', 'DB Romanian Deadlift', 'Romanian Deadlift'],
+  Glutes: ['Hip Thrust', 'Glute Press'],
+  Calves: ['Seated Calf Raise', 'Standing Calf Raise'],
+  Abs: ['Cable Crunch', 'Ab Crunch Machine', 'Hanging Leg Raise', 'Decline Sit-up', 'Supported Leg Raise'],
+  Forearms: ['Wrist Curl', 'Farmer’s Carry', 'Reverse Curl'],
+  Adductors: ['Hip Adduction Machine'],
+  Abductors: ['Hip Abduction Machine'],
 };
+export const DEFAULT_PICK: Record<Muscle, string> = Object.fromEntries(MUSCLES.map((m) => [m, PREFERENCE[m][0]])) as Record<Muscle, string>;
 
-/**
- * The exercise the user actually does for a muscle: among those that train it directly, the most-used
- * in the last year (older sets count a quarter), minus a heavy penalty for pain flags in the last 120 days.
- */
-export function primaryExercise(m: Muscle, entries: SetEntry[], today = '9999-12-31'): string {
+export interface BuildContext { available?: Set<string> }
+
+const historyScores = (m: Muscle, entries: SetEntry[], today: string): Map<string, number> => {
   const yearAgo = addDays(today, -365), painSince = addDays(today, -120);
   const score = new Map<string, number>();
   for (const e of entries) {
@@ -38,9 +52,22 @@ export function primaryExercise(m: Muscle, entries: SetEntry[], today = '9999-12
     if (e.flags.includes('pain') && e.date >= painSince) v -= 10;
     score.set(e.exercise, (score.get(e.exercise) ?? 0) + v);
   }
-  let best = DEFAULT_PICK[m], n = 0;
-  for (const [ex, c] of score) if (c > n) { best = ex; n = c; }
-  return best;
+  return score;
+};
+
+/**
+ * Lifts for a muscle, best first: the ones the user actually does (most-used in the last year, older sets a quarter,
+ * minus a heavy penalty for recent pain), then catalog lifts in PREFERENCE order. Only what `available` allows.
+ */
+export function candidates(m: Muscle, entries: SetEntry[], today: string, ctx: BuildContext = {}): string[] {
+  const ok = (ex: string) => !ctx.available || ctx.available.has(ex);
+  const used = [...historyScores(m, entries, today)].filter(([ex, c]) => c > 0 && ok(ex)).sort((a, b) => b[1] - a[1]).map(([ex]) => ex);
+  return [...used, ...PREFERENCE[m].filter((ex) => ok(ex) && !used.some((u) => sameExercise(u, ex)))];
+}
+
+/** The exercise the user actually does for a muscle (see `candidates`), else the catalog default. */
+export function primaryExercise(m: Muscle, entries: SetEntry[], today = '9999-12-31'): string {
+  return candidates(m, entries, today)[0] ?? DEFAULT_PICK[m];
 }
 
 const zero = (): Record<Muscle, number> => Object.fromEntries(MUSCLES.map((m) => [m, 0])) as Record<Muscle, number>;
@@ -52,13 +79,15 @@ function bestTier(ex: string, p: Profile): Tier {
   return (direct.length ? Math.min(...direct) : 4) as Tier;
 }
 
-export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days: number; perSession: number }, now: Date): Program {
+export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days: number; perSession: number }, now: Date, ctx: BuildContext = {}): Program {
   const { days, perSession } = opts;
   const today = now.toISOString().slice(0, 10);
   const achieved = zero();
   const weekly = new Map<string, number>();
   const saturated = new Set<Muscle>();
-  const pick = new Map<Muscle, string>(MUSCLES.map((m) => [m, primaryExercise(m, entries, today)]));
+  const cands = new Map<Muscle, string[]>(MUSCLES.map((m) => [m, candidates(m, entries, today, ctx)]));
+  const unavailable = MUSCLES.filter((m) => !cands.get(m)!.length && profile.targets[profile.tiers[m]][0] > 0);
+  for (const m of unavailable) saturated.add(m);
 
   // Greedy, a pair of sets at a time: the muscle furthest below its tier's lower target *as a fraction of it*,
   // weighted by tier, goes next; once every lower target is met, the same toward the upper targets. Using the
@@ -69,13 +98,21 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   };
   // Whole pairs per day, so an odd sets-per-session never pushes a day over it.
   const dayCap = Math.floor(perSession / UNIT) * UNIT;
+  // Dedicated sets for priority 3–4 muscles are capped at a share of the week while any priority 1–2 muscle is still short.
+  const lowBudget = (profile.lowShare ?? DEFAULT_LOW_SHARE) * days * dayCap;
+  let low = 0;
+  const isLow = (m: Muscle) => profile.tiers[m] >= 3;
+  const prioritiesShort = () => MUSCLES.some((m) => !isLow(m) && !saturated.has(m) && achieved[m] < profile.targets[profile.tiers[m]][1]);
   for (let pairs = days * Math.floor(perSession / UNIT); pairs > 0; pairs--) {
     const open = MUSCLES.filter((m) => !saturated.has(m));
     const below = (bound: 0 | 1) => open.filter((m) => score(m, bound) > 0).sort((a, b) => score(b, bound) - score(a, bound));
     const m = below(0)[0] ?? below(1)[0];
     if (!m) break;
-    const ex = pick.get(m)!;
-    if ((weekly.get(ex) ?? 0) + UNIT > MAX_SETS_PER_DAY * days) { saturated.add(m); pairs++; continue; }
+    if (isLow(m) && low + UNIT > lowBudget && prioritiesShort()) { for (const x of MUSCLES) if (isLow(x)) saturated.add(x); pairs++; continue; }
+    // The best candidate with room left this week; none left means this muscle is done.
+    const ex = cands.get(m)!.find((c) => (weekly.get(c) ?? 0) + UNIT <= MAX_SETS_PER_DAY * days);
+    if (!ex) { saturated.add(m); pairs++; continue; }
+    if (isLow(m)) low += UNIT;
     weekly.set(ex, (weekly.get(ex) ?? 0) + UNIT);
     for (const [mm, f] of Object.entries(muscleVector(ex) ?? {}) as [Muscle, number][]) achieved[mm] += f * UNIT;
   }
@@ -92,8 +129,10 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
       totals[d] += UNIT;
     }
   }
+  const known = new Set(entries.map((e) => normalizeName(e.exercise).toLowerCase()));
+  const newToYou = order.filter((ex) => !known.has(normalizeName(ex).toLowerCase()) && perDay.some((d) => d.has(ex)));
   return {
-    key: 'program', perSession, createdAt: now.toISOString(),
+    key: 'program', perSession, createdAt: now.toISOString(), newToYou, unavailable,
     days: perDay.map((m, i) => ({
       name: `Day ${String.fromCharCode(65 + i)}`,
       slots: order.filter((ex) => m.has(ex)).map((ex) => { const st = defaultSettings(ex); return { exercise: ex, sets: m.get(ex)!, repMin: st.repMin, repMax: st.repMax }; }),

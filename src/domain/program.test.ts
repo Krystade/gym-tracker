@@ -3,7 +3,7 @@ import type { SetEntry } from './types';
 import { CATALOG } from './catalog';
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
 import { defaultProfile, type Profile, type Tier } from './profile';
-import { adherence, buildProgram, DEFAULT_PICK, nextDay, primaryExercise, programVolume, type DayPlan, type Program } from './program';
+import { PREFERENCE, adherence, buildProgram, DEFAULT_PICK, nextDay, primaryExercise, programVolume, type DayPlan, type Program } from './program';
 
 let seq = 0;
 const s = (date: string, exercise: string, reps = 10, over: Partial<SetEntry> = {}): SetEntry => ({
@@ -141,5 +141,53 @@ describe('Phase 4 review fixes', () => {
     expect(planToRecord(PROG, [r], [s(d, 'Cable Curl')], d)).toBeNull();
     const old = plan(d, 1);
     expect(planToRecord(PROG, [old], [s(d, 'Cable Curl')], d)).toMatchObject({ day: 1, slots: PROG.days[1].slots });
+  });
+});
+
+describe('Phase 10: gym and priority share', () => {
+  // Synthetic tiers: several muscles in every tier.
+  const tiers = { Biceps: 1, Triceps: 1, Abs: 1, 'Side Delts': 2, 'Rear Delts': 2, Chest: 3, 'Front Delts': 3, Lats: 3, 'Mid-Back': 3, Traps: 3, Erectors: 3 } as const;
+  const prof = withTiers(tiers, 4);
+  const lowSets = (p: Program, pr: Profile) => p.days.flatMap((d) => d.slots)
+    .filter((sl) => Math.min(...(Object.entries(muscleVector(sl.exercise) ?? {}) as [Muscle, number][]).filter(([, f]) => f === 1).map(([m]) => pr.tiers[m])) >= 3)
+    .reduce((a, sl) => a + sl.sets, 0);
+
+  it('keeps priority 3–4 lifts within the low-priority share while priorities still need sets', () => {
+    for (let days = 1; days <= 5; days++) for (let per = 8; per <= 20; per++) {
+      const p = buildProgram(prof, [], { days, perSession: per }, NOW);
+      const v = programVolume(p);
+      const prioritiesShort = MUSCLES.some((m) => prof.tiers[m] <= 2 && v[m] < prof.targets[prof.tiers[m]][1]);
+      if (prioritiesShort) expect(lowSets(p, prof), `${days}×${per}`).toBeLessThanOrEqual(0.2 * days * Math.floor(per / 2) * 2);
+    }
+  });
+  it('honours a different share', () => {
+    const p = buildProgram({ ...prof, lowShare: 0 }, [], { days: 2, perSession: 16 }, NOW);
+    expect(lowSets(p, prof)).toBe(0);
+  });
+  it('gives at most three exercises a week to priority 3–4 muscles at 2×16', () => {
+    const p = buildProgram(prof, [], { days: 2, perSession: 16 }, NOW);
+    const low = new Set(p.days.flatMap((d) => d.slots).filter((sl) => lowSets({ ...p, days: [{ name: '', slots: [sl] }] }, prof) > 0).map((sl) => sl.exercise));
+    expect(low.size).toBeLessThanOrEqual(3);
+  });
+  it('never programs an exercise the gym can’t do, and falls back to the next candidate', () => {
+    const hist = Array.from({ length: 6 }, (_, i) => s(`2026-09-${10 + i}`, 'Bayesian Cable Curl'));
+    const all = new Set([...CATALOG, 'Bayesian Cable Curl']);
+    const available = new Set([...all].filter((n) => !/cable|machine|pec deck|pulldown|leg press|leg curl|leg extension|calf raise|glute press/i.test(n)));
+    const p = buildProgram(prof, hist, { days: 2, perSession: 16 }, NOW, { available });
+    const used = p.days.flatMap((d) => d.slots.map((sl) => sl.exercise));
+    expect(used.length).toBeGreaterThan(0);
+    for (const ex of used) expect(available.has(ex), ex).toBe(true);
+    expect(used).toContain('DB Curl');
+  });
+  it('marks lifts the history doesn’t have as new, and names muscles nothing here trains', () => {
+    const hist = Array.from({ length: 6 }, (_, i) => s(`2026-09-${10 + i}`, 'Hammer Curl'));
+    const available = new Set(['Hammer Curl', 'Overhead DB Triceps Extension', 'Plank']);
+    const p = buildProgram(prof, hist, { days: 2, perSession: 16 }, NOW, { available });
+    expect(p.newToYou).toContain('Overhead DB Triceps Extension');
+    expect(p.newToYou).not.toContain('Hammer Curl');
+    expect(p.unavailable).toContain('Side Delts');
+  });
+  it('lists only lifts that train the muscle directly as candidates', () => {
+    for (const [m, list] of Object.entries(PREFERENCE) as [Muscle, string[]][]) if (m !== 'Traps') for (const ex of list) expect(muscleVector(ex)?.[m], `${m}: ${ex}`).toBe(1);
   });
 });
