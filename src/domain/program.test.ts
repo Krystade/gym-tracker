@@ -191,3 +191,38 @@ describe('Phase 10: gym and priority share', () => {
     for (const [m, list] of Object.entries(PREFERENCE) as [Muscle, string[]][]) if (m !== 'Traps') for (const ex of list) expect(muscleVector(ex)?.[m], `${m}: ${ex}`).toBe(1);
   });
 });
+
+describe('Phase 10 review fixes', () => {
+  const placed = (p: Program) => p.days.reduce((a, d) => a + d.slots.reduce((b, sl) => b + sl.sets, 0), 0);
+  it('fills the week: the cap only holds low priorities back while priorities can still use the sets', () => {
+    const profiles = [withTiers({ Forearms: 1 }, 3), withTiers({ Biceps: 1, Triceps: 1, Abs: 1, 'Side Delts': 2, 'Rear Delts': 2, Chest: 3, Lats: 3 }, 4), withTiers({ Biceps: 2, Triceps: 2 }, 3)];
+    for (const prof of profiles) for (let days = 1; days <= 6; days++) for (let per = 8; per <= 20; per++) {
+      const p = buildProgram(prof, [], { days, perSession: per }, NOW);
+      expect(placed(p), `${days}×${per}`).toBeGreaterThanOrEqual(days * Math.floor(per / 2) * 2 * 0.9);
+    }
+  });
+  it('treats a gym’s own additions as known lifts it can choose', () => {
+    const available = new Set(['Hammer Curl', 'DB Curl', 'Zercher Squat']);
+    const p = buildProgram(withTiers({ Biceps: 1, Quads: 1 }, 4), [], { days: 2, perSession: 8 }, NOW, { available, include: ['Hammer Curl', 'Zercher Squat'] });
+    const used = p.days.flatMap((d) => d.slots.map((sl) => sl.exercise));
+    expect(used).toContain('Hammer Curl');
+    expect(used).toContain('Zercher Squat');
+    expect(p.newToYou).not.toContain('Hammer Curl');
+    expect(p.unavailable).not.toContain('Quads');
+  });
+  it('falls back to any catalog lift that trains the muscle directly', () => {
+    const p = buildProgram(withTiers({ Glutes: 1, Abs: 1 }, 4), [], { days: 2, perSession: 8 }, NOW, { available: new Set(['Cable Kickback', 'Plank']) });
+    expect(p.unavailable).toEqual(expect.not.arrayContaining(['Glutes', 'Abs']));
+  });
+});
+
+describe('tier order', () => {
+  it('meets a priority-1 lower target at the default low-priority share', () => {
+    for (let days = 1; days <= 6; days++) {
+      const prof = withTiers({ Forearms: 1 }, 4);
+      const p = buildProgram(prof, [], { days, perSession: 12 }, NOW);
+      const forearms = p.days.flatMap((d) => d.slots).reduce((a, sl) => a + (muscleVector(sl.exercise)?.Forearms ?? 0) * sl.sets, 0);
+      expect(forearms, `${days} days`).toBeGreaterThanOrEqual(Math.min(prof.targets[1][0], days * 12 - Math.floor((0.2 * days * 12) / 2) * 2));
+    }
+  });
+});

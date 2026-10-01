@@ -67,7 +67,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
         <p className="muted small">The most of each week spent on priority 3–4 muscles while priority 1–2 still need sets.</p>
         <button className="primary wide" disabled={!valid} onClick={() => {
           if (p && !confirm('Replace the current program?')) return;
-          void programs.save(buildProgram(profile.profile, entries, { days: d, perSession: s }, new Date(), gym ? { available: availableSet(gym, [...CATALOG, ...exerciseNames(entries), ...gym.include]) } : {}));
+          void programs.save(buildProgram(profile.profile, entries, { days: d, perSession: s }, new Date(), gym ? { available: availableSet(gym, [...CATALOG, ...exerciseNames(entries), ...gym.include]), include: gym.include } : {}));
         }}>{p ? 'Rebuild program' : 'Build program'}</button>
         {p?.unavailable?.length ? <p className="warn small">Nothing at this gym trains: {p.unavailable.join(', ')}.</p> : null}
       </section>

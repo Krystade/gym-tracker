@@ -68,7 +68,9 @@ export function canDo(gym: Gym | null, exercise: string): boolean | null {
   if (gym.include.some((x) => key(x) === k)) return true;
   const needs = NEEDS_BY_KEY.get(k);
   if (!needs) return null;
-  return needs.some((alt) => alt.every((e) => gym.equipment.includes(e)));
+  // A dual cable station is two cable stacks.
+  const has = (e: Equipment) => gym.equipment.includes(e) || (e === 'cable stack' && gym.equipment.includes('dual cable'));
+  return needs.some((alt) => alt.every(has));
 }
 
 export const availableSet = (gym: Gym | null, names: string[]): Set<string> => new Set(names.filter((n) => canDo(gym, n) === true));

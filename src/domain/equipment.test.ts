@@ -26,3 +26,9 @@ describe('equipment', () => {
     expect(availableSet(gym(['leg press']), ['Leg Press', 'Leg Extension', 'Zercher Squat'])).toEqual(new Set(['Leg Press']));
   });
 });
+
+describe('equipment review fixes', () => {
+  it('counts a dual cable station as a cable stack', () => {
+    for (const ex of ['Cable Curl', 'Face Pull', 'Cable Pushdown']) expect(canDo(gym(['dual cable']), ex), ex).toBe(true);
+  });
+});

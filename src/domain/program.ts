@@ -5,6 +5,7 @@ import { defaultSettings, isWorking } from './progression';
 import { sameExercise } from './stats';
 import { addDays } from './analytics';
 import type { SetEntry } from './types';
+import { CATALOG } from './catalog';
 
 export interface Slot { exercise: string; sets: number; repMin: number; repMax: number }
 export interface ProgramDay { name: string; slots: Slot[] }
@@ -41,7 +42,8 @@ export const PREFERENCE: Record<Muscle, string[]> = {
 };
 export const DEFAULT_PICK: Record<Muscle, string> = Object.fromEntries(MUSCLES.map((m) => [m, PREFERENCE[m][0]])) as Record<Muscle, string>;
 
-export interface BuildContext { available?: Set<string> }
+/** `available`: what the gym can do. `include`: lifts the user added to the gym — they know them. */
+export interface BuildContext { available?: Set<string>; include?: string[] }
 
 const historyScores = (m: Muscle, entries: SetEntry[], today: string): Map<string, number> => {
   const yearAgo = addDays(today, -365), painSince = addDays(today, -120);
@@ -57,12 +59,18 @@ const historyScores = (m: Muscle, entries: SetEntry[], today: string): Map<strin
 
 /**
  * Lifts for a muscle, best first: the ones the user actually does (most-used in the last year, older sets a quarter,
- * minus a heavy penalty for recent pain), then catalog lifts in PREFERENCE order. Only what `available` allows.
+ * minus a heavy penalty for recent pain), then lifts added to the gym, then catalog lifts in PREFERENCE order, then any
+ * other lift that trains it directly. Only what `available` allows.
  */
 export function candidates(m: Muscle, entries: SetEntry[], today: string, ctx: BuildContext = {}): string[] {
   const ok = (ex: string) => !ctx.available || ctx.available.has(ex);
-  const used = [...historyScores(m, entries, today)].filter(([ex, c]) => c > 0 && ok(ex)).sort((a, b) => b[1] - a[1]).map(([ex]) => ex);
-  return [...used, ...PREFERENCE[m].filter((ex) => ok(ex) && !used.some((u) => sameExercise(u, ex)))];
+  const direct = (ex: string) => muscleVector(ex)?.[m] === 1;
+  const out = [...historyScores(m, entries, today)].filter(([ex, c]) => c > 0 && ok(ex)).sort((a, b) => b[1] - a[1]).map(([ex]) => ex);
+  const add = (xs: Iterable<string>) => { for (const ex of xs) if (ok(ex) && !out.some((u) => sameExercise(u, ex))) out.push(ex); };
+  add((ctx.include ?? []).filter(direct));
+  add(PREFERENCE[m]);
+  if (m !== 'Traps') add([...(ctx.available ?? CATALOG)].filter(direct));
+  return out;
 }
 
 /** The exercise the user actually does for a muscle (see `candidates`), else the catalog default. */
@@ -84,7 +92,7 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   const today = now.toISOString().slice(0, 10);
   const achieved = zero();
   const weekly = new Map<string, number>();
-  const saturated = new Set<Muscle>();
+  const saturated = new Set<Muscle>(); // no lift left with room this week
   const cands = new Map<Muscle, string[]>(MUSCLES.map((m) => [m, candidates(m, entries, today, ctx)]));
   const unavailable = MUSCLES.filter((m) => !cands.get(m)!.length && profile.targets[profile.tiers[m]][0] > 0);
   for (const m of unavailable) saturated.add(m);
@@ -105,10 +113,11 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   const prioritiesShort = () => MUSCLES.some((m) => !isLow(m) && !saturated.has(m) && achieved[m] < profile.targets[profile.tiers[m]][1]);
   for (let pairs = days * Math.floor(perSession / UNIT); pairs > 0; pairs--) {
     const open = MUSCLES.filter((m) => !saturated.has(m));
-    const below = (bound: 0 | 1) => open.filter((m) => score(m, bound) > 0).sort((a, b) => score(b, bound) - score(a, bound));
+    // Over the low-priority budget, priority 3–4 muscles wait — re-checked every pair, so they come back once priorities are covered.
+    const capped = low + UNIT > lowBudget && prioritiesShort();
+    const below = (bound: 0 | 1) => open.filter((m) => score(m, bound) > 0 && !(capped && isLow(m))).sort((a, b) => score(b, bound) - score(a, bound));
     const m = below(0)[0] ?? below(1)[0];
     if (!m) break;
-    if (isLow(m) && low + UNIT > lowBudget && prioritiesShort()) { for (const x of MUSCLES) if (isLow(x)) saturated.add(x); pairs++; continue; }
     // The best candidate with room left this week; none left means this muscle is done.
     const ex = cands.get(m)!.find((c) => (weekly.get(c) ?? 0) + UNIT <= MAX_SETS_PER_DAY * days);
     if (!ex) { saturated.add(m); pairs++; continue; }
@@ -129,7 +138,7 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
       totals[d] += UNIT;
     }
   }
-  const known = new Set(entries.map((e) => normalizeName(e.exercise).toLowerCase()));
+  const known = new Set([...entries.map((e) => e.exercise), ...(ctx.include ?? [])].map((x) => normalizeName(x).toLowerCase()));
   const newToYou = order.filter((ex) => !known.has(normalizeName(ex).toLowerCase()) && perDay.some((d) => d.has(ex)));
   return {
     key: 'program', perSession, createdAt: now.toISOString(), newToYou, unavailable,
