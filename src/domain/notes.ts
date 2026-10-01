@@ -1,4 +1,6 @@
-import type { Flag, Region } from './types';
+import { normalizeName, setId } from './ids';
+import { sameExercise } from './stats';
+import type { Flag, Region, SetEntry } from './types';
 
 // Reads a free-text workout log as typed in a notes app. Generic rules only: personal name mappings live on the device.
 
@@ -137,4 +139,100 @@ export function nameSimilarity(a: string, b: string): number {
   let both = 0;
   for (const w of A) if (B.has(w)) both++;
   return both / (A.size + B.size - both || 1);
+}
+
+export type LineKind = 'blank' | 'heading' | 'date' | 'skip' | 'sets' | 'unparsed';
+export interface NoteLine { index: number; raw: string; kind: LineKind; date: string; name?: string; lead?: string; sets?: NoteSet[]; reason?: string }
+
+const SEP_RE = /\t|:|\s[-–—]\s/;
+const SKIP_RE = /^(?:skip|skipped|[-–—])$/i;
+const WARMUP_ONLY = /^\(?\s*(?:wu|warm[- ]?ups?)\s*\)?$/i;
+
+/** Split "name: rest", "name<tab>rest", "name - rest", or "name 80x10…" (name = text before the first number). */
+function splitName(line: string): { name: string; rest: string; sep: boolean } {
+  const m = SEP_RE.exec(line);
+  // A colon inside a time ("1:05") isn't a separator.
+  if (m && !(m[0] === ':' && /\d$/.test(line.slice(0, m.index)) && /^\d/.test(line.slice(m.index + 1)))) {
+    return { name: line.slice(0, m.index).trim(), rest: line.slice(m.index + m[0].length).trim(), sep: true };
+  }
+  const first = line.search(/(?<![\w.])(?:-?\d|bw\s*[x×*])/i);
+  return first < 0 ? { name: line.trim(), rest: '', sep: false } : { name: line.slice(0, first).trim(), rest: line.slice(first).trim(), sep: false };
+}
+
+/** Classify every line of a pasted log. Lines before the first date are today's. */
+export function parseNotes(text: string, today: string, isHold: (name: string) => boolean): NoteLine[] {
+  let date = today;
+  let current: string | undefined; // the exercise a bare "80x10" line continues
+  const out: NoteLine[] = [];
+  text.split(/\r?\n/).forEach((raw, index) => {
+    let line = raw.trim();
+    const push = (l: Omit<NoteLine, 'index' | 'raw' | 'date'>) => out.push({ index, raw, date, ...l });
+    if (!line) { push({ kind: 'blank' }); return; }
+    const d = parseNoteDate(line, today);
+    if (d) {
+      date = d.date; current = undefined;
+      if (!d.rest || !/\d/.test(d.rest)) { push({ kind: 'date' }); return; }
+      line = d.rest; // "9/30 Smith squat 135x8": a date and a sets line in one
+    }
+    const { name: rawName, rest, sep } = splitName(line);
+    if (SKIP_RE.test(rest) || (!sep && /\s(?:skip|skipped)$/i.test(line))) { push({ kind: 'skip', name: rawName.replace(/\s+(?:skip|skipped)$/i, '') }); current = undefined; return; }
+    if (!sep && !/\d/.test(line)) { push({ kind: 'heading', name: line }); current = line; return; }
+    const continuation = !/[a-z]/i.test(rawName) || WARMUP_ONLY.test(rawName);
+    const name = continuation ? current : rawName;
+    const body = continuation ? `${rawName} ${rest}`.trim() : rest;
+    const r = readSets(body, name ? isHold(name) : false);
+    if (!name || !r.sets.length) {
+      push({ kind: 'unparsed', name, reason: name ? 'No sets found — write them like 85x10' : 'No exercise name — put it before the sets, like "Curl: 30x10"' });
+      return;
+    }
+    current = name;
+    push({ kind: 'sets', name, lead: r.lead || undefined, sets: r.sets });
+  });
+  return out;
+}
+
+export function matchExercise(name: string, known: string[], aliases: Record<string, string>): { exercise: string; how: 'alias' | 'exact' | 'fuzzy' | 'new'; suggestions: string[] } {
+  const key = nameKey(name);
+  const ranked = [...new Set(known)].map((k) => [k, nameSimilarity(name, k)] as const).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]);
+  const suggestions = ranked.slice(0, 5).map(([k]) => k);
+  if (aliases[key]) return { exercise: aliases[key], how: 'alias', suggestions };
+  const exact = known.find((k) => nameKey(k) === key);
+  if (exact) return { exercise: exact, how: 'exact', suggestions };
+  if (ranked[0] && ranked[0][1] >= 0.5) return { exercise: ranked[0][0], how: 'fuzzy', suggestions };
+  return { exercise: normalizeName(name), how: 'new', suggestions };
+}
+
+export interface NoteGroup { key: string; date: string; exercise: string; lines: number[]; sets: number; existing: boolean }
+
+/** The sets to save: numbered per day and exercise in line order, ids stable across re-pastes. */
+export function toEntries(lines: NoteLine[], resolve: (name: string) => string, opts: { ignored: Set<number>; include: Set<string> }, existing: SetEntry[]): { entries: SetEntry[]; groups: NoteGroup[] } {
+  const groups = new Map<string, NoteGroup & { sets_: { line: NoteLine; s: NoteSet }[] }>();
+  const doublePulley = new Set<string>();
+  for (const l of lines) {
+    if (l.kind !== 'sets' || opts.ignored.has(l.index)) continue;
+    const exercise = resolve(l.name!);
+    const key = `${l.date}|${nameKey(exercise)}`;
+    const g = groups.get(key) ?? { key, date: l.date, exercise, lines: [], sets: 0, existing: existing.some((e) => e.date === l.date && sameExercise(e.exercise, exercise)), sets_: [] };
+    if (/double pulley/i.test(l.raw)) doublePulley.add(nameKey(exercise));
+    g.lines.push(l.index);
+    for (const s of l.sets!) g.sets_.push({ line: l, s });
+    g.sets = g.sets_.length;
+    groups.set(key, g);
+  }
+  const entries: SetEntry[] = [];
+  for (const g of groups.values()) {
+    if (g.existing && !opts.include.has(g.key)) continue;
+    g.sets_.forEach(({ line, s }, i) => {
+      const flags = [...s.flags];
+      if (doublePulley.has(nameKey(g.exercise)) && !flags.includes('double_pulley')) flags.push('double_pulley');
+      const setNo = i + 1;
+      entries.push({
+        id: setId('notes', g.date, g.exercise, setNo), date: g.date, seq: line.index * 100 + i, exercise: g.exercise, setNo,
+        weight: s.weight, reps: s.reps, flags, source: 'notes',
+        ...(line.name !== g.exercise && { asWritten: line.name }),
+        ...(s.rir != null && { rir: s.rir }), ...(s.note && { note: s.note }), ...(s.painRegion && { painRegion: s.painRegion }),
+      });
+    });
+  }
+  return { entries, groups: [...groups.values()].map(({ sets_: _, ...g }) => g) };
 }
