@@ -1,5 +1,5 @@
 import type { Suggestion } from '../domain/suggest';
-import { fmtWeight } from '../domain/format';
+import { fmtTarget, fmtWeight } from '../domain/format';
 
 const FROM = { program: 'today’s program', last: 'as many as last time', default: 'a default — no history yet' } as const;
 export const fmtLoad = (w: number | null) => (w == null ? '' : w === 0 ? ' @ BW' : ` @ ${fmtWeight(w)} lb`);
@@ -11,7 +11,7 @@ export function SuggestionCard({ s, onLog }: { s: Suggestion; onLog?: () => void
   return (
     <section className="card suggestion" aria-label="Next time">
       <h2>Next time</h2>
-      <p className="big">{s.sets} × {s.reps}–{s.repMax}{s.unit}{fmtLoad(s.weight)}</p>
+      <p className="big">{s.sets} × {fmtTarget(s)}{fmtLoad(s.weight)}</p>
       <p className="muted small">{s.reason}</p>
       <p className="muted small">Sets: {FROM[s.setsFrom]}</p>
       {s.warmups.length > 0 && <p className="muted small">Warm-up: {fmtRamp(s)}</p>}

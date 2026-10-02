@@ -78,9 +78,20 @@ test('a minutes budget too small to meet says so', async ({ page }) => {
   await expect(page.getByRole('heading', { name: /^Day A · / })).toBeVisible();
   const heads = await page.getByRole('heading', { name: /^Day [A-Z] · \d+ sets · ≈ \d+ min$/ }).allInnerTexts();
   expect(Math.max(...heads.map((h) => Number(/≈ (\d+) min/.exec(h)![1])))).toBeGreaterThan(20); // premise: 20 can't be met
-  await expect(page.getByRole('status').filter({ hasText: 'some days run over 20 min' })).toBeVisible();
+  const note = page.getByRole('status').filter({ hasText: 'over your 20' });
+  await expect(note).toBeVisible();
+  await expect(note).toContainText(/^Day [A-Z] ≈ \d+ min(, Day [A-Z] ≈ \d+ min)*: over your 20\. Train fewer days a week or allow more minutes, then rebuild\.$/);
+  // Each day named carries its own length, as its heading shows it.
+  for (const [, day, min] of (await note.innerText()).matchAll(/(Day [A-Z]) ≈ (\d+) min/g))
+    await expect(page.getByRole('heading', { name: new RegExp(`^${day} · \\d+ sets · ≈ ${min} min$`) })).toBeVisible();
+  await page.screenshot({ path: 'screenshots/40-budget-note.png', fullPage: true });
   await page.getByRole('textbox', { name: 'Minutes per session' }).fill('150');
-  await expect(page.getByRole('status').filter({ hasText: 'some days run over' })).toHaveCount(0); // derived from the input, no rebuild
+  await expect(page.getByRole('textbox', { name: 'Minutes per session' })).toHaveValue('150');
+  await expect(note).toBeVisible(); // describes the program as built, not the input: no rebuild yet
+  await page.getByRole('button', { name: 'Sets', exact: true }).click();
+  page.once('dialog', (d) => void d.accept()); // "Replace the current program?"
+  await page.getByRole('button', { name: 'Rebuild program' }).click(); // by sets: no minutes budget
+  await expect(page.getByRole('status').filter({ hasText: 'over your' })).toHaveCount(0);
 });
 
 test('a program built by sets is not said to be over a minutes budget a rebuild could meet', async ({ page }) => {
@@ -383,4 +394,44 @@ test('editing a set can move its time, and an untouched time stays put', async (
   expect([byReps('9')[col('logged_at')], byReps('9')[col('entered_at')]]).toEqual([iso('18:05:00'), iso('18:02:13')]);
   expect([byReps('11')[col('logged_at')], byReps('11')[col('entered_at')]]).toEqual([iso('18:00:07'), '']);
   expect([byReps('8')[col('logged_at')], byReps('8')[col('entered_at')]]).toEqual([iso('18:04:21'), '']);
+});
+
+test('a hold lift shows its best hold, not 1RM tiles, rep chips or a test banner', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Plank');
+  await page.getByRole('button', { name: /^Plank( · logged)?$/ }).click();
+  await page.getByRole('textbox', { name: 'Seconds' }).fill('60');
+  await page.getByRole('button', { name: 'Add set' }).click();
+  await expect(page.getByRole('list', { name: 'Sets for Plank' }).getByRole('listitem')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Plank', exact: true }).click(); // opens its exercise screen
+  await expect(page.getByRole('heading', { name: 'Plank', exact: true })).toBeVisible();
+  await expect(page.locator('.tile').filter({ hasText: 'Best hold' })).toContainText('60 s');
+  await expect(page.getByText(/Est\. \d*\s*1?RM/)).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Rep max' })).toHaveCount(0);
+  await expect(page.getByText('Time for a test')).toHaveCount(0);
+  await expect(page.getByText(/no tests yet/)).toHaveCount(0);
+  await page.screenshot({ path: 'screenshots/41-hold-exercise.png', fullPage: true });
+});
+
+test('a lift logged as a hold is timed in seconds everywhere, whatever its name', async ({ page }, info) => {
+  const csv = ['date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source,pain_region,pain_severity,logged_at,target_weight_lb,target_reps,target_sets,gym,entered_at', '2026-09-20,Wall Sit Hold X,,1,0,40,,bodyweight;hold,,t,,,,,,,,', '2026-09-27,Wall Sit Hold X,,1,0,50,,bodyweight;hold,,t,,,,,,,,'].join('\n') + '\n';
+  const file = info.outputPath('hold.csv');
+  (await import('node:fs')).writeFileSync(file, csv);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await page.getByLabel('Import CSV').setInputFiles(file);
+  await expect(page.getByText('✓ Imported 2 new sets')).toBeVisible();
+  await page.getByRole('button', { name: 'Today' }).click();
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Wall Sit');
+  await page.getByRole('button', { name: /^Wall Sit Hold X/ }).click();
+  await expect(page.getByRole('textbox', { name: 'Seconds' })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Seconds' }).fill('55');
+  await page.getByRole('button', { name: 'Add set' }).click();
+  await expect(page.getByRole('list', { name: 'Sets for Wall Sit Hold X' }).getByRole('listitem')).toContainText(['BW × 55s']);
+  // Two earlier sessions: the chart plots the longest hold.
+  await page.getByRole('button', { name: 'Wall Sit Hold X', exact: true }).click();
+  await expect(page.getByRole('img', { name: 'Longest hold over time' })).toBeVisible();
+  await expect(page.getByText('Longest hold per session')).toBeVisible();
 });

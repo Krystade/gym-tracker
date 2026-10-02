@@ -7,7 +7,7 @@ import { defaultSettings } from '../domain/progression';
 import { exerciseNames } from '../domain/stats';
 import { MuscleBars } from './charts/MuscleBars';
 import { ExercisePicker } from './ExercisePicker';
-import { BACK_BLOCK, isHold } from '../domain/care';
+import { BACK_BLOCK, isHoldLift } from '../domain/care';
 import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
 import { CATALOG } from '../domain/catalog';
@@ -44,6 +44,10 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
     };
   }, [entries, today]);
   const dayMinutes = (day: ProgramDay) => Math.round(estimateSeconds(day.slots, pace, warm) / 60);
+
+  // What the program was built for, not the input: the minutes box can change without a rebuild. Only at the 8-set floor is it a miss the builder couldn't fix.
+  const budget = p?.minutes;
+  const over = p && budget != null && p.perSession <= 8 ? p.days.filter((x) => dayMinutes(x) > budget) : [];
 
   const edit = (fn: (x: Program) => void) => { if (!p) return; const next: Program = structuredClone(p); fn(next); void programs.save(next); };
 
@@ -95,9 +99,9 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
           const ctx = gym ? { available: availableSet(gym, [...CATALOG, ...exerciseNames(entries), ...gym.include]), include: gym.include } : {};
           const build = (perSession: number) => buildProgram(profile.profile, entries, { days: d, perSession }, new Date(), ctx);
           // By minutes: the most sets per session whose every day fits, estimated from your own pace.
-          void programs.save(build(mode === 'minutes' ? perSessionForMinutes(m, build, dayMinutes) : s));
+          void programs.save(mode === 'minutes' ? { ...build(perSessionForMinutes(m, build, dayMinutes)), minutes: m } : build(s));
         }}>{p ? 'Rebuild program' : 'Build program'}</button>
-        {mode === 'minutes' && p && p.perSession <= 8 && Number.isInteger(m) && m >= 20 && m <= 150 && Math.max(...p.days.map(dayMinutes)) > m && <p className="warn small" role="status">Even at 8 sets a session, some days run over {m} min.</p>}
+        {over.length > 0 && <p className="warn small" role="status">{over.map((x) => `${x.name} ≈ ${dayMinutes(x)} min`).join(', ')}: over your {budget}. Train fewer days a week or allow more minutes, then rebuild.</p>}
         {p?.unavailable?.length ? <p className="warn small">Nothing at this gym trains: {p.unavailable.join(', ')}.</p> : null}
       </section>
       {p && p.days.map((day, di) => (
@@ -106,7 +110,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
           <ol className="prog-slots" aria-label={`${day.name} exercises`}>
             {day.slots.map((slot, si) => (
               <li key={slot.exercise}>
-                <span className="prog-name"><b>{slot.exercise}</b>{p.newToYou?.includes(slot.exercise) && <span className="tag">new to you</span>}<span className="muted small">{slot.repMin}–{slot.repMax}{isHold(slot.exercise) ? ' s hold' : ' reps'}</span></span>
+                <span className="prog-name"><b>{slot.exercise}</b>{p.newToYou?.includes(slot.exercise) && <span className="tag">new to you</span>}<span className="muted small">{slot.repMin}–{slot.repMax}{isHoldLift(slot.exercise, entries) ? ' s hold' : ' reps'}</span></span>
                 <button aria-label={`Fewer sets of ${slot.exercise}`} disabled={slot.sets <= 1} onClick={() => edit((x) => { x.days[di].slots[si].sets--; })}>−</button>
                 <span className="prog-sets">{slot.sets}</span>
                 <button aria-label={`More sets of ${slot.exercise}`} disabled={slot.sets >= MAX_SETS_PER_DAY + 2} onClick={() => edit((x) => { x.days[di].slots[si].sets++; })}>+</button>

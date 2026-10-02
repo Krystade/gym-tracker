@@ -1,4 +1,4 @@
-import { isHold } from './care';
+import { isHold, isHoldLift } from './care';
 import { defaultSettings, isWorking, nextTarget, type ExerciseSettings, type Target } from './progression';
 import type { DayPlan, Program } from './program';
 import { sameExercise, sessionsFor } from './stats';
@@ -48,7 +48,7 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
   const [sets, setsFrom]: [number, Suggestion['setsFrom']] =
     planned != null ? [planned, 'program'] : lastWorking ? [lastWorking, 'last'] : [3, 'default'];
   const clamped = Math.min(6, Math.max(1, sets));
-  const unit = isHold(exercise) ? ' s' : '';
+  const unit = isHoldLift(exercise, entries) ? ' s' : '';
   if (!t) return { unit, weight: null, reps: st.repMin, repMax: st.repMax, sets: clamped, setsFrom, kind: 'new', warmups: [],
     reason: `No history yet: pick a weight you can do about ${st.repMax} times, and log every set.` };
   const reason = t.kind === 'increase' ? `You hit ${st.repMax}${unit} on every set last time, so +${st.increment} lb.`

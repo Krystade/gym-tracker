@@ -3,7 +3,7 @@ import type { SetEntry } from '../domain/types';
 import { isWorking } from '../domain/progression';
 import { nextDay, type DayPlan, type Program } from '../domain/program';
 import { sameExercise } from '../domain/stats';
-import { isHold } from '../domain/care';
+import { isHoldLift } from '../domain/care';
 import type { ProgramStore } from '../state/useProgram';
 import { estimateSeconds, hhmm, paces, timedDay } from '../domain/timing';
 import { warmupCount } from '../domain/suggest';
@@ -65,7 +65,7 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
                 <b>{target}</b>
                 {target !== slot.exercise && <span className="muted small">for {slot.exercise}</span>}
                 {/* The count rides under the name, so the name gets the width it needs. */}
-                <span className="muted small"><span className="plan-count">{skipped ? 'Skipped' : `${Math.min(done, slot.sets)}/${slot.sets}`}</span> · {slot.repMin}–{slot.repMax}{isHold(slot.exercise) ? ' s hold' : ' reps'}</span>
+                <span className="muted small"><span className="plan-count">{skipped ? 'Skipped' : `${Math.min(done, slot.sets)}/${slot.sets}`}</span> · {slot.repMin}–{slot.repMax}{isHoldLift(slot.exercise, entries) ? ' s hold' : ' reps'}</span>
               </button>
               <button type="button" onClick={() => onChange({ ...plan, skips: skipped ? plan.skips.filter((x) => x !== slot.exercise) : [...plan.skips, slot.exercise] })}>
                 {skipped ? 'Undo' : 'Skip'}

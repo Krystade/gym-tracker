@@ -32,8 +32,10 @@ interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; not
  * `when`: the set may have been done earlier — `always` shows the time field (a past day), otherwise "Did this earlier?" opens it.
  * `suggest` is asked when the field opens, so it reflects the clock then. An empty field means unknown.
  */
-export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day }: {
+export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day, hold: holdLift }: {
   exercise: string; initial: SetFormValue; submitLabel: string;
+  /** Timed in seconds: a known hold, or a lift logged as one (the card knows the log; the name alone doesn't). */
+  hold?: boolean;
   onSubmit: (v: SetFormValue) => Promise<boolean>; onDelete?: () => void; onCancel?: () => void; keepDraft?: boolean;
   /** The day this form logs to; defaults to today. */
   day?: string;
@@ -69,7 +71,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   const used = flags.filter((f) => f !== 'double_pulley' && TOGGLES.some(([t]) => t === f));
   const [moreOpen, setMoreOpen] = useState(() => used.length > 0 || note !== '');
   const moreHint = [...TOGGLES.filter(([f]) => used.includes(f)).map(([, l]) => l), ...(note.trim() ? ['note'] : [])].join(', ');
-  const hold = isHold(exercise);
+  const hold = holdLift ?? isHold(exercise);
   const pain = flags.includes('pain');
   const w = Number(weight);
   const r = reps.trim() === '' ? null : Number(reps);

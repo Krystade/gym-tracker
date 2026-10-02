@@ -37,6 +37,10 @@ const STRESS: Partial<Record<Region, RegExp>> = {
 export const HOLD_EXERCISES = new Set(['plank', 'side plank', 'bird dog', 'dead bug', 'mcgill curl-up', 'plate pinch hold']);
 export const isHold = (name: string): boolean => HOLD_EXERCISES.has(name.trim().replace(/\s+/g, ' ').toLowerCase());
 
+/** A lift timed in seconds: a known hold, or one whose logged sets are holds. */
+export const isHoldLift = (exercise: string, sets: SetEntry[]): boolean =>
+  isHold(exercise) || sets.some((x) => sameExercise(x.exercise, exercise) && x.flags.includes('hold'));
+
 /** McGill's "big 3" for spine endurance, as hold-time sets. */
 export const BACK_BLOCK: Slot[] = ['Bird Dog', 'Side Plank', 'McGill Curl-Up'].map((exercise) => ({ exercise, sets: 2, repMin: 20, repMax: 40 }));
 

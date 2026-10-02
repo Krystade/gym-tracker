@@ -6,6 +6,7 @@ import { estimateRir, isWorking, nextTarget, prCheck, priorE1rm, rirOffset } fro
 import { fmtDate, fmtSet, fmtWeight } from '../domain/format';
 import type { Flag, SetEntry } from '../domain/types';
 import { SetForm, type SetFormValue } from './SetForm';
+import { isHoldLift } from '../domain/care';
 import { SetRowContent } from './SetRow';
 import { suggest } from '../domain/suggest';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
@@ -28,6 +29,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   // The set being edited may vanish (deleted in another tab, an import): close the editor rather than offer "Delete set 0".
   if (editing && !today.some((x) => x.id === editing.id)) setEditing(null);
   const editBox = useRef<HTMLDivElement>(null);
+  const hold = isHoldLift(exercise, store.entries);
   // With several sets and cards below, Save sits off-screen; 'nearest' moves nothing when it is already in view.
   useEffect(() => { if (editing) editBox.current?.scrollIntoView({ block: 'nearest' }); }, [editing?.id]);
   const last = lastSession(store.entries, exercise, date);
@@ -83,7 +85,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
       {editing ? (
         <div ref={editBox} className="edit-box">
         <p className="edit-title">Editing set {today.findIndex((x) => x.id === editing.id) + 1}</p>
-        <SetForm key={editing.id} exercise={exercise} initial={editing} submitLabel="Save"
+        <SetForm key={editing.id} exercise={exercise} hold={hold} initial={editing} submitLabel="Save"
           onCancel={() => setEditing(null)}
           onDelete={async () => {
             const no = today.findIndex((x) => x.id === editing.id) + 1; // the number on the row, not the entry order
@@ -108,7 +110,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
           }} />
         </div>
       ) : (
-        <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft day={date}
+        <SetForm key="new" exercise={exercise} hold={hold} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft day={date}
           when={{ suggest: suggestWhen, always: date < realToday, max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined }} />
       )}
     </section>
