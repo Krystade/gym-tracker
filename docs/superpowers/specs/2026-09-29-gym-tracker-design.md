@@ -173,6 +173,15 @@ the public repo.
     one-tap switch. Each profile has its own log, priorities, program, body
     weight and photos; gyms are shared. Private backup goes to the same repo,
     each extra profile under its own folder.
+12. **Exercise suggestions & data for later modelling.** Opening any exercise
+    (Lifts, its search, or its name on Today) shows what to do next — sets ×
+    reps @ weight with a one-line reason, plus a warm-up ramp for heavier
+    lifts — above its full history, with "Log it today". Sets come from
+    today's program slot, else the working sets done last session, else 3.
+    Every logged set also records, automatically, what was suggested
+    (weight, reps, sets), the active gym and its time; one tap a day records
+    energy 1–5. All of it is in the backup CSVs, so a future model can learn
+    from suggested vs. done. No new manual fields beyond energy.
 
 **Wishlist (not scheduled):** a friends list showing other people's activity.
 It needs a shared server or a shared repo, which conflicts with the
