@@ -76,6 +76,15 @@ describe('estimateRir', () => {
     const a = s('d', 1, 30, 10), b = s('d', 2, 30, 6);
     expect(estimateRir(a, [a, b], 60)).toBe(1);
   });
+  it('a late set done first at a weight makes the others not first', () => {
+    const late = s('d', 3, 30, 10), a = s('d', 1, 30, 9), b = s('d', 2, 30, 9);
+    expect(estimateRir(a, [late, a, b], 40)).toBeNull();
+    expect(estimateRir(late, [late, a, b], 40)).toBe(2);
+  });
+  it('the next set is the one done next, not the next set number', () => {
+    const late = s('d', 3, 30, 10), a = s('d', 1, 30, 6);
+    expect(estimateRir(late, [late, a], null)).toBe(1);
+  });
   it('returns null when RIR was logged, or for bodyweight/partial, or without any prior', () => {
     expect(estimateRir(s('d', 1, 30, 8, { rir: 2 }), [], 40)).toBeNull();
     expect(estimateRir(s('d', 1, 0, 8, { flags: ['bodyweight'] }), [], 40)).toBeNull();
@@ -111,6 +120,10 @@ describe('priorE1rm and prCheck', () => {
     expect(prCheck([...e, repOnly], repOnly)).toEqual({ e1rm: false, reps: true });
     const none = s('2026-01-22', 3, 30, 9);
     expect(prCheck([...e, none], none)).toEqual({ e1rm: false, reps: false });
+  });
+  it('a late set on an old day is not a PR when a later day beat it', () => {
+    const old = s('2026-03-01', 1, 35, 8), later = s('2026-03-15', 1, 40, 10), late = s('2026-03-02', 1, 35, 10);
+    expect(prCheck([old, later, late], late)).toEqual({ e1rm: false, reps: false });
   });
   it('does not call the first working set after warm-ups or partials a PR', () => {
     const wu = s('2026-02-01', 1, 20, 15, { flags: ['warmup'], exercise: 'Row' }), first = s('2026-02-01', 2, 60, 10, { exercise: 'Row' });

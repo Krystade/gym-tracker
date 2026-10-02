@@ -32,8 +32,14 @@ const shortfall = (set: SetEntry, prior: number): number => (set.weight >= prior
 /** Recent bests are rarely taken to failure, so "matched my best" still leaves reps in reserve; ~2 is typical. */
 export const DEFAULT_RIR_OFFSET = 2;
 
+/** Sets done before this one: by position (callers pass sets in the order done); by set number if it isn't in the list. */
+const doneBefore = (set: SetEntry, sessionSets: SetEntry[]): SetEntry[] => {
+  const i = sessionSets.findIndex((x) => x.id === set.id);
+  return i < 0 ? sessionSets.filter((x) => x.setNo < set.setNo) : sessionSets.slice(0, i);
+};
+
 const isFirstAtWeight = (set: SetEntry, sessionSets: SetEntry[]) =>
-  !sessionSets.some((x) => x.setNo < set.setNo && x.weight === set.weight && isWorking(x));
+  !doneBefore(set, sessionSets).some((x) => x.weight === set.weight && isWorking(x));
 
 /**
  * Learn the offset from first working sets where RIR was logged: mean(logged − shortfall), once there are 3,
@@ -63,11 +69,13 @@ export function rirOffset(entries: SetEntry[], exercise: string): number {
 /**
  * Estimated reps in reserve for a set without a logged RIR; null when it can't be estimated honestly.
  * Only the first working set at a weight gets a prior-based estimate: later sets lose reps to fatigue,
- * which would read as *more* reserve.
+ * which would read as *more* reserve. `sessionSets` in the order done.
  */
 export function estimateRir(set: SetEntry, sessionSets: SetEntry[], prior: number | null, offset = DEFAULT_RIR_OFFSET): number | null {
   if (set.rir != null || !isWorking(set) || set.weight <= 0 || set.flags.includes('bodyweight')) return null;
-  const next = sessionSets.find((x) => x.setNo === set.setNo + 1 && x.weight === set.weight && x.reps != null);
+  const i = sessionSets.findIndex((x) => x.id === set.id);
+  const after = i < 0 ? sessionSets.find((x) => x.setNo === set.setNo + 1) : sessionSets[i + 1];
+  const next = after && after.weight === set.weight && after.reps != null ? after : undefined;
   if (next && (set.reps as number) - (next.reps as number) >= 3) return 1;
   if (prior == null) return null;
   if (!isFirstAtWeight(set, sessionSets)) return null;
@@ -104,11 +112,11 @@ export interface PrResult { e1rm: boolean; reps: boolean }
 
 export function prCheck(entries: SetEntry[], set: SetEntry): PrResult {
   if (set.flags.includes('hold')) return { e1rm: false, reps: false };
-  const earlier = entries.filter((x) => x.id !== set.id && sameExercise(x.exercise, set.exercise)
-    && (x.date < set.date || (x.date === set.date && x.seq < set.seq)));
+  // Every other set of the lift, whatever its date: a late set on an old day isn't a PR if it has since been beaten.
+  const others = entries.filter((x) => x.id !== set.id && sameExercise(x.exercise, set.exercise));
   const v = e1rm(set);
-  const best = Math.max(-Infinity, ...earlier.map(e1rm).filter((n): n is number => n != null));
-  const repsBest = Math.max(-Infinity, ...earlier.filter((x) => x.weight >= set.weight && x.reps != null && !x.flags.includes('warmup')).map((x) => x.reps as number));
+  const best = Math.max(-Infinity, ...others.map(e1rm).filter((n): n is number => n != null));
+  const repsBest = Math.max(-Infinity, ...others.filter((x) => x.weight >= set.weight && x.reps != null && !x.flags.includes('warmup')).map((x) => x.reps as number));
   return {
     e1rm: v != null && Number.isFinite(best) && v > best,
     reps: set.reps != null && Number.isFinite(repsBest) && !set.flags.includes('warmup') && set.reps > repsBest,
