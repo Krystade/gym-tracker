@@ -19,7 +19,7 @@ test('import is idempotent and feeds history, lifts and chart', async ({ page })
   await page.getByRole('button', { name: 'Lifts' }).click();
   await page.getByRole('button', { name: /Cable Curl/ }).click();
   const chart = page.getByRole('img', { name: 'Estimated 1RM over time' });
-  await expect(chart.locator('circle')).toHaveCount(2);
+  await expect(chart.locator('circle.pt')).toHaveCount(2);
   await expect(page.getByText('80 × ?')).toBeVisible();
 });
 

@@ -3,7 +3,8 @@ import { e1rm, sameExercise, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 import { isHold, isHoldLift } from './care';
 
-export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number }
+// testSnoozedUntil: the "time for a test" banner stays hidden until this day.
+export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number; testSnoozedUntil?: string }
 
 export const settingsKey = (name: string): string => normalizeName(name).toLowerCase();
 
