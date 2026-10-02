@@ -1,9 +1,12 @@
 import { expect, test } from '@playwright/test';
 
 const logBench = async (page: import('@playwright/test').Page, weight: string, reps: string) => {
+  const rows = page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem');
+  const before = await rows.count();
   await page.getByRole('textbox', { name: 'Weight' }).fill(weight);
   await page.getByRole('textbox', { name: 'Reps' }).fill(reps);
   await page.getByRole('button', { name: 'Add set' }).click();
+  await expect(rows).toHaveCount(before + 1); // saved: the next step may reload the page or move the clock
 };
 
 test('a forgotten set goes into yesterday at the suggested time, and the workout length is measured', async ({ page }) => {

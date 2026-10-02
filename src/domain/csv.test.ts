@@ -81,6 +81,17 @@ describe('Phase 12 review fixes', () => {
   });
 });
 
+describe('duplicate rows', () => {
+  it('reports a second row for the same set instead of silently dropping one', () => {
+    const csv = 'date,exercise,set,weight_lb,reps\n2026-09-01,Bench Press,1,135,10\n2026-09-01,bench  press,1,145,8\n2026-09-01,Bench Press,2,135,9\n';
+    const { entries, errors } = parseCsv(csv);
+    expect(entries.map((e) => e.weight)).toEqual([135, 135]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ row: 3 });
+    expect(errors[0].message).toContain('Same set as row 2');
+  });
+});
+
 describe('late sets in the CSV', () => {
   it('round-trips entered_at and keeps an untimed set untimed', () => {
     const e: SetEntry = { id: setId('app', '2026-10-01', 'Bench Press', 1), date: '2026-10-01', seq: 1, exercise: 'Bench Press', setNo: 1,

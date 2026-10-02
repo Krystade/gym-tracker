@@ -59,6 +59,7 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
   if (missing.length) return { entries, errors: [{ row: 1, message: `Missing columns: ${missing.join(', ')}` }] };
   const col = (r: string[], name: string) => { const i = header.indexOf(name); return i < 0 ? '' : (r[i] ?? ''); };
 
+  const seen = new Map<string, number>();
   rows.slice(1).forEach((r, i) => {
     const rowNo = i + 2;
     if (r.every((f) => f.trim() === '')) return;
@@ -97,8 +98,13 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     const source = col(r, 'source').trim() || defaultSource;
     const asWritten = col(r, 'as_written');
     const note = col(r, 'note');
+    // The id ignores case and spacing, so the second row would silently replace the first on import.
+    const id = setId(source, date, exercise, setNo);
+    const first = seen.get(id);
+    if (first !== undefined) return fail(`Same set as row ${first} (${date}, ${exercise}, set ${setNo})`);
+    seen.set(id, rowNo);
     entries.push({
-      id: setId(source, date, exercise, setNo),
+      id,
       date, seq: i, exercise, setNo, weight, reps, source,
       flags: flagParts as Flag[],
       ...(rir !== undefined && { rir }),
