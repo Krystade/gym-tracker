@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import { bestSet, byOrderDone, e1rm, lastSession, sameExercise } from '../domain/stats';
@@ -25,6 +25,11 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   const [pr, setPr] = useState<string | null>(null);
   useEffect(() => { if (!pr) return; const t = setTimeout(() => setPr(null), 6000); return () => clearTimeout(t); }, [pr]);
   const today = store.entries.filter((e) => e.date === date && sameExercise(e.exercise, exercise)).sort(byOrderDone); // in the order done: a late set sits where it happened
+  // The set being edited may vanish (deleted in another tab, an import): close the editor rather than offer "Delete set 0".
+  if (editing && !today.some((x) => x.id === editing.id)) setEditing(null);
+  const editBox = useRef<HTMLDivElement>(null);
+  // With several sets and cards below, Save sits off-screen; 'nearest' moves nothing when it is already in view.
+  useEffect(() => { if (editing) editBox.current?.scrollIntoView({ block: 'nearest' }); }, [editing?.id]);
   const last = lastSession(store.entries, exercise, date);
   const best = bestSet(store.entries, exercise);
   const st = settings.get(exercise);
@@ -61,14 +66,14 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
     <section className="card">
       <header className="card-head">
         <button className="link" onClick={() => onOpen(exercise)}>{exercise}</button>
-        {best && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.e1rm))}</span>}
+        {best && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.e1rm))} lb</span>}
       </header>
-      {last && <p className="muted">Last ({fmtDate(last.date)}): {last.sets.map(fmtSet).join(' · ')}</p>}
+      {last && <p className="muted">Last ({fmtDate(last.date)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
       {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.sets} × {sug.reps}{sug.unit}+{fmtLoad(sug.weight)}{sug.warmups.length > 0 && <span className="muted"> · warm-up {fmtRamp(sug)}</span>}</span></p>}
       <ol className="sets" aria-label={`Sets for ${exercise}`}>
         {today.map((s, i) => (
           <li key={s.id}>
-            <button className="set-row" onClick={() => setEditing(s)}>
+            <button className={editing?.id === s.id ? 'set-row editing' : 'set-row'} aria-current={editing?.id === s.id ? 'true' : undefined} onClick={() => setEditing(s)}>
               <SetRowContent s={s} no={i + 1} estRir={estimateRir(s, today, prior, offset)} />
             </button>
           </li>
@@ -76,6 +81,8 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
       </ol>
       {pr && <p role="status" className="pr">{pr}</p>}
       {editing ? (
+        <div ref={editBox} className="edit-box">
+        <p className="edit-title">Editing set {today.findIndex((x) => x.id === editing.id) + 1}</p>
         <SetForm key={editing.id} exercise={exercise} initial={editing} submitLabel="Save"
           onCancel={() => setEditing(null)}
           onDelete={async () => {
@@ -99,6 +106,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
             }
             const ok = await store.update(next); if (ok) setEditing(null); return ok;
           }} />
+        </div>
       ) : (
         <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft day={date}
           when={{ suggest: suggestWhen, always: date < realToday, max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined }} />

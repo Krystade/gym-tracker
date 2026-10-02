@@ -61,6 +61,11 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
   width: 100%; justify-content: flex-start; flex-wrap: wrap; text-align: left; font-weight: 500;
   background: var(--bg); padding: 8px 12px; min-height: 44px;
 }
+.set-row.editing { border-color: var(--accent); background: var(--surface-2); }
+.edit-title { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+/* Scrolled to above the fixed tab bar (56px + the home-indicator inset), not under it. */
+.edit-box { scroll-margin-bottom: calc(var(--sab) + 68px); }
+.nw { white-space: nowrap; }
 .set-no { color: var(--muted); width: 1.5em; }
 .tag { font-size: 12px; padding: 2px 6px; border-radius: 6px; background: var(--surface-2); color: var(--muted); }
 .tag.pain { color: var(--pain); }
@@ -68,10 +73,12 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
 .note { flex-basis: 100%; font-size: 13px; color: var(--muted); padding-left: 1.5em; overflow-wrap: anywhere; }
 
 .set-form { display: grid; gap: 10px; margin-top: 8px; }
-.steppers { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.steppers { display: grid; grid-template-columns: 1fr 140px; gap: 10px; }
+/* Under 360px two steppers side by side clip "152.5"; stack them. */
+@media (max-width: 359px) { .steppers { grid-template-columns: 1fr; } }
 .stepper { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .stepper > div { display: grid; grid-template-columns: 44px 1fr 44px; gap: 4px; }
-.stepper input { text-align: center; font-size: 20px; font-weight: 700; padding: 0 4px; }
+.stepper input { text-align: center; font-size: 20px; font-weight: 700; padding: 0 2px; }
 .stepper button { padding: 0; font-size: 22px; touch-action: manipulation; }
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 44px; }
 .chip-label { font-size: 13px; color: var(--muted); margin-right: 2px; }
