@@ -59,7 +59,7 @@ export function TodayScreen({ store, settings, programs, body, gyms, date, today
   const available = gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined;
   if (picking) return <ExercisePicker recent={exerciseNames(store.entries)} gym={gyms.active} onCancel={() => setPicking(false)}
     onPick={(n) => { goTo(n); setPicking(false); }} />;
-  if (swapFor && plan) return <ExercisePicker recent={exerciseNames(store.entries)} gym={gyms.active} suggested={swapSuggestions(swapFor, store.entries, date, 5, available)} onCancel={() => setSwapFor(null)}
+  if (swapFor && plan) return <ExercisePicker recent={exerciseNames(store.entries)} gym={gyms.active} title={`Swap ${swapFor}`} suggested={swapSuggestions(swapFor, store.entries, date, 5, available)} onCancel={() => setSwapFor(null)}
     onPick={(n) => { void programs.savePlan({ ...plan, swaps: { ...plan.swaps, [swapFor]: n } }); goTo(n); setSwapFor(null); }} />;
 
   return (

@@ -94,6 +94,8 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
 }
 .picker-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; }
 .picker-list button { width: 100%; justify-content: flex-start; text-align: left; font-weight: 500; }
+.picker-list button.primary { font-weight: 700; }
+.picker-title { grid-column: 1 / -1; margin: 0; font-size: var(--fs-lg, 18px); }
 
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
 .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }

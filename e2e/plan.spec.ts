@@ -83,12 +83,16 @@ test('with logged sets the plan starts folded, even after a reload', async ({ pa
 });
 
 test('a jump lands the card below the profile bar', async ({ page }) => {
-  await page.goto('/');
+  await buildProgram(page);
+  // A second person brings the profile bar; switch straight back to Me (no reload, so Sam's save can't race it).
   await page.getByRole('button', { name: 'Data' }).click();
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
-  await expect(page.getByRole('group', { name: 'Who’s training' })).toBeVisible();
-  await buildProgram(page);
+  const bar = page.getByRole('group', { name: 'Who’s training' });
+  await expect(bar.getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  await bar.getByRole('button', { name: /Me/ }).click();
+  await expect(bar.getByRole('button', { name: /Me/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Today' }).click();
   const plan = page.getByRole('button', { name: /^Today’s plan/ });
   const row = (i: number) => page.getByRole('list', { name: 'Planned exercises' }).getByRole('listitem').nth(i).locator('.plan-name');
   for (let i = 0; i < 4; i++) {

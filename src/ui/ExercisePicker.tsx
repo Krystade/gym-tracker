@@ -6,7 +6,7 @@ import type { Suggestion } from '../domain/care';
 import { SwapSuggestions } from './SwapSuggestions';
 import { canDo, type Gym } from '../domain/equipment';
 
-export function ExercisePicker({ recent, onPick, onCancel, suggested = [], gym = null }: { recent: string[]; onPick: (name: string) => void; onCancel: () => void; suggested?: Suggestion[]; gym?: Gym | null }) {
+export function ExercisePicker({ recent, onPick, onCancel, suggested = [], gym = null, title }: { recent: string[]; onPick: (name: string) => void; onCancel: () => void; suggested?: Suggestion[]; gym?: Gym | null; title?: string }) {
   const [q, setQ] = useState('');
   const query = normalizeName(q);
   const all = [...recent, ...CATALOG.filter((c) => !recent.some((r) => sameExercise(r, c)))];
@@ -18,7 +18,9 @@ export function ExercisePicker({ recent, onPick, onCancel, suggested = [], gym =
   return (
     <div className="picker">
       <div className="picker-head">
-        <input type="search" aria-label="Search exercises" placeholder="Search or type a new exercise" autoFocus value={q} onChange={(e) => setQ(e.target.value)} />
+        {/* Inside the sticky head: it keeps the notch handling, and the lift being swapped stays named while scrolling. */}
+        {title && <h1 className="picker-title">{title}</h1>}
+        <input type="search" aria-label="Search exercises" placeholder="Search or add new" autoFocus value={q} onChange={(e) => setQ(e.target.value)} />
         <button onClick={onCancel}>Cancel</button>
       </div>
       {!query && <SwapSuggestions items={suggested} onPick={onPick} />}

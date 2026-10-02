@@ -1,5 +1,6 @@
 import { addDays, weekStart } from './analytics';
 import { CATALOG } from './catalog';
+import { gearOf } from './equipment';
 import { muscleVector, MUSCLES } from './muscles';
 import type { Slot } from './program';
 import { exerciseNames, sameExercise } from './stats';
@@ -60,6 +61,15 @@ export function painDefaults(initial: { flags: Flag[]; painRegion?: Region; pain
 
 export interface Suggestion { name: string; score: number; why: string }
 
+/** What the two lifts share ("works chest and triceps"), plus the biggest thing the swap adds ("+ more front delts"). */
+function muscleWhy(from: string, to: string): string {
+  const va = muscleVector(from) ?? {}, vb = muscleVector(to) ?? {};
+  const shared = MUSCLES.map((m) => [m, Math.min(va[m] ?? 0, vb[m] ?? 0)] as const).filter(([, o]) => o >= 0.25).sort((a, b) => b[1] - a[1]).slice(0, 2);
+  const extra = MUSCLES.filter((m) => (vb[m] ?? 0) >= 0.5 && (va[m] ?? 0) < 0.25).sort((a, b) => (vb[b] ?? 0) - (vb[a] ?? 0))[0];
+  const works = shared.length ? `works ${shared.map(([m]) => m.toLowerCase()).join(' and ')}` : 'similar muscles';
+  return extra ? `${works} + more ${extra.toLowerCase()}` : works;
+}
+
 /** Same-muscle alternatives, ranked by similarity, pushed down if they hurt recently or load a region that did. */
 export function swapSuggestions(exercise: string, entries: SetEntry[], today: string, limit = 5, available?: Set<string>): Suggestion[] {
   const pain = recentPain(entries, today);
@@ -70,7 +80,10 @@ export function swapSuggestions(exercise: string, entries: SetEntry[], today: st
     const sim = similarity(exercise, name);
     if (sim <= 0.5) continue;
     let score = sim;
-    const why: string[] = [sim > 0.99 ? 'same muscles' : 'similar muscles'];
+    const why: string[] = [muscleWhy(exercise, name)];
+    // Swaps for one lift share their muscles, so the gear is what tells them apart.
+    const gear = gearOf(name);
+    if (gear && gear !== gearOf(exercise)) why.push(gear);
     const hurt = pain.byExercise.get(name.toLowerCase()) ?? 0;
     if (hurt) { score -= 0.3 * Math.min(hurt, 3); why.push('pain logged recently'); }
     const loaded = [...pain.regions].find((r) => STRESS[r]?.test(name));

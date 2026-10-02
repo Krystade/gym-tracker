@@ -60,6 +60,22 @@ export const NEEDS: Record<string, Needs> = {
 const key = (s: string) => normalizeName(s).toLowerCase();
 const NEEDS_BY_KEY = new Map(Object.entries(NEEDS).map(([k, v]) => [key(k), v]));
 
+const MACHINES = new Set<Equipment>(EQUIPMENT_GROUPS.find(([g]) => g === 'Machines')![1]);
+const CABLES = new Set<Equipment>(EQUIPMENT_GROUPS.find(([g]) => g === 'Cables')![1]);
+/** The main gear a catalog lift is done with, in a word ("dumbbells", "cable", "machine"); null when it isn't a catalog lift. */
+export function gearOf(exercise: string): string | null {
+  const needs = NEEDS_BY_KEY.get(key(exercise));
+  if (!needs) return null;
+  // Several kinds of gear work: no single one to name.
+  if (needs.length > 1) return null;
+  const alt = needs[0];
+  if (!alt.length) return 'no equipment';
+  // A bench is where you do it, not what you lift; a lift that needs only a bench names nothing.
+  const main = alt.find((e) => !e.endsWith('bench'));
+  if (!main) return null;
+  return main === 'smith machine' ? 'Smith machine' : MACHINES.has(main) ? 'machine' : CABLES.has(main) ? 'cable' : main;
+}
+
 /** Whether this gym can do the lift: an exclusion or inclusion decides first, then the gear. Null = gear unknown (not a catalog lift). */
 export function canDo(gym: Gym | null, exercise: string): boolean | null {
   if (!gym) return true;

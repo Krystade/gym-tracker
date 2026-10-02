@@ -61,6 +61,32 @@ describe('swapSuggestions', () => {
   });
 });
 
+describe('swapSuggestions reasons', () => {
+  const why = (from: string, to: string) => swapSuggestions(from, [], '2026-09-30', 200).find((x) => x.name === to)!.why;
+  it('name the muscles the two lifts share', () => {
+    expect(why('Bench Press', 'Flat DB Press')).toContain('works chest and triceps');
+    expect(why('Bench Press', 'Machine Chest Fly')).toContain('works chest');
+    expect(why('Bench Press', 'Low-to-High Cable Fly')).toContain('works chest and front delts');
+    expect(why('Bench Press', 'Flat DB Press')).not.toMatch(/similar muscles|same muscles/);
+  });
+  it('add the biggest muscle the swap trains that the original barely does', () => {
+    // Pushdown is all triceps; the close-grip press brings chest and front delts too (chest first on a tie).
+    expect(why('Cable Pushdown', 'Close-Grip Bench Press')).toContain('works triceps + more chest');
+    expect(why('Cable Pushdown', 'Rope Pushdown')).not.toContain('+ more');
+  });
+  it('say what gear a swap uses when it differs, so the top five read differently', () => {
+    expect(why('Machine Chest Press', 'Flat DB Press')).toContain('dumbbells');
+    expect(why('Machine Chest Press', 'Smith Flat Press')).toContain('Smith machine');
+    expect(why('Bench Press', 'Machine Chest Press')).toContain('machine');
+    expect(why('Bench Press', 'Incline Bench Press')).not.toMatch(/barbell/); // same gear: nothing to say
+    // No single gear to name: several kinds work, or the only need is a bench.
+    expect(why('Overhead DB Triceps Extension', 'Skullcrusher')).not.toMatch(/barbell|dumbbells/);
+    expect(why('Barbell Squat', 'Bulgarian Split Squat')).not.toContain('bench');
+    const top = swapSuggestions('Machine Chest Press', [], '2026-09-30', 5);
+    expect(new Set(top.map((x) => x.why)).size).toBeGreaterThan(1);
+  });
+});
+
 describe('holds', () => {
   const h = s('2026-09-29', 'Side Plank', { weight: 0, reps: 30, flags: ['bodyweight', 'hold'] });
   it('are recognised, formatted in seconds, and never feed e1RM or tonnage', () => {
