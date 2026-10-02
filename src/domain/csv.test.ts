@@ -1,6 +1,6 @@
 import { setId } from './ids';
 import { describe, expect, it } from 'vitest';
-import { parseCsv, toCsv, CSV_HEADER } from './csv';
+import { diffSets, parseCsv, toCsv, CSV_HEADER } from './csv';
 import type { SetEntry } from './types';
 
 const base: Omit<SetEntry, 'id' | 'setNo' | 'seq'> = {
@@ -99,5 +99,24 @@ describe('late sets in the CSV', () => {
     const back = parseCsv(toCsv([e])).entries[0];
     expect(back.enteredAt).toBe(e.enteredAt);
     expect(back).not.toHaveProperty('loggedAt');
+  });
+});
+
+describe('diffSets', () => {
+  it('splits incoming sets into new, changed and identical', () => {
+    const existing = [mk(1), mk(2), mk(3)];
+    const incoming = [mk(1), mk(2, { weight: 65 }), mk(4)];
+    const d = diffSets(existing, incoming);
+    expect(d.fresh.map((e) => e.setNo)).toEqual([4]);
+    expect(d.changed.map((e) => e.setNo)).toEqual([2]);
+    expect(d.same).toBe(1);
+  });
+  it('ignores seq, field order and absent-versus-undefined, but sees a note, a flag or a target', () => {
+    const stored = mk(1, { note: 'x', flags: ['pain'], target: { weight: 60, reps: 12, sets: 3 } });
+    const reordered: SetEntry = { target: { sets: 3, reps: 12, weight: 60 }, note: 'x', rir: undefined, seq: 99, id: stored.id, setNo: 1, ...base, flags: ['pain'] };
+    expect(diffSets([stored], [reordered]).same).toBe(1);
+    expect(diffSets([stored], [{ ...stored, note: undefined }]).changed).toHaveLength(1);
+    expect(diffSets([stored], [{ ...stored, flags: [] }]).changed).toHaveLength(1);
+    expect(diffSets([stored], [{ ...stored, target: { weight: 60, reps: 12, sets: 4 } }]).changed).toHaveLength(1);
   });
 });

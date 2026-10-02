@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { detectCsv, mergeBody, parseBodyFile, proteinCheck, rate, rateBand, toBodyCsv, trend, type BodyDay } from './body';
+import { detectCsv, diffBody, mergeBody, parseBodyFile, proteinCheck, rate, rateBand, toBodyCsv, trend, type BodyDay } from './body';
 import { CSV_HEADER } from './csv';
 
 const fx = (n: string) => readFileSync(path.join(import.meta.dirname, '..', '..', 'e2e', 'fixtures', n), 'utf8');
@@ -115,5 +115,25 @@ describe('energy', () => {
     expect(parseBodyFile(toBodyCsv(days)).days).toEqual(days);
     expect(parseBodyFile('date,weight_lb,energy\n2026-10-02,,6\n').errors[0].message).toMatch(/energy/i);
     expect(parseBodyFile('date,weight_lb\n2026-10-02,180\n').days).toEqual([{ date: '2026-10-02', weight: 180 }]);
+  });
+});
+
+describe('diffBody', () => {
+  const stored: BodyDay[] = [{ date: '2026-09-01', weight: 180, calories: 2500 }, { date: '2026-09-02', weight: 181 }];
+  it('splits days into new, changed and identical', () => {
+    const d = diffBody(stored, [{ date: '2026-09-01', weight: 179 }, { date: '2026-09-02', weight: 181 }, { date: '2026-09-03', weight: 182 }]);
+    expect(d.changed.map((x) => x.date)).toEqual(['2026-09-01']);
+    expect(d.fresh.map((x) => x.date)).toEqual(['2026-09-03']);
+    expect(d.same).toBe(1);
+  });
+  it('a field the incoming day leaves out never counts', () => {
+    expect(diffBody(stored, [{ date: '2026-09-01', weight: 180 }]).same).toBe(1);
+    expect(diffBody(stored, [{ date: '2026-09-01', weight: 180, calories: undefined }]).same).toBe(1);
+    expect(diffBody(stored, [{ date: '2026-09-01', weight: 181 }]).changed).toHaveLength(1);
+  });
+  it('a day that only fills a field the stored day lacks overwrites nothing, so it is not a change', () => {
+    const d = diffBody(stored, [{ date: '2026-09-02', calories: 2000 }]);
+    expect(d.changed).toEqual([]);
+    expect(d.fresh).toHaveLength(1);
   });
 });

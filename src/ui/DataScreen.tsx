@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { ProfileStore } from '../state/useProfile';
 import type { BodyStore } from '../state/useBody';
@@ -20,7 +20,9 @@ const KIND: Partial<Record<CsvKind, string>> = { body: 'Body data', 'mfp-weight'
 export function DataScreen({ store, profile, body, sync, people, onOpenPaste }: { store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; people: PeopleStore; onOpenPaste: () => void }) {
   const db = useDb();
   const [bodyMsgs, setBodyMsgs] = useState<{ ok: boolean; text: string }[]>([]);
-  const [result, setResult] = useState<{ added: number; updated: number; errors: CsvError[] } | null>(null);
+  const [result, setResult] = useState<{ added: number; updated: number; same: number; kept: boolean; errors: CsvError[] } | null>(null);
+  const [ask, setAsk] = useState<{ what: string; changed: number; fresh: number } | null>(null);
+  const answer = useRef<((replace: boolean) => void) | null>(null);
   const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [persisted, setPersisted] = useState<boolean | null>(null);
   useEffect(() => { void navigator.storage?.persisted?.().then(setPersisted); }, []);
@@ -33,7 +35,7 @@ export function DataScreen({ store, profile, body, sync, people, onOpenPaste }: 
 
   async function onFile(file: File) {
     let text: string;
-    try { text = await file.text(); } catch (e) { setResult({ added: 0, updated: 0, errors: [{ row: 0, message: `Could not read the file: ${String(e)}` }] }); return; }
+    try { text = await file.text(); } catch (e) { setResult({ added: 0, updated: 0, same: 0, kept: false, errors: [{ row: 0, message: `Could not read the file: ${String(e)}` }] }); return; }
     if (/\.json$/i.test(file.name)) {
       const al = parseAliasesJson(text);
       if (al) {
@@ -42,7 +44,7 @@ export function DataScreen({ store, profile, body, sync, people, onOpenPaste }: 
         return;
       }
       const r = parseProfileJson(text);
-      if ('error' in r) { setProfileMsg({ ok: false, text: r.error }); return; }
+      if ('error' in r) { setProfileMsg({ ok: false, text: `Profile not imported: ${r.error}` }); return; }
       try { await profile.save(r.profile); } catch (e) { setProfileMsg({ ok: false, text: `Saving the profile failed: ${String(e)}` }); return; }
       const n = Object.values(r.profile.tiers).filter((t) => t !== 3).length;
       setProfileMsg({ ok: true, text: `Profile imported: ${n} muscles prioritised` });
@@ -50,15 +52,28 @@ export function DataScreen({ store, profile, body, sync, people, onOpenPaste }: 
     }
     const b = parseBodyFile(text);
     if (KIND[b.kind]) {
-      const ok = b.days.length > 0 && (await body.importDays(b.days));
+      const d = body.diff(b.days);
+      const replace = d.changed.length > 0 && (await confirmReplace('day', d.changed.length, d.fresh.length));
+      const days = replace ? [...d.fresh, ...d.changed] : d.fresh;
+      const ok = b.days.length > 0 && (days.length === 0 || (await body.importDays(days)));
       const skipped = b.errors.length ? ` · ${plural(b.errors.length, 'row')} skipped (row ${b.errors.slice(0, 5).map((e) => e.row).join(', ')})` : '';
-      setBodyMsgs((m) => [...m, { ok, text: `${KIND[b.kind]}: ${plural(b.days.length, 'day')}${skipped}` }]);
+      const done = days.length === 0 && b.days.length > 0 ? 'nothing new' : plural(days.length, 'day');
+      setBodyMsgs((m) => [...m, { ok, text: `${KIND[b.kind]}: ${done}${skipped}` }]);
       return;
     }
     const { entries, errors } = parseCsv(text, file.name.replace(/\.csv$/i, ''));
-    const r = await store.importEntries(entries);
-    if (r) setResult({ ...r, errors });
+    const d = await store.diff(entries);
+    const replace = d.changed.length > 0 && (await confirmReplace('set', d.changed.length, d.fresh.length));
+    const list = replace ? [...d.fresh, ...d.changed] : d.fresh;
+    const r = list.length ? await store.importEntries(list) : { added: 0, updated: 0 };
+    if (r) setResult({ ...r, same: d.same, kept: !replace && d.changed.length > 0, errors });
   }
+
+  // A promise the confirm card's buttons settle, so a pick of several files asks about one file at a time.
+  function confirmReplace(what: string, changed: number, fresh: number): Promise<boolean> {
+    return new Promise((resolve) => { answer.current = resolve; setAsk({ what, changed, fresh }); });
+  }
+  function choose(replace: boolean) { answer.current?.(replace); answer.current = null; setAsk(null); }
 
   const [fallback, setFallback] = useState<string | null>(null);
   const [bodyFallback, setBodyFallback] = useState<string | null>(null);
@@ -86,20 +101,37 @@ export function DataScreen({ store, profile, body, sync, people, onOpenPaste }: 
         </p>
       </section>
       <section className="card">
-        <label className="button primary wide">Import CSV
-          <input type="file" multiple accept=".csv,.json,text/csv,application/json" hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; if (fs.length) void onFiles(fs); }} />
+        {/* Off while the card asks, so a second pick can't leave the first file unanswered. */}
+        <label className="button primary wide" aria-disabled={ask ? true : undefined}>Import CSV
+          <input type="file" disabled={ask != null} multiple accept=".csv,.json,text/csv,application/json" hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; if (fs.length) void onFiles(fs); }} />
         </label>
         <button className="wide" onClick={onOpenPaste}>Paste from notes</button>
         <p className="muted small">History CSV, a name-mappings or priority profile .json, body.csv, or MyFitnessPal’s export (unzip it in Files, then pick Measurement-Summary and Nutrition-Summary together).</p>
-        {bodyMsgs.map((m) => <p key={m.text} role="status" className={m.ok ? '' : 'warn'}>{m.text}</p>)}
-        {profileMsg && <p role="status" className={profileMsg.ok ? '' : 'warn'}>{profileMsg.text}</p>}
-        {result && (
-          <div role="status">
-            <p>Imported {result.added} new, {result.updated} updated</p>
-            {result.errors.length > 0 && (<>
-              <p className="warn">{result.errors.length} rows skipped</p>
-              <ul className="errors">{result.errors.slice(0, 50).map((e) => <li key={e.row}>Row {e.row}: {e.message}</li>)}</ul>
-            </>)}
+        {ask && (
+          <div role="alert" className="import-confirm">
+            <p>This file changes {plural(ask.changed, ask.what)} already in your log{ask.fresh ? ` and adds ${plural(ask.fresh, `new ${ask.what}`)}` : ''}.</p>
+            <div className="form-actions">
+              <button className="primary" onClick={() => choose(true)}>Replace them</button>
+              <button autoFocus onClick={() => choose(false)}>Only add new</button>
+            </div>
+          </div>
+        )}
+        {(bodyMsgs.length > 0 || profileMsg || result) && (
+          <div className="import-result">
+            {bodyMsgs.map((m) => <p key={m.text} role="status" className={m.ok ? 'ok' : 'warn'}>{m.ok ? '✓ ' : ''}{m.text}</p>)}
+            {profileMsg && <p role="status" className={profileMsg.ok ? 'ok' : 'warn'}>{profileMsg.ok ? '✓ ' : ''}{profileMsg.text}</p>}
+            {result && (
+              <div role="status">
+                {result.added + result.updated > 0
+                  ? <p className="ok">✓ Imported {plural(result.added, 'new set')}{result.updated ? `, ${plural(result.updated, 'set')} updated` : ''}</p>
+                  : result.errors.length > 0 || result.kept || !result.same ? <p className="warn">Nothing imported</p>
+                  : <p className="muted">Nothing new: {plural(result.same, 'set')} already in your log</p>}
+                {result.errors.length > 0 && (<>
+                  <p className="warn">{plural(result.errors.length, 'row')} skipped</p>
+                  <ul className="errors">{result.errors.slice(0, 50).map((e) => <li key={e.row}>Row {e.row}: {e.message}</li>)}</ul>
+                </>)}
+              </div>
+            )}
           </div>
         )}
         <button className="wide" onClick={() => void exportCsv()} disabled={!store.entries.length}>Export CSV</button>

@@ -9,7 +9,7 @@ test('paste from notes: review, fix a line, map a name, add once', async ({ page
   await page.goto('/');
   await page.getByRole('button', { name: 'Data' }).click();
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
-  await expect(page.getByText('Imported 6 new, 0 updated')).toBeVisible();
+  await expect(page.getByText('✓ Imported 6 new sets')).toBeVisible();
 
   await page.getByRole('button', { name: 'Paste from notes' }).click();
   await page.getByLabel('Workout notes').fill(NOTES);

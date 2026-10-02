@@ -120,3 +120,24 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
   });
   return { entries, errors };
 }
+
+// Sorted keys at every level, so field order never reads as a change.
+const canon = (v: unknown): unknown =>
+  Array.isArray(v) ? v.map(canon)
+  : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => [k, canon(x)]))
+  : v;
+// `seq` is the import row index for a CSV and a timestamp for a live set, so it says nothing about whether the set changed.
+const sig = ({ seq: _seq, ...rest }: SetEntry): string => JSON.stringify(canon(rest));
+
+/** Which incoming sets are new, which differ from the stored set with the same id, and how many are already identical. */
+export function diffSets(existing: SetEntry[], incoming: SetEntry[]): { fresh: SetEntry[]; changed: SetEntry[]; same: number } {
+  const by = new Map(existing.map((e) => [e.id, sig(e)]));
+  const out = { fresh: [] as SetEntry[], changed: [] as SetEntry[], same: 0 };
+  for (const e of incoming) {
+    const had = by.get(e.id);
+    if (had === undefined) out.fresh.push(e);
+    else if (had === sig(e)) out.same++;
+    else out.changed.push(e);
+  }
+  return out;
+}

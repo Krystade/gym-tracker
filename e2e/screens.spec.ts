@@ -30,7 +30,7 @@ test('screens at iPhone 13 mini size', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Data' }).click();
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
-  await expect(page.getByText('Imported 6 new, 0 updated')).toBeVisible();
+  await expect(page.getByText('✓ Imported 6 new sets')).toBeVisible();
   await page.getByLabel('Import CSV').setInputFiles([path.join(import.meta.dirname, 'fixtures', 'mfp-weight.sample.csv'), path.join(import.meta.dirname, 'fixtures', 'mfp-nutrition.sample.csv')]);
   await expect(page.getByText('MyFitnessPal nutrition: 3 days')).toBeVisible();
   await check(page, '4-data');

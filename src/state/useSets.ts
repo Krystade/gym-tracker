@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { setBlockedHandler } from '../db/db';
 import { useDb, useProfileId } from './profileDb';
 import { buildAppSet, type NewSetInput } from '../domain/buildSet';
+import { diffSets } from '../domain/csv';
 import type { SetEntry } from '../domain/types';
 
 // Other open copies of the app (a Safari tab beside the installed app) hear about each change and re-read.
@@ -70,6 +71,9 @@ export function useSets() {
     return result;
   }, [reload]);
 
-  return { entries, loading, error, add, update, remove, importEntries };
+  // Reads the database, not state: back-to-back files in one pick must see each other's rows.
+  const diff = useCallback(async (list: SetEntry[]) => diffSets(await db.getAllSets(), list), [db]);
+
+  return { entries, loading, error, add, update, remove, importEntries, diff };
 }
 export type SetsStore = ReturnType<typeof useSets>;
