@@ -100,6 +100,8 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
 .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
 .tile b { display: block; font-size: 22px; }
+.tile b.sm { font-size: 18px; white-space: nowrap; }
+.tile.wide { grid-column: 1 / -1; }
 .tile span { font-size: 12px; color: var(--muted); }
 
 .chart { display: block; }
@@ -110,6 +112,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
 .chart .pt.pr { fill: var(--accent); }
 .chart .pt.sel { stroke: var(--text); stroke-width: 2.5; }
 .chart:has(polyline.line) { cursor: pointer; }
+.chart .cal-lbl { font-size: 9px; }
 .chart .grid { stroke: var(--line); stroke-width: 1; opacity: .6; }
 .readout { margin: 0 0 4px; font-size: 14px; font-variant-numeric: tabular-nums; min-height: 1.4em; }
 
@@ -149,12 +152,15 @@ h3 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600;
 .chart .cell { cursor: pointer; }
 .chart .cell.sel { stroke: var(--text); stroke-width: 1.5; }
 .readout { font-size: 13px; color: var(--muted); min-height: 1.4em; }
-.mrow { display: grid; grid-template-columns: 82px 1fr 30px 84px; align-items: center; gap: 6px; min-height: 30px; font-size: 13px; }
+.mrow { display: grid; grid-template-columns: 72px 1fr 74px 76px; align-items: center; gap: 6px; min-height: 30px; font-size: 13px; }
 .mname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mtrack { position: relative; height: 10px; background: var(--surface-2); border-radius: 5px; }
 .mband { position: absolute; top: -3px; bottom: -3px; border: 1px solid var(--muted); border-radius: 4px; }
 .mbar { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 5px; }
 .mval { text-align: right; font-variant-numeric: tabular-nums; }
+/* Narrow phones: the icon carries the status (the row's aria-label says it in words) so the bar keeps room. */
+@media (max-width: 359px) { .mrow { grid-template-columns: 76px 1fr 66px 14px; } .mword { display: none; } }
+.mtarget { color: var(--muted); font-size: 11px; }
 .mstat { color: var(--muted); white-space: nowrap; font-size: 12px; }
 .mstat.under b { color: #d03b3b; } .mstat.on b { color: #0ca30c; } .mstat.over b { color: #fab219; }
 .cal-legend { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
@@ -304,3 +310,5 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: 16px;
 .when input { min-height: 44px; font-size: 16px; width: 100%; min-width: 140px; }
 .err { color: var(--danger); }
 .chip.more { justify-self: start; } /* .set-form is a grid, so the inline axis is justify */
+.chart .goal, .chart .goal-lbl { pointer-events: none; }
+.chart .goal-lbl { paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }

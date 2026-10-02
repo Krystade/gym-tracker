@@ -8,7 +8,7 @@ import { MUSCLES } from '../domain/muscles';
 import type { Tier } from '../domain/profile';
 import { fmtWeight, plural } from '../domain/format';
 import { BarChart } from './charts/BarChart';
-import { MuscleBars } from './charts/MuscleBars';
+import { MuscleBars, weekPace } from './charts/MuscleBars';
 import { Calendar } from './charts/Calendar';
 import { ChartTable } from './charts/ChartTable';
 import { CareCard } from './CareCard';
@@ -57,7 +57,8 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
   const thisWeek = weeks.at(-1)!;
   const muscle = weeklyMuscleSets(store.entries, weekStart(today));
   const lastWeek = weeklyMuscleSets(store.entries, weeks.at(-2)!.week);
-  const days = calendarDays(store.entries, 16 * 7, today);
+  // 12 whole Monday–Sunday columns, the last one running to today.
+  const days = calendarDays(store.entries, 11 * 7 + 1 + (Date.parse(today) - Date.parse(weekStart(today))) / 864e5, today);
   const adh = programs.program ? adherence(programs.program, programs.plans, store.entries, addDays(today, -27), today) : null;
   return (
     <>
@@ -69,14 +70,13 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
           <div className="tile"><span>Weekly streak</span><b>{plural(st.current, 'week')}</b></div>
           <div className="tile"><span>Sets</span><b>{thisWeek.sets}</b></div>
           <div className="tile"><span>Best streak</span><b>{plural(st.best, 'week')}</b></div>
-          <div className="tile"><span>Program sets, 4 weeks</span><b>{adh && adh.planned ? `${Math.round((100 * adh.done) / adh.planned)}%` : '—'}</b></div>
-          <div className="tile"><span>Sets done / planned</span><b>{adh && adh.planned ? `${adh.done} / ${adh.planned}` : '—'}</b></div>
+          {adh && adh.planned > 0 && <div className="tile wide"><span>Program, 4 weeks</span><b>{Math.round((100 * adh.done) / adh.planned)}% · {adh.done} / {adh.planned} sets</b></div>}
         </div>
       </section>
       <section className="card">
         <h2>Muscle volume</h2>
-        <p className="muted small">Fractional sets this week (direct 1, indirect ½), against each priority’s target range (outlined).</p>
-        <MuscleBars sets={muscle.sets} profile={p} />
+        <p className="muted small">Fractional sets this week (direct 1, indirect ½), against each priority’s target range (outlined). “On pace” is short of the target but keeping up with the week so far.</p>
+        <MuscleBars sets={muscle.sets} profile={p} pace={weekPace(today)} />
         {muscle.unmapped.length > 0 && <p className="muted small">Not counted (unknown muscles): {muscle.unmapped.join(', ')}</p>}
         <ChartTable caption="Fractional sets per muscle" head={['Muscle', 'This week / last week']}
           rows={MUSCLES.map((m) => [m, `${fmt(muscle.sets[m])} / ${fmt(lastWeek.sets[m])}`])} />
@@ -89,12 +89,12 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
       </section>
       <section className="card">
         <h2>Weekly tonnage</h2>
-        <BarChart label="Weekly tonnage in pounds, last 12 weeks" points={weeks.map((w) => ({ x: w.week, y: w.tonnage }))} format={(n) => `${tons(n)} lb`} tick={tons} />
+        <BarChart label="Weekly tonnage in pounds, last 12 weeks" points={weeks.map((w) => ({ x: w.week, y: w.tonnage }))} format={(n) => `${tons(n)} lb`} tick={tons} unit="lb" />
         <ChartTable caption="Weekly tonnage (lb)" head={['Week of', 'Tonnage']} rows={weeks.map((w) => [w.week, String(Math.round(w.tonnage))])} />
       </section>
       <section className="card">
         <h2>Calendar</h2>
-        <Calendar days={days} />
+        <Calendar days={days} today={today} />
       </section>
       <BodyCard body={body} today={today} />
       <PhotosCard photos={photos} onOpen={onOpenPhotos} />

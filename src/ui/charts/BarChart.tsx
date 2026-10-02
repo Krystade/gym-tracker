@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const W = 340, H = 150, L = 34, R = 6, T = 10, B = 22, GAP = 2, RADIUS = 4;
+const W = 340, H = 150, L = 44, R = 6, T = 10, B = 22, GAP = 2, RADIUS = 4;
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 
 /** A bar anchored to the baseline with only its top corners rounded. */
@@ -9,8 +9,9 @@ function barPath(x: number, w: number, base: number, h: number): string {
   return `M${x},${base} V${base - h + r} Q${x},${base - h} ${x + r},${base - h} H${x + w - r} Q${x + w},${base - h} ${x + w},${base - h + r} V${base} Z`;
 }
 
-export function BarChart({ label, points, format, tick = String, goal }: {
-  label: string; points: { x: string; y: number }[]; format: (n: number) => string; tick?: (n: number) => string; goal?: number;
+// `unit` goes on the top label only, as on the Exercise chart.
+export function BarChart({ label, points, format, tick = String, unit, goal }: {
+  label: string; points: { x: string; y: number }[]; format: (n: number) => string; tick?: (n: number) => string; unit?: string; goal?: number;
 }) {
   const [sel, setSel] = useState<number | null>(null);
   const max = Math.max(goal ?? 0, ...points.map((p) => p.y), 1);
@@ -20,10 +21,11 @@ export function BarChart({ label, points, format, tick = String, goal }: {
   return (
     <>
       <svg className="chart" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label}>
+        {[0, max / 2, max].map((v) => <line key={v} x1={L} x2={W - R} y1={Y(v)} y2={Y(v)} className="grid" />)}
         <line x1={L} x2={W - R} y1={base} y2={base} className="axis" />
-        <text x={L - 6} y={T + 4} className="lbl" textAnchor="end">{tick(max)}</text>
+        <text x={L - 6} y={T + 4} className="lbl" textAnchor="end">{tick(max)}{unit ? ` ${unit}` : ''}</text>
+        <text x={L - 6} y={Y(max / 2) + 4} className="lbl" textAnchor="end">{tick(max / 2)}</text>
         <text x={L - 6} y={base} className="lbl" textAnchor="end">0</text>
-        {goal != null && <line x1={L} x2={W - R} y1={Y(goal)} y2={Y(goal)} className="goal" />}
         {points.map((p, i) => {
           const h = base - Y(p.y);
           return (
@@ -34,6 +36,9 @@ export function BarChart({ label, points, format, tick = String, goal }: {
             </g>
           );
         })}
+        {/* After the bars, so a week that meets the goal can't hide it. */}
+        {goal != null && <line x1={L} x2={W - R} y1={Y(goal)} y2={Y(goal)} className="goal" />}
+        {goal != null && <text x={W - R} y={Y(goal) - 3} className="lbl goal-lbl" textAnchor="end">goal</text>}
         <text x={L} y={H - 6} className="lbl">{md(points[0].x)}</text>
         <text x={W - R} y={H - 6} className="lbl" textAnchor="end">{md(points.at(-1)!.x)}</text>
       </svg>

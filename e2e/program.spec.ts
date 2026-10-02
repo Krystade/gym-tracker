@@ -58,5 +58,5 @@ test('logging without touching the plan still records the session for adherence'
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem')).toHaveCount(1);
   await page.getByRole('button', { name: 'Stats' }).click();
-  await expect(page.locator('.tile', { hasText: 'Sets done / planned' })).toContainText(/\d+ \/ \d+/);
+  await expect(page.locator('.tile', { hasText: 'Program, 4 weeks' })).toContainText(/\d+% · \d+ \/ \d+ sets/);
 });
