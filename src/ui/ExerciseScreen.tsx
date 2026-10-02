@@ -13,6 +13,10 @@ import { LineChart } from './LineChart';
 import { SetRowContent } from './SetRow';
 import { SwapSuggestions } from './SwapSuggestions';
 import { swapSuggestions } from '../domain/care';
+import type { ProgramStore } from '../state/useProgram';
+import { plannedSets, suggest } from '../domain/suggest';
+import { todayPlanFor } from './TodayPlan';
+import { SuggestionCard } from './SuggestionCard';
 
 const lb = (n: number) => fmtWeight(Math.round(n));
 
@@ -39,7 +43,10 @@ function SettingsEditor({ name, settings }: { name: string; settings: SettingsSt
   );
 }
 
-export function ExerciseScreen({ name, store, settings, gyms, onBack }: { name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; onBack: () => void }) {
+export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack }: {
+  name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void;
+}) {
+  const sug = suggest(store.entries, name, settings.get(name), date, plannedSets(programs.program, todayPlanFor(programs, store.entries, date), name));
   const sessions = sessionsFor(store.entries, name);
   const series = e1rmSeries(store.entries, name);
   const best = bestSet(store.entries, name);
@@ -52,6 +59,7 @@ export function ExerciseScreen({ name, store, settings, gyms, onBack }: { name: 
     <>
       <button onClick={onBack}>‹ Back</button>
       <h1>{name}</h1>
+      <SuggestionCard s={sug} onLog={onLog} />
       <div className="tiles">
         <div className="tile"><span>Est. 1RM</span><b>{current ? lb(current) : '—'}</b></div>
         <div className="tile"><span>Est. {n}RM</span><b>{current ? lb(weightForReps(cal.formula, current, n)) : '—'}</b></div>
@@ -63,12 +71,7 @@ export function ExerciseScreen({ name, store, settings, gyms, onBack }: { name: 
       </div>
       <p className="muted small">{cal.tests ? `${cal.formula === 'wd' ? 'Weight-adjusted formula' : 'Epley'} · calibrated · ${plural(cal.tests, 'test')}${cal.errorPct != null ? ` · ±${Math.round(cal.errorPct)}%` : ''}` : 'Epley · no tests yet'}</p>
       {due && <p className="card note-card">Time for a test: pick a weight you can do about 8–12 times, go to failure with good form, and tick <b>Test</b>. It tunes these estimates.</p>}
-      <SwapSuggestions items={swapSuggestions(name, store.entries, localDate(new Date()), 5, gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined)} />
-      <SettingsEditor key={name} name={name} settings={settings} />
-      <section className="card">
-        <LineChart points={series} />
-        {series.length > 1 && <p className="muted small">Best estimated 1RM per session · PRs filled</p>}
-      </section>
+      {sessions.length > 0 && <h2>History</h2>}
       {sessions.map((s) => {
         const prior = priorE1rm(store.entries, name, s.date);
         return (
@@ -82,6 +85,12 @@ export function ExerciseScreen({ name, store, settings, gyms, onBack }: { name: 
           </section>
         );
       })}
+      <SwapSuggestions items={swapSuggestions(name, store.entries, localDate(new Date()), 5, gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined)} />
+      <SettingsEditor key={name} name={name} settings={settings} />
+      <section className="card">
+        <LineChart points={series} />
+        {series.length > 1 && <p className="muted small">Best estimated 1RM per session · PRs filled</p>}
+      </section>
     </>
   );
 }

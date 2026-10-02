@@ -32,7 +32,7 @@ test('exercise screen: rep-max picker, calibration note, and a logged test set',
   await page.getByRole('button', { name: '10RM' }).click();
   await expect(page.getByText('Est. 10RM')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Today' }).click();
+  await page.getByRole('button', { name: 'Today', exact: true }).click();
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
   await page.getByRole('button', { name: 'Test', exact: true }).click();

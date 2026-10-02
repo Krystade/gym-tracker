@@ -7,6 +7,8 @@ import { fmtDate, fmtSet, fmtWeight } from '../domain/format';
 import type { Flag, SetEntry } from '../domain/types';
 import { SetForm, type SetFormValue } from './SetForm';
 import { SetRowContent } from './SetRow';
+import { suggest } from '../domain/suggest';
+import { fmtLoad, fmtRamp } from './SuggestionCard';
 
 const TargetIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -14,8 +16,8 @@ const TargetIcon = () => (
   </svg>
 );
 
-export function ExerciseCard({ exercise, date, store, settings, onOpen }: {
-  exercise: string; date: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void;
+export function ExerciseCard({ exercise, date, store, settings, onOpen, plannedSets = null, gym }: {
+  exercise: string; date: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
   const [pr, setPr] = useState<string | null>(null);
@@ -25,6 +27,7 @@ export function ExerciseCard({ exercise, date, store, settings, onOpen }: {
   const best = bestSet(store.entries, exercise);
   const st = settings.get(exercise);
   const target = nextTarget(store.entries, exercise, st, date);
+  const sug = suggest(store.entries, exercise, st, date, plannedSets);
   // Whole-history scans: recompute only when the log changes, not on every keystroke in the form.
   const { prior, offset } = useMemo(() => ({
     prior: priorE1rm(store.entries, exercise, date), offset: rirOffset(store.entries, exercise),
@@ -37,7 +40,8 @@ export function ExerciseCard({ exercise, date, store, settings, onOpen }: {
 
   async function addSet(v: SetFormValue): Promise<boolean> {
     setPr(null);
-    const e = await store.add({ date, exercise, ...v });
+    // What was suggested rides along with every set, so suggested and done can be compared later.
+    const e = await store.add({ date, exercise, ...v, gym, ...(sug.weight != null && { target: { weight: sug.weight, reps: sug.reps, sets: sug.sets } }) });
     if (!e) return false;
     const r = prCheck([...store.entries, e], e);
     if (r.e1rm) setPr(`PR! New best e1RM ${Math.round(e1rm(e)!)} lb`);
@@ -52,7 +56,7 @@ export function ExerciseCard({ exercise, date, store, settings, onOpen }: {
         {best && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.e1rm))}</span>}
       </header>
       {last && <p className="muted">Last ({fmtDate(last.date)}): {last.sets.map(fmtSet).join(' · ')}</p>}
-      {target && <p className="target" aria-label="Target"><TargetIcon />{target.text}</p>}
+      {target && <p className="target" aria-label="Target"><TargetIcon />{sug.kind === 'increase' && 'Go up: '}{sug.sets} × {sug.reps}+{fmtLoad(sug.weight)}{sug.warmups.length > 0 && <span className="muted"> · warm-up {fmtRamp(sug)}</span>}</p>}
       <ol className="sets" aria-label={`Sets for ${exercise}`}>
         {today.map((s) => (
           <li key={s.id}>

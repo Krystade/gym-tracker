@@ -6,6 +6,8 @@ import type { ProgramStore } from '../state/useProgram';
 import { exerciseNames, sameExercise } from '../domain/stats';
 import { fmtDate } from '../domain/format';
 import { ExerciseCard } from './ExerciseCard';
+import { Energy } from './Energy';
+import { plannedSets } from '../domain/suggest';
 import { activeProfileDb } from '../db/db';
 import { getDraft, saveDraft } from '../state/drafts';
 
@@ -52,12 +54,14 @@ export function TodayScreen({ store, settings, programs, body, gyms, date, onOpe
         <button onClick={onOpenProgram}>Program</button>
       </div>
       <WeighIn body={body} date={date} />
+      <Energy body={body} date={date} />
       {programs.program && plan && (
         <TodayPlan program={programs.program} plan={plan} entries={store.entries}
           onChange={(p) => void programs.savePlan(p)} onOpen={addCard} onSwap={setSwapFor} />
       )}
       {cards.length === 0 && <p className="muted">Nothing logged yet today.</p>}
-      {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} store={store} settings={settings} onOpen={onOpen} />)}
+      {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} store={store} settings={settings} onOpen={onOpen}
+        plannedSets={plannedSets(programs.program, plan, n)} gym={gyms.active?.name} />)}
       <button className="primary wide" onClick={() => setPicking(true)}>Add exercise</button>
     </>
   );

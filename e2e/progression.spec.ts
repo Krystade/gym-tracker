@@ -14,7 +14,7 @@ test('target, estimated RIR, PR banner and settings', async ({ page }) => {
   await page.getByRole('button', { name: 'Today' }).click();
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
-  await expect(page.getByLabel('Target')).toContainText('80 lb × 9+');
+  await expect(page.getByLabel('Target')).toContainText('× 9+ @ 80 lb');
   await expect(page.getByRole('textbox', { name: 'Weight' })).toHaveValue('80');
   await expect(page.getByRole('textbox', { name: 'Reps' })).toHaveValue('9');
 
@@ -29,5 +29,5 @@ test('target, estimated RIR, PR banner and settings', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Max reps' }).fill('8');
   await page.getByRole('button', { name: 'Save settings' }).click();
   await page.getByRole('button', { name: '‹ Back' }).click();
-  await expect(page.getByLabel('Target')).toContainText('Go up: 85 lb × 6+');
+  await expect(page.getByLabel('Target')).toContainText(/Go up: \d × 6\+ @ 85 lb/);
 });
