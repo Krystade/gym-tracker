@@ -37,8 +37,6 @@ export function warmups(weight: number, exercise: string): Ramp[] {
   return out;
 }
 
-const lb = (w: number) => (w === 0 ? 'bodyweight' : `${Math.round(w * 100) / 100} lb`);
-
 /** What to do next time: weight and reps from double progression, sets from the program or last session. Ignores `date`'s own sets. */
 export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null): Suggestion {
   const t = nextTarget(entries, exercise, st, date);
