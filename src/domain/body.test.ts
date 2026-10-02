@@ -108,3 +108,12 @@ describe('Phase 6 review fixes', () => {
     expect(r.days).toEqual([{ date: '2026-09-02', weight: 82 }]);
   });
 });
+
+describe('energy', () => {
+  it('round-trips energy 1–5 and rejects anything else', () => {
+    const days = [{ date: '2026-10-02', weight: 180, energy: 4 as const }, { date: '2026-10-03', energy: 2 as const }];
+    expect(parseBodyFile(toBodyCsv(days)).days).toEqual(days);
+    expect(parseBodyFile('date,weight_lb,energy\n2026-10-02,,6\n').errors[0].message).toMatch(/energy/i);
+    expect(parseBodyFile('date,weight_lb\n2026-10-02,180\n').days).toEqual([{ date: '2026-10-02', weight: 180 }]);
+  });
+});

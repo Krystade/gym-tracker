@@ -226,3 +226,14 @@ describe('Phase 11 review fixes', () => {
     expect(slugError('sam-2', ['me'], ['sam'])).toBeNull();
   });
 });
+
+describe('energy in the backup', () => {
+  it('pulls energy for a day the phone has no energy for', async () => {
+    const gh = fakeGitHub({ 'app/body.csv': 'date,weight_lb,calories,protein_g,energy\r\n2026-09-29,,,,3\r\n' });
+    const got: BodyDay[] = [];
+    await sync({ client: repoClient(CFG, gh.fetchFn), sets: [], body: [{ date: '2026-09-29', weight: 180 }], deleted: new Set(),
+      importSets: async () => ({ added: 0, updated: 0 }), importBody: async (d) => { got.push(...d); return true; }, now: new Date('2026-09-30T12:00:00Z') });
+    expect(got).toEqual([{ date: '2026-09-29', energy: 3 }]);
+    expect(gh.store.get('app/body.csv')!.text).toContain('2026-09-29,180,,,3');
+  });
+});

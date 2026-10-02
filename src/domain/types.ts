@@ -25,4 +25,7 @@ export interface SetEntry {
   painRegion?: Region;
   painSeverity?: 1 | 2 | 3;
   source: string; // 'app' or an import label
+  /** What the app suggested when this set was logged, and where: for comparing suggested with done. */
+  target?: { weight: number; reps: number; sets: number };
+  gym?: string;
 }

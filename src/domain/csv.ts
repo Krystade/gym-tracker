@@ -1,7 +1,8 @@
 import { normalizeName, setId } from './ids';
 import { isFlag, isRegion, type Flag, type SetEntry } from './types';
 
-export const CSV_HEADER = ['date', 'exercise', 'as_written', 'set', 'weight_lb', 'reps', 'rir', 'flags', 'note', 'source', 'pain_region', 'pain_severity'] as const;
+export const CSV_HEADER = ['date', 'exercise', 'as_written', 'set', 'weight_lb', 'reps', 'rir', 'flags', 'note', 'source', 'pain_region', 'pain_severity',
+  'logged_at', 'target_weight_lb', 'target_reps', 'target_sets', 'gym'] as const;
 const REQUIRED = ['date', 'exercise', 'set', 'weight_lb', 'reps'];
 
 export interface CsvError { row: number; message: string }
@@ -16,7 +17,8 @@ export function toCsv(entries: SetEntry[]): string {
   for (const e of [...entries].sort(compareEntries)) {
     lines.push(
       [e.date, e.exercise, e.asWritten ?? '', String(e.setNo), String(e.weight), e.reps == null ? '' : String(e.reps),
-        e.rir == null ? '' : String(e.rir), e.flags.join(';'), e.note ?? '', e.source, e.painRegion ?? '', e.painSeverity == null ? '' : String(e.painSeverity)].map(esc).join(','),
+        e.rir == null ? '' : String(e.rir), e.flags.join(';'), e.note ?? '', e.source, e.painRegion ?? '', e.painSeverity == null ? '' : String(e.painSeverity),
+        e.loggedAt ?? '', e.target ? String(e.target.weight) : '', e.target ? String(e.target.reps) : '', e.target ? String(e.target.sets) : '', e.gym ?? ''].map(esc).join(','),
     );
   }
   return lines.join('\r\n') + '\r\n';
@@ -83,6 +85,13 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     const sevRaw = col(r, 'pain_severity').trim();
     const sev = sevRaw === '' ? undefined : Number(sevRaw);
     if (sev !== undefined && !(sev === 1 || sev === 2 || sev === 3)) return fail(`Pain severity must be 1-3, got "${sevRaw}"`);
+    const loggedAt = col(r, 'logged_at').trim();
+    if (loggedAt && !Number.isFinite(Date.parse(loggedAt))) return fail(`Bad logged_at "${loggedAt}"`);
+    // The suggestion is kept only whole: weight, reps and sets all readable.
+    const [tw, tr, ts] = [num(col(r, 'target_weight_lb')), num(col(r, 'target_reps')), num(col(r, 'target_sets'))];
+    const target = tw != null && tr != null && ts != null && tw >= 0 && Number.isInteger(tr) && tr >= 0 && Number.isInteger(ts) && ts >= 1
+      ? { weight: tw, reps: tr, sets: ts } : undefined;
+    const gym = col(r, 'gym').trim();
     const source = col(r, 'source').trim() || defaultSource;
     const asWritten = col(r, 'as_written');
     const note = col(r, 'note');
@@ -95,6 +104,9 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
       ...(note !== '' && { note }),
       ...(regionRaw && isRegion(regionRaw) && { painRegion: regionRaw }),
       ...(sev !== undefined && { painSeverity: sev as 1 | 2 | 3 }),
+      ...(loggedAt && { loggedAt }),
+      ...(target && { target }),
+      ...(gym && { gym }),
     });
   });
   return { entries, errors };

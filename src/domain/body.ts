@@ -1,9 +1,10 @@
 import { addDays } from './analytics';
 import { parseRows, type CsvError } from './csv';
 
-export interface BodyDay { date: string; weight?: number; calories?: number; protein?: number }
+/** `energy`: how the day's training felt going in, 1 (flat) to 5 (great). */
+export interface BodyDay { date: string; weight?: number; calories?: number; protein?: number; energy?: 1 | 2 | 3 | 4 | 5 }
 export type CsvKind = 'sets' | 'body' | 'mfp-weight' | 'mfp-nutrition' | 'unknown';
-export const BODY_HEADER = ['date', 'weight_lb', 'calories', 'protein_g'] as const;
+export const BODY_HEADER = ['date', 'weight_lb', 'calories', 'protein_g', 'energy'] as const;
 
 const headerOf = (text: string): string[] => (parseRows(text.replace(/^﻿/, ''))[0] ?? []).map((h) => h.trim().toLowerCase());
 
@@ -40,8 +41,8 @@ export function parseBodyFile(text: string): { kind: CsvKind; days: BodyDay[]; e
   const rows = parseRows(text.replace(/^﻿/, ''));
   const h = headerOf(text);
   const col = (...names: string[]) => h.findIndex((x) => names.includes(x));
-  const cols: Partial<Record<'weight' | 'calories' | 'protein', number>> =
-    kind === 'body' ? { weight: col('weight_lb'), calories: col('calories'), protein: col('protein_g') }
+  const cols: Partial<Record<'weight' | 'calories' | 'protein' | 'energy', number>> =
+    kind === 'body' ? { weight: col('weight_lb'), calories: col('calories'), protein: col('protein_g'), energy: col('energy') }
     : kind === 'mfp-weight' ? { weight: col('weight') }
     : kind === 'mfp-nutrition' ? { calories: col('calories'), protein: col('protein (g)', 'protein') }
     : {};
@@ -54,12 +55,13 @@ export function parseBodyFile(text: string): { kind: CsvKind; days: BodyDay[]; e
     if (r.every((c) => c.trim() === '')) return;
     const date = isoDate(r[di] ?? '');
     if (!date) { errors.push({ row, message: `Bad date "${r[di] ?? ''}"` }); return; }
-    const vals: Partial<Record<'weight' | 'calories' | 'protein', number>> = {};
-    for (const [k, c] of Object.entries(cols) as ['weight' | 'calories' | 'protein', number][]) {
+    const vals: Partial<Record<'weight' | 'calories' | 'protein' | 'energy', number>> = {};
+    for (const [k, c] of Object.entries(cols) as ['weight' | 'calories' | 'protein' | 'energy', number][]) {
       const v = (r[c] ?? '').trim();
       if (c < 0 || v === '') continue;
       const n = Number(v.replace(/,/g, ''));
       if (!Number.isFinite(n) || n < 0) { errors.push({ row, message: `Bad ${k} "${v}"` }); return; }
+      if (k === 'energy' && !(Number.isInteger(n) && n >= 1 && n <= 5)) { errors.push({ row, message: `Bad energy "${v}" (want 1–5)` }); return; }
       if (k === 'weight' && (n < WEIGHT_RANGE[0] || n > WEIGHT_RANGE[1])) { errors.push({ row, message: `Weight ${v} is outside ${WEIGHT_RANGE[0]}–${WEIGHT_RANGE[1]} lb` }); return; }
       vals[k] = n;
     }
@@ -75,7 +77,7 @@ export function parseBodyFile(text: string): { kind: CsvKind; days: BodyDay[]; e
 
 export function toBodyCsv(days: BodyDay[]): string {
   const lines = [...days].sort((a, b) => a.date.localeCompare(b.date))
-    .map((d) => [d.date, d.weight ?? '', d.calories ?? '', d.protein ?? ''].join(','));
+    .map((d) => [d.date, d.weight ?? '', d.calories ?? '', d.protein ?? '', d.energy ?? ''].join(','));
   return [BODY_HEADER.join(','), ...lines].join('\r\n') + '\r\n';
 }
 

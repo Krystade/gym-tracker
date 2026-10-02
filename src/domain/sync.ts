@@ -131,7 +131,7 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
   for (const d of parsedBody?.days ?? []) {
     const mine = bodyBy.get(d.date);
     const fill: BodyDay = { date: d.date };
-    for (const k of ['weight', 'calories', 'protein'] as const) if (d[k] != null && mine?.[k] == null) fill[k] = d[k];
+    for (const k of ['weight', 'calories', 'protein', 'energy'] as const) if (d[k] != null && mine?.[k] == null) Object.assign(fill, { [k]: d[k] });
     if (Object.keys(fill).length > 1) bodyIn.push(fill);
   }
   const saveFailed = () => new SyncError('other', 'Saving the pulled data on this phone failed — nothing was pushed. Try again.');
