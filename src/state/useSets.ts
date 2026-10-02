@@ -57,7 +57,7 @@ export function useSets() {
   }, []);
 
   const remove = useCallback(async (id: string): Promise<boolean> => {
-    try { await db.deleteSet(id); await db.addTombstone(id); } catch (err) { fail('Deleting', err); return false; }
+    try { await db.deleteSetWithTombstone(id); } catch (err) { fail('Deleting', err); return false; }
     setEntries((xs) => xs.filter((x) => x.id !== id));
     announce();
     return true;

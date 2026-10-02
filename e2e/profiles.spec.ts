@@ -81,7 +81,11 @@ test('five people and a long name: chips sit side by side, none squashed, and th
   await page.goto('/');
   await page.getByRole('button', { name: 'Data' }).click();
   for (const n of ['Sam', 'Kim', 'Alexandria Montgomery', 'Jo']) {
-    await page.getByRole('textbox', { name: 'Name', exact: true }).fill(n);
+    // Switching person remounts the Data screen, which can wipe a name typed mid-remount: type until it sticks.
+    await expect(async () => {
+      await page.getByRole('textbox', { name: 'Name', exact: true }).fill(n);
+      await expect(page.getByRole('button', { name: `Add ${n}` })).toBeVisible({ timeout: 1000 });
+    }).toPass();
     await page.getByRole('button', { name: `Add ${n}` }).click();
     await expect(bar(page).getByRole('button', { name: new RegExp(n) })).toHaveAttribute('aria-pressed', 'true'); // saved before the next add
   }

@@ -38,6 +38,18 @@ exports/
 *.db
 gym-backup*.json
 !**/*.sample.csv
+# App exports (MyFitnessPal zips), screenshots of real data, PDFs, and loose profile/export JSON.
+*.zip
+*.pdf
+*.png
+!public/**/*.png
+*.json
+!package.json
+!package-lock.json
+!tsconfig*.json
+!**/*.sample.json
+!public/**/*.json
+!.vscode/*.json
 
 # Local agent workspace
 .superpowers/
