@@ -10,6 +10,7 @@ import { SetRowContent } from './SetRow';
 import { suggest } from '../domain/suggest';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
 import { hhmm, paces, suggestTime } from '../domain/timing';
+import { localDate } from '../domain/ids';
 
 const TargetIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -84,7 +85,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
           when={{
             suggest: () => (editing.loggedAt ? hhmm(new Date(editing.loggedAt)) : null),
             always: true,
-            max: date === realToday ? () => hhmm(new Date()) : undefined,
+            max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined,
           }}
           onSubmit={async (v) => {
             const { at, ...rest } = v;
@@ -100,7 +101,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
           }} />
       ) : (
         <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft day={date}
-          when={{ suggest: suggestWhen, always: date < realToday, max: date === realToday ? () => hhmm(new Date()) : undefined }} />
+          when={{ suggest: suggestWhen, always: date < realToday, max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined }} />
       )}
     </section>
   );

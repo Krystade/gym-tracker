@@ -252,6 +252,58 @@ test('deleting a late set names it by the number on its row', async ({ page }) =
   await expect(rows).toHaveCount(6);
 });
 
+const pastMidnight = async (page: import('@playwright/test').Page, last: string) => {
+  await page.clock.install({ time: new Date(`2026-10-01T${last}:00`) });
+  await page.goto('/');
+  await openBench(page);
+  await logBench(page, '135', '10');
+  await page.clock.setFixedTime(new Date('2026-10-02T00:10:00'));
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+};
+
+test('a workout past midnight stays on its day', async ({ page }) => {
+  await pastMidnight(page, '23:40');
+  await expect(page.getByRole('heading', { name: 'Thu, Oct 1' })).toBeVisible();
+  await expect(page.getByText('Still logging')).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Sets for Bench Press' })).toBeAttached();
+  // 00:10 is later than the old day's clock time, and still allowed on it.
+  await logBench(page, '135', '9');
+  await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(2);
+  await page.screenshot({ path: 'screenshots/26-past-midnight.png' });
+  await page.getByRole('button', { name: 'History' }).click();
+  await expect(page.getByText(/Thu, Oct 1, 2026 · 1 exercise · 2 sets/)).toBeVisible();
+  await page.getByRole('button', { name: 'Today', exact: true }).click();
+  await expect(page.getByText('Still logging')).toBeVisible(); // the tab keeps the carry; only the banner button ends it
+  await page.locator('.past-day').getByRole('button', { name: 'Today', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Fri, Oct 2' })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Sets for Bench Press' })).toHaveCount(0);
+  await expect(page.getByText('Still logging')).toHaveCount(0);
+});
+
+test("an old workout doesn't carry past midnight", async ({ page }) => {
+  await pastMidnight(page, '20:00');
+  await expect(page.getByRole('heading', { name: 'Fri, Oct 2' })).toBeVisible();
+  await expect(page.getByText('Still logging')).toHaveCount(0);
+});
+
+test('the carry ends by itself once the workout is 3 hours old, even with the date unchanged', async ({ page }) => {
+  await pastMidnight(page, '23:40');
+  await expect(page.getByText('Still logging')).toBeVisible();
+  // A phone locked at 00:10 and opened at 06:00: the date was already Oct 2, so only the clock moved.
+  await page.clock.setFixedTime(new Date('2026-10-02T06:00:00'));
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(page.getByRole('heading', { name: 'Fri, Oct 2' })).toBeVisible();
+  await expect(page.getByText('Still logging')).toHaveCount(0);
+});
+
+test('a late set on the old day can be later than the clock after midnight', async ({ page }) => {
+  await pastMidnight(page, '23:40');
+  await page.getByRole('button', { name: 'Did this earlier?' }).click();
+  await page.getByRole('textbox', { name: 'When' }).fill('23:59');
+  await expect(page.getByText('Later than now')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add set' })).toBeEnabled();
+});
+
 test("a past day's plan is not called today's", async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-01T09:00:00') });
   await page.goto('/');

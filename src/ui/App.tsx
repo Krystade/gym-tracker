@@ -13,6 +13,7 @@ import { ProfileBar } from './ProfileBar';
 import { ProfileDbProvider } from '../state/profileDb';
 import { getDraft, saveDraft } from '../state/drafts';
 import { sameExercise } from '../domain/stats';
+import { sessionDay } from '../domain/timing';
 
 /** Puts an exercise on Today's cards (the same list Today keeps for cards not logged yet). */
 function logToday(profile: string, date: string, exercise: string) {
@@ -48,15 +49,21 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const [tab, setTab] = useState<Tab>('today');
   const [exercise, setExercise] = useState<string | null>(null);
   const [date, setDate] = useState(() => localDate(new Date()));
-  // The day Today logs to, when it isn't today (a forgotten set); only for the profile it was picked in.
+  const [, setMinute] = useState(() => Math.floor(Date.now() / 60_000));
+  // The day Today logs to, when it isn't today (a forgotten set); cleared on any profile switch, so a past day never resurfaces.
   const pid = people.active!.id;
   const [chosen, setChosen] = useState<{ id: string; day: string } | null>(null);
+  const [seenPid, setSeenPid] = useState(pid);
+  if (seenPid !== pid) { setSeenPid(pid); setChosen(null); }
   const logDay = chosen?.id === pid ? chosen.day : null;
   const setLogDay = (d: string | null) => setChosen(d ? { id: pid, day: d } : null);
   useEffect(() => {
-    const onVis = () => setDate(localDate(new Date()));
+    // The minute ticks too: past midnight the day a workout carries to can end with the date unchanged.
+    const onVis = () => { setDate(localDate(new Date())); setMinute(Math.floor(Date.now() / 60_000)); };
     document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    // An app left open across midnight gets no event, so look again every minute.
+    const id = setInterval(onVis, 60_000);
+    return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(id); };
   }, []);
   const open = (name: string) => { setExercise(name); window.scrollTo(0, 0); };
   const nav = { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open };
@@ -90,6 +97,9 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const photos = usePhotos();
   const sync = useSync(store, body, person);
   const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open } = nav;
+  // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.
+  const [carryOff, setCarryOff] = useState<string | null>(null);
+  const day = carryOff === date ? date : sessionDay(store.entries, date, new Date());
   const error = store.error ?? programs.error ?? body.error ?? photos.error ?? gyms.error ?? people.error;
 
   return (
@@ -101,11 +111,12 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : pasteOpen ? <PasteScreen store={store} today={date} onBack={() => setPasteOpen(false)} onDone={() => { setPasteOpen(false); setTab('history'); window.scrollTo(0, 0); }} />
           : photosOpen ? <PhotosScreen photos={photos} body={body} today={date} onBack={() => setPhotosOpen(false)} />
           : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} onBack={() => setProgramOpen(false)} />
-          : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={date} onBack={() => setExercise(null)}
-            onLog={() => { logToday(person.id, date, exercise); setLogDay(null); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />
-          : tab === 'today' ? <TodayScreen key={logDay ?? date} store={store} settings={settings} programs={programs} body={body} gyms={gyms} date={logDay ?? date} today={date}
-            onDay={(d) => { setLogDay(d === date ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={() => { setProgramOpen(true); window.scrollTo(0, 0); }} />
-          : tab === 'history' ? <HistoryScreen store={store} onOpen={open} onAddTo={(d) => { setLogDay(d === date ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
+          : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={day} onBack={() => setExercise(null)}
+            onLog={() => { logToday(person.id, day, exercise); setLogDay(null); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />
+          : tab === 'today' ? <TodayScreen key={logDay ?? day} store={store} settings={settings} programs={programs} body={body} gyms={gyms} date={logDay ?? day} today={day}
+            carried={day !== date && !logDay} onSplit={() => setCarryOff(date)}
+            onDay={(d) => { setLogDay(d === day ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={() => { setProgramOpen(true); window.scrollTo(0, 0); }} />
+          : tab === 'history' ? <HistoryScreen store={store} onOpen={open} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />
           : <DataScreen store={store} profile={profile} body={body} sync={sync} people={people} onOpenPaste={() => { setPasteOpen(true); window.scrollTo(0, 0); }} />}

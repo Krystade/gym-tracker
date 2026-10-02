@@ -22,9 +22,9 @@ import { availableSet } from '../domain/equipment';
 import { CATALOG } from '../domain/catalog';
 import { addDays } from '../domain/analytics';
 
-export function TodayScreen({ store, settings, programs, body, gyms, date, today, onDay, onOpen, onOpenProgram }: {
+export function TodayScreen({ store, settings, programs, body, gyms, date, today, carried, onSplit, onDay, onOpen, onOpenProgram }: {
   store: SetsStore; settings: SettingsStore; programs: ProgramStore; body: BodyStore; gyms: GymsStore; date: string; today: string;
-  onDay: (d: string) => void; onOpen: (name: string) => void; onOpenProgram: () => void;
+  carried?: boolean; onSplit?: () => void; onDay: (d: string) => void; onOpen: (name: string) => void; onOpenProgram: () => void;
 }) {
   const [picking, setPicking] = useState(false);
   const [swapFor, setSwapFor] = useState<string | null>(null);
@@ -62,6 +62,7 @@ export function TodayScreen({ store, settings, programs, body, gyms, date, today
         <button onClick={onOpenProgram}>Program</button>
       </div>
       {date < today && <p className="card note-card past-day"><span>Logging to {fmtDate(date)}</span><button className="mini" onClick={() => onDay(today)}>Back to today</button></p>}
+      {carried && <p className="card note-card past-day"><span>Still logging {fmtDay(today, today)}’s workout</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={onSplit}>Today</button></p>}
       <WeighIn body={body} date={date} />
       <Energy body={body} date={date} />
       {programs.program && plan && (
