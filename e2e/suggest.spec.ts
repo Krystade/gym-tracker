@@ -40,6 +40,14 @@ test('open an exercise: next sets × reps @ weight with a warm-up, history below
   await expect(page.getByRole('group', { name: 'Energy' }).getByRole('button', { name: '4' })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(1);
+  // The target line is one block of text beside its icon, not two wrapped columns.
+  expect(await page.getByLabel('Target').evaluate((el) => [el.children.length, el.lastElementChild?.textContent])).toEqual([2, expect.stringMatching(/@ 140 lb.*warm-up/)]);
+
+  await page.getByLabel('Target').screenshot({ path: 'screenshots/21-target-line.png' });
+  // Trained today: the exercise screen now shows the next session, with nothing to log today.
+  await page.getByRole('button', { name: 'Bench Press', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Next time' })).toContainText('1 × 9–12 @ 140 lb');
+  await expect(page.getByRole('button', { name: 'Log it today' })).toHaveCount(0);
 
   // The backup carries when it was logged and what was suggested; the body file carries energy.
   await page.getByRole('button', { name: 'Data' }).click();

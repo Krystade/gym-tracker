@@ -18,7 +18,7 @@ export function toCsv(entries: SetEntry[]): string {
     lines.push(
       [e.date, e.exercise, e.asWritten ?? '', String(e.setNo), String(e.weight), e.reps == null ? '' : String(e.reps),
         e.rir == null ? '' : String(e.rir), e.flags.join(';'), e.note ?? '', e.source, e.painRegion ?? '', e.painSeverity == null ? '' : String(e.painSeverity),
-        e.loggedAt ?? '', e.target ? String(e.target.weight) : '', e.target ? String(e.target.reps) : '', e.target ? String(e.target.sets) : '', e.gym ?? ''].map(esc).join(','),
+        e.loggedAt ?? '', e.target?.weight != null ? String(e.target.weight) : '', e.target ? String(e.target.reps) : '', e.target ? String(e.target.sets) : '', e.gym ?? ''].map(esc).join(','),
     );
   }
   return lines.join('\r\n') + '\r\n';
@@ -87,9 +87,9 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     if (sev !== undefined && !(sev === 1 || sev === 2 || sev === 3)) return fail(`Pain severity must be 1-3, got "${sevRaw}"`);
     const loggedAt = col(r, 'logged_at').trim();
     if (loggedAt && !Number.isFinite(Date.parse(loggedAt))) return fail(`Bad logged_at "${loggedAt}"`);
-    // The suggestion is kept only whole: weight, reps and sets all readable.
+    // A suggestion needs reps and sets; its weight is empty for a first session.
     const [tw, tr, ts] = [num(col(r, 'target_weight_lb')), num(col(r, 'target_reps')), num(col(r, 'target_sets'))];
-    const target = tw != null && tr != null && ts != null && tw >= 0 && Number.isInteger(tr) && tr >= 0 && Number.isInteger(ts) && ts >= 1
+    const target = tr != null && ts != null && (tw == null || tw >= 0) && Number.isInteger(tr) && tr >= 0 && Number.isInteger(ts) && ts >= 1
       ? { weight: tw, reps: tr, sets: ts } : undefined;
     const gym = col(r, 'gym').trim();
     const source = col(r, 'source').trim() || defaultSource;

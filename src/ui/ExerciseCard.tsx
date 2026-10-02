@@ -41,7 +41,7 @@ export function ExerciseCard({ exercise, date, store, settings, onOpen, plannedS
   async function addSet(v: SetFormValue): Promise<boolean> {
     setPr(null);
     // What was suggested rides along with every set, so suggested and done can be compared later.
-    const e = await store.add({ date, exercise, ...v, gym, ...(sug.weight != null && { target: { weight: sug.weight, reps: sug.reps, sets: sug.sets } }) });
+    const e = await store.add({ date, exercise, ...v, gym, target: { weight: sug.weight, reps: sug.reps, sets: sug.sets } });
     if (!e) return false;
     const r = prCheck([...store.entries, e], e);
     if (r.e1rm) setPr(`PR! New best e1RM ${Math.round(e1rm(e)!)} lb`);
@@ -56,7 +56,7 @@ export function ExerciseCard({ exercise, date, store, settings, onOpen, plannedS
         {best && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.e1rm))}</span>}
       </header>
       {last && <p className="muted">Last ({fmtDate(last.date)}): {last.sets.map(fmtSet).join(' · ')}</p>}
-      {target && <p className="target" aria-label="Target"><TargetIcon />{sug.kind === 'increase' && 'Go up: '}{sug.sets} × {sug.reps}+{fmtLoad(sug.weight)}{sug.warmups.length > 0 && <span className="muted"> · warm-up {fmtRamp(sug)}</span>}</p>}
+      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.sets} × {sug.reps}{sug.unit}+{fmtLoad(sug.weight)}{sug.warmups.length > 0 && <span className="muted"> · warm-up {fmtRamp(sug)}</span>}</span></p>}
       <ol className="sets" aria-label={`Sets for ${exercise}`}>
         {today.map((s) => (
           <li key={s.id}>

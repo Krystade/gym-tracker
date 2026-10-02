@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { plannedSets, suggest, warmups } from './suggest';
+import { nextTime, plannedSets, suggest, warmups } from './suggest';
 import { defaultSettings } from './progression';
 import type { SetEntry } from './types';
 import type { DayPlan, Program } from './program';
@@ -52,5 +52,18 @@ describe('warmups', () => {
   });
   it('skips the ramp for isolation lifts', () => {
     expect(warmups(100, 'Cable Curl')).toEqual([]);
+  });
+});
+
+describe('Phase 12 review fixes', () => {
+  const st = defaultSettings('Bench Press');
+  it('after training today, "next time" means the next session', () => {
+    const log = [s('2026-09-28', 'Bench Press', 135, 12), s('2026-10-02', 'Bench Press', 140, 12), s('2026-10-02', 'Bench Press', 140, 12)];
+    expect(nextTime(log, 'Bench Press', st, '2026-10-02', 4)).toMatchObject({ trainedToday: true, s: { weight: 145, sets: 2, setsFrom: 'last' } });
+    expect(nextTime(log.slice(0, 1), 'Bench Press', st, '2026-10-02', 4)).toMatchObject({ trainedToday: false, s: { weight: 140, sets: 4 } });
+  });
+  it('labels timed holds in seconds', () => {
+    expect(suggest([], 'Plank', defaultSettings('Plank'), '2026-10-02', null).unit).toBe(' s');
+    expect(suggest([], 'Bench Press', st, '2026-10-02', null).unit).toBe('');
   });
 });

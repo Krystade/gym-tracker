@@ -14,7 +14,7 @@ import { SetRowContent } from './SetRow';
 import { SwapSuggestions } from './SwapSuggestions';
 import { swapSuggestions } from '../domain/care';
 import type { ProgramStore } from '../state/useProgram';
-import { plannedSets, suggest } from '../domain/suggest';
+import { nextTime, plannedSets } from '../domain/suggest';
 import { todayPlanFor } from './TodayPlan';
 import { SuggestionCard } from './SuggestionCard';
 
@@ -46,7 +46,7 @@ function SettingsEditor({ name, settings }: { name: string; settings: SettingsSt
 export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack }: {
   name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void;
 }) {
-  const sug = suggest(store.entries, name, settings.get(name), date, plannedSets(programs.program, todayPlanFor(programs, store.entries, date), name));
+  const { s: sug, trainedToday } = nextTime(store.entries, name, settings.get(name), date, plannedSets(programs.program, todayPlanFor(programs, store.entries, date), name));
   const sessions = sessionsFor(store.entries, name);
   const series = e1rmSeries(store.entries, name);
   const best = bestSet(store.entries, name);
@@ -59,7 +59,7 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
     <>
       <button onClick={onBack}>‹ Back</button>
       <h1>{name}</h1>
-      <SuggestionCard s={sug} onLog={onLog} />
+      <SuggestionCard s={sug} onLog={trainedToday ? undefined : onLog} />
       <div className="tiles">
         <div className="tile"><span>Est. 1RM</span><b>{current ? lb(current) : '—'}</b></div>
         <div className="tile"><span>Est. {n}RM</span><b>{current ? lb(weightForReps(cal.formula, current, n)) : '—'}</b></div>

@@ -26,6 +26,6 @@ export interface SetEntry {
   painSeverity?: 1 | 2 | 3;
   source: string; // 'app' or an import label
   /** What the app suggested when this set was logged, and where: for comparing suggested with done. */
-  target?: { weight: number; reps: number; sets: number };
+  target?: { weight: number | null; reps: number; sets: number }; // weight null: first session, no weight suggested
   gym?: string;
 }

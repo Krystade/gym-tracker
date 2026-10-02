@@ -72,3 +72,11 @@ describe('fields for later modelling', () => {
     expect(parseCsv('date,exercise,set,weight_lb,reps,logged_at\n2026-01-05,Cable Curl,1,50,12,yesterday\n').errors[0].message).toMatch(/logged_at/);
   });
 });
+
+describe('Phase 12 review fixes', () => {
+  it('keeps a first-session suggestion that has sets and reps but no weight', () => {
+    const e: SetEntry = { id: setId('app', '2026-10-02', 'Hammer Curl', 1), date: '2026-10-02', seq: 1, exercise: 'Hammer Curl', setNo: 1,
+      weight: 25, reps: 12, flags: [], source: 'app', target: { weight: null, reps: 10, sets: 3 } };
+    expect(parseCsv(toCsv([e])).entries[0].target).toEqual({ weight: null, reps: 10, sets: 3 });
+  });
+});

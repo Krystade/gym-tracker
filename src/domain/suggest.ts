@@ -3,11 +3,14 @@ import { defaultSettings, isWorking, nextTarget, type ExerciseSettings, type Tar
 import type { DayPlan, Program } from './program';
 import { sameExercise, sessionsFor } from './stats';
 import type { SetEntry } from './types';
+import { addDays } from './analytics';
 
 export interface Ramp { weight: number; reps: number }
 export interface Suggestion {
   weight: number | null; reps: number; repMax: number; sets: number;
   setsFrom: 'program' | 'last' | 'default'; kind: Target['kind'] | 'new'; reason: string; warmups: Ramp[];
+  /** ' s' for timed holds, so reps read as seconds. */
+  unit: '' | ' s';
 }
 
 /** Sets planned today for this lift: its own slot, or the slot it was swapped into. A skipped slot plans nothing. */
@@ -45,11 +48,20 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
   const [sets, setsFrom]: [number, Suggestion['setsFrom']] =
     planned != null ? [planned, 'program'] : lastWorking ? [lastWorking, 'last'] : [3, 'default'];
   const clamped = Math.min(6, Math.max(1, sets));
-  if (!t) return { weight: null, reps: st.repMin, repMax: st.repMax, sets: clamped, setsFrom, kind: 'new', warmups: [],
-    reason: `No history yet: pick a weight you can do about ${st.repMax} times, and log every set.` };
   const unit = isHold(exercise) ? ' s' : '';
+  if (!t) return { unit, weight: null, reps: st.repMin, repMax: st.repMax, sets: clamped, setsFrom, kind: 'new', warmups: [],
+    reason: `No history yet: pick a weight you can do about ${st.repMax} times, and log every set.` };
   const reason = t.kind === 'increase' ? `You hit ${st.repMax}${unit} on every set last time, so +${st.increment} lb.`
     : t.kind === 'repeat' ? 'Last time had no complete sets: repeat the weight and log every rep.'
     : `Same weight; beat last time with ${t.reps}${unit}+ on every set.`;
-  return { weight: t.weight, reps: t.reps, repMax: st.repMax, sets: clamped, setsFrom, kind: t.kind, reason, warmups: warmups(t.weight, exercise) };
+  return { unit, weight: t.weight, reps: t.reps, repMax: st.repMax, sets: clamped, setsFrom, kind: t.kind, reason, warmups: warmups(t.weight, exercise) };
+}
+
+/**
+ * For the exercise screen's "Next time": before training it today, today's suggestion (with today's program sets);
+ * once it has working sets today, the session after — today counts as the last session.
+ */
+export function nextTime(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null): { s: Suggestion; trainedToday: boolean } {
+  const trainedToday = entries.some((e) => e.date === date && sameExercise(e.exercise, exercise) && isWorking(e));
+  return trainedToday ? { s: suggest(entries, exercise, st, addDays(date, 1), null), trainedToday } : { s: suggest(entries, exercise, st, date, planned), trainedToday };
 }
