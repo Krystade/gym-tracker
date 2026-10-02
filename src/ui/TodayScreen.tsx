@@ -30,17 +30,19 @@ export function TodayScreen({ store, settings, programs, body, gyms, date, today
   const [swapFor, setSwapFor] = useState<string | null>(null);
   // Cards added but not logged yet: kept per profile for the day, so leaving the tab or switching profile keeps them.
   const [owner] = useState(activeProfileDb);
-  const [extra, setExtra] = useState<string[]>(() => getDraft<string[]>(owner, CARDS, date) ?? []);
-  useEffect(() => { saveDraft(owner, CARDS, date, extra); }, [owner, date, extra]);
+  // One list per day, so opening a past day doesn't overwrite today's.
+  const [extra, setExtra] = useState<string[]>(() => getDraft<string[]>(owner, `${CARDS}:${date}`, date) ?? []);
+  useEffect(() => { saveDraft(owner, `${CARDS}:${date}`, date, extra); }, [owner, date, extra]);
   const logged = exerciseNames(store.entries.filter((e) => e.date === date)).reverse();
   const cards = [...logged, ...extra.filter((x) => !logged.some((l) => sameExercise(l, x)))];
   const plan = todayPlanFor(programs, store.entries, date);
   // Record the day once a working set is logged, so rotation and adherence don't depend on tapping the plan.
+  // Only today: looking back at an older day must not record it and move today's rotation.
   useEffect(() => {
-    if (!programs.program) return;
+    if (!programs.program || date !== today) return;
     const r = planToRecord(programs.program, programs.plans, store.entries, date);
     if (r) void programs.savePlan(r);
-  }, [programs.program, programs.plans, programs.savePlan, store.entries, date]);
+  }, [programs.program, programs.plans, programs.savePlan, store.entries, date, today]);
   const addCard = (n: string) => setExtra((xs) => (xs.some((x) => sameExercise(x, n)) ? xs : [...xs, n]));
 
   const available = gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined;

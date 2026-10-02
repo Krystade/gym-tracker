@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import { bestSet, e1rm, lastSession, sameExercise } from '../domain/stats';
@@ -30,6 +30,8 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   const target = nextTarget(store.entries, exercise, st, date);
   const sug = suggest(store.entries, exercise, st, date, plannedSets);
   const pace = useMemo(() => paces(store.entries), [store.entries]);
+  // A new function only when the log changes, so the form can re-ask once a late set has landed.
+  const suggestWhen = useCallback(() => suggestTime(store.entries, date, exercise, pace, new Date()), [store.entries, date, exercise, pace]);
   // Whole-history scans: recompute only when the log changes, not on every keystroke in the form.
   const { prior, offset } = useMemo(() => ({
     prior: priorE1rm(store.entries, exercise, date), offset: rirOffset(store.entries, exercise),
@@ -78,7 +80,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
           onSubmit={async (v) => { const ok = await store.update({ ...editing, ...v }); if (ok) setEditing(null); return ok; }} />
       ) : (
         <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft
-          when={{ suggest: () => suggestTime(store.entries, date, exercise, pace, new Date()), always: date < realToday }} />
+          when={{ suggest: suggestWhen, always: date < realToday }} />
       )}
     </section>
   );

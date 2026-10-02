@@ -16,8 +16,8 @@ import { sameExercise } from '../domain/stats';
 
 /** Puts an exercise on Today's cards (the same list Today keeps for cards not logged yet). */
 function logToday(profile: string, date: string, exercise: string) {
-  const cards = getDraft<string[]>(profile, '#cards', date) ?? [];
-  if (!cards.some((c) => sameExercise(c, exercise))) saveDraft(profile, '#cards', date, [...cards, exercise]);
+  const cards = getDraft<string[]>(profile, `#cards:${date}`, date) ?? [];
+  if (!cards.some((c) => sameExercise(c, exercise))) saveDraft(profile, `#cards:${date}`, date, [...cards, exercise]);
 }
 import { PhotosScreen } from './PhotosScreen';
 import { PasteScreen } from './PasteScreen';
@@ -99,10 +99,10 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : photosOpen ? <PhotosScreen photos={photos} body={body} today={date} onBack={() => setPhotosOpen(false)} />
           : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} onBack={() => setProgramOpen(false)} />
           : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={date} onBack={() => setExercise(null)}
-            onLog={() => { logToday(person.id, date, exercise); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />
-          : tab === 'today' ? <TodayScreen store={store} settings={settings} programs={programs} body={body} gyms={gyms} date={logDay ?? date} today={date}
+            onLog={() => { logToday(person.id, date, exercise); setLogDay(null); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />
+          : tab === 'today' ? <TodayScreen key={logDay ?? date} store={store} settings={settings} programs={programs} body={body} gyms={gyms} date={logDay ?? date} today={date}
             onDay={(d) => { setLogDay(d === date ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={() => { setProgramOpen(true); window.scrollTo(0, 0); }} />
-          : tab === 'history' ? <HistoryScreen store={store} onOpen={open} onAddTo={(d) => { setLogDay(d); setTab('today'); window.scrollTo(0, 0); }} />
+          : tab === 'history' ? <HistoryScreen store={store} onOpen={open} onAddTo={(d) => { setLogDay(d === date ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />
           : <DataScreen store={store} profile={profile} body={body} sync={sync} people={people} onOpenPaste={() => { setPasteOpen(true); window.scrollTo(0, 0); }} />}

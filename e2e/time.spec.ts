@@ -64,3 +64,88 @@ test('the builder builds to minutes, and program days show their length', async 
   for (const h of heads) expect(Number(/≈ (\d+) min/.exec(h)![1])).toBeLessThanOrEqual(30);
   await page.screenshot({ path: 'screenshots/23-program-minutes.png', fullPage: true });
 });
+
+const openBench = async (page: import('@playwright/test').Page) => {
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
+  await page.getByRole('button', { name: /^Bench Press( · logged)?$/ }).click();
+};
+
+test('switching day with the same lift on both days gives each day its own time mode and cards', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-01T18:00:00') });
+  await page.goto('/');
+  await openBench(page);
+  for (const t of ['18:00', '18:02', '18:04']) {
+    await page.clock.setFixedTime(new Date(`2026-10-01T${t}:00`));
+    await logBench(page, '135', '10');
+  }
+  await page.clock.setFixedTime(new Date('2026-10-02T18:00:00'));
+  await page.reload();
+  await openBench(page);
+  await logBench(page, '135', '10');
+  await page.clock.setFixedTime(new Date('2026-10-02T19:00:00'));
+  // Yesterday's form asks when; today's doesn't.
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('18:06');
+  await page.getByRole('button', { name: 'Back to today' }).click();
+  await expect(page.getByRole('textbox', { name: 'When' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await logBench(page, '135', '8');
+  await page.getByRole('button', { name: 'History' }).click();
+  await expect(page.getByText(/Thu, Oct 1, 2026 · 1 exercise · 4 sets · 8 min/)).toBeVisible();
+});
+
+test('a card added but not logged stays on its own day', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
+  await page.goto('/');
+  await openBench(page);
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await expect(page.getByRole('list', { name: 'Sets for Bench Press' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Stats' }).click();
+  await page.getByRole('button', { name: 'Today' }).click();
+  await expect(page.getByRole('list', { name: 'Sets for Bench Press' })).toBeAttached();
+});
+
+test('after a late set the next suggested time moves on', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-01T18:00:00') });
+  await page.goto('/');
+  await openBench(page);
+  for (const t of ['18:00', '18:02', '18:04', '18:14', '18:16']) {
+    await page.clock.setFixedTime(new Date(`2026-10-01T${t}:00`));
+    await logBench(page, '135', '10');
+  }
+  await page.clock.setFixedTime(new Date('2026-10-02T09:00:00'));
+  await page.reload();
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('18:09');
+  await logBench(page, '135', '9');
+  await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(6);
+  await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('18:06');
+});
+
+test('looking at a past day does not move the program rotation, and "Log it today" logs today', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-09-30T18:00:00') });
+  await page.goto('/');
+  await openBench(page);
+  await logBench(page, '135', '10');
+  await page.clock.setFixedTime(new Date('2026-10-01T09:00:00'));
+  await page.reload();
+  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await expect(page.getByRole('heading', { name: /^Day A/ })).toBeVisible();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  await expect(page.getByRole('heading', { name: 'Today’s plan · Day A' })).toBeVisible();
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await expect(page.getByText('Logging to Wed, Sep 30, 2026')).toBeVisible();
+  await page.waitForTimeout(300); // let any plan write land, then read today's plan back from storage
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Today’s plan · Day A' })).toBeVisible();
+  // From a past day, "Log it today" lands on today.
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await page.getByRole('button', { name: 'Lifts' }).click();
+  await page.getByRole('searchbox', { name: 'Filter lifts' }).fill('bench');
+  await page.getByRole('button', { name: /^Bench Press/ }).first().click();
+  await page.getByRole('region', { name: 'Next time' }).getByRole('button', { name: 'Log it today' }).click();
+  await expect(page.getByRole('heading', { name: 'Thu, Oct 1, 2026' })).toBeVisible();
+  await expect(page.getByText(/Logging to/)).toHaveCount(0);
+});

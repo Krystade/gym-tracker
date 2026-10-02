@@ -39,6 +39,13 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
 }) {
   const [whenOpen, setWhenOpen] = useState(!!when?.always);
   const [time, setTime] = useState(() => (when?.always ? when.suggest() ?? '' : ''));
+  // After a late set on a past day, the next time is asked for once the saved set is in the log (a new `suggest`).
+  const resuggest = useRef(false);
+  useEffect(() => {
+    if (!resuggest.current || !when?.always) return;
+    resuggest.current = false;
+    setTime(when.suggest() ?? '');
+  }, [when?.suggest, when?.always]);
   const [owner] = useState(() => ({ profile: activeProfileDb(), date: localDate(new Date()) }));
   const [d] = useState(() => (keepDraft ? getDraft<Draft>(owner.profile, exercise, owner.date) : undefined));
   const [weight, setWeight] = useState(d?.weight ?? String(initial.weight));
@@ -68,7 +75,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       painRegion: pain ? region : undefined, painSeverity: pain ? severity : undefined,
       ...(whenOpen && { at: time || null }),
     });
-    if (ok && when) { if (when.always) setTime(when.suggest() ?? ''); else setWhenOpen(false); }
+    if (ok && when) { if (when.always) resuggest.current = true; else setWhenOpen(false); }
     if (ok && keepDraft) { clearDraft(owner.profile, exercise); dirty.current = false; }
     if (ok) { setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); }
   }
