@@ -9,7 +9,7 @@ import { CATALOG } from './catalog';
 
 export interface Slot { exercise: string; sets: number; repMin: number; repMax: number }
 export interface ProgramDay { name: string; slots: Slot[] }
-export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string; /** Minutes per session it was built for; unset when built by sets. */ minutes?: number; newToYou?: string[]; unavailable?: Muscle[] }
+export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string; /** Minutes per session it was built for; unset when built by sets. */ minutes?: number; /** Set once its days were hand-edited; a rebuild drops it. */ edited?: boolean; newToYou?: string[]; unavailable?: Muscle[] }
 /** What happened to the program on one date: which day was run, and what was skipped or swapped. */
 /** `slots` is the day as planned when the session was logged, so later program edits don't rewrite history. */
 export interface DayPlan { key: string; date: string; day: number; skips: string[]; swaps: Record<string, string>; slots?: Slot[] }

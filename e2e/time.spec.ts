@@ -69,6 +69,12 @@ test('the builder builds to minutes, and program days show their length', async 
   await page.screenshot({ path: 'screenshots/23-program-minutes.png', fullPage: true });
 });
 
+// Once a program exists the builder is folded under "Rebuild program".
+const openBuilder = async (page: import('@playwright/test').Page) => {
+  const d = page.locator('details.builder');
+  if (!(await d.evaluate((el: HTMLDetailsElement) => el.open))) await d.locator('summary').click();
+};
+
 test('a minutes budget too small to meet says so', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
@@ -85,11 +91,12 @@ test('a minutes budget too small to meet says so', async ({ page }) => {
   for (const [, day, min] of (await note.innerText()).matchAll(/(Day [A-Z]) ≈ (\d+) min/g))
     await expect(page.getByRole('heading', { name: new RegExp(`^${day} · \\d+ sets · ≈ ${min} min$`) })).toBeVisible();
   await page.screenshot({ path: 'screenshots/40-budget-note.png', fullPage: true });
+  await openBuilder(page);
   await page.getByRole('textbox', { name: 'Minutes per session' }).fill('150');
   await expect(page.getByRole('textbox', { name: 'Minutes per session' })).toHaveValue('150');
   await expect(note).toBeVisible(); // describes the program as built, not the input: no rebuild yet
   await page.getByRole('button', { name: 'Sets', exact: true }).click();
-  page.once('dialog', (d) => void d.accept()); // "Replace the current program?"
+  page.once('dialog', (d) => void d.accept()); // "Rebuild the program?"
   await page.getByRole('button', { name: 'Rebuild program' }).click(); // by sets: no minutes budget
   await expect(page.getByRole('status').filter({ hasText: 'over your' })).toHaveCount(0);
 });
@@ -99,6 +106,7 @@ test('a program built by sets is not said to be over a minutes budget a rebuild 
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('button', { name: 'Build program' }).click(); // 14 sets, ≈ 44 min
   await expect(page.getByRole('heading', { name: /^Day A · 14 sets/ })).toBeVisible();
+  await openBuilder(page);
   await page.getByRole('button', { name: 'Minutes', exact: true }).click();
   await page.getByRole('textbox', { name: 'Minutes per session' }).fill('30');
   await expect(page.getByRole('textbox', { name: 'Minutes per session' })).toHaveValue('30');

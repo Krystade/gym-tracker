@@ -194,7 +194,13 @@ h3 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600;
 /* A jump lands a card below the sticky profile bar. */
 [data-card] { scroll-margin-top: calc(var(--sat) + 72px); }
 .plan-slots button:not(.plan-name) { padding: 0 4px; font-size: 14px; }
-.prog-slots li { display: grid; grid-template-columns: 1fr 44px 28px 44px 44px; align-items: center; gap: 4px; }
+.prog-slots li { display: grid; grid-template-columns: 1fr 44px 28px 44px 56px; align-items: center; gap: 4px; }
+/* Remove sits a thumb-width away from the steppers: it deletes. */
+.prog-slots li > button:last-child { margin-left: 12px; }
+.undo-note { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 0; }
+details.builder > summary { min-height: 44px; display: flex; align-items: center; font-weight: 600; cursor: pointer; }
+details.builder[open] > summary { margin-bottom: 8px; }
+.builder .sub { margin-bottom: 12px; }
 .prog-name { display: grid; }
 .prog-sets { text-align: center; font-variant-numeric: tabular-nums; font-weight: 700; }
 .settings-grid.two { grid-template-columns: 1fr 1fr; margin-bottom: 8px; }
@@ -287,9 +293,12 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: 16px;
 .paste-notes { flex: 1 1 100%; overflow-wrap: anywhere; }
 
 /* Profiles: the switcher sits on top of every screen, under the notch. */
-.profile-bar { position: sticky; top: 0; z-index: 3; margin: calc(-1 * (var(--sat) + 12px)) -16px 8px; padding: calc(var(--sat) + 6px) 16px 6px; background: var(--bg); border-bottom: 1px solid var(--line); flex-wrap: nowrap; overflow-x: auto; }
+.profile-bar { position: sticky; top: 0; z-index: 3; margin: calc(-1 * (var(--sat) + 12px)) -16px 8px; padding: calc(var(--sat) + 6px) 16px 6px; background: var(--bg); border-bottom: 1px solid var(--line); flex-wrap: nowrap; overflow-x: auto; scroll-padding-inline: 16px; }
 .chip.person { display: inline-flex; align-items: center; gap: 6px; padding-left: 4px; white-space: nowrap; }
-.chip.person .initials { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 17px; background: var(--surface-2); font-size: 12px; }
+.profile-bar .chip { flex: none; max-width: 45vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The ellipsis needs a block-ish box of its own: a bare text node inside the inline-flex chip just spills. */
+.chip.person .pname { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chip.person .initials { flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 17px; background: var(--surface-2); font-size: 12px; }
 .chip.person[aria-pressed='true'] .initials { background: var(--accent-ink); color: var(--accent); }
 .people { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 6px; }
 .people li { display: flex; gap: 8px; align-items: center; }
