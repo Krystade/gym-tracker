@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
+import { dataSettled } from './settle';
 
 const HISTORY = readFileSync(path.join(import.meta.dirname, 'fixtures', 'history.sample.csv'), 'utf8');
 const TOKEN = 'fake-e2e-token-not-real';
@@ -31,6 +32,7 @@ test('private backup: save settings, sync through a mocked GitHub, token stays h
 
   await page.goto('/');
   await page.getByRole('button', { name: 'Data' }).click();
+  await dataSettled(page);
   const card = page.getByRole('region', { name: 'Private backup' });
   await card.getByText('How to make a token').click();
   const link = card.getByRole('link', { name: 'Open GitHub’s token form' });
@@ -79,10 +81,12 @@ test('switching profile while a sync is pulling keeps what it pulled with the pe
   });
   await page.goto('/');
   await page.getByRole('button', { name: 'Data' }).click();
+  await dataSettled(page);
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   const bar = page.getByRole('group', { name: 'Who’s training' });
   await bar.getByRole('button', { name: /Me/ }).click();
+  await dataSettled(page);
   const card = page.getByRole('region', { name: 'Private backup' });
   await card.getByRole('textbox', { name: 'Repository' }).fill('someone/backup');
   await card.getByLabel('Access token').fill(TOKEN);

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { dataSettled } from './settle';
 
 const bar = (page: Page) => page.getByRole('group', { name: 'Who’s training' });
 const addCurl = async (page: Page) => {
@@ -11,6 +12,7 @@ test('two people on one phone: separate logs, one-tap switch, typed sets survive
   await page.goto('/');
   await expect(bar(page)).toHaveCount(0);
   await page.getByRole('button', { name: 'Data' }).click();
+  await dataSettled(page);
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await expect(page.getByText('Backed up to profiles/sam/')).toBeVisible();
   await page.getByRole('button', { name: 'Add Sam' }).click();
@@ -71,6 +73,7 @@ test('two people on one phone: separate logs, one-tap switch, typed sets survive
 
   // A new person can't take over the deleted one's backup folder.
   await page.getByRole('button', { name: 'Data' }).click();
+  await dataSettled(page);
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await expect(page.getByText(/still holds an old backup/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add Sam' })).toBeDisabled();
@@ -80,6 +83,7 @@ test('switching person goes back to today', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
   await page.getByRole('button', { name: 'Data' }).click();
+  await dataSettled(page);
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   await bar(page).getByRole('button', { name: /Me/ }).click();
@@ -95,6 +99,7 @@ test('switching person goes back to today', async ({ page }) => {
 test('the exercise search stays visible below the profile bar when the list scrolls', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Data' }).click();
+  await dataSettled(page);
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   await page.getByRole('button', { name: 'Today' }).click();

@@ -1,9 +1,13 @@
 import { expect, test } from '@playwright/test';
 
 const logBench = async (page: import('@playwright/test').Page, weight: string, reps: string) => {
+  const rows = page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem');
+  const before = await rows.count();
   await page.getByRole('textbox', { name: 'Weight' }).fill(weight);
   await page.getByRole('textbox', { name: 'Reps' }).fill(reps);
   await page.getByRole('button', { name: 'Add set' }).click();
+  // A set is listed once its write has landed; a reload before then loses it.
+  await expect(rows).toHaveCount(before + 1);
 };
 
 test('a forgotten set goes into yesterday at the suggested time, and the workout length is measured', async ({ page }) => {
