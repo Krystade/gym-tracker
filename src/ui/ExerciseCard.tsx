@@ -76,10 +76,13 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
       {editing ? (
         <SetForm key={editing.id} exercise={exercise} initial={editing} submitLabel="Save"
           onCancel={() => setEditing(null)}
-          onDelete={async () => { if (confirm(`Delete set ${editing.setNo}?`) && (await store.remove(editing.id))) setEditing(null); }}
+          onDelete={async () => {
+            const no = today.findIndex((x) => x.id === editing.id) + 1; // the number on the row, not the entry order
+            if (confirm(`Delete set ${no}?`) && (await store.remove(editing.id))) setEditing(null);
+          }}
           onSubmit={async (v) => { const ok = await store.update({ ...editing, ...v }); if (ok) setEditing(null); return ok; }} />
       ) : (
-        <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft
+        <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft day={date}
           when={{ suggest: suggestWhen, always: date < realToday, max: date === realToday ? () => hhmm(new Date()) : undefined }} />
       )}
     </section>

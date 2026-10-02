@@ -180,3 +180,46 @@ test('the day switch buttons are full-size taps and the header fits at 375 wide'
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   await page.screenshot({ path: 'screenshots/24-day-switch.png' });
 });
+
+test('half-typed sets stay on their own day', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-01T18:00:00') });
+  await page.goto('/');
+  await openBench(page);
+  await logBench(page, '135', '10');
+  await page.clock.setFixedTime(new Date('2026-10-02T18:00:00'));
+  await page.reload();
+  await openBench(page);
+  const weight = page.getByRole('textbox', { name: 'Weight' });
+  await weight.fill('200'); // typed on today, not added
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await expect(weight).toHaveValue('135'); // seeded from that day's set, not today's draft
+  await weight.fill('150');
+  await page.getByRole('button', { name: 'Back to today' }).click();
+  await expect(weight).toHaveValue('200');
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await expect(weight).toHaveValue('150');
+});
+
+test('deleting a late set names it by the number on its row', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-01T18:00:00') });
+  await page.goto('/');
+  await openBench(page);
+  for (const t of ['18:00', '18:02', '18:04', '18:14', '18:16']) {
+    await page.clock.setFixedTime(new Date(`2026-10-01T${t}:00`));
+    await logBench(page, '135', '10');
+  }
+  await page.clock.setFixedTime(new Date('2026-10-02T09:00:00'));
+  await page.reload();
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('18:09');
+  await logBench(page, '135', '9');
+  const rows = page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem');
+  await expect(rows).toHaveCount(6);
+  // The late set was entered 6th but done 4th: the prompt must say 4.
+  let msg = '';
+  page.once('dialog', async (d) => { msg = d.message(); await d.dismiss(); });
+  await rows.nth(3).getByRole('button').click();
+  await page.getByRole('button', { name: 'Delete' }).click();
+  await expect.poll(() => msg).toBe('Delete set 4?');
+  await expect(rows).toHaveCount(6);
+});

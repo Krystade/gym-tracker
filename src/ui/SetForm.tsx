@@ -32,9 +32,11 @@ interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; not
  * `when`: the set may have been done earlier — `always` shows the time field (a past day), otherwise "Did this earlier?" opens it.
  * `suggest` is asked when the field opens, so it reflects the clock then. An empty field means unknown.
  */
-export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when }: {
+export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day }: {
   exercise: string; initial: SetFormValue; submitLabel: string;
   onSubmit: (v: SetFormValue) => Promise<boolean>; onDelete?: () => void; onCancel?: () => void; keepDraft?: boolean;
+  /** The day this form logs to; defaults to today. */
+  day?: string;
   when?: { suggest: () => string | null; always: boolean; max?: () => string | null }; // max: latest allowed HH:MM, null/absent = no limit
 }) {
   const [whenOpen, setWhenOpen] = useState(!!when?.always);
@@ -46,8 +48,10 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
     resuggest.current = false;
     setTime(when.suggest() ?? '');
   }, [when?.suggest, when?.always]);
-  const [owner] = useState(() => ({ profile: activeProfileDb(), date: localDate(new Date()) }));
-  const [d] = useState(() => (keepDraft ? getDraft<Draft>(owner.profile, exercise, owner.date) : undefined));
+  const [owner] = useState(() => ({ profile: activeProfileDb(), date: day ?? localDate(new Date()) }));
+  // One draft per lift per day, so a past day's half-typed set never lands in today's form.
+  const draftKey = `${exercise}@${owner.date}`;
+  const [d] = useState(() => (keepDraft ? getDraft<Draft>(owner.profile, draftKey, owner.date) : undefined));
   const [weight, setWeight] = useState(d?.weight ?? String(initial.weight));
   const [reps, setReps] = useState(d?.reps ?? (initial.reps == null ? '' : String(initial.reps)));
   const [rir, setRir] = useState<number | undefined>(d ? d.rir : initial.rir);
@@ -59,8 +63,8 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   const dirty = useRef(d != null);
   const touch = <T,>(set: (v: T) => void) => (v: T) => { dirty.current = true; set(v); };
   useEffect(() => {
-    if (keepDraft && dirty.current) saveDraft<Draft>(owner.profile, exercise, owner.date, { weight, reps, rir, flags, note, region, severity });
-  }, [keepDraft, owner, exercise, weight, reps, rir, flags, note, region, severity]);
+    if (keepDraft && dirty.current) saveDraft<Draft>(owner.profile, draftKey, owner.date, { weight, reps, rir, flags, note, region, severity });
+  }, [keepDraft, owner, draftKey, weight, reps, rir, flags, note, region, severity]);
   const hold = isHold(exercise);
   const pain = flags.includes('pain');
   const w = Number(weight);
@@ -79,7 +83,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       ...(whenOpen && { at: time || null }),
     });
     if (ok && when) { if (when.always) resuggest.current = true; else setWhenOpen(false); }
-    if (ok && keepDraft) { clearDraft(owner.profile, exercise); dirty.current = false; }
+    if (ok && keepDraft) { clearDraft(owner.profile, draftKey); dirty.current = false; }
     if (ok) { setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); }
   }
 
