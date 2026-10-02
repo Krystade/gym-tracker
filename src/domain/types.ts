@@ -12,7 +12,10 @@ export interface SetEntry {
   date: string; // YYYY-MM-DD, local
   /** Ordering within a date: import row index, or epoch ms for live-logged sets. */
   seq: number;
+  /** When the set was done (a guess for one entered late); absent if unknown. */
   loggedAt?: string;
+  /** When a late set was entered; absent for sets logged as they were done. */
+  enteredAt?: string;
   exercise: string;
   asWritten?: string;
   setNo: number;

@@ -80,3 +80,13 @@ describe('Phase 12 review fixes', () => {
     expect(parseCsv(toCsv([e])).entries[0].target).toEqual({ weight: null, reps: 10, sets: 3 });
   });
 });
+
+describe('late sets in the CSV', () => {
+  it('round-trips entered_at and keeps an untimed set untimed', () => {
+    const e: SetEntry = { id: setId('app', '2026-10-01', 'Bench Press', 1), date: '2026-10-01', seq: 1, exercise: 'Bench Press', setNo: 1,
+      weight: 135, reps: 8, flags: [], source: 'app', enteredAt: '2026-10-02T02:30:00.000Z' };
+    const back = parseCsv(toCsv([e])).entries[0];
+    expect(back.enteredAt).toBe(e.enteredAt);
+    expect(back).not.toHaveProperty('loggedAt');
+  });
+});

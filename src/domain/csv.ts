@@ -2,7 +2,7 @@ import { normalizeName, setId } from './ids';
 import { isFlag, isRegion, type Flag, type SetEntry } from './types';
 
 export const CSV_HEADER = ['date', 'exercise', 'as_written', 'set', 'weight_lb', 'reps', 'rir', 'flags', 'note', 'source', 'pain_region', 'pain_severity',
-  'logged_at', 'target_weight_lb', 'target_reps', 'target_sets', 'gym'] as const;
+  'logged_at', 'target_weight_lb', 'target_reps', 'target_sets', 'gym', 'entered_at'] as const;
 const REQUIRED = ['date', 'exercise', 'set', 'weight_lb', 'reps'];
 
 export interface CsvError { row: number; message: string }
@@ -18,7 +18,7 @@ export function toCsv(entries: SetEntry[]): string {
     lines.push(
       [e.date, e.exercise, e.asWritten ?? '', String(e.setNo), String(e.weight), e.reps == null ? '' : String(e.reps),
         e.rir == null ? '' : String(e.rir), e.flags.join(';'), e.note ?? '', e.source, e.painRegion ?? '', e.painSeverity == null ? '' : String(e.painSeverity),
-        e.loggedAt ?? '', e.target?.weight != null ? String(e.target.weight) : '', e.target ? String(e.target.reps) : '', e.target ? String(e.target.sets) : '', e.gym ?? ''].map(esc).join(','),
+        e.loggedAt ?? '', e.target?.weight != null ? String(e.target.weight) : '', e.target ? String(e.target.reps) : '', e.target ? String(e.target.sets) : '', e.gym ?? '', e.enteredAt ?? ''].map(esc).join(','),
     );
   }
   return lines.join('\r\n') + '\r\n';
@@ -92,6 +92,8 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     const target = tr != null && ts != null && (tw == null || tw >= 0) && Number.isInteger(tr) && tr >= 0 && Number.isInteger(ts) && ts >= 1
       ? { weight: tw, reps: tr, sets: ts } : undefined;
     const gym = col(r, 'gym').trim();
+    const enteredAt = col(r, 'entered_at').trim();
+    if (enteredAt && !Number.isFinite(Date.parse(enteredAt))) return fail(`Bad entered_at "${enteredAt}"`);
     const source = col(r, 'source').trim() || defaultSource;
     const asWritten = col(r, 'as_written');
     const note = col(r, 'note');
@@ -107,6 +109,7 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
       ...(loggedAt && { loggedAt }),
       ...(target && { target }),
       ...(gym && { gym }),
+      ...(enteredAt && { enteredAt }),
     });
   });
   return { entries, errors };
