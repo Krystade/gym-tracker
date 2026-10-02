@@ -65,3 +65,7 @@ export function nextTime(entries: SetEntry[], exercise: string, st: ExerciseSett
   const trainedToday = entries.some((e) => e.date === date && sameExercise(e.exercise, exercise) && isWorking(e));
   return trainedToday ? { s: suggest(entries, exercise, st, addDays(date, 1), null), trainedToday } : { s: suggest(entries, exercise, st, date, planned), trainedToday };
 }
+
+/** How many warm-up sets the next session of this lift would suggest (default rep range), for time estimates. */
+export const warmupCount = (entries: SetEntry[], exercise: string, date: string): number =>
+  warmups(suggest(entries, exercise, defaultSettings(exercise), date, null).weight ?? 0, exercise).length;

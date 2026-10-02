@@ -24,7 +24,7 @@ function group(entries: SetEntry[]): Session[] {
 }
 
 export const sessionsFor = (entries: SetEntry[], exercise: string): Session[] =>
-  group(entries.filter((e) => sameExercise(e.exercise, exercise))).map((x) => ({ ...x, sets: [...x.sets].sort((a, b) => a.setNo - b.setNo) }));
+  group(entries.filter((e) => sameExercise(e.exercise, exercise))).map((x) => ({ ...x, sets: [...x.sets].sort((a, b) => a.seq - b.seq || a.setNo - b.setNo) }));
 
 export const sessionsByDate = (entries: SetEntry[]): Session[] =>
   group(entries).map((x) => ({ ...x, sets: [...x.sets].sort((a, b) => a.seq - b.seq || a.setNo - b.setNo) }));

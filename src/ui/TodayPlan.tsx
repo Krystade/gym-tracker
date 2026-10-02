@@ -4,6 +4,8 @@ import { nextDay, type DayPlan, type Program } from '../domain/program';
 import { sameExercise } from '../domain/stats';
 import { isHold } from '../domain/care';
 import type { ProgramStore } from '../state/useProgram';
+import { estimateSeconds, hhmm, paces, timedDay } from '../domain/timing';
+import { warmupCount } from '../domain/suggest';
 
 export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: string): DayPlan | null => {
   if (!store.program) return null;
@@ -20,6 +22,13 @@ export function TodayPlan({ program, plan, entries, onChange, onOpen, onSwap }: 
   return (
     <section className="card plan" aria-label="Today’s plan">
       <h2>Today’s plan · {day.name}</h2>
+      {(() => {
+        const todo = day.slots.filter((s) => !plan.skips.includes(s.exercise)).map((s) => ({ exercise: plan.swaps[s.exercise] ?? s.exercise, sets: s.sets }));
+        const mins = Math.round(estimateSeconds(todo, paces(entries), (ex) => warmupCount(entries, ex, plan.date)) / 60);
+        const first = timedDay(entries, plan.date)[0];
+        const start = first ? new Date(first.loggedAt!) : null;
+        return <p className="muted small" aria-label="Plan length">≈ {mins} min{start && ` · started ${hhmm(start)} · ends ≈ ${hhmm(new Date(start.getTime() + mins * 60_000))}`}</p>;
+      })()}
       {program.days.length > 1 && (
         <div className="chips" role="group" aria-label="Program day">
           {program.days.map((d, i) => (

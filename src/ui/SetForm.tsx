@@ -6,7 +6,7 @@ import { REGIONS, type Flag, type Region } from '../domain/types';
 import { derivedFlags } from '../domain/buildSet';
 import { isHold, likelyRegion, painDefaults } from '../domain/care';
 
-export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3 }
+export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3; at?: string | null }
 const SEVERITY: [1 | 2 | 3, string][] = [[1, 'Mild'], [2, 'Moderate'], [3, 'Sharp']];
 const cap = (r: string) => r[0].toUpperCase() + r.slice(1);
 const TOGGLES: [Flag, string][] = [['pain', 'Pain'], ['unsure', 'Unsure'], ['warmup', 'Warm-up'], ['double_pulley', '2× pulley'], ['test', 'Test']];
@@ -28,10 +28,17 @@ function Stepper({ label, value, onChange, step, mode }: { label: string; value:
 interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; note: string; region?: Region; severity?: 1 | 2 | 3 }
 
 /** `keepDraft`: what's typed survives leaving the screen or switching profile, until it's saved (the new-set form). */
-export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false }: {
+/**
+ * `when`: the set may have been done earlier — `always` shows the time field (a past day), otherwise "Did this earlier?" opens it.
+ * `suggest` is asked when the field opens, so it reflects the clock then. An empty field means unknown.
+ */
+export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when }: {
   exercise: string; initial: SetFormValue; submitLabel: string;
   onSubmit: (v: SetFormValue) => Promise<boolean>; onDelete?: () => void; onCancel?: () => void; keepDraft?: boolean;
+  when?: { suggest: () => string | null; always: boolean };
 }) {
+  const [whenOpen, setWhenOpen] = useState(!!when?.always);
+  const [time, setTime] = useState(() => (when?.always ? when.suggest() ?? '' : ''));
   const [owner] = useState(() => ({ profile: activeProfileDb(), date: localDate(new Date()) }));
   const [d] = useState(() => (keepDraft ? getDraft<Draft>(owner.profile, exercise, owner.date) : undefined));
   const [weight, setWeight] = useState(d?.weight ?? String(initial.weight));
@@ -59,7 +66,9 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
     const ok = await onSubmit({
       weight: w, reps: r, rir: rir ?? (flags.includes('test') ? 0 : undefined), flags: derivedFlags(withHold, w, r), note: note.trim() || undefined,
       painRegion: pain ? region : undefined, painSeverity: pain ? severity : undefined,
+      ...(whenOpen && { at: time || null }),
     });
+    if (ok && when) { if (when.always) setTime(when.suggest() ?? ''); else setWhenOpen(false); }
     if (ok && keepDraft) { clearDraft(owner.profile, exercise); dirty.current = false; }
     if (ok) { setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); }
   }
@@ -92,6 +101,13 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
             {SEVERITY.map(([n, label]) => <button type="button" key={n} className="chip" aria-pressed={severity === n} onClick={() => touch(setSeverity)(n)}>{label}</button>)}
           </div>
         </>
+      )}
+      {when && !whenOpen && <button type="button" className="chip" onClick={() => { setTime(when.suggest() ?? ''); setWhenOpen(true); }}>Did this earlier?</button>}
+      {when && whenOpen && (
+        <div className="when">
+          <label>When <input type="time" aria-label="When" value={time} onChange={(e) => setTime(e.target.value)} /></label>
+          <span className="muted small">{time ? 'A guess is fine' : 'Leave empty if you don’t know'}</span>
+        </div>
       )}
       <input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => touch(setNote)(e.target.value)} />
       <div className="form-actions">

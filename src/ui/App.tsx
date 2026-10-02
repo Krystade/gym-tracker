@@ -48,13 +48,15 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const [tab, setTab] = useState<Tab>('today');
   const [exercise, setExercise] = useState<string | null>(null);
   const [date, setDate] = useState(() => localDate(new Date()));
+  // The day Today logs to, when it isn't today (a forgotten set).
+  const [logDay, setLogDay] = useState<string | null>(null);
   useEffect(() => {
     const onVis = () => setDate(localDate(new Date()));
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
   const open = (name: string) => { setExercise(name); window.scrollTo(0, 0); };
-  const nav = { tab, exercise, date, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open };
+  const nav = { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open };
 
   return (
     <div className="app">
@@ -63,7 +65,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
       </ProfileDbProvider>
       <nav className="tabs" aria-label="Sections">
         {TABS.map(([t, label]) => (
-          <button key={t} aria-current={tab === t && !exercise && !programOpen && !photosOpen && !pasteOpen ? 'page' : undefined} onClick={() => { setTab(t); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); }}>{label}</button>
+          <button key={t} aria-current={tab === t && !exercise && !programOpen && !photosOpen && !pasteOpen ? 'page' : undefined} onClick={() => { setTab(t); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); }}>{label}</button>
         ))}
       </nav>
     </div>
@@ -71,7 +73,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
 }
 
 interface Nav {
-  tab: Tab; exercise: string | null; date: string; programOpen: boolean; photosOpen: boolean; pasteOpen: boolean;
+  tab: Tab; exercise: string | null; date: string; logDay: string | null; setLogDay: (d: string | null) => void; programOpen: boolean; photosOpen: boolean; pasteOpen: boolean;
   setTab: (t: Tab) => void; setExercise: (x: string | null) => void; setProgramOpen: (b: boolean) => void; setPhotosOpen: (b: boolean) => void; setPasteOpen: (b: boolean) => void;
   open: (name: string) => void;
 }
@@ -84,7 +86,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const body = useBody();
   const photos = usePhotos();
   const sync = useSync(store, body, person);
-  const { tab, exercise, date, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open } = nav;
+  const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open } = nav;
   const error = store.error ?? programs.error ?? body.error ?? photos.error ?? gyms.error ?? people.error;
 
   return (
@@ -98,8 +100,9 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} onBack={() => setProgramOpen(false)} />
           : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={date} onBack={() => setExercise(null)}
             onLog={() => { logToday(person.id, date, exercise); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />
-          : tab === 'today' ? <TodayScreen store={store} settings={settings} programs={programs} body={body} gyms={gyms} date={date} onOpen={open} onOpenProgram={() => { setProgramOpen(true); window.scrollTo(0, 0); }} />
-          : tab === 'history' ? <HistoryScreen store={store} onOpen={open} />
+          : tab === 'today' ? <TodayScreen store={store} settings={settings} programs={programs} body={body} gyms={gyms} date={logDay ?? date} today={date}
+            onDay={(d) => { setLogDay(d === date ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={() => { setProgramOpen(true); window.scrollTo(0, 0); }} />
+          : tab === 'history' ? <HistoryScreen store={store} onOpen={open} onAddTo={(d) => { setLogDay(d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />
           : <DataScreen store={store} profile={profile} body={body} sync={sync} people={people} onOpenPaste={() => { setPasteOpen(true); window.scrollTo(0, 0); }} />}

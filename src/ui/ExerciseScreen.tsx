@@ -78,8 +78,8 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
           <section className="card" key={s.date}>
             <p><b>{fmtDate(s.date)}</b></p>
             <ol className="sets">
-              {s.sets.map((x) => (
-                <li key={x.id} className="set-row"><SetRowContent s={x} estRir={estimateRir(x, s.sets, prior, offset)} /></li>
+              {s.sets.map((x, i) => (
+                <li key={x.id} className="set-row"><SetRowContent s={x} no={i + 1} estRir={estimateRir(x, s.sets, prior, offset)} /></li>
               ))}
             </ol>
           </section>

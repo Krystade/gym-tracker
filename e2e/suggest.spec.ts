@@ -54,7 +54,7 @@ test('open an exercise: next sets × reps @ weight with a warm-up, history below
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
   await expect(page.getByText('Copied the CSV to the clipboard')).toBeVisible();
   const csv = await page.evaluate(() => (window as unknown as { copied: string }).copied);
-  expect(csv.split('\r\n')[0]).toMatch(/logged_at,target_weight_lb,target_reps,target_sets,gym$/);
+  expect(csv.split('\r\n')[0]).toMatch(/logged_at,target_weight_lb,target_reps,target_sets,gym,entered_at$/);
   expect(csv).toMatch(/2026-10-02,Bench Press,,1,140,8,,,,app,,,\d{4}-\d{2}-\d{2}T[\d:.]+Z,140,8,3,/); // logged_at is UTC
   await page.getByRole('button', { name: 'Export body CSV' }).click();
   expect(await page.evaluate(() => (window as unknown as { copied: string }).copied)).toContain('2026-10-02,,,,4');

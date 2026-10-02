@@ -262,3 +262,10 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: 16px;
 .screen:has(.profile-bar) .picker-head { top: calc(var(--sat) + 57px); margin-top: 0; padding-top: 8px; }
 .suggestion .big { font-size: 22px; font-weight: 700; margin: 4px 0; }
 .suggestion h2 { margin: 0; }
+
+/* Late sets: the day switcher on Today, the past-day banner, the time field. */
+.day-switch { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.day-switch h1 { margin: 4px 0 12px; font-size: 22px; }
+.past-day { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.when { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.when input { min-height: 44px; font-size: 16px; }

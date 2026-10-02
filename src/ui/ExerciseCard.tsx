@@ -9,6 +9,7 @@ import { SetForm, type SetFormValue } from './SetForm';
 import { SetRowContent } from './SetRow';
 import { suggest } from '../domain/suggest';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
+import { paces, suggestTime } from '../domain/timing';
 
 const TargetIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -16,18 +17,19 @@ const TargetIcon = () => (
   </svg>
 );
 
-export function ExerciseCard({ exercise, date, store, settings, onOpen, plannedSets = null, gym }: {
-  exercise: string; date: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
+export function ExerciseCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym }: {
+  exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
   const [pr, setPr] = useState<string | null>(null);
   useEffect(() => { if (!pr) return; const t = setTimeout(() => setPr(null), 6000); return () => clearTimeout(t); }, [pr]);
-  const today = store.entries.filter((e) => e.date === date && sameExercise(e.exercise, exercise)).sort((a, b) => a.setNo - b.setNo);
+  const today = store.entries.filter((e) => e.date === date && sameExercise(e.exercise, exercise)).sort((a, b) => a.seq - b.seq || a.setNo - b.setNo); // in the order done: a late set sits where it happened
   const last = lastSession(store.entries, exercise, date);
   const best = bestSet(store.entries, exercise);
   const st = settings.get(exercise);
   const target = nextTarget(store.entries, exercise, st, date);
   const sug = suggest(store.entries, exercise, st, date, plannedSets);
+  const pace = useMemo(() => paces(store.entries), [store.entries]);
   // Whole-history scans: recompute only when the log changes, not on every keystroke in the form.
   const { prior, offset } = useMemo(() => ({
     prior: priorE1rm(store.entries, exercise, date), offset: rirOffset(store.entries, exercise),
@@ -41,7 +43,9 @@ export function ExerciseCard({ exercise, date, store, settings, onOpen, plannedS
   async function addSet(v: SetFormValue): Promise<boolean> {
     setPr(null);
     // What was suggested rides along with every set, so suggested and done can be compared later.
-    const e = await store.add({ date, exercise, ...v, gym, target: { weight: sug.weight, reps: sug.reps, sets: sug.sets } });
+    const { at, ...rest } = v;
+    // A time for a late set is on the day being logged to.
+    const e = await store.add({ date, exercise, ...rest, gym, ...(at !== undefined && { at: at ? new Date(`${date}T${at}:00`) : null }), target: { weight: sug.weight, reps: sug.reps, sets: sug.sets } });
     if (!e) return false;
     const r = prCheck([...store.entries, e], e);
     if (r.e1rm) setPr(`PR! New best e1RM ${Math.round(e1rm(e)!)} lb`);
@@ -58,10 +62,10 @@ export function ExerciseCard({ exercise, date, store, settings, onOpen, plannedS
       {last && <p className="muted">Last ({fmtDate(last.date)}): {last.sets.map(fmtSet).join(' · ')}</p>}
       {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.sets} × {sug.reps}{sug.unit}+{fmtLoad(sug.weight)}{sug.warmups.length > 0 && <span className="muted"> · warm-up {fmtRamp(sug)}</span>}</span></p>}
       <ol className="sets" aria-label={`Sets for ${exercise}`}>
-        {today.map((s) => (
+        {today.map((s, i) => (
           <li key={s.id}>
             <button className="set-row" onClick={() => setEditing(s)}>
-              <SetRowContent s={s} estRir={estimateRir(s, today, prior, offset)} />
+              <SetRowContent s={s} no={i + 1} estRir={estimateRir(s, today, prior, offset)} />
             </button>
           </li>
         ))}
@@ -73,7 +77,8 @@ export function ExerciseCard({ exercise, date, store, settings, onOpen, plannedS
           onDelete={async () => { if (confirm(`Delete set ${editing.setNo}?`) && (await store.remove(editing.id))) setEditing(null); }}
           onSubmit={async (v) => { const ok = await store.update({ ...editing, ...v }); if (ok) setEditing(null); return ok; }} />
       ) : (
-        <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft />
+        <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft
+          when={{ suggest: () => suggestTime(store.entries, date, exercise, pace, new Date()), always: date < realToday }} />
       )}
     </section>
   );

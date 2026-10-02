@@ -9,7 +9,7 @@ const MAX_SAME = 10 * 60, MAX_SWITCH = 15 * 60, MIN_SAMPLES = 3;
 
 const secs = (e: SetEntry) => Date.parse(e.loggedAt!) / 1000;
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
-const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+export const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 /** One day's sets that have a time, in the order they were done. Sets added later without a time are left out. */
 export const timedDay = (entries: SetEntry[], date: string): SetEntry[] =>

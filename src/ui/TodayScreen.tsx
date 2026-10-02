@@ -20,9 +20,11 @@ import type { BodyStore } from '../state/useBody';
 import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
 import { CATALOG } from '../domain/catalog';
+import { addDays } from '../domain/analytics';
 
-export function TodayScreen({ store, settings, programs, body, gyms, date, onOpen, onOpenProgram }: {
-  store: SetsStore; settings: SettingsStore; programs: ProgramStore; body: BodyStore; gyms: GymsStore; date: string; onOpen: (name: string) => void; onOpenProgram: () => void;
+export function TodayScreen({ store, settings, programs, body, gyms, date, today, onDay, onOpen, onOpenProgram }: {
+  store: SetsStore; settings: SettingsStore; programs: ProgramStore; body: BodyStore; gyms: GymsStore; date: string; today: string;
+  onDay: (d: string) => void; onOpen: (name: string) => void; onOpenProgram: () => void;
 }) {
   const [picking, setPicking] = useState(false);
   const [swapFor, setSwapFor] = useState<string | null>(null);
@@ -50,17 +52,22 @@ export function TodayScreen({ store, settings, programs, body, gyms, date, onOpe
   return (
     <>
       <div className="today-head">
-        <h1>{fmtDate(date)}</h1>
+        <div className="day-switch">
+          <button className="mini" aria-label="Previous day" onClick={() => onDay(addDays(date, -1))}>‹</button>
+          <h1>{fmtDate(date)}</h1>
+          <button className="mini" aria-label="Next day" disabled={date >= today} onClick={() => onDay(addDays(date, 1))}>›</button>
+        </div>
         <button onClick={onOpenProgram}>Program</button>
       </div>
+      {date < today && <p className="card note-card past-day"><span>Logging to {fmtDate(date)}</span><button className="mini" onClick={() => onDay(today)}>Back to today</button></p>}
       <WeighIn body={body} date={date} />
       <Energy body={body} date={date} />
       {programs.program && plan && (
         <TodayPlan program={programs.program} plan={plan} entries={store.entries}
           onChange={(p) => void programs.savePlan(p)} onOpen={addCard} onSwap={setSwapFor} />
       )}
-      {cards.length === 0 && <p className="muted">Nothing logged yet today.</p>}
-      {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} store={store} settings={settings} onOpen={onOpen}
+      {cards.length === 0 && <p className="muted">{date < today ? 'Nothing logged that day.' : 'Nothing logged yet today.'}</p>}
+      {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} today={today} store={store} settings={settings} onOpen={onOpen}
         plannedSets={plannedSets(programs.program, plan, n)} gym={gyms.active?.name} />)}
       <button className="primary wide" onClick={() => setPicking(true)}>Add exercise</button>
     </>
