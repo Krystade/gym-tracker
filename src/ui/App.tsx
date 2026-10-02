@@ -48,8 +48,11 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const [tab, setTab] = useState<Tab>('today');
   const [exercise, setExercise] = useState<string | null>(null);
   const [date, setDate] = useState(() => localDate(new Date()));
-  // The day Today logs to, when it isn't today (a forgotten set).
-  const [logDay, setLogDay] = useState<string | null>(null);
+  // The day Today logs to, when it isn't today (a forgotten set); only for the profile it was picked in.
+  const pid = people.active!.id;
+  const [chosen, setChosen] = useState<{ id: string; day: string } | null>(null);
+  const logDay = chosen?.id === pid ? chosen.day : null;
+  const setLogDay = (d: string | null) => setChosen(d ? { id: pid, day: d } : null);
   useEffect(() => {
     const onVis = () => setDate(localDate(new Date()));
     document.addEventListener('visibilitychange', onVis);

@@ -65,6 +65,31 @@ test('the builder builds to minutes, and program days show their length', async 
   await page.screenshot({ path: 'screenshots/23-program-minutes.png', fullPage: true });
 });
 
+test('a minutes budget too small to meet says so', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await page.getByRole('button', { name: 'Minutes', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Minutes per session' }).fill('20');
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await expect(page.getByRole('heading', { name: /^Day A · / })).toBeVisible();
+  const heads = await page.getByRole('heading', { name: /^Day [A-Z] · \d+ sets · ≈ \d+ min$/ }).allInnerTexts();
+  expect(Math.max(...heads.map((h) => Number(/≈ (\d+) min/.exec(h)![1])))).toBeGreaterThan(20); // premise: 20 can't be met
+  await expect(page.getByRole('status').filter({ hasText: 'some days run over 20 min' })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Minutes per session' }).fill('150');
+  await expect(page.getByRole('status').filter({ hasText: 'some days run over' })).toHaveCount(0); // derived from the input, no rebuild
+});
+
+test('a program built by sets is not said to be over a minutes budget a rebuild could meet', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await page.getByRole('button', { name: 'Build program' }).click(); // 14 sets, ≈ 44 min
+  await expect(page.getByRole('heading', { name: /^Day A · 14 sets/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Minutes', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Minutes per session' }).fill('30');
+  await expect(page.getByRole('textbox', { name: 'Minutes per session' })).toHaveValue('30');
+  await expect(page.getByRole('status').filter({ hasText: 'some days run over' })).toHaveCount(0);
+});
+
 const openBench = async (page: import('@playwright/test').Page) => {
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');

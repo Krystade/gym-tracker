@@ -76,6 +76,22 @@ test('two people on one phone: separate logs, one-tap switch, typed sets survive
   await expect(page.getByRole('button', { name: 'Add Sam' })).toBeDisabled();
 });
 
+test('switching person goes back to today', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
+  await page.getByRole('button', { name: 'Add Sam' }).click();
+  await bar(page).getByRole('button', { name: /Me/ }).click();
+  await page.getByRole('button', { name: 'Today' }).click();
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await expect(page.getByText('Logging to Thu, Oct 1, 2026')).toBeVisible();
+  await bar(page).getByRole('button', { name: /Sam/ }).click();
+  await expect(bar(page).getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('heading', { name: 'Fri, Oct 2' })).toBeVisible();
+  await expect(page.getByText(/Logging to/)).toHaveCount(0);
+});
+
 test('the exercise search stays visible below the profile bar when the list scrolls', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Data' }).click();

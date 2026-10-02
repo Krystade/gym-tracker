@@ -88,6 +88,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
           // By minutes: the most sets per session whose every day fits, estimated from your own pace.
           void programs.save(build(mode === 'minutes' ? perSessionForMinutes(m, build, dayMinutes) : s));
         }}>{p ? 'Rebuild program' : 'Build program'}</button>
+        {mode === 'minutes' && p && p.perSession <= 8 && Number.isInteger(m) && m >= 20 && m <= 150 && Math.max(...p.days.map(dayMinutes)) > m && <p className="warn small" role="status">Even at 8 sets a session, some days run over {m} min.</p>}
         {p?.unavailable?.length ? <p className="warn small">Nothing at this gym trains: {p.unavailable.join(', ')}.</p> : null}
       </section>
       {p && p.days.map((day, di) => (
