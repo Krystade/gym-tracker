@@ -265,7 +265,8 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: 16px;
 
 /* Late sets: the day switcher on Today, the past-day banner, the time field. */
 .day-switch { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.day-switch h1 { margin: 4px 0 12px; font-size: 22px; }
+.day-switch h1 { margin: 4px 0 12px; font-size: 22px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.day-switch .mini { min-width: 44px; }
 .past-day { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .when { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .when input { min-height: 44px; font-size: 16px; }

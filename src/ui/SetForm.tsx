@@ -35,7 +35,7 @@ interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; not
 export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when }: {
   exercise: string; initial: SetFormValue; submitLabel: string;
   onSubmit: (v: SetFormValue) => Promise<boolean>; onDelete?: () => void; onCancel?: () => void; keepDraft?: boolean;
-  when?: { suggest: () => string | null; always: boolean };
+  when?: { suggest: () => string | null; always: boolean; max?: () => string | null }; // max: latest allowed HH:MM, null/absent = no limit
 }) {
   const [whenOpen, setWhenOpen] = useState(!!when?.always);
   const [time, setTime] = useState(() => (when?.always ? when.suggest() ?? '' : ''));
@@ -65,7 +65,10 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   const pain = flags.includes('pain');
   const w = Number(weight);
   const r = reps.trim() === '' ? null : Number(reps);
-  const valid = weight.trim() !== '' && Number.isFinite(w) && w >= 0 && (r === null || (Number.isInteger(r) && r >= 0 && r < 1000));
+  // Asked on every render, so "now" stays current as the user types.
+  const latest = whenOpen ? when?.max?.() ?? null : null;
+  const tooLate = !!time && latest != null && time > latest;
+  const valid = weight.trim() !== '' && Number.isFinite(w) && w >= 0 && (r === null || (Number.isInteger(r) && r >= 0 && r < 1000)) && !tooLate;
 
   async function submit() {
     if (!valid) return;
@@ -112,8 +115,8 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       {when && !whenOpen && <button type="button" className="chip" onClick={() => { setTime(when.suggest() ?? ''); setWhenOpen(true); }}>Did this earlier?</button>}
       {when && whenOpen && (
         <div className="when">
-          <label>When <input type="time" aria-label="When" value={time} onChange={(e) => setTime(e.target.value)} /></label>
-          <span className="muted small">{time ? 'A guess is fine' : 'Leave empty if you don’t know'}</span>
+          <label>When <input type="time" aria-label="When" value={time} max={latest ?? undefined} onChange={(e) => setTime(e.target.value)} /></label>
+          <span className="muted small">{tooLate ? 'Later than now' : time ? 'A guess is fine' : 'Leave empty if you don’t know'}</span>
         </div>
       )}
       <input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => touch(setNote)(e.target.value)} />

@@ -9,7 +9,7 @@ import { SetForm, type SetFormValue } from './SetForm';
 import { SetRowContent } from './SetRow';
 import { suggest } from '../domain/suggest';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
-import { paces, suggestTime } from '../domain/timing';
+import { hhmm, paces, suggestTime } from '../domain/timing';
 
 const TargetIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -80,7 +80,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
           onSubmit={async (v) => { const ok = await store.update({ ...editing, ...v }); if (ok) setEditing(null); return ok; }} />
       ) : (
         <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft
-          when={{ suggest: suggestWhen, always: date < realToday }} />
+          when={{ suggest: suggestWhen, always: date < realToday, max: date === realToday ? () => hhmm(new Date()) : undefined }} />
       )}
     </section>
   );

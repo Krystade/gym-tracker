@@ -31,10 +31,10 @@ test('a forgotten set goes into yesterday at the suggested time, and the workout
   await page.screenshot({ path: 'screenshots/22-late-set.png', fullPage: true });
   // The day switcher goes back to today.
   await page.getByRole('button', { name: 'Back to today' }).click();
-  await expect(page.getByRole('heading', { name: 'Fri, Oct 2, 2026' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Fri, Oct 2' })).toBeVisible();
   await expect(page.getByText(/Logging to/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Previous day' }).click();
-  await expect(page.getByRole('heading', { name: 'Thu, Oct 1, 2026' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Thu, Oct 1' })).toBeVisible();
 });
 
 test('a set entered a few minutes late today can take an earlier time', async ({ page }) => {
@@ -146,6 +146,37 @@ test('looking at a past day does not move the program rotation, and "Log it toda
   await page.getByRole('searchbox', { name: 'Filter lifts' }).fill('bench');
   await page.getByRole('button', { name: /^Bench Press/ }).first().click();
   await page.getByRole('region', { name: 'Next time' }).getByRole('button', { name: 'Log it today' }).click();
-  await expect(page.getByRole('heading', { name: 'Thu, Oct 1, 2026' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Thu, Oct 1' })).toBeVisible();
   await expect(page.getByText(/Logging to/)).toHaveCount(0);
+});
+
+test("a time later than now can't be saved for today", async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-02T09:00:00') });
+  await page.goto('/');
+  await openBench(page);
+  await logBench(page, '135', '10');
+  await page.getByRole('button', { name: 'Did this earlier?' }).click();
+  await page.getByRole('textbox', { name: 'When' }).fill('23:30');
+  await expect(page.getByRole('button', { name: 'Add set' })).toBeDisabled();
+  await expect(page.getByText('Later than now')).toBeVisible();
+  await page.getByRole('textbox', { name: 'When' }).fill('08:55');
+  await expect(page.getByRole('button', { name: 'Add set' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Add set' }).click();
+  await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(2);
+});
+
+test('the day switch buttons are full-size taps and the header fits at 375 wide', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-09-30T18:00:00') });
+  await page.goto('/');
+  for (const name of ['Previous day', 'Next day']) {
+    const box = await page.getByRole('button', { name }).boundingBox();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await expect(page.getByText(/Logging to/)).toBeVisible();
+  // One line: a wrapped heading is taller than a single 22px line.
+  expect((await page.getByRole('heading', { name: /Sep 29/ }).boundingBox())!.height).toBeLessThan(40);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: 'screenshots/24-day-switch.png' });
 });

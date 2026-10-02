@@ -4,7 +4,7 @@ import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import type { ProgramStore } from '../state/useProgram';
 import { exerciseNames, sameExercise } from '../domain/stats';
-import { fmtDate } from '../domain/format';
+import { fmtDate, fmtDay } from '../domain/format';
 import { ExerciseCard } from './ExerciseCard';
 import { Energy } from './Energy';
 import { plannedSets } from '../domain/suggest';
@@ -56,7 +56,7 @@ export function TodayScreen({ store, settings, programs, body, gyms, date, today
       <div className="today-head">
         <div className="day-switch">
           <button className="mini" aria-label="Previous day" onClick={() => onDay(addDays(date, -1))}>‹</button>
-          <h1>{fmtDate(date)}</h1>
+          <h1>{fmtDay(date, today)}</h1>
           <button className="mini" aria-label="Next day" disabled={date >= today} onClick={() => onDay(addDays(date, 1))}>›</button>
         </div>
         <button onClick={onOpenProgram}>Program</button>
