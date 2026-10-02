@@ -39,6 +39,7 @@ test('screens at iPhone 13 mini size', async ({ page }) => {
   await page.evaluate(() => window.scrollTo(0, 900));
   await check(page, '0-picker');
   await page.getByRole('button', { name: 'Cable Curl' }).first().click();
+  await page.getByRole('button', { name: 'More' }).click();
   await page.getByRole('button', { name: 'Pain', exact: true }).click();
   await page.getByRole('group', { name: 'Pain severity' }).getByRole('button', { name: 'Moderate' }).click();
   await check(page, '9-pain-form');

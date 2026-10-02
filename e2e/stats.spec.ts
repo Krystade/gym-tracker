@@ -35,6 +35,7 @@ test('exercise screen: rep-max picker, calibration note, and a logged test set',
   await page.getByRole('button', { name: 'Today', exact: true }).click();
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
+  await page.getByRole('button', { name: 'More' }).click();
   await page.getByRole('button', { name: 'Test', exact: true }).click();
   await page.getByRole('button', { name: 'Add set' }).click();
   const row = page.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem');

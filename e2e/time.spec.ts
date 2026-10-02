@@ -49,6 +49,7 @@ test('a set entered a few minutes late today can take an earlier time', async ({
   await logBench(page, '135', '10');
   await page.clock.setFixedTime(new Date('2026-10-02T18:12:00'));
   await expect(page.getByRole('textbox', { name: 'When' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'More' }).click();
   await page.getByRole('button', { name: 'Did this earlier?' }).click();
   await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('18:03');
   await logBench(page, '135', '9');
@@ -183,6 +184,7 @@ test("a time later than now can't be saved for today", async ({ page }) => {
   await page.goto('/');
   await openBench(page);
   await logBench(page, '135', '10');
+  await page.getByRole('button', { name: 'More' }).click();
   await page.getByRole('button', { name: 'Did this earlier?' }).click();
   await page.getByRole('textbox', { name: 'When' }).fill('23:30');
   await expect(page.getByRole('button', { name: 'Add set' })).toBeDisabled();
@@ -298,6 +300,7 @@ test('the carry ends by itself once the workout is 3 hours old, even with the da
 
 test('a late set on the old day can be later than the clock after midnight', async ({ page }) => {
   await pastMidnight(page, '23:40');
+  await page.getByRole('button', { name: 'More' }).click();
   await page.getByRole('button', { name: 'Did this earlier?' }).click();
   await page.getByRole('textbox', { name: 'When' }).fill('23:59');
   await expect(page.getByText('Later than now')).toHaveCount(0);
