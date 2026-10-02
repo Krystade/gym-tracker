@@ -13,7 +13,7 @@ test('import is idempotent and feeds history, lifts and chart', async ({ page })
   await expect(page.getByText('Nothing new: 6 sets already in your log')).toBeVisible();
 
   await page.getByRole('button', { name: 'History' }).click();
-  await expect(page.getByText(/2026/).first()).toBeVisible();
+  await expect(page.locator('details.day > summary').first()).toContainText(/\d+ sets?/); // the short date drops the year, so the day summary is the signal
   await expect(page.getByText('elbow "twinge"')).toBeAttached();
 
   await page.getByRole('button', { name: 'Lifts' }).click();

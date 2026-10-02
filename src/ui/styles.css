@@ -110,7 +110,13 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
 .chart .pt.pr { fill: var(--accent); }
 
 details.day { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; }
-details.day > summary { min-height: 48px; padding: 12px; font-weight: 600; list-style: none; cursor: pointer; }
+details.day > summary { min-height: 48px; padding: 12px; list-style: none; cursor: pointer; display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 8px; }
+details.day > summary .day-date { font-weight: 600; grid-column: 1; }
+details.day > summary .muted { grid-column: 1; }
+/* Decorative cue that the day opens; <details> already exposes its state. */
+details.day > summary::after { content: '›'; grid-column: 2; grid-row: 1 / span 2; font-size: 22px; color: var(--muted); transition: transform 0.15s; }
+details.day[open] > summary::after { transform: rotate(90deg); }
+.pain-mark { color: var(--pain); font-size: .85em; }
 details.day > summary::-webkit-details-marker { display: none; }
 .day-body { padding: 0 12px 12px; display: grid; gap: 6px; }
 .row-button { width: 100%; flex-direction: column; align-items: flex-start; text-align: left; padding: 8px 12px; font-weight: 500; }

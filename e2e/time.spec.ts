@@ -24,7 +24,7 @@ test('a forgotten set goes into yesterday at the suggested time, and the workout
   await page.clock.setFixedTime(new Date('2026-10-02T09:00:00'));
   await page.reload();
   await page.getByRole('button', { name: 'History' }).click();
-  await expect(page.getByText(/Thu, Oct 1, 2026 · 1 exercise · 5 sets · 18 min/)).toBeVisible();
+  await expect(page.locator('details.day').filter({ hasText: 'Thu, Oct 1' })).toContainText('1 exercise · 5 sets · 18 min');
   await page.getByRole('button', { name: 'Add to this day' }).click();
   await expect(page.getByText('Logging to a past day')).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('18:09');
@@ -132,7 +132,7 @@ test('switching day with the same lift on both days gives each day its own time 
   await page.getByRole('button', { name: 'Previous day' }).click();
   await logBench(page, '135', '8');
   await page.getByRole('button', { name: 'History' }).click();
-  await expect(page.getByText(/Thu, Oct 1, 2026 · 1 exercise · 4 sets · 8 min/)).toBeVisible();
+  await expect(page.locator('details.day').filter({ hasText: 'Thu, Oct 1' })).toContainText('1 exercise · 4 sets · 8 min');
 });
 
 test('a card added but not logged stays on its own day', async ({ page }) => {
@@ -284,7 +284,7 @@ test('a workout past midnight stays on its day', async ({ page }) => {
   await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(2);
   await page.screenshot({ path: 'screenshots/26-past-midnight.png' });
   await page.getByRole('button', { name: 'History' }).click();
-  await expect(page.getByText(/Thu, Oct 1, 2026 · 1 exercise · 2 sets/)).toBeVisible();
+  await expect(page.locator('details.day').filter({ hasText: 'Thu, Oct 1' })).toContainText('1 exercise · 2 sets');
   await page.getByRole('button', { name: 'Today', exact: true }).click();
   await expect(page.getByText('Still logging')).toBeVisible(); // the tab keeps the carry; only the banner button ends it
   await page.locator('.past-day').getByRole('button', { name: 'Today', exact: true }).click();
