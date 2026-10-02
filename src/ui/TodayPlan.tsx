@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import type { SetEntry } from '../domain/types';
 import { isWorking } from '../domain/progression';
 import { nextDay, type DayPlan, type Program } from '../domain/program';
@@ -20,12 +21,22 @@ export function TodayPlan({ program, plan, entries, past, onChange, onOpen, onSw
   const day = program.days[plan.day] ?? program.days[0];
   const doneOf = (ex: string) => entries.filter((e) => e.date === plan.date && sameExercise(e.exercise, ex) && isWorking(e)).length;
   const title = past ? 'Plan' : 'Today’s plan';
+  const pace = useMemo(() => paces(entries), [entries]);
+  // Warm-up counts per lift, worked out once per log change.
+  const warm = useMemo(() => {
+    const cache = new Map<string, number>();
+    return (ex: string) => {
+      const k = ex.toLowerCase();
+      if (!cache.has(k)) cache.set(k, warmupCount(entries, ex, plan.date));
+      return cache.get(k)!;
+    };
+  }, [entries, plan.date]);
   return (
     <section className="card plan" aria-label={title}>
       <h2>{title} · {day.name}</h2>
       {(() => {
         const todo = day.slots.filter((s) => !plan.skips.includes(s.exercise)).map((s) => ({ exercise: plan.swaps[s.exercise] ?? s.exercise, sets: s.sets }));
-        const mins = Math.round(estimateSeconds(todo, paces(entries), (ex) => warmupCount(entries, ex, plan.date)) / 60);
+        const mins = Math.round(estimateSeconds(todo, pace, warm) / 60);
         const first = timedDay(entries, plan.date)[0];
         const start = first ? new Date(first.loggedAt!) : null;
         return <p className="muted small" aria-label="Plan length">≈ {mins} min{start && ` · started ${hhmm(start)} · ends ≈ ${hhmm(new Date(start.getTime() + mins * 60_000))}`}</p>;

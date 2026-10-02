@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { SetEntry } from '../domain/types';
 import type { ProfileStore } from '../state/useProfile';
 import type { ProgramStore } from '../state/useProgram';
@@ -33,8 +33,17 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
   const d = Number(days), s = Number(per), m = Number(mins);
   const valid = Number.isInteger(d) && d >= 1 && d <= 6 && (mode === 'sets' ? Number.isInteger(s) && s >= 8 && s <= 20 : Number.isInteger(m) && m >= 20 && m <= 150);
   const today = localDate(new Date());
-  const pace = paces(entries);
-  const dayMinutes = (day: ProgramDay) => Math.round(estimateSeconds(day.slots, pace, (ex) => warmupCount(entries, ex, today)) / 60);
+  const pace = useMemo(() => paces(entries), [entries]);
+  // Warm-up counts per lift, worked out once per log change: the builder estimates many candidate programs.
+  const warm = useMemo(() => {
+    const cache = new Map<string, number>();
+    return (ex: string) => {
+      const k = ex.toLowerCase();
+      if (!cache.has(k)) cache.set(k, warmupCount(entries, ex, today));
+      return cache.get(k)!;
+    };
+  }, [entries, today]);
+  const dayMinutes = (day: ProgramDay) => Math.round(estimateSeconds(day.slots, pace, warm) / 60);
 
   const edit = (fn: (x: Program) => void) => { if (!p) return; const next: Program = structuredClone(p); fn(next); void programs.save(next); };
 

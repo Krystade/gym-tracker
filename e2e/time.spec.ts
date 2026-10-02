@@ -277,3 +277,50 @@ test('pasting notes onto a live day keeps the next set prefilled from the last l
   await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(2);
   await expect(page.getByRole('textbox', { name: 'Weight' })).toHaveValue('135');
 });
+
+test('editing a set can move its time, and an untouched time stays put', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t: string) => { (window as unknown as { copied: string }).copied = t; } } });
+  });
+  await page.goto('/');
+  await openBench(page);
+  // Odd seconds, so re-saving an unchanged time (which drops seconds) would show.
+  for (const [t, reps] of [['18:00:07', '10'], ['18:02:13', '9'], ['18:04:21', '8']]) {
+    await page.clock.setFixedTime(new Date(`2026-10-02T${t}`));
+    await logBench(page, '135', reps);
+  }
+  await page.clock.setFixedTime(new Date('2026-10-02T18:10:00'));
+  const rows = page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem');
+  const when = page.getByRole('textbox', { name: 'When' });
+  await rows.nth(1).getByRole('button').click();
+  await expect(when).toHaveValue('18:02');
+  await page.screenshot({ path: 'screenshots/25-edit-time.png', fullPage: true });
+  await when.fill('18:05');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  // The 9 was done after the 8 now, so the row moves down.
+  await expect(rows).toHaveText([/^1\s*135 × 10/, /^2\s*135 × 8/, /^3\s*135 × 9/]);
+  await rows.nth(2).getByRole('button').click();
+  await expect(when).toHaveValue('18:05');
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  // Changing only the reps leaves the time (and its seconds) alone.
+  await rows.nth(0).getByRole('button').click();
+  await expect(when).toHaveValue('18:00');
+  await page.getByRole('textbox', { name: 'Reps' }).fill('11');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(rows).toHaveText([/^1\s*135 × 11/, /^2\s*135 × 8/, /^3\s*135 × 9/]);
+  await rows.nth(0).getByRole('button').click();
+  await expect(when).toHaveValue('18:00');
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  // Stored times: the moved set keeps when it was entered; the reps-only edit keeps its exact time.
+  await page.getByRole('button', { name: 'Data' }).click();
+  await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
+  await expect(page.getByText('Copied the CSV to the clipboard')).toBeVisible();
+  const [head, ...lines] = (await page.evaluate(() => (window as unknown as { copied: string }).copied)).trim().split('\r\n').map((l) => l.split(','));
+  const col = (n: string) => head.indexOf(n);
+  const byReps = (r: string) => lines.find((l) => l[col('reps')] === r)!;
+  const iso = (t: string) => new Date(`2026-10-02T${t}`).toISOString();
+  expect([byReps('9')[col('logged_at')], byReps('9')[col('entered_at')]]).toEqual([iso('18:05:00'), iso('18:02:13')]);
+  expect([byReps('11')[col('logged_at')], byReps('11')[col('entered_at')]]).toEqual([iso('18:00:07'), '']);
+  expect([byReps('8')[col('logged_at')], byReps('8')[col('entered_at')]]).toEqual([iso('18:04:21'), '']);
+});

@@ -81,7 +81,23 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
             const no = today.findIndex((x) => x.id === editing.id) + 1; // the number on the row, not the entry order
             if (confirm(`Delete set ${no}?`) && (await store.remove(editing.id))) setEditing(null);
           }}
-          onSubmit={async (v) => { const ok = await store.update({ ...editing, ...v }); if (ok) setEditing(null); return ok; }} />
+          when={{
+            suggest: () => (editing.loggedAt ? hhmm(new Date(editing.loggedAt)) : null),
+            always: true,
+            max: date === realToday ? () => hhmm(new Date()) : undefined,
+          }}
+          onSubmit={async (v) => {
+            const { at, ...rest } = v;
+            const next: SetEntry = { ...editing, ...rest };
+            const was = editing.loggedAt ? hhmm(new Date(editing.loggedAt)) : null;
+            // Only a changed time is rewritten: re-saving 18:02 would drop the seconds and move the set.
+            if (at !== undefined && (at || null) !== was) {
+              next.enteredAt = editing.enteredAt ?? editing.loggedAt ?? new Date().toISOString();
+              if (at) { const d = new Date(`${date}T${at}:00`); next.loggedAt = d.toISOString(); next.seq = d.getTime(); }
+              else delete next.loggedAt;
+            }
+            const ok = await store.update(next); if (ok) setEditing(null); return ok;
+          }} />
       ) : (
         <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft day={date}
           when={{ suggest: suggestWhen, always: date < realToday, max: date === realToday ? () => hhmm(new Date()) : undefined }} />
