@@ -182,11 +182,25 @@ the public repo.
     (weight, reps, sets), the active gym and its time; one tap a day records
     energy 1–5. All of it is in the backup CSVs, so a future model can learn
     from suggested vs. done. No new manual fields beyond energy.
+13. **Workout time & late entries.** A workout's length is measured from its
+    first set to its last (no start/stop). Program days and today's plan show
+    an estimate learned from your own set-to-set and between-lift times
+    (research defaults until there's history), today's plan shows when you'll
+    finish, and the builder can build to minutes per session. A forgotten set
+    can be added later — to today or any earlier day, via a day switcher on
+    Today or "Add to this day" in History — with an optional "when", which the
+    app pre-fills from the unusually long gap between that day's sets. Sets
+    added later record when they were entered, apart from when they were done.
 
 **Wishlist (not scheduled):** a friends list showing other people's activity.
 It needs a shared server or a shared repo, which conflicts with the
 on-device privacy model — designed only after profiles exist, and opt-in per
 person.
+Also: **linked phones** — a profile kept in step across two phones (e.g. your
+partner's profile on your phone and hers), so a change on one shows on the
+other. Builds on the private backup's per-profile folders; needs a way for
+both phones to reach the same data without sharing one person's token.
+
 
 Each phase gets its own plan; this spec is refined at the start of each.
 
