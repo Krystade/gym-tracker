@@ -62,6 +62,8 @@ test('screens at iPhone 13 mini size', async ({ page }) => {
   await expect(page.getByRole('list', { name: 'Day A exercises' })).toContainText('Bird Dog');
   await check(page, '7-program');
   await page.getByRole('button', { name: '‹ Back' }).click();
+  const head = page.getByRole('button', { name: /^Today’s plan/ });
+  if ((await head.getAttribute('aria-expanded')) === 'false') await head.click(); // folded once a lift card is on screen
   await check(page, '8-today-plan');
   await page.getByRole('region', { name: 'Today’s plan' }).getByRole('button', { name: 'Swap' }).first().click();
   await expect(page.getByRole('list', { name: 'Suggested swaps' })).toBeVisible();

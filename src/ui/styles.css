@@ -160,13 +160,20 @@ h3 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600;
 .today-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .today-head h1 { margin: 4px 0 12px; }
 .plan h2 { margin-bottom: 6px; }
+.plan-toggle { width: 100%; padding: 0; border: 0; background: none; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left; font-size: inherit; }
 .plan-slots, .prog-slots { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
-.plan-slots li { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 6px; }
+/* Fixed columns, so count, Skip/Undo and Swap line up across rows (a skipped row keeps an empty Swap cell). */
+.plan-slots li { display: grid; grid-template-columns: minmax(0, 1fr) 56px 56px; align-items: center; gap: 6px; }
 .plan-slots li.done .plan-count { color: var(--ok); }
 .plan-slots li.skipped .plan-name b { text-decoration: line-through; color: var(--muted); }
-.plan-name { text-align: left; min-height: 44px; padding: 6px 10px; display: grid; gap: 1px; line-height: 1.25; justify-items: start; }
-.plan-count { font-variant-numeric: tabular-nums; font-size: 14px; min-width: 2.6em; text-align: right; }
-.plan-slots button:not(.plan-name) { padding: 0 10px; font-size: 14px; }
+/* The generic button rule centres (justify-content: center); .plan-name must override it to fill the column, left-aligned. */
+.plan-name { text-align: left; min-height: 44px; padding: 6px 10px; display: grid; gap: 1px; line-height: 1.25; justify-items: start; justify-content: stretch; width: 100%; min-width: 0; }
+.plan-name b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.plan-count { font-variant-numeric: tabular-nums; }
+.plan-slots li.done .plan-count { font-weight: 600; }
+/* A jump lands a card below the sticky profile bar. */
+[data-card] { scroll-margin-top: calc(var(--sat) + 72px); }
+.plan-slots button:not(.plan-name) { padding: 0 4px; font-size: 14px; }
 .prog-slots li { display: grid; grid-template-columns: 1fr 44px 28px 44px 44px; align-items: center; gap: 4px; }
 .prog-name { display: grid; }
 .prog-sets { text-align: center; font-variant-numeric: tabular-nums; font-weight: 700; }

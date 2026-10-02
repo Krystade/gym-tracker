@@ -63,7 +63,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   }
 
   return (
-    <section className="card">
+    <section className="card" data-card={exercise.toLowerCase()}>
       <header className="card-head">
         <button className="link" onClick={() => onOpen(exercise)}>{exercise}</button>
         {best && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.e1rm))} lb</span>}

@@ -3,6 +3,12 @@ import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
 
+// The plan folds to one line once a lift card is on screen.
+const openPlan = async (page: import('@playwright/test').Page) => {
+  const head = page.getByRole('button', { name: /^Today’s plan/ });
+  if ((await head.getAttribute('aria-expanded')) === 'false') await head.click();
+};
+
 test('build a program, then run today from it with skip and log', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Data' }).click();
@@ -36,6 +42,8 @@ test('build a program, then run today from it with skip and log', async ({ page 
   await first.getByRole('button').first().click();
   await expect(page.getByRole('list', { name: `Sets for ${name}` })).toBeAttached();
   await page.getByRole('button', { name: 'Add set' }).click();
+  await expect(page.getByRole('list', { name: `Sets for ${name}` }).getByRole('listitem')).toHaveCount(1);
+  await openPlan(page); // the plan folds once a card is on screen
   await expect(first).toContainText(/1\/\d/);
 });
 

@@ -85,7 +85,7 @@ test('switching person goes back to today', async ({ page }) => {
   await bar(page).getByRole('button', { name: /Me/ }).click();
   await page.getByRole('button', { name: 'Today' }).click();
   await page.getByRole('button', { name: 'Previous day' }).click();
-  await expect(page.getByText('Logging to Thu, Oct 1, 2026')).toBeVisible();
+  await expect(page.getByText('Logging to a past day')).toBeVisible();
   await bar(page).getByRole('button', { name: /Sam/ }).click();
   await expect(bar(page).getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('heading', { name: 'Fri, Oct 2' })).toBeVisible();
@@ -103,7 +103,7 @@ test('a past day is forgotten after switching away and back', async ({ page }) =
   await pressed(/Me/);
   await page.getByRole('button', { name: 'Today' }).click();
   await page.getByRole('button', { name: 'Previous day' }).click();
-  await expect(page.getByText('Logging to Thu, Oct 1, 2026')).toBeVisible();
+  await expect(page.getByText('Logging to a past day')).toBeVisible();
   await bar(page).getByRole('button', { name: /Sam/ }).click();
   await pressed(/Sam/);
   await bar(page).getByRole('button', { name: /Me/ }).click();

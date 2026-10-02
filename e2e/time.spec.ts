@@ -26,7 +26,7 @@ test('a forgotten set goes into yesterday at the suggested time, and the workout
   await page.getByRole('button', { name: 'History' }).click();
   await expect(page.getByText(/Thu, Oct 1, 2026 · 1 exercise · 5 sets · 18 min/)).toBeVisible();
   await page.getByRole('button', { name: 'Add to this day' }).click();
-  await expect(page.getByText('Logging to Thu, Oct 1, 2026')).toBeVisible();
+  await expect(page.getByText('Logging to a past day')).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('18:09');
   await logBench(page, '135', '9');
   // In the order done: the late set sits where it happened, numbered by position.
@@ -165,7 +165,7 @@ test('looking at a past day does not move the program rotation, and "Log it toda
   await page.getByRole('button', { name: '‹ Back' }).click();
   await expect(page.getByRole('heading', { name: 'Today’s plan · Day A' })).toBeVisible();
   await page.getByRole('button', { name: 'Previous day' }).click();
-  await expect(page.getByText('Logging to Wed, Sep 30, 2026')).toBeVisible();
+  await expect(page.getByText('Logging to a past day')).toBeVisible();
   await page.waitForTimeout(300); // let any plan write land, then read today's plan back from storage
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Today’s plan · Day A' })).toBeVisible();
@@ -316,6 +316,8 @@ test("a past day's plan is not called today's", async ({ page }) => {
   await page.getByRole('button', { name: '‹ Back' }).click();
   await expect(page.getByRole('heading', { name: /^Today’s plan · Day/ })).toBeVisible();
   await page.getByRole('button', { name: 'Previous day' }).click();
+  await openBench(page); // an empty past day shows no plan, so give it a set
+  await logBench(page, '135', '10');
   await expect(page.getByRole('heading', { name: /^Plan · Day/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: /^Today’s plan/ })).toHaveCount(0);
 });
