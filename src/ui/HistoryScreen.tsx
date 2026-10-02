@@ -1,6 +1,6 @@
 // src/ui/HistoryScreen.tsx
 import type { SetsStore } from '../state/useSets';
-import { sessionsByDate, sameExercise } from '../domain/stats';
+import { byOrderDone, sessionsByDate, sameExercise } from '../domain/stats';
 import { fmtDate, fmtSet, plural } from '../domain/format';
 import type { SetEntry } from '../domain/types';
 import { useMemo } from 'react';
@@ -12,7 +12,7 @@ function byExercise(sets: SetEntry[]): [string, SetEntry[]][] {
     const g = out.find(([n]) => sameExercise(n, s.exercise));
     if (g) g[1].push(s); else out.push([s.exercise, [s]]);
   }
-  return out.map(([n, xs]) => [n, xs.sort((a, b) => a.seq - b.seq || a.setNo - b.setNo)]);
+  return out.map(([n, xs]) => [n, xs.sort(byOrderDone)]);
 }
 
 export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; onOpen: (name: string) => void; onAddTo: (date: string) => void }) {

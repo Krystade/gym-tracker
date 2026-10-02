@@ -65,7 +65,7 @@ export function TodayScreen({ store, settings, programs, body, gyms, date, today
       <WeighIn body={body} date={date} />
       <Energy body={body} date={date} />
       {programs.program && plan && (
-        <TodayPlan program={programs.program} plan={plan} entries={store.entries}
+        <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today}
           onChange={(p) => void programs.savePlan(p)} onOpen={addCard} onSwap={setSwapFor} />
       )}
       {cards.length === 0 && <p className="muted">{date < today ? 'Nothing logged that day.' : 'Nothing logged yet today.'}</p>}

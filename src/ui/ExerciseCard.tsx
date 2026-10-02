@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
-import { bestSet, e1rm, lastSession, sameExercise } from '../domain/stats';
+import { bestSet, byOrderDone, e1rm, lastSession, sameExercise } from '../domain/stats';
 import { estimateRir, isWorking, nextTarget, prCheck, priorE1rm, rirOffset } from '../domain/progression';
 import { fmtDate, fmtSet, fmtWeight } from '../domain/format';
 import type { Flag, SetEntry } from '../domain/types';
@@ -23,7 +23,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   const [editing, setEditing] = useState<SetEntry | null>(null);
   const [pr, setPr] = useState<string | null>(null);
   useEffect(() => { if (!pr) return; const t = setTimeout(() => setPr(null), 6000); return () => clearTimeout(t); }, [pr]);
-  const today = store.entries.filter((e) => e.date === date && sameExercise(e.exercise, exercise)).sort((a, b) => a.seq - b.seq || a.setNo - b.setNo); // in the order done: a late set sits where it happened
+  const today = store.entries.filter((e) => e.date === date && sameExercise(e.exercise, exercise)).sort(byOrderDone); // in the order done: a late set sits where it happened
   const last = lastSession(store.entries, exercise, date);
   const best = bestSet(store.entries, exercise);
   const st = settings.get(exercise);
@@ -36,7 +36,8 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   const { prior, offset } = useMemo(() => ({
     prior: priorE1rm(store.entries, exercise, date), offset: rirOffset(store.entries, exercise),
   }), [store.entries, exercise, date]);
-  const seed = today.at(-1);
+  // The last set actually done here, not a pasted one that sorts after it.
+  const seed = today.findLast((s) => s.loggedAt) ?? today.at(-1);
   const pulley: Flag[] = (seed ?? last?.sets.find(isWorking))?.flags.includes('double_pulley') ? ['double_pulley'] : [];
   const initial: SetFormValue = seed ? { weight: seed.weight, reps: seed.reps ?? st.repMin, flags: pulley }
     : target ? { weight: target.weight, reps: target.reps, flags: pulley }

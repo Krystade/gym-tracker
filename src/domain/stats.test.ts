@@ -58,6 +58,29 @@ describe('sessions', () => {
   });
 });
 
+describe('order done', () => {
+  const at = (hhmm: string) => `2026-10-01T${hhmm}:00.000Z`;
+  const bench = (setNo: number, over: Partial<SetEntry>) => s('2026-10-01', 'Bench Press', setNo, 135, 10, over);
+  const restored = [
+    bench(1, { seq: 0, loggedAt: at('18:00') }), bench(2, { seq: 1, loggedAt: at('18:02') }), bench(3, { seq: 2, loggedAt: at('18:20') }),
+    bench(4, { seq: 3, loggedAt: at('18:10'), enteredAt: '2026-10-02T09:00:00.000Z' }),
+  ];
+  it('a late set on a restored day sorts by its time', () => {
+    expect(sessionsFor(restored, 'Bench Press')[0].sets.map((x) => x.setNo)).toEqual([1, 2, 4, 3]);
+    expect(sessionsByDate(restored)[0].sets.map((x) => x.setNo)).toEqual([1, 2, 4, 3]);
+  });
+  it('pasted sets added to a live day come after the live sets', () => {
+    const t0 = Date.parse('2026-10-01T18:00:00Z');
+    const live = [0, 120000, 240000].map((d, i) => bench(i + 1, { seq: t0 + d, loggedAt: new Date(t0 + d).toISOString() }));
+    const pasted = [0, 100, 200].map((q, i) => bench(i + 4, { seq: q }));
+    expect(sessionsFor([...pasted, ...live], 'Bench Press')[0].sets.map((x) => x.setNo)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+  it('a day with no times keeps entry order', () => { // passes before and after: guards back-compatibility
+    const untimed = [bench(3, { seq: 200 }), bench(1, { seq: 0 }), bench(2, { seq: 100 })];
+    expect(sessionsFor(untimed, 'Bench Press')[0].sets.map((x) => x.setNo)).toEqual([1, 2, 3]);
+  });
+});
+
 describe('buildAppSet', () => {
   const existing = [s('2026-02-01', 'Cable Curl', 1, 60, 12, { source: 'app', id: 'app|2026-02-01|cable curl|1' })];
   const now = new Date('2026-02-01T20:00:00Z');

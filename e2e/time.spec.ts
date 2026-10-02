@@ -248,3 +248,32 @@ test('deleting a late set names it by the number on its row', async ({ page }) =
   await expect.poll(() => msg).toBe('Delete set 4?');
   await expect(rows).toHaveCount(6);
 });
+
+test("a past day's plan is not called today's", async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-01T09:00:00') });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await expect(page.getByRole('heading', { name: /^Day A/ }).first()).toBeVisible();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  await expect(page.getByRole('heading', { name: /^Today’s plan · Day/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await expect(page.getByRole('heading', { name: /^Plan · Day/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Today’s plan/ })).toHaveCount(0);
+});
+
+test('pasting notes onto a live day keeps the next set prefilled from the last live set', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
+  await page.goto('/');
+  await openBench(page);
+  await logBench(page, '135', '10');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await page.getByRole('button', { name: 'Paste from notes' }).click();
+  await page.getByLabel('Workout notes').fill(['10/2/26', 'Bench press: 95x12'].join('\n'));
+  await page.getByRole('button', { name: 'Read notes' }).click();
+  await page.getByLabel('Already in your log — add anyway').check();
+  await page.getByRole('button', { name: /^Add 1 set/ }).click();
+  await page.getByRole('button', { name: 'Today' }).click();
+  await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(2);
+  await expect(page.getByRole('textbox', { name: 'Weight' })).toHaveValue('135');
+});

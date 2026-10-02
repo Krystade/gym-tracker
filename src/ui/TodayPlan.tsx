@@ -13,15 +13,16 @@ export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: str
     ?? { key: `day:${date}`, date, day: nextDay(store.program, store.plans, entries, date), skips: [], swaps: {} };
 };
 
-export function TodayPlan({ program, plan, entries, onChange, onOpen, onSwap }: {
-  program: Program; plan: DayPlan; entries: SetEntry[];
+export function TodayPlan({ program, plan, entries, past, onChange, onOpen, onSwap }: {
+  program: Program; plan: DayPlan; entries: SetEntry[]; past?: boolean;
   onChange: (p: DayPlan) => void; onOpen: (exercise: string) => void; onSwap: (original: string) => void;
 }) {
   const day = program.days[plan.day] ?? program.days[0];
   const doneOf = (ex: string) => entries.filter((e) => e.date === plan.date && sameExercise(e.exercise, ex) && isWorking(e)).length;
+  const title = past ? 'Plan' : 'Today’s plan';
   return (
-    <section className="card plan" aria-label="Today’s plan">
-      <h2>Today’s plan · {day.name}</h2>
+    <section className="card plan" aria-label={title}>
+      <h2>{title} · {day.name}</h2>
       {(() => {
         const todo = day.slots.filter((s) => !plan.skips.includes(s.exercise)).map((s) => ({ exercise: plan.swaps[s.exercise] ?? s.exercise, sets: s.sets }));
         const mins = Math.round(estimateSeconds(todo, paces(entries), (ex) => warmupCount(entries, ex, plan.date)) / 60);

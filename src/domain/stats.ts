@@ -23,11 +23,20 @@ function group(entries: SetEntry[]): Session[] {
   return [...by.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([date, sets]) => ({ date, sets }));
 }
 
+const doneAt = (e: SetEntry) => (e.loggedAt ? Date.parse(e.loggedAt) : NaN);
+/** The order sets were done: sets with a time by that time, then sets without one (pasted, imported without times, untimed late sets) in the order entered. */
+export function byOrderDone(a: SetEntry, b: SetEntry): number {
+  const ta = doneAt(a), tb = doneAt(b);
+  const na = Number.isNaN(ta), nb = Number.isNaN(tb);
+  if (na !== nb) return na ? 1 : -1;
+  return (na ? 0 : ta - tb) || a.seq - b.seq || a.setNo - b.setNo;
+}
+
 export const sessionsFor = (entries: SetEntry[], exercise: string): Session[] =>
-  group(entries.filter((e) => sameExercise(e.exercise, exercise))).map((x) => ({ ...x, sets: [...x.sets].sort((a, b) => a.seq - b.seq || a.setNo - b.setNo) }));
+  group(entries.filter((e) => sameExercise(e.exercise, exercise))).map((x) => ({ ...x, sets: [...x.sets].sort(byOrderDone) }));
 
 export const sessionsByDate = (entries: SetEntry[]): Session[] =>
-  group(entries).map((x) => ({ ...x, sets: [...x.sets].sort((a, b) => a.seq - b.seq || a.setNo - b.setNo) }));
+  group(entries).map((x) => ({ ...x, sets: [...x.sets].sort(byOrderDone) }));
 
 export const lastSession = (entries: SetEntry[], exercise: string, beforeDate: string): Session | null =>
   sessionsFor(entries, exercise).find((x) => x.date < beforeDate) ?? null;
