@@ -8,10 +8,16 @@ import { sameExercise } from '../domain/stats';
 const newGym = (n: number): Gym => ({ id: `g${Date.now().toString(36)}`, name: n ? `Gym ${n + 1}` : 'My gym', equipment: [], exclude: [], include: [] });
 const without = (xs: string[], name: string) => xs.filter((x) => !sameExercise(x, name));
 
-export function GymsScreen({ gyms, logged, onBack }: { gyms: GymsStore; logged: string[]; onBack: () => void }) {
+export function GymsScreen({ gyms, logged, fresh, onBack }: { gyms: GymsStore; logged: string[]; fresh?: boolean; onBack: () => void }) {
   const [q, setQ] = useState('');
-  const g = gyms.active;
-  const update = (fn: (x: Gym) => Gym) => { if (g) void gyms.save(gyms.gyms.map((x) => (x.id === g.id ? fn(x) : x)), g.id); };
+  // "Set up your gym" opens on an unsaved draft: backing out leaves no gym; the first edit saves it.
+  const [draft, setDraft] = useState<Gym | null>(() => (fresh && !gyms.active ? newGym(gyms.gyms.length) : null));
+  const g = draft ?? gyms.active;
+  const update = (fn: (x: Gym) => Gym) => {
+    if (!g) return;
+    if (draft) { const n = fn(draft); setDraft(null); void gyms.save([...gyms.gyms, n], n.id); return; }
+    void gyms.save(gyms.gyms.map((x) => (x.id === g.id ? fn(x) : x)), g.id);
+  };
   const add = () => { const n = newGym(gyms.gyms.length); void gyms.save([...gyms.gyms, n], n.id); };
 
   if (!g) return (
@@ -32,10 +38,10 @@ export function GymsScreen({ gyms, logged, onBack }: { gyms: GymsStore; logged: 
     <>
       <button onClick={onBack}>‹ Back</button>
       <h1>Gyms</h1>
-      <div className="chips" role="group" aria-label="Active gym">
-        {gyms.gyms.map((x) => <button key={x.id} className={`chip${x.id === g.id ? ' primary' : ''}`} aria-pressed={x.id === g.id} onClick={() => void gyms.save(gyms.gyms, x.id)}>{x.name}</button>)}
+      {!draft && <div className="chips gym-chips" role="group" aria-label="Active gym">
+        {gyms.gyms.map((x) => <button key={x.id} className={`chip${x.id === g.id ? ' primary' : ''}`} aria-pressed={x.id === g.id} onClick={() => void gyms.save(gyms.gyms, x.id)}><span className="pname">{x.name}</span></button>)}
         <button className="chip" onClick={add}>+ Add gym</button>
-      </div>
+      </div>}
       <section className="card">
         <label className="field">Gym name<input value={g.name} onChange={(e) => update((x) => ({ ...x, name: e.target.value }))} /></label>
       </section>
@@ -73,11 +79,11 @@ export function GymsScreen({ gyms, logged, onBack }: { gyms: GymsStore; logged: 
           })}
         </ul>
       </section>
-      <button className="wide danger" onClick={() => {
+      {!draft && <button className="wide danger gym-delete" onClick={() => {
         if (!confirm(`Delete ${g.name}?`)) return;
         const rest = gyms.gyms.filter((x) => x.id !== g.id);
         void gyms.save(rest, rest[0]?.id);
-      }}>Delete {g.name}</button>
+      }}>Delete <span className="pname">{g.name}</span></button>}
     </>
   );
 }

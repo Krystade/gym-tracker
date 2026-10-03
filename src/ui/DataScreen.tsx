@@ -13,7 +13,7 @@ import { useDb } from '../state/profileDb';
 import { parseCsv, toCsv, type CsvError } from '../domain/csv';
 import { exerciseNames, sessionsByDate } from '../domain/stats';
 import { localDate } from '../domain/ids';
-import { plural } from '../domain/format';
+import { fmtDay, plural } from '../domain/format';
 
 const KIND: Partial<Record<CsvKind, string>> = { body: 'Body data', 'mfp-weight': 'MyFitnessPal weight', 'mfp-nutrition': 'MyFitnessPal nutrition' };
 
@@ -95,7 +95,7 @@ export function DataScreen({ store, profile, body, sync, people, onOpenPaste }: 
       <h1>Data</h1>
       <section className="card">
         <p>{plural(store.entries.length, 'set')} · {plural(sessions.length, 'session')} · {plural(exerciseNames(store.entries).length, 'lift')}</p>
-        {sessions.length > 0 && <p className="muted">{sessions.at(-1)!.date} → {sessions[0].date}</p>}
+        {sessions.length > 0 && <p className="muted">{fmtDay(sessions.at(-1)!.date, localDate(new Date()))} → {fmtDay(sessions[0].date, localDate(new Date()))}</p>}
         <p className={persisted === false ? 'warn' : 'muted'}>
           {persisted ? 'Storage is persistent.' : persisted === false ? 'Storage not marked persistent — export a backup regularly.' : 'Storage status unknown.'}
         </p>

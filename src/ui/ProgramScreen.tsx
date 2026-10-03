@@ -58,7 +58,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
 
   const edit = (fn: (x: Program) => void) => { if (!p) return; const next: Program = structuredClone(p); fn(next); next.edited = true; setRemoved(null); void programs.save(next); };
 
-  if (gymsOpen) return <GymsScreen gyms={gyms} logged={exerciseNames(entries)} onBack={() => { setGymsOpen(false); window.scrollTo(0, 0); }} />;
+  if (gymsOpen) return <GymsScreen gyms={gyms} logged={exerciseNames(entries)} fresh={!gym} onBack={() => { setGymsOpen(false); window.scrollTo(0, 0); }} />;
   if (addTo != null) return <ExercisePicker recent={exerciseNames(entries)} gym={gym} onCancel={() => setAddTo(null)} onPick={(name) => {
     const st = defaultSettings(name);
     edit((x) => { if (!x.days[addTo].slots.some((sl) => sl.exercise === name)) x.days[addTo].slots.push({ exercise: name, sets: 3, repMin: st.repMin, repMax: st.repMax }); });
@@ -73,7 +73,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
         {gym ? (
           <div className="today-head"><span>Gym: <b>{gym.name}</b></span><button className="mini" onClick={() => setGymsOpen(true)}>Change</button></div>
         ) : (
-          <button className="wide" onClick={() => { const n = { id: `g${Date.now().toString(36)}`, name: 'My gym', equipment: [], exclude: [], include: [] }; void gyms.save([...gyms.gyms, n], n.id); setGymsOpen(true); }}>Set up your gym</button>
+          <button className="wide" onClick={() => setGymsOpen(true)}>Set up your gym</button>
         )}
         <p className="muted small">{gym ? 'Only lifts this gym can do are used.' : 'Without a gym, any lift can be picked.'}</p>
       </section>

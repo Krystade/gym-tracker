@@ -54,6 +54,27 @@ test('an import asks before changing sets already logged, and brand-new rows nee
   await expect(rows.nth(0)).toContainText('100 × 8');
 });
 
+test('Import CSV looks inert, not faded mustard, while the confirm card asks', async ({ page }, info) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  const head = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source,pain_region,pain_severity,logged_at,target_weight_lb,target_reps,target_sets,gym,entered_at\n';
+  const row = (set: number, w: number) => `2026-09-01,Bench Press,,${set},${w},8,,,,t,,,,,,,,\n`;
+  await page.getByLabel('Import CSV').setInputFiles(file(info, 'a.csv', head + row(1, 100)));
+  await expect(page.getByText('✓ Imported 1 new set')).toBeVisible();
+  const btn = page.locator('label.button', { hasText: 'Import CSV' });
+  const accent = await btn.evaluate((el) => getComputedStyle(el).backgroundColor);
+  await page.getByLabel('Import CSV').setInputFiles(file(info, 'b.csv', head + row(1, 110)));
+  await expect(page.getByRole('alert')).toBeVisible();
+  const [bg, opacity] = await btn.evaluate((el) => { const s = getComputedStyle(el); return [s.backgroundColor, s.opacity]; });
+  expect(bg).not.toBe(accent);
+  expect(opacity).toBe('1');
+  // No press feedback either: the control is inert.
+  await btn.hover();
+  await page.mouse.down();
+  expect(await btn.evaluate((el) => getComputedStyle(el).transform)).toBe('none');
+  await page.mouse.up();
+});
+
 test('a file with both edited and new sets says so, and adds the new ones either way', async ({ page }, info) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Data' }).click();
