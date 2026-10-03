@@ -1,6 +1,6 @@
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
 import { DEFAULT_LOW_SHARE, type Profile, type Tier } from './profile';
-import { normalizeName } from './ids';
+import { localDate, normalizeName } from './ids';
 import { defaultSettings, isWorking } from './progression';
 import { sameExercise } from './stats';
 import { addDays } from './analytics';
@@ -89,7 +89,7 @@ function bestTier(ex: string, p: Profile): Tier {
 
 export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days: number; perSession: number }, now: Date, ctx: BuildContext = {}): Program {
   const { days, perSession } = opts;
-  const today = now.toISOString().slice(0, 10);
+  const today = localDate(now);
   const achieved = zero();
   const weekly = new Map<string, number>();
   const saturated = new Set<Muscle>(); // no lift left with room this week

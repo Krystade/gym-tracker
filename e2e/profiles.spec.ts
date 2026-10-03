@@ -81,11 +81,7 @@ test('five people and a long name: chips sit side by side, none squashed, and th
   await page.goto('/');
   await page.getByRole('button', { name: 'Data' }).click();
   for (const n of ['Sam', 'Kim', 'Alexandria Montgomery', 'Jo']) {
-    // Switching person remounts the Data screen, which can wipe a name typed mid-remount: type until it sticks.
-    await expect(async () => {
-      await page.getByRole('textbox', { name: 'Name', exact: true }).fill(n);
-      await expect(page.getByRole('button', { name: `Add ${n}` })).toBeVisible({ timeout: 1000 });
-    }).toPass();
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill(n);
     await page.getByRole('button', { name: `Add ${n}` }).click();
     await expect(bar(page).getByRole('button', { name: new RegExp(n) })).toHaveAttribute('aria-pressed', 'true'); // saved before the next add
   }
@@ -173,4 +169,81 @@ test('the exercise search stays visible below the profile bar when the list scro
   const search = (await page.getByRole('searchbox', { name: 'Search exercises' }).boundingBox())!;
   expect(search.y).toBeGreaterThanOrEqual(barBox.y + barBox.height - 1);
   await page.screenshot({ path: 'screenshots/19-picker-profiles.png' });
+});
+
+const addPerson = async (page: Page, n: string) => {
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill(n);
+  await page.getByRole('button', { name: `Add ${n}` }).click();
+  await expect(bar(page).getByRole('button', { name: new RegExp(n) })).toHaveAttribute('aria-pressed', 'true');
+};
+
+test('the delete confirmation opens under that person’s row, and Me says why it has no Delete', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  for (const n of ['Sam', 'Kim', 'Jo', 'Lee']) await addPerson(page, n);
+  await expect(page.getByText('Your own profile can’t be deleted.')).toBeVisible();
+  const row = page.getByRole('listitem').filter({ has: page.getByRole('textbox', { name: 'Name of Sam' }) });
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  const confirm = page.getByRole('textbox', { name: 'Type Sam to confirm' });
+  await expect(confirm).toBeVisible();
+  const del = (await row.getByRole('button', { name: 'Delete', exact: true }).boundingBox())!;
+  const field = (await confirm.boundingBox())!;
+  // Kim, Jo and Lee sit below Sam: a box after the whole list would be far from the button that opened it.
+  expect(field.y).toBeGreaterThanOrEqual(del.y + del.height);
+  expect(field.y - (del.y + del.height)).toBeLessThanOrEqual(120);
+  await row.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'screenshots/p16-people-card.png' });
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(confirm).toHaveCount(0);
+});
+
+test('a name typed in the People card survives a profile switch', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await addPerson(page, 'Sam');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Kim');
+  await bar(page).getByRole('button', { name: /Me/ }).click();
+  await expect(bar(page).getByRole('button', { name: /Me/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Kim');
+  await expect(page.getByRole('button', { name: 'Add Kim' })).toBeEnabled();
+});
+
+test('a time typed under “Did this earlier?” survives a profile switch', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await addPerson(page, 'Sam');
+  await bar(page).getByRole('button', { name: /Me/ }).click();
+  await page.getByRole('button', { name: 'Today' }).click();
+  await addCurl(page);
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('button', { name: 'Did this earlier?' }).click();
+  await page.getByRole('textbox', { name: 'When' }).fill('07:15');
+  await bar(page).getByRole('button', { name: /Sam/ }).click();
+  await expect(bar(page).getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  await bar(page).getByRole('button', { name: /Me/ }).click();
+  await expect(bar(page).getByRole('button', { name: /Me/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('07:15');
+});
+
+test('a future time restored after a profile switch is still blocked', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await addPerson(page, 'Sam');
+  await bar(page).getByRole('button', { name: /Me/ }).click();
+  await page.getByRole('button', { name: 'Today' }).click();
+  await addCurl(page);
+  await page.getByRole('textbox', { name: 'Weight' }).fill('20');
+  await page.getByRole('textbox', { name: 'Reps' }).fill('10');
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('button', { name: 'Did this earlier?' }).click();
+  await page.getByRole('textbox', { name: 'When' }).fill('19:00');
+  await expect(page.getByRole('button', { name: 'Add set' })).toBeDisabled();
+  await bar(page).getByRole('button', { name: /Sam/ }).click();
+  await expect(bar(page).getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  await bar(page).getByRole('button', { name: /Me/ }).click();
+  await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('19:00');
+  await expect(page.getByRole('button', { name: 'Add set' })).toBeDisabled(); // a restored time is a typed time
 });

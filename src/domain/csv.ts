@@ -1,4 +1,5 @@
 import { normalizeName, setId } from './ids';
+import { byOrderDone } from './stats';
 import { isFlag, isRegion, type Flag, type SetEntry } from './types';
 
 export const CSV_HEADER = ['date', 'exercise', 'as_written', 'set', 'weight_lb', 'reps', 'rir', 'flags', 'note', 'source', 'pain_region', 'pain_severity',
@@ -7,8 +8,8 @@ const REQUIRED = ['date', 'exercise', 'set', 'weight_lb', 'reps'];
 
 export interface CsvError { row: number; message: string }
 
-export const compareEntries = (a: SetEntry, b: SetEntry): number =>
-  a.date.localeCompare(b.date) || a.seq - b.seq || a.setNo - b.setNo;
+/** By date, then in the order done (as History shows it), so the file reads like the screen. */
+export const compareEntries = (a: SetEntry, b: SetEntry): number => a.date.localeCompare(b.date) || byOrderDone(a, b);
 
 const esc = (v: string): string => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 

@@ -333,7 +333,8 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: var(-
 .chip.person .initials { flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 17px; background: var(--surface-2); font-size: var(--fs-xs); }
 .chip.person[aria-pressed='true'] .initials { background: var(--accent-ink); color: var(--accent); }
 .people { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 6px; }
-.people li { display: flex; gap: 8px; align-items: center; }
+.people li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.people .people-note, .people .confirm-delete { flex: 1 0 100%; margin: 0; }
 .people input { flex: 1; min-height: 44px; font-size: var(--fs-md); }
 .confirm-delete { border: 1px solid var(--danger); border-radius: var(--r-md); padding: 10px; margin-bottom: 10px; }
 /* With the profile bar showing, the picker's search sticks just below it instead of under it. */
@@ -353,3 +354,4 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: var(-
 .chip.more { justify-self: start; } /* .set-form is a grid, so the inline axis is justify */
 .chart .goal, .chart .goal-lbl { pointer-events: none; }
 .chart .goal-lbl { paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
+.confirm-delete .form-actions { margin-top: 8px; }

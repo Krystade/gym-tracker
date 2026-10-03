@@ -1,3 +1,4 @@
+process.env.TZ = 'America/New_York'; // before any Date: CI runs in UTC, where a UTC 'today' bug can't show
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
 import { CATALOG } from './catalog';
@@ -224,5 +225,14 @@ describe('tier order', () => {
       const forearms = p.days.flatMap((d) => d.slots).reduce((a, sl) => a + (muscleVector(sl.exercise)?.Forearms ?? 0) * sl.sets, 0);
       expect(forearms, `${days} days`).toBeGreaterThanOrEqual(Math.min(prof.targets[1][0], days * 12 - Math.floor((0.2 * days * 12) / 2) * 2));
     }
+  });
+
+  it('takes today in local time: late on Oct 1 a set from Oct 1 last year is still inside the year', () => {
+    // One recent-year set (1 point) outranks two older sets (0.5) — unless "today" slips to Oct 2 and the set falls out of the year (0.25).
+    const e = [s('2025-10-01', 'Cable Curl'), s('2025-06-01', 'DB Curl'), s('2025-06-02', 'DB Curl')];
+    const late = new Date(2026, 9, 1, 23, 30); // Oct 1 local; already Oct 2 in UTC for any zone west of it
+    const p = buildProgram(withTiers({ Biceps: 1 }, 4), e, { days: 1, perSession: 8 }, late);
+    const curls = p.days[0].slots.map((x) => x.exercise).filter((x) => x === 'Cable Curl' || x === 'DB Curl');
+    expect(curls[0]).toBe('Cable Curl');
   });
 });

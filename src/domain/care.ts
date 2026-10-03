@@ -1,6 +1,7 @@
 import { addDays, weekStart } from './analytics';
 import { CATALOG } from './catalog';
 import { gearOf } from './equipment';
+import { normalizeName } from './ids';
 import { muscleVector, MUSCLES } from './muscles';
 import type { Slot } from './program';
 import { exerciseNames, sameExercise } from './stats';
@@ -50,7 +51,7 @@ export function recentPain(entries: SetEntry[], today: string, days = 60): { byE
   const regions = new Set<Region>();
   for (const e of entries) {
     if (!e.flags.includes('pain') || e.date < since || e.date > today) continue;
-    const k = e.exercise.toLowerCase();
+    const k = normalizeName(e.exercise).toLowerCase(); // "Bench  Press" and "bench press" are one lift
     byExercise.set(k, (byExercise.get(k) ?? 0) + 1);
     regions.add(e.painRegion ?? likelyRegion(e.exercise));
   }
@@ -88,7 +89,7 @@ export function swapSuggestions(exercise: string, entries: SetEntry[], today: st
     // Swaps for one lift share their muscles, so the gear is what tells them apart.
     const gear = gearOf(name);
     if (gear && gear !== gearOf(exercise)) why.push(gear);
-    const hurt = pain.byExercise.get(name.toLowerCase()) ?? 0;
+    const hurt = pain.byExercise.get(normalizeName(name).toLowerCase()) ?? 0;
     if (hurt) { score -= 0.3 * Math.min(hurt, 3); why.push('pain logged recently'); }
     const loaded = [...pain.regions].find((r) => STRESS[r]?.test(name));
     if (loaded) { score -= 0.25; why.push(`loads your ${loaded}, which hurt recently`); }

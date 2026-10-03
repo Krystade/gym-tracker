@@ -33,6 +33,16 @@ describe('csv', () => {
     expect(entries.map((e) => e.exercise)).toEqual(['Zottman Curl', 'Bench Press']);
   });
 
+  it('exports a day in the order History shows: timed sets by time, then untimed in the order entered', () => {
+    // Set 1 never had a time; set 2 was given one later, so it reads first. Row position must not change either set number.
+    const one = mk(1, { id: 'x|1', seq: 1 });
+    const two = mk(2, { id: 'x|2', seq: 2, loggedAt: '2026-01-05T08:00:00.000Z' });
+    const rows = parseCsv(toCsv([one, two]));
+    expect(rows.errors).toEqual([]);
+    expect(rows.entries.map((e) => e.setNo)).toEqual([2, 1]);
+    expect(rows.entries.map((e) => e.loggedAt)).toEqual(['2026-01-05T08:00:00.000Z', undefined]);
+  });
+
   it('reports bad rows with their row number and keeps the good ones', () => {
     const text = [
       CSV_HEADER.join(','),

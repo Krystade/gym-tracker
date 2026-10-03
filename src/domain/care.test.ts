@@ -43,6 +43,15 @@ describe('similarity and regions', () => {
   });
 });
 
+describe('swapSuggestions pain names', () => {
+  it('counts pain logged on "Bench  Press" (double space, any case) against Bench Press', () => {
+    const e = [s('2026-09-20', 'Bench  Press', { flags: ['pain'] }), s('2026-09-21', 'BENCH PRESS ', { flags: ['pain'] })];
+    const why = swapSuggestions('Flat DB Press', e, '2026-09-30', 30).find((x) => x.name.replace(/\s+/g, ' ').toLowerCase() === 'bench press')?.why;
+    expect(why).toBeDefined();
+    expect(why).toContain('pain logged recently');
+  });
+});
+
 describe('swapSuggestions', () => {
   it('never suggests the exercise itself and prefers same-muscle lifts', () => {
     const r = swapSuggestions('Cable Pushdown', [], '2026-09-30');
