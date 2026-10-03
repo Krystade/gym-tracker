@@ -94,7 +94,31 @@ export const resetDbForTests = () => {
 };
 export const getAllSets = async (): Promise<SetEntry[]> => (await db()).getAll(STORE);
 export const putSet = async (e: SetEntry): Promise<void> => { await (await db()).put(STORE, e); };
+/** Builds a set from what's stored and saves it in one transaction, so two open copies of the app can't take the same set number. */
+export async function addSet(make: (stored: SetEntry[]) => SetEntry): Promise<SetEntry> {
+  const tx = (await db()).transaction(STORE, 'readwrite');
+  const e = make((await tx.store.getAll()) as SetEntry[]);
+  await tx.store.put(e);
+  await tx.done;
+  return e;
+}
 export const deleteSet = async (id: string): Promise<void> => { await (await db()).delete(STORE, id); };
+/** Deletes a set and records its tombstone in one transaction, so a crash can't leave a deleted set that sync brings back. */
+export async function deleteSetWithTombstone(id: string): Promise<void> {
+  const tx = (await db()).transaction([STORE, 'config'], 'readwrite');
+  try {
+    tx.objectStore(STORE).delete(id).catch(() => {}); // tx.done carries the failure
+    const cfg = tx.objectStore('config');
+    const cur: { ids: string[] } | undefined = await cfg.get('deleted');
+    await cfg.put({ key: 'deleted', ids: [...new Set(cur?.ids ?? []).add(id)] });
+  } catch (e) {
+    // Otherwise the delete would still commit without its tombstone. A failed write may have aborted it already.
+    try { tx.abort(); } catch { /* already aborted: keep the real error */ }
+    await tx.done.catch(() => {});
+    throw e;
+  }
+  await tx.done;
+}
 
 export const getAllSettings = async (): Promise<ExerciseSettings[]> => (await db()).getAll('settings');
 export const putSettings = async (s: ExerciseSettings): Promise<void> => { await (await db()).put('settings', s); };
@@ -181,7 +205,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 
 // Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
 const PER_PROFILE = {
-  getAllSets, putSet, deleteSet, putMany, getAllSettings, putSettings, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
+  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, putMany, getAllSettings, putSettings, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
   getBody, putBody, putBodyMany, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, addTombstone, getAliases, putAliases,
 };
 export type ProfileDb = typeof PER_PROFILE;

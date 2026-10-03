@@ -9,7 +9,7 @@ test('paste from notes: review, fix a line, map a name, add once', async ({ page
   await page.goto('/');
   await page.getByRole('button', { name: 'Data' }).click();
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
-  await expect(page.getByText('Imported 6 new, 0 updated')).toBeVisible();
+  await expect(page.getByText('✓ Imported 6 new sets')).toBeVisible();
 
   await page.getByRole('button', { name: 'Paste from notes' }).click();
   await page.getByLabel('Workout notes').fill(NOTES);
@@ -59,4 +59,27 @@ test('paste review shows every date a set lands on, and the notes it read', asyn
   await expect(page.getByRole('heading', { name: /Sep 29, 2026/ })).toBeVisible();
   await expect(page.getByText('felt heavy')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add 3 sets from 2 days' })).toBeVisible();
+});
+
+test('dimmed rows dim their text, not the Edit/Ignore buttons that still work', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
+  await expect(page.getByText('✓ Imported 6 new sets')).toBeVisible();
+  await page.getByRole('button', { name: 'Paste from notes' }).click();
+  await page.getByLabel('Workout notes').fill(NOTES);
+  await page.getByRole('button', { name: 'Read notes' }).click();
+  // Line 2 is dimmed as already logged; line 7 is dimmed because it is ignored.
+  await page.getByRole('button', { name: 'Ignore line 7' }).click();
+  // Opacity does not inherit, but it composes: what the eye sees is the product up the tree.
+  const seen = (el: Element) => { let o = 1; for (let n: Element | null = el; n; n = n.parentElement) o *= Number(getComputedStyle(n).opacity); return o; };
+  const opacity = (name: string) => page.getByRole('button', { name }).evaluate(seen);
+  expect(await opacity('Edit line 2')).toBe(1);
+  expect(await opacity('Include line 7')).toBe(1);
+  expect(await opacity('Edit line 7')).toBe(1);
+  // The name field and the "add anyway" box still work too, so they must not look disabled.
+  expect(await page.getByRole('combobox', { name: 'Exercise on line 2' }).evaluate(seen)).toBe(1);
+  expect(await page.getByText(/Already in your log — add anyway/).first().evaluate(seen)).toBe(1);
+  // The text next to them is still dimmed: this is what tells the user the row is left out.
+  expect(await page.getByText('Run: 2 miles').evaluate(seen)).toBeCloseTo(0.55);
 });

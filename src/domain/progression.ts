@@ -1,9 +1,10 @@
 import { normalizeName } from './ids';
 import { e1rm, sameExercise, sessionsFor } from './stats';
 import type { SetEntry } from './types';
-import { isHold } from './care';
+import { isHold, isHoldLift } from './care';
 
-export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number }
+// testSnoozedUntil: the "time for a test" banner stays hidden until this day.
+export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number; testSnoozedUntil?: string }
 
 export const settingsKey = (name: string): string => normalizeName(name).toLowerCase();
 
@@ -95,7 +96,7 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
     return { kind: 'repeat', weight: w, reps: st.repMin, last: last.sets, text: `Repeat ${lb(w)} and log every rep` };
   }
   const top = Math.max(...working.map((x) => x.weight));
-  const unit = working.some((x) => x.flags.includes('hold')) ? 's' : '';
+  const unit = isHoldLift(exercise, entries) ? 's' : '';
   const atTop = working.filter((x) => x.weight === top);
   const minReps = Math.min(...atTop.map((x) => x.reps as number));
   if (top > 0 && minReps >= st.repMax) {

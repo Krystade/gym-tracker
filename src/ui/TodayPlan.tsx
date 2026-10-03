@@ -3,7 +3,7 @@ import type { SetEntry } from '../domain/types';
 import { isWorking } from '../domain/progression';
 import { nextDay, type DayPlan, type Program } from '../domain/program';
 import { sameExercise } from '../domain/stats';
-import { isHold } from '../domain/care';
+import { isHoldLift } from '../domain/care';
 import type { ProgramStore } from '../state/useProgram';
 import { estimateSeconds, hhmm, paces, timedDay } from '../domain/timing';
 import { warmupCount } from '../domain/suggest';
@@ -14,8 +14,8 @@ export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: str
     ?? { key: `day:${date}`, date, day: nextDay(store.program, store.plans, entries, date), skips: [], swaps: {} };
 };
 
-export function TodayPlan({ program, plan, entries, past, onChange, onOpen, onSwap }: {
-  program: Program; plan: DayPlan; entries: SetEntry[]; past?: boolean;
+export function TodayPlan({ program, plan, entries, past, open, onToggle, onChange, onOpen, onSwap }: {
+  program: Program; plan: DayPlan; entries: SetEntry[]; past?: boolean; open: boolean; onToggle: () => void;
   onChange: (p: DayPlan) => void; onOpen: (exercise: string) => void; onSwap: (original: string) => void;
 }) {
   const day = program.days[plan.day] ?? program.days[0];
@@ -31,9 +31,15 @@ export function TodayPlan({ program, plan, entries, past, onChange, onOpen, onSw
       return cache.get(k)!;
     };
   }, [entries, plan.date]);
+  const live = day.slots.filter((s) => !plan.skips.includes(s.exercise));
+  const finished = live.filter((s) => doneOf(plan.swaps[s.exercise] ?? s.exercise) >= s.sets).length;
   return (
     <section className="card plan" aria-label={title}>
-      <h2>{title} · {day.name}</h2>
+      <h2><button type="button" className="plan-toggle" aria-expanded={open} onClick={onToggle}>
+        <span>{title} · {day.name}</span>
+        {!open && <span className="muted small">{finished} of {live.length} done</span>}
+      </button></h2>
+      {open && (<>
       {(() => {
         const todo = day.slots.filter((s) => !plan.skips.includes(s.exercise)).map((s) => ({ exercise: plan.swaps[s.exercise] ?? s.exercise, sets: s.sets }));
         const mins = Math.round(estimateSeconds(todo, pace, warm) / 60);
@@ -58,17 +64,18 @@ export function TodayPlan({ program, plan, entries, past, onChange, onOpen, onSw
               <button className="plan-name" data-exercise={target} disabled={skipped} onClick={() => { onChange(plan); onOpen(target); }}>
                 <b>{target}</b>
                 {target !== slot.exercise && <span className="muted small">for {slot.exercise}</span>}
-                <span className="muted small">{slot.repMin}–{slot.repMax}{isHold(slot.exercise) ? ' s hold' : ' reps'}</span>
+                {/* The count rides under the name, so the name gets the width it needs. */}
+                <span className="muted small"><span className="plan-count">{skipped ? 'Skipped' : `${Math.min(done, slot.sets)}/${slot.sets}`}</span> · {slot.repMin}–{slot.repMax}{isHoldLift(slot.exercise, entries) ? ' s hold' : ' reps'}</span>
               </button>
-              <span className="plan-count">{skipped ? 'Skipped' : `${Math.min(done, slot.sets)}/${slot.sets}`}</span>
               <button type="button" onClick={() => onChange({ ...plan, skips: skipped ? plan.skips.filter((x) => x !== slot.exercise) : [...plan.skips, slot.exercise] })}>
                 {skipped ? 'Undo' : 'Skip'}
               </button>
-              {!skipped && <button type="button" onClick={() => onSwap(slot.exercise)}>Swap</button>}
+              {skipped ? <span aria-hidden="true" /> : <button type="button" onClick={() => onSwap(slot.exercise)}>Swap</button>}
             </li>
           );
         })}
       </ol>
+      </>)}
     </section>
   );
 }

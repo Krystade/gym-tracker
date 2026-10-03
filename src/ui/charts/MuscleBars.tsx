@@ -1,11 +1,24 @@
 import { MUSCLES, type Muscle } from '../../domain/muscles';
 import { status, targetFor, type Profile, type Tier } from '../../domain/profile';
 
-const ICON = { under: '▽', on: '✓', over: '▲' } as const;
-const WORD = { under: 'under', on: 'on target', over: 'over' } as const;
+const ICON = { under: '▽', pace: '·', on: '✓', over: '▲' } as const;
+const WORD = { under: 'under', pace: 'on pace', on: 'on target', over: 'over' } as const;
 const fmt = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
 
-export function MuscleBars({ sets, profile }: { sets: Record<Muscle, number>; profile: Profile }) {
+/** How far through the training week we are (Mon = 0), counting today as half done so Sunday isn't a full week. */
+export function weekPace(today: string): number {
+  const dow = (new Date(today + 'T00:00:00').getDay() + 6) % 7;
+  return (dow + 0.5) / 7;
+}
+
+/** `status`, except that a muscle short of its target but keeping up with the week so far is "on pace", not "under". */
+export function paceStatus(value: number, range: [number, number], pace?: number): 'under' | 'pace' | 'on' | 'over' {
+  const st = status(value, range);
+  return st === 'under' && pace !== undefined && value >= range[0] * pace ? 'pace' : st;
+}
+
+// `pace` is for the current week only (Stats); a built program has no "so far", so Program leaves it out.
+export function MuscleBars({ sets, profile, pace }: { sets: Record<Muscle, number>; profile: Profile; pace?: number }) {
   const max = Math.max(...MUSCLES.map((m) => Math.max(sets[m], targetFor(profile, m)[1])), 1);
   const pct = (v: number) => `${(100 * v) / max}%`;
   return (
@@ -18,7 +31,7 @@ export function MuscleBars({ sets, profile }: { sets: Record<Muscle, number>; pr
             <h3>Priority {tier}</h3>
             {ms.map((m) => {
               const [lo, hi] = targetFor(profile, m);
-              const st = status(sets[m], [lo, hi]);
+              const st = paceStatus(sets[m], [lo, hi], pace);
               return (
                 <div key={m} className="mrow" aria-label={`${m}: ${fmt(sets[m])} sets, target ${lo}–${hi}, ${WORD[st]}`}>
                   <span className="mname">{m}</span>
@@ -26,8 +39,8 @@ export function MuscleBars({ sets, profile }: { sets: Record<Muscle, number>; pr
                     <span className="mband" style={{ left: pct(lo), width: pct(hi - lo) }} />
                     <span className="mbar" style={{ width: pct(sets[m]) }} />
                   </span>
-                  <span className="mval">{fmt(sets[m])}</span>
-                  <span className={`mstat ${st}`}><b aria-hidden="true">{ICON[st]}</b> {WORD[st]}</span>
+                  <span className="mval">{fmt(sets[m])}<span className="mtarget"> / {lo}–{hi}</span></span>
+                  <span className={`mstat ${st}`}><b aria-hidden="true">{ICON[st]}</b> <span className="mword">{WORD[st]}</span></span>
                 </div>
               );
             })}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { nextTime, plannedSets, suggest, warmups } from './suggest';
-import { defaultSettings } from './progression';
+import { defaultSettings, nextTarget } from './progression';
 import type { SetEntry } from './types';
 import type { DayPlan, Program } from './program';
 
@@ -65,5 +65,21 @@ describe('Phase 12 review fixes', () => {
   it('labels timed holds in seconds', () => {
     expect(suggest([], 'Plank', defaultSettings('Plank'), '2026-10-02', null).unit).toBe(' s');
     expect(suggest([], 'Bench Press', st, '2026-10-02', null).unit).toBe('');
+  });
+});
+
+describe('one hold check for every line', () => {
+  const day1 = '2026-09-28', day2 = '2026-09-30', today = '2026-10-02';
+  it('a custom lift whose sets carry the hold flag is timed in seconds, in the unit and in the target', () => {
+    const name = 'Wall Sit Hold X';
+    const log = [s(day1, name, 0, 40, ['hold']), s(day1, name, 0, 40, ['hold']), s(day2, name, 0, 40, ['hold']), s(day2, name, 0, 40, ['hold'])];
+    const x = suggest(log, name, defaultSettings(name), today, null);
+    expect(x.unit).toBe(' s');
+    expect(nextTarget(log, name, defaultSettings(name), today)!.text).toMatch(/s\+ on every set$/);
+  });
+  it('a known hold logged without the flag is still timed in seconds in both', () => {
+    const log = [s(day1, 'Plank', 0, 30), s(day2, 'Plank', 0, 30)];
+    expect(suggest(log, 'Plank', defaultSettings('Plank'), today, null).unit).toBe(' s');
+    expect(nextTarget(log, 'Plank', defaultSettings('Plank'), today)!.text).toBe('BW × 35s+ on every set');
   });
 });

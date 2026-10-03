@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDb } from './profileDb';
-import { mergeBody, type BodyDay } from '../domain/body';
+import { diffBody, mergeBody, type BodyDay } from '../domain/body';
 
 export function useBody() {
   const db = useDb();
@@ -23,6 +23,8 @@ export function useBody() {
     try { await db.putBodyMany(merged.filter((d) => dates.has(d.date))); commit(merged); setError(null); return true; }
     catch (e) { setError(`Importing body data failed: ${String(e)}`); return false; }
   }, []);
-  return { days, error, save, importDays };
+  // Against the days as of the last commit, not the last render: back-to-back files in one pick must see each other.
+  const diff = useCallback((incoming: BodyDay[]) => diffBody(current.current, incoming), []);
+  return { days, error, save, importDays, diff };
 }
 export type BodyStore = ReturnType<typeof useBody>;

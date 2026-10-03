@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { proteinCheck, rate, rateBand, trend } from '../domain/body';
 import type { BodyStore } from '../state/useBody';
-import { fmtWeight } from '../domain/format';
+import { fmtDay, fmtWeight } from '../domain/format';
 import { ChartTable } from './charts/ChartTable';
 
 const W = 340, H = 170, L = 40, R = 10, T = 12, B = 26;
@@ -13,7 +13,7 @@ const OkIcon = () => <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden
 const WarnIcon = () => <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M8 1.8 15 14H1z" strokeLinejoin="round" /><path d="M8 6v4" /><circle cx="8" cy="12" r="0.6" fill="currentColor" /></svg>;
 
 /** Trend (amber line) through daily weigh-ins (muted dots); last 90 days. */
-function BodyChart({ points }: { points: { date: string; weight: number; trend: number }[] }) {
+function BodyChart({ points, today }: { points: { date: string; weight: number; trend: number }[]; today: string }) {
   const [tap, setTap] = useState<number | null>(null);
   const xs = points.map((p) => ms(p.date)), ys = points.flatMap((p) => [p.weight, p.trend]);
   const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
@@ -37,11 +37,14 @@ function BodyChart({ points }: { points: { date: string; weight: number; trend: 
         ))}
         {points.length > 1 && <polyline className="line" fill="none" points={points.map((p) => `${X(ms(p.date))},${Y(p.trend)}`).join(' ')} />}
         {sel && <line className="bw-sel" x1={X(ms(sel.date))} x2={X(ms(sel.date))} y1={T} y2={H - B} />}
-        {points.map((p, i) => (
-          <rect key={p.date} x={X(ms(p.date)) - 8} y={T} width={16} height={H - T - B} fill="transparent" onClick={() => setTap(i === tap ? null : i)} />
-        ))}
+        {points.map((p, i) => {
+          // Each target runs halfway to its neighbours (the ends to the chart edge), so a tap always lands on the nearest day and none overlap.
+          const left = i ? (X(ms(points[i - 1].date)) + X(ms(p.date))) / 2 : 0;
+          const right = i < points.length - 1 ? (X(ms(p.date)) + X(ms(points[i + 1].date))) / 2 : W;
+          return <rect key={p.date} x={left} y={T} width={right - left} height={H - T - B} fill="transparent" onClick={() => setTap(i === tap ? null : i)} />;
+        })}
       </svg>
-      <p className="muted small">{sel ? `${md(sel.date)}: weighed ${fmtWeight(sel.weight)} lb · trend ${sel.trend.toFixed(1)} lb` : 'Line: trend (smoothed). Dots: weigh-ins. Tap for a day.'}</p>
+      <p className="readout" aria-live="polite">{sel ? `${fmtDay(sel.date, today)}: weighed ${fmtWeight(sel.weight)} lb · trend ${sel.trend.toFixed(1)} lb` : 'Line: trend (smoothed). Dots: weigh-ins. Tap for a day.'}</p>
     </>
   );
 }
@@ -58,11 +61,11 @@ export function BodyCard({ body, today }: { body: BodyStore; today: string }) {
       {!t.length ? <p className="muted">Weigh in on the Today tab, or import MyFitnessPal’s export on the Data tab.</p> : (<>
         <div className="tiles">
           <div className="tile"><span>Trend</span><b>{t.at(-1)!.trend.toFixed(1)} lb</b></div>
-          <div className="tile"><span>4-week rate</span><b>{r ? `${signed(r.lbPerWeek)} lb` : '—'}</b>{r && <span>lb/week · {signed(r.pctPerWeek, 2)} % of body weight</span>}</div>
+          <div className="tile"><span>4-week rate</span><b className="sm">{r ? `${signed(r.lbPerWeek)} lb/week` : '—'}</b>{r && <span>{signed(r.pctPerWeek, 2)} % of body weight</span>}</div>
         </div>
         {band && <p className={`bw-band ${band.tone}`}>{band.tone === 'ok' ? <OkIcon /> : <WarnIcon />} {band.label}</p>}
         {!r && <p className="muted small">Two weeks of weigh-ins give a rate.</p>}
-        {recent.length > 0 && <BodyChart points={recent} />}
+        {recent.length > 0 && <BodyChart points={recent} today={today} />}
         {protein && <p className="small">Protein, last {protein.days === 1 ? 'day' : `${protein.days} days`}: <b>{protein.avg} g/day</b> <span className="muted">· about {protein.target} g covers most of the muscle-building benefit (1.6 g/kg)</span></p>}
         <p className="muted small">Bands: lean gain ≈ 0.25–0.5 %/week, cutting ≈ 0.5–1 %/week. Context, not advice.</p>
         <ChartTable caption="Weigh-ins and trend (lb)" head={['Date', 'Weighed / trend']}

@@ -55,6 +55,13 @@ export function repoClient(cfg: SyncConfig, fetchFn: Fetch) {
   async function put(path: string, text: string, sha: string | undefined, message: string): Promise<void> {
     const r = await call(url(path, false), { method: 'PUT', headers: headers(), body: JSON.stringify({ message, content: toB64(text), branch: cfg.branch, ...(sha && { sha }) }) });
     if (r.status === 404) throw new SyncError('access', 'Repo not found — check the name, and that the token can see it.');
+    if (r.status === 422) {
+      // "sha wasn't supplied": another device created the file between our GET and PUT. Same race as 409.
+      // Any other 422 is a request GitHub will never accept, so retrying can't help: pass its reason on.
+      const why = ((await r.json().catch(() => ({}))) as { message?: string }).message ?? '';
+      if (/\bsha\b/.test(why)) throw new SyncError('conflict', 'The backup changed while syncing — try again.');
+      throw new SyncError('other', `GitHub answered 422 writing ${path}${why ? `: ${why}` : '.'}`);
+    }
     if (!r.ok) throw new SyncError('other', `GitHub answered ${r.status} writing ${path}.`);
   }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import { bestSet, byOrderDone, e1rm, lastSession, sameExercise } from '../domain/stats';
@@ -6,10 +6,12 @@ import { estimateRir, isWorking, nextTarget, prCheck, priorE1rm, rirOffset } fro
 import { fmtDate, fmtSet, fmtWeight } from '../domain/format';
 import type { Flag, SetEntry } from '../domain/types';
 import { SetForm, type SetFormValue } from './SetForm';
+import { isHoldLift } from '../domain/care';
 import { SetRowContent } from './SetRow';
 import { suggest } from '../domain/suggest';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
 import { hhmm, paces, suggestTime } from '../domain/timing';
+import { localDate } from '../domain/ids';
 
 const TargetIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -17,13 +19,22 @@ const TargetIcon = () => (
   </svg>
 );
 
-export function ExerciseCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym }: {
+export function ExerciseCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = false, onOpenReq }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
+  openReq?: boolean; onOpenReq?: () => void;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
+  // Once the user has opened a finished card it stays open (more sets are theirs to add); a reload starts it folded again.
+  const [opened, setOpened] = useState(false);
   const [pr, setPr] = useState<string | null>(null);
   useEffect(() => { if (!pr) return; const t = setTimeout(() => setPr(null), 6000); return () => clearTimeout(t); }, [pr]);
   const today = store.entries.filter((e) => e.date === date && sameExercise(e.exercise, exercise)).sort(byOrderDone); // in the order done: a late set sits where it happened
+  // The set being edited may vanish (deleted in another tab, an import): close the editor rather than offer "Delete set 0".
+  if (editing && !today.some((x) => x.id === editing.id)) setEditing(null);
+  const editBox = useRef<HTMLDivElement>(null);
+  const hold = isHoldLift(exercise, store.entries);
+  // With several sets and cards below, Save sits off-screen; 'nearest' moves nothing when it is already in view.
+  useEffect(() => { if (editing) editBox.current?.scrollIntoView({ block: 'nearest' }); }, [editing?.id]);
   const last = lastSession(store.entries, exercise, date);
   const best = bestSet(store.entries, exercise);
   const st = settings.get(exercise);
@@ -56,18 +67,38 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
     return true;
   }
 
+  const working = today.filter(isWorking);
+  const complete = plannedSets != null && plannedSets > 0 && working.length >= plannedSets;
+  // The plan sent you here: open a folded card, but a card that isn't finished has nothing to open, so don't pin it open.
+  if (openReq && complete && !opened) setOpened(true);
+  useEffect(() => { if (openReq) onOpenReq?.(); }, [openReq, onOpenReq]);
+  if (complete && !opened) {
+    const top = working.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && (b.reps ?? 0) > (a.reps ?? 0)) ? b : a));
+    return (
+      <section className="card folded" data-card={exercise.toLowerCase()}>
+        <button className="fold-line" aria-expanded="false" aria-label={`Show ${exercise}`} onClick={() => setOpened(true)}>
+          <b>{exercise}</b>
+          <span className="ok">{working.length}/{plannedSets} sets ✓</span>
+          <span className="muted nw">{fmtSet(top)}</span>
+        </button>
+        {pr && <p role="status" className="pr">{pr}</p>}
+      </section>
+    );
+  }
+
   return (
-    <section className="card">
+    <section className="card" data-card={exercise.toLowerCase()}>
       <header className="card-head">
         <button className="link" onClick={() => onOpen(exercise)}>{exercise}</button>
-        {best && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.e1rm))}</span>}
+        {complete && <button className="mini" aria-expanded="true" onClick={() => setOpened(false)}>Fold</button>}
+        {best && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.e1rm))} lb</span>}
       </header>
-      {last && <p className="muted">Last ({fmtDate(last.date)}): {last.sets.map(fmtSet).join(' · ')}</p>}
+      {last && <p className="muted">Last ({fmtDate(last.date)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
       {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.sets} × {sug.reps}{sug.unit}+{fmtLoad(sug.weight)}{sug.warmups.length > 0 && <span className="muted"> · warm-up {fmtRamp(sug)}</span>}</span></p>}
       <ol className="sets" aria-label={`Sets for ${exercise}`}>
         {today.map((s, i) => (
           <li key={s.id}>
-            <button className="set-row" onClick={() => setEditing(s)}>
+            <button className={editing?.id === s.id ? 'set-row editing' : 'set-row'} aria-current={editing?.id === s.id ? 'true' : undefined} onClick={() => setEditing(s)}>
               <SetRowContent s={s} no={i + 1} estRir={estimateRir(s, today, prior, offset)} />
             </button>
           </li>
@@ -75,7 +106,9 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
       </ol>
       {pr && <p role="status" className="pr">{pr}</p>}
       {editing ? (
-        <SetForm key={editing.id} exercise={exercise} initial={editing} submitLabel="Save"
+        <div ref={editBox} className="edit-box">
+        <p className="edit-title">Editing set {today.findIndex((x) => x.id === editing.id) + 1}</p>
+        <SetForm key={editing.id} exercise={exercise} hold={hold} initial={editing} submitLabel="Save"
           onCancel={() => setEditing(null)}
           onDelete={async () => {
             const no = today.findIndex((x) => x.id === editing.id) + 1; // the number on the row, not the entry order
@@ -84,7 +117,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
           when={{
             suggest: () => (editing.loggedAt ? hhmm(new Date(editing.loggedAt)) : null),
             always: true,
-            max: date === realToday ? () => hhmm(new Date()) : undefined,
+            max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined,
           }}
           onSubmit={async (v) => {
             const { at, ...rest } = v;
@@ -98,9 +131,10 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
             }
             const ok = await store.update(next); if (ok) setEditing(null); return ok;
           }} />
+        </div>
       ) : (
-        <SetForm key="new" exercise={exercise} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft day={date}
-          when={{ suggest: suggestWhen, always: date < realToday, max: date === realToday ? () => hhmm(new Date()) : undefined }} />
+        <SetForm key="new" exercise={exercise} hold={hold} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft day={date}
+          when={{ suggest: suggestWhen, always: date < realToday, max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined }} />
       )}
     </section>
   );

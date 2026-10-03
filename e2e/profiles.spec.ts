@@ -79,6 +79,50 @@ test('two people on one phone: separate logs, one-tap switch, typed sets survive
   await expect(page.getByRole('button', { name: 'Add Sam' })).toBeDisabled();
 });
 
+test('five people and a long name: chips sit side by side, none squashed, and the last one is scrolled into view', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  for (const n of ['Sam', 'Kim', 'Alexandria Montgomery', 'Jo']) {
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill(n);
+    await page.getByRole('button', { name: `Add ${n}` }).click();
+    await expect(bar(page).getByRole('button', { name: new RegExp(n) })).toHaveAttribute('aria-pressed', 'true'); // saved before the next add
+  }
+  const chips = bar(page).getByRole('button');
+  await expect(chips).toHaveCount(5);
+  await expect(chips.last()).toHaveAttribute('aria-pressed', 'true');
+  await expect(chips.nth(3)).toHaveAccessibleName(/Alexandria Montgomery/); // ellipsis is visual only
+  const boxes = [];
+  for (let i = 0; i < 5; i++) boxes.push((await chips.nth(i).boundingBox())!);
+  for (let i = 1; i < 5; i++) expect(boxes[i - 1].x + boxes[i - 1].width).toBeLessThanOrEqual(boxes[i].x + 0.5);
+  for (const b of boxes) expect(b.width).toBeLessThanOrEqual(0.45 * 375 + 1);
+  // Squashed chips keep their box but spill their content over the neighbour: the badge must keep its size, and content must fit or be clipped with an ellipsis.
+  for (let i = 0; i < 5; i++) {
+    const r = await chips.nth(i).evaluate((el) => {
+      const badge = el.querySelector('.initials')!.getBoundingClientRect();
+      return { badge: badge.width, fits: el.scrollWidth <= el.clientWidth + 1, scrolled: el.scrollLeft, ellipsis: getComputedStyle(el.querySelector('.pname')!).textOverflow === 'ellipsis' };
+    });
+    expect(r.badge).toBeGreaterThanOrEqual(33.5);
+    expect(r.fits).toBe(true); // the name is ellipsised inside the chip, not spilling out of it
+    expect(r.scrolled).toBe(0);
+    expect(r.ellipsis).toBe(true);
+  }
+  await expect(page.getByText('Loading…')).toHaveCount(0);
+  // The active chip (the last) is on screen after the switch, not off to the right.
+  const last = boxes[4];
+  expect(last.x).toBeGreaterThanOrEqual(0);
+  expect(last.x + last.width).toBeLessThanOrEqual(375 - 15);
+  await page.screenshot({ path: 'screenshots/48-profile-bar.png' });
+  await page.setViewportSize({ width: 320, height: 700 });
+  await bar(page).getByRole('button', { name: /Sam/ }).click();
+  await expect(bar(page).getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  await bar(page).getByRole('button', { name: /Jo/ }).click();
+  await expect(bar(page).getByRole('button', { name: /Jo/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.screenshot({ path: 'screenshots/48-profile-bar-320.png' });
+  const jo = (await bar(page).getByRole('button', { name: /Jo/ }).boundingBox())!;
+  expect(jo.x + jo.width).toBeLessThanOrEqual(320 - 15);
+});
+
 test('switching person goes back to today', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
@@ -89,9 +133,29 @@ test('switching person goes back to today', async ({ page }) => {
   await bar(page).getByRole('button', { name: /Me/ }).click();
   await page.getByRole('button', { name: 'Today' }).click();
   await page.getByRole('button', { name: 'Previous day' }).click();
-  await expect(page.getByText('Logging to Thu, Oct 1, 2026')).toBeVisible();
+  await expect(page.getByText('Logging to a past day')).toBeVisible();
   await bar(page).getByRole('button', { name: /Sam/ }).click();
   await expect(bar(page).getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('heading', { name: 'Fri, Oct 2' })).toBeVisible();
+  await expect(page.getByText(/Logging to/)).toHaveCount(0);
+});
+
+test('a past day is forgotten after switching away and back', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
+  await page.getByRole('button', { name: 'Add Sam' }).click();
+  const pressed = (n: RegExp) => expect(bar(page).getByRole('button', { name: n })).toHaveAttribute('aria-pressed', 'true');
+  await bar(page).getByRole('button', { name: /Me/ }).click();
+  await pressed(/Me/);
+  await page.getByRole('button', { name: 'Today' }).click();
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await expect(page.getByText('Logging to a past day')).toBeVisible();
+  await bar(page).getByRole('button', { name: /Sam/ }).click();
+  await pressed(/Sam/);
+  await bar(page).getByRole('button', { name: /Me/ }).click();
+  await pressed(/Me/);
   await expect(page.getByRole('heading', { name: 'Fri, Oct 2' })).toBeVisible();
   await expect(page.getByText(/Logging to/)).toHaveCount(0);
 });
@@ -110,4 +174,81 @@ test('the exercise search stays visible below the profile bar when the list scro
   const search = (await page.getByRole('searchbox', { name: 'Search exercises' }).boundingBox())!;
   expect(search.y).toBeGreaterThanOrEqual(barBox.y + barBox.height - 1);
   await page.screenshot({ path: 'screenshots/19-picker-profiles.png' });
+});
+
+const addPerson = async (page: Page, n: string) => {
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill(n);
+  await page.getByRole('button', { name: `Add ${n}` }).click();
+  await expect(bar(page).getByRole('button', { name: new RegExp(n) })).toHaveAttribute('aria-pressed', 'true');
+};
+
+test('the delete confirmation opens under that person’s row, and Me says why it has no Delete', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  for (const n of ['Sam', 'Kim', 'Jo', 'Lee']) await addPerson(page, n);
+  await expect(page.getByText('Your own profile can’t be deleted.')).toBeVisible();
+  const row = page.getByRole('listitem').filter({ has: page.getByRole('textbox', { name: 'Name of Sam' }) });
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  const confirm = page.getByRole('textbox', { name: 'Type Sam to confirm' });
+  await expect(confirm).toBeVisible();
+  const del = (await row.getByRole('button', { name: 'Delete', exact: true }).boundingBox())!;
+  const field = (await confirm.boundingBox())!;
+  // Kim, Jo and Lee sit below Sam: a box after the whole list would be far from the button that opened it.
+  expect(field.y).toBeGreaterThanOrEqual(del.y + del.height);
+  expect(field.y - (del.y + del.height)).toBeLessThanOrEqual(120);
+  await row.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'screenshots/p16-people-card.png' });
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(confirm).toHaveCount(0);
+});
+
+test('a name typed in the People card survives a profile switch', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await addPerson(page, 'Sam');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Kim');
+  await bar(page).getByRole('button', { name: /Me/ }).click();
+  await expect(bar(page).getByRole('button', { name: /Me/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Kim');
+  await expect(page.getByRole('button', { name: 'Add Kim' })).toBeEnabled();
+});
+
+test('a time typed under “Did this earlier?” survives a profile switch', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await addPerson(page, 'Sam');
+  await bar(page).getByRole('button', { name: /Me/ }).click();
+  await page.getByRole('button', { name: 'Today' }).click();
+  await addCurl(page);
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('button', { name: 'Did this earlier?' }).click();
+  await page.getByRole('textbox', { name: 'When' }).fill('07:15');
+  await bar(page).getByRole('button', { name: /Sam/ }).click();
+  await expect(bar(page).getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  await bar(page).getByRole('button', { name: /Me/ }).click();
+  await expect(bar(page).getByRole('button', { name: /Me/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('07:15');
+});
+
+test('a future time restored after a profile switch is still blocked', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await addPerson(page, 'Sam');
+  await bar(page).getByRole('button', { name: /Me/ }).click();
+  await page.getByRole('button', { name: 'Today' }).click();
+  await addCurl(page);
+  await page.getByRole('textbox', { name: 'Weight' }).fill('20');
+  await page.getByRole('textbox', { name: 'Reps' }).fill('10');
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('button', { name: 'Did this earlier?' }).click();
+  await page.getByRole('textbox', { name: 'When' }).fill('19:00');
+  await expect(page.getByRole('button', { name: 'Add set' })).toBeDisabled();
+  await bar(page).getByRole('button', { name: /Sam/ }).click();
+  await expect(bar(page).getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  await bar(page).getByRole('button', { name: /Me/ }).click();
+  await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('19:00');
+  await expect(page.getByRole('button', { name: 'Add set' })).toBeDisabled(); // a restored time is a typed time
 });

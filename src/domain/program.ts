@@ -1,6 +1,6 @@
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
 import { DEFAULT_LOW_SHARE, type Profile, type Tier } from './profile';
-import { normalizeName } from './ids';
+import { localDate, normalizeName } from './ids';
 import { defaultSettings, isWorking } from './progression';
 import { sameExercise } from './stats';
 import { addDays } from './analytics';
@@ -9,7 +9,7 @@ import { CATALOG } from './catalog';
 
 export interface Slot { exercise: string; sets: number; repMin: number; repMax: number }
 export interface ProgramDay { name: string; slots: Slot[] }
-export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string; newToYou?: string[]; unavailable?: Muscle[] }
+export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string; /** Minutes per session it was built for; unset when built by sets. */ minutes?: number; /** Set once its days were hand-edited; a rebuild drops it. */ edited?: boolean; newToYou?: string[]; unavailable?: Muscle[] }
 /** What happened to the program on one date: which day was run, and what was skipped or swapped. */
 /** `slots` is the day as planned when the session was logged, so later program edits don't rewrite history. */
 export interface DayPlan { key: string; date: string; day: number; skips: string[]; swaps: Record<string, string>; slots?: Slot[] }
@@ -89,7 +89,7 @@ function bestTier(ex: string, p: Profile): Tier {
 
 export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days: number; perSession: number }, now: Date, ctx: BuildContext = {}): Program {
   const { days, perSession } = opts;
-  const today = now.toISOString().slice(0, 10);
+  const today = localDate(now);
   const achieved = zero();
   const weekly = new Map<string, number>();
   const saturated = new Set<Muscle>(); // no lift left with room this week
@@ -111,6 +111,18 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   let low = 0;
   const isLow = (m: Muscle) => profile.tiers[m] >= 3;
   const prioritiesShort = () => MUSCLES.some((m) => !isLow(m) && !saturated.has(m) && achieved[m] < profile.targets[profile.tiers[m]][1]);
+  const perDay = Array.from({ length: days }, () => new Map<string, number>());
+  const totals = Array(days).fill(0) as number[];
+  const room = (ex: string, d: number) => (perDay[d].get(ex) ?? 0) + UNIT <= MAX_SETS_PER_DAY;
+  const known = new Set([...entries.map((e) => e.exercise), ...(ctx.include ?? [])].map((x) => normalizeName(x).toLowerCase()));
+  const isKnown = (ex: string) => known.has(normalizeName(ex).toLowerCase());
+  // The lift for muscle m on day d, best candidate first within each step: a lift you know that no other day uses,
+  // then a lift you know (repeated), then a new one no other day uses, then any with room. Varied days, familiar lifts.
+  const pick = (m: Muscle, d: number): string | undefined => {
+    const cs = cands.get(m)!.filter((c) => room(c, d));
+    const elsewhere = (c: string) => perDay.some((x, i) => i !== d && x.has(c));
+    return cs.find((c) => isKnown(c) && !elsewhere(c)) ?? cs.find(isKnown) ?? cs.find((c) => !elsewhere(c)) ?? cs[0];
+  };
   for (let pairs = days * Math.floor(perSession / UNIT); pairs > 0; pairs--) {
     const open = MUSCLES.filter((m) => !saturated.has(m));
     // Over the low-priority budget, priority 3–4 muscles wait — re-checked every pair, so they come back once priorities are covered.
@@ -118,28 +130,21 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
     const below = (bound: 0 | 1) => open.filter((m) => score(m, bound) > 0 && !(capped && isLow(m))).sort((a, b) => score(b, bound) - score(a, bound));
     const m = below(0)[0] ?? below(1)[0];
     if (!m) break;
-    // The best candidate with room left this week; none left means this muscle is done.
-    const ex = cands.get(m)!.find((c) => (weekly.get(c) ?? 0) + UNIT <= MAX_SETS_PER_DAY * days);
-    if (!ex) { saturated.add(m); pairs++; continue; }
+    // The pair goes on the day with the fewest sets for m (then the lightest) that has room and a lift for m with room,
+    // so each muscle spreads over the days with its best lifts split between them; none means this muscle is done.
+    const mSets = (i: number) => [...perDay[i]].reduce((a, [ex, n]) => a + (muscleVector(ex)?.[m] === 1 ? n : 0), 0);
+    const d = totals.map((t, i) => [mSets(i), t, i]).filter(([, t, i]) => t + UNIT <= dayCap && pick(m, i)).sort((a, b) => a[0] - b[0] || a[1] - b[1])[0]?.[2];
+    if (d === undefined) { saturated.add(m); pairs++; continue; }
+    const ex = pick(m, d)!;
     if (isLow(m)) low += UNIT;
+    perDay[d].set(ex, (perDay[d].get(ex) ?? 0) + UNIT);
+    totals[d] += UNIT;
     weekly.set(ex, (weekly.get(ex) ?? 0) + UNIT);
     for (const [mm, f] of Object.entries(muscleVector(ex) ?? {}) as [Muscle, number][]) achieved[mm] += f * UNIT;
   }
 
   const order = [...weekly.keys()].sort((a, b) => bestTier(a, profile) - bestTier(b, profile) || weekly.get(b)! - weekly.get(a)!);
-  const perDay = Array.from({ length: days }, () => new Map<string, number>());
-  const totals = Array(days).fill(0) as number[];
-  // Pair by pair onto the lightest day that can still take one.
-  for (const ex of order) {
-    for (let k = weekly.get(ex)!; k > 0; k -= UNIT) {
-      const d = totals.map((t, i) => [t, i]).filter(([t, i]) => t + UNIT <= dayCap && (perDay[i].get(ex) ?? 0) + UNIT <= MAX_SETS_PER_DAY).sort((a, b) => a[0] - b[0])[0]?.[1];
-      if (d === undefined) break;
-      perDay[d].set(ex, (perDay[d].get(ex) ?? 0) + UNIT);
-      totals[d] += UNIT;
-    }
-  }
-  const known = new Set([...entries.map((e) => e.exercise), ...(ctx.include ?? [])].map((x) => normalizeName(x).toLowerCase()));
-  const newToYou = order.filter((ex) => !known.has(normalizeName(ex).toLowerCase()) && perDay.some((d) => d.has(ex)));
+  const newToYou = order.filter((ex) => !isKnown(ex) && perDay.some((d) => d.has(ex)));
   return {
     key: 'program', perSession, createdAt: now.toISOString(), newToYou, unavailable,
     days: perDay.map((m, i) => ({

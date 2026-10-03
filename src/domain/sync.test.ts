@@ -71,6 +71,33 @@ describe('repoClient', () => {
     expect(gh.store.get('app/body.csv')!.text).toBe('fresh');
     expect(puts.at(-1)!.body!.sha).toBe('sha-app/body.csv-0-moved');
   });
+  it('retries once when GitHub answers 422 because another device created the file first', async () => {
+    // Scripted: GET 404, PUT (no sha) 422, GET 200 with a sha, PUT (with sha) 201.
+    const script: Response[] = [
+      new Response('{}', { status: 404 }),
+      new Response('{"message":"Invalid request.\\n\\n\\"sha\\" wasn\'t supplied."}', { status: 422 }),
+      Response.json({ encoding: 'base64', content: toB64('theirs'), sha: 'abc' }),
+      Response.json({}, { status: 201 }),
+    ];
+    const puts: { sha?: string }[] = [];
+    const fetchFn = async (_url: string, init: RequestInit = {}): Promise<Response> => {
+      if (init.method === 'PUT') puts.push(JSON.parse(String(init.body)));
+      return script.shift()!;
+    };
+    await repoClient(CFG, fetchFn).upsert('app/new.csv', 'mine', 'm');
+    expect(puts).toHaveLength(2);
+    expect(puts[0].sha).toBeUndefined();
+    expect(puts.at(-1)!.sha).toBe('abc');
+  });
+  it('does not retry a 422 that is not the sha race, and says what GitHub said', async () => {
+    const script: Response[] = [new Response('{}', { status: 404 }), new Response('{"message":"path is too long"}', { status: 422 })];
+    let puts = 0;
+    const fetchFn = async (_url: string, init: RequestInit = {}): Promise<Response> => { if (init.method === 'PUT') puts++; return script.shift()!; };
+    const err = await repoClient(CFG, fetchFn).upsert('app/new.csv', 'mine', 'm').then(() => null, (e: SyncError) => e);
+    expect(err?.kind).toBe('other');
+    expect(err?.message).toContain('422');
+    expect(puts).toBe(1);
+  });
   it('says what went wrong', async () => {
     const kind = async (code: number) => {
       const c = repoClient(CFG, fakeGitHub({}, { 'GET x.csv': code }).fetchFn);

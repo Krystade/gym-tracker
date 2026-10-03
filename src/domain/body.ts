@@ -131,3 +131,21 @@ export function proteinCheck(days: BodyDay[], trendWeight: number, today: string
   if (!xs.length) return null;
   return { avg: Math.round(xs.reduce((a, d) => a + d.protein!, 0) / xs.length), target: Math.round((trendWeight / 2.20462) * 1.6), days: xs.length };
 }
+
+/**
+ * Like `diffSets` for days. Changed: a field the day carries replaces a different stored value (an empty field is kept by `mergeBody`,
+ * so it can't change anything). A day that only fills fields the stored one lacks overwrites nothing, so it counts as fresh.
+ */
+export function diffBody(existing: BodyDay[], incoming: BodyDay[]): { fresh: BodyDay[]; changed: BodyDay[]; same: number } {
+  const by = new Map(existing.map((d) => [d.date, d]));
+  const out = { fresh: [] as BodyDay[], changed: [] as BodyDay[], same: 0 };
+  for (const d of incoming) {
+    const had = by.get(d.date);
+    const fields = Object.entries(d).filter(([k, v]) => k !== 'date' && v !== undefined) as [keyof BodyDay, unknown][];
+    if (!had) out.fresh.push(d);
+    else if (fields.some(([k, v]) => had[k] !== undefined && had[k] !== v)) out.changed.push(d);
+    else if (fields.some(([k]) => had[k] === undefined)) out.fresh.push(d);
+    else out.same++;
+  }
+  return out;
+}

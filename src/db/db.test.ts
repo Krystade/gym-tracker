@@ -2,9 +2,10 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
+import { addSet, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
+import { buildAppSet } from '../domain/buildSet';
 
 const CSV = 'date,exercise,set,weight_lb,reps,note,source\n2026-01-05,Cable Curl,1,52.5,12,"a, ""b""",s\n2026-01-05,Cable Curl,2,60,,,s\n';
 
@@ -25,6 +26,52 @@ describe('db', () => {
     await putSet(e);
     await deleteSet(e.id);
     expect(await getAllSets()).toEqual([]);
+  });
+});
+
+describe('deleteSetWithTombstone', () => {
+  it('removes the set and records its tombstone together', async () => {
+    const [a, b] = parseCsv(CSV).entries;
+    await putSet(a); await putSet(b);
+    await addTombstone('older');
+    await deleteSetWithTombstone(a.id);
+    expect((await getAllSets()).map((e) => e.id)).toEqual([b.id]);
+    expect(await getTombstones()).toEqual(new Set(['older', a.id]));
+  });
+  it('keeps the set when the tombstone cannot be written', async () => {
+    const [a] = parseCsv(CSV).entries;
+    await putSet(a);
+    const real = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore['put']>) {
+      if (this.name === 'config') throw new Error('disk full');
+      return real.apply(this, args);
+    };
+    try { await expect(deleteSetWithTombstone(a.id)).rejects.toThrow('disk full'); }
+    finally { IDBObjectStore.prototype.put = real; }
+    expect((await getAllSets()).map((e) => e.id)).toEqual([a.id]);
+    expect(await getTombstones()).toEqual(new Set());
+  });
+  it('reports the real error when the failed write already aborted the transaction', async () => {
+    const [a] = parseCsv(CSV).entries;
+    await putSet(a);
+    const real = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore['put']>) {
+      if (this.name === 'config') { this.transaction.abort(); throw new Error('quota exceeded'); } // as a QuotaExceededError does
+      return real.apply(this, args);
+    };
+    try { await expect(deleteSetWithTombstone(a.id)).rejects.toThrow('quota exceeded'); }
+    finally { IDBObjectStore.prototype.put = real; }
+    expect((await getAllSets()).map((e) => e.id)).toEqual([a.id]);
+  });
+});
+
+describe('addSet', () => {
+  it('numbers the new set from what is stored, not from a stale copy', async () => {
+    const input = { date: '2026-10-02', exercise: 'Bench Press', weight: 100, reps: 8, flags: [] };
+    await putSet(buildAppSet([], input, new Date('2026-10-02T18:00:00')));
+    const second = await addSet((stored) => buildAppSet(stored, { ...input, weight: 200, reps: 3 }, new Date('2026-10-02T18:01:00')));
+    expect(second.setNo).toBe(2);
+    expect((await getAllSets()).map((e) => [e.setNo, e.weight]).sort()).toEqual([[1, 100], [2, 200]]);
   });
 });
 

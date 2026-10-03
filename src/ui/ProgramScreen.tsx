@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { SetEntry } from '../domain/types';
 import type { ProfileStore } from '../state/useProfile';
 import type { ProgramStore } from '../state/useProgram';
@@ -7,7 +7,7 @@ import { defaultSettings } from '../domain/progression';
 import { exerciseNames } from '../domain/stats';
 import { MuscleBars } from './charts/MuscleBars';
 import { ExercisePicker } from './ExercisePicker';
-import { BACK_BLOCK, isHold } from '../domain/care';
+import { BACK_BLOCK, isHoldLift } from '../domain/care';
 import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
 import { CATALOG } from '../domain/catalog';
@@ -26,6 +26,13 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
   const [mode, setMode] = useState<'sets' | 'minutes'>('sets');
   const [mins, setMins] = useState('60');
   const [gymsOpen, setGymsOpen] = useState(false);
+  // The last lift removed, so one tap puts it back where it was.
+  const [removed, setRemoved] = useState<{ day: number; at: number; slot: ProgramDay['slots'][number] } | null>(null);
+  useEffect(() => {
+    if (!removed) return;
+    const t = setTimeout(() => setRemoved(null), 8000);
+    return () => clearTimeout(t);
+  }, [removed]);
   const share = profile.profile.lowShare ?? DEFAULT_LOW_SHARE;
   const setShare = (v: number) => void profile.save({ ...profile.profile, lowShare: Math.round(Math.min(0.5, Math.max(0, v)) * 100) / 100 });
   const unset = Object.values(profile.profile.tiers).every((t) => t === 3);
@@ -45,33 +52,32 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
   }, [entries, today]);
   const dayMinutes = (day: ProgramDay) => Math.round(estimateSeconds(day.slots, pace, warm) / 60);
 
-  const edit = (fn: (x: Program) => void) => { if (!p) return; const next: Program = structuredClone(p); fn(next); void programs.save(next); };
+  // What the program was built for, not the input: the minutes box can change without a rebuild. Only at the 8-set floor is it a miss the builder couldn't fix.
+  const budget = p?.minutes;
+  const over = p && budget != null && p.perSession <= 8 ? p.days.filter((x) => dayMinutes(x) > budget) : [];
 
-  if (gymsOpen) return <GymsScreen gyms={gyms} logged={exerciseNames(entries)} onBack={() => { setGymsOpen(false); window.scrollTo(0, 0); }} />;
+  const edit = (fn: (x: Program) => void) => { if (!p) return; const next: Program = structuredClone(p); fn(next); next.edited = true; setRemoved(null); void programs.save(next); };
+
+  if (gymsOpen) return <GymsScreen gyms={gyms} logged={exerciseNames(entries)} fresh={!gym} onBack={() => { setGymsOpen(false); window.scrollTo(0, 0); }} />;
   if (addTo != null) return <ExercisePicker recent={exerciseNames(entries)} gym={gym} onCancel={() => setAddTo(null)} onPick={(name) => {
     const st = defaultSettings(name);
     edit((x) => { if (!x.days[addTo].slots.some((sl) => sl.exercise === name)) x.days[addTo].slots.push({ exercise: name, sets: 3, repMin: st.repMin, repMax: st.repMax }); });
     setAddTo(null);
   }} />;
 
-  return (
+  // With a program, the builder folds into "Rebuild program" below the days, so its cards lose their own frame.
+  const frame = p ? 'sub' : 'card';
+  const builder = (
     <>
-      <button onClick={onBack}>‹ Back</button>
-      <h1>Program</h1>
-      {unset && (
-        <section className="card note-card">
-          <p><b>Priorities aren’t set.</b> Every muscle is priority 3, so the plan spreads sets evenly over all of them. Set priorities on Stats, or import your profile file on Data, then build.</p>
-        </section>
-      )}
-      <section className="card">
+      <section className={frame}>
         {gym ? (
           <div className="today-head"><span>Gym: <b>{gym.name}</b></span><button className="mini" onClick={() => setGymsOpen(true)}>Change</button></div>
         ) : (
-          <button className="wide" onClick={() => { const n = { id: `g${Date.now().toString(36)}`, name: 'My gym', equipment: [], exclude: [], include: [] }; void gyms.save([...gyms.gyms, n], n.id); setGymsOpen(true); }}>Set up your gym</button>
+          <button className="wide" onClick={() => setGymsOpen(true)}>Set up your gym</button>
         )}
         <p className="muted small">{gym ? 'Only lifts this gym can do are used.' : 'Without a gym, any lift can be picked.'}</p>
       </section>
-      <section className="card">
+      <section className={frame}>
         <p className="muted small">Built from your priorities: each set goes to the priority muscle furthest below its weekly target, using the lifts you actually do. Full-body days: an exercise with enough weekly sets repeats on every day, so priority muscles are trained each session.</p>
         <div className="settings-grid two">
           <label>Days per week<input aria-label="Days per week" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} /></label>
@@ -91,29 +97,46 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
         </div>
         <p className="muted small">The most of each week spent on priority 3–4 muscles while priority 1–2 still need sets.</p>
         <button className="primary wide" disabled={!valid} onClick={() => {
-          if (p && !confirm('Replace the current program?')) return;
+          if (p && !confirm(p.edited ? 'Rebuild the program? Changes you made to its days (added, removed or re-counted lifts) will be lost.' : 'Rebuild the program?')) return;
           const ctx = gym ? { available: availableSet(gym, [...CATALOG, ...exerciseNames(entries), ...gym.include]), include: gym.include } : {};
           const build = (perSession: number) => buildProgram(profile.profile, entries, { days: d, perSession }, new Date(), ctx);
+          setRemoved(null); // an undo for the old program must not land in the new one
           // By minutes: the most sets per session whose every day fits, estimated from your own pace.
-          void programs.save(build(mode === 'minutes' ? perSessionForMinutes(m, build, dayMinutes) : s));
+          void programs.save(mode === 'minutes' ? { ...build(perSessionForMinutes(m, build, dayMinutes)), minutes: m } : build(s));
         }}>{p ? 'Rebuild program' : 'Build program'}</button>
-        {mode === 'minutes' && p && p.perSession <= 8 && Number.isInteger(m) && m >= 20 && m <= 150 && Math.max(...p.days.map(dayMinutes)) > m && <p className="warn small" role="status">Even at 8 sets a session, some days run over {m} min.</p>}
-        {p?.unavailable?.length ? <p className="warn small">Nothing at this gym trains: {p.unavailable.join(', ')}.</p> : null}
       </section>
+    </>
+  );
+
+  return (
+    <>
+      <button onClick={onBack}>‹ Back</button>
+      <h1>Program</h1>
+      {unset && (
+        <section className="card note-card">
+          <p><b>Priorities aren’t set.</b> Every muscle is priority 3, so the plan spreads sets evenly over all of them. Set priorities on Stats, or import your profile file on Data, then build.</p>
+        </section>
+      )}
+      {!p && builder}
+      {over.length > 0 && <p className="warn small" role="status">{over.map((x) => `${x.name} ≈ ${dayMinutes(x)} min`).join(', ')}: over your {budget}. Train fewer days a week or allow more minutes, then rebuild.</p>}
+      {p?.unavailable?.length ? <p className="warn small">Nothing at this gym trains: {p.unavailable.join(', ')}.</p> : null}
       {p && p.days.map((day, di) => (
         <section className="card" key={day.name}>
           <h2>{day.name} · {day.slots.reduce((a, x) => a + x.sets, 0)} sets · ≈ {dayMinutes(day)} min</h2>
           <ol className="prog-slots" aria-label={`${day.name} exercises`}>
             {day.slots.map((slot, si) => (
               <li key={slot.exercise}>
-                <span className="prog-name"><b>{slot.exercise}</b>{p.newToYou?.includes(slot.exercise) && <span className="tag">new to you</span>}<span className="muted small">{slot.repMin}–{slot.repMax}{isHold(slot.exercise) ? ' s hold' : ' reps'}</span></span>
+                <span className="prog-name"><b>{slot.exercise}</b>{p.newToYou?.includes(slot.exercise) && <span className="tag">new to you</span>}<span className="muted small">{slot.repMin}–{slot.repMax}{isHoldLift(slot.exercise, entries) ? ' s hold' : ' reps'}</span></span>
                 <button aria-label={`Fewer sets of ${slot.exercise}`} disabled={slot.sets <= 1} onClick={() => edit((x) => { x.days[di].slots[si].sets--; })}>−</button>
                 <span className="prog-sets">{slot.sets}</span>
                 <button aria-label={`More sets of ${slot.exercise}`} disabled={slot.sets >= MAX_SETS_PER_DAY + 2} onClick={() => edit((x) => { x.days[di].slots[si].sets++; })}>+</button>
-                <button aria-label={`Remove ${slot.exercise}`} onClick={() => edit((x) => { x.days[di].slots.splice(si, 1); })}>×</button>
+                <button aria-label={`Remove ${slot.exercise}`} onClick={() => { const gone = slot; edit((x) => { x.days[di].slots.splice(si, 1); }); setRemoved({ day: di, at: si, slot: gone }); }}>×</button>
               </li>
             ))}
           </ol>
+          {removed?.day === di && (
+            <p className="undo-note" role="status">Removed {removed.slot.exercise}. <button className="mini" onClick={() => edit((x) => { x.days[di].slots.splice(removed.at, 0, removed.slot); })}>Undo</button></p>
+          )}
           <button className="wide" onClick={() => setAddTo(di)}>Add exercise to {day.name}</button>
         </section>
       ))}
@@ -132,6 +155,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
           <MuscleBars sets={programVolume(p)} profile={profile.profile} />
         </section>
       )}
+      {p && <details className="card builder"><summary>Rebuild program</summary>{builder}</details>}
     </>
   );
 }

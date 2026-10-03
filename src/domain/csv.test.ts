@@ -1,6 +1,6 @@
 import { setId } from './ids';
 import { describe, expect, it } from 'vitest';
-import { parseCsv, toCsv, CSV_HEADER } from './csv';
+import { diffSets, parseCsv, toCsv, CSV_HEADER } from './csv';
 import type { SetEntry } from './types';
 
 const base: Omit<SetEntry, 'id' | 'setNo' | 'seq'> = {
@@ -31,6 +31,16 @@ describe('csv', () => {
     const b = mk(1, { exercise: 'Bench Press', id: 'x|2', seq: 2 });
     const { entries } = parseCsv(toCsv([b, a]));
     expect(entries.map((e) => e.exercise)).toEqual(['Zottman Curl', 'Bench Press']);
+  });
+
+  it('exports a day in the order History shows: timed sets by time, then untimed in the order entered', () => {
+    // Set 1 never had a time; set 2 was given one later, so it reads first. Row position must not change either set number.
+    const one = mk(1, { id: 'x|1', seq: 1 });
+    const two = mk(2, { id: 'x|2', seq: 2, loggedAt: '2026-01-05T08:00:00.000Z' });
+    const rows = parseCsv(toCsv([one, two]));
+    expect(rows.errors).toEqual([]);
+    expect(rows.entries.map((e) => e.setNo)).toEqual([2, 1]);
+    expect(rows.entries.map((e) => e.loggedAt)).toEqual(['2026-01-05T08:00:00.000Z', undefined]);
   });
 
   it('reports bad rows with their row number and keeps the good ones', () => {
@@ -81,6 +91,17 @@ describe('Phase 12 review fixes', () => {
   });
 });
 
+describe('duplicate rows', () => {
+  it('reports a second row for the same set instead of silently dropping one', () => {
+    const csv = 'date,exercise,set,weight_lb,reps\n2026-09-01,Bench Press,1,135,10\n2026-09-01,bench  press,1,145,8\n2026-09-01,Bench Press,2,135,9\n';
+    const { entries, errors } = parseCsv(csv);
+    expect(entries.map((e) => e.weight)).toEqual([135, 135]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ row: 3 });
+    expect(errors[0].message).toContain('Same set as row 2');
+  });
+});
+
 describe('late sets in the CSV', () => {
   it('round-trips entered_at and keeps an untimed set untimed', () => {
     const e: SetEntry = { id: setId('app', '2026-10-01', 'Bench Press', 1), date: '2026-10-01', seq: 1, exercise: 'Bench Press', setNo: 1,
@@ -88,5 +109,24 @@ describe('late sets in the CSV', () => {
     const back = parseCsv(toCsv([e])).entries[0];
     expect(back.enteredAt).toBe(e.enteredAt);
     expect(back).not.toHaveProperty('loggedAt');
+  });
+});
+
+describe('diffSets', () => {
+  it('splits incoming sets into new, changed and identical', () => {
+    const existing = [mk(1), mk(2), mk(3)];
+    const incoming = [mk(1), mk(2, { weight: 65 }), mk(4)];
+    const d = diffSets(existing, incoming);
+    expect(d.fresh.map((e) => e.setNo)).toEqual([4]);
+    expect(d.changed.map((e) => e.setNo)).toEqual([2]);
+    expect(d.same).toBe(1);
+  });
+  it('ignores seq, field order and absent-versus-undefined, but sees a note, a flag or a target', () => {
+    const stored = mk(1, { note: 'x', flags: ['pain'], target: { weight: 60, reps: 12, sets: 3 } });
+    const reordered: SetEntry = { target: { sets: 3, reps: 12, weight: 60 }, note: 'x', rir: undefined, seq: 99, id: stored.id, setNo: 1, ...base, flags: ['pain'] };
+    expect(diffSets([stored], [reordered]).same).toBe(1);
+    expect(diffSets([stored], [{ ...stored, note: undefined }]).changed).toHaveLength(1);
+    expect(diffSets([stored], [{ ...stored, flags: [] }]).changed).toHaveLength(1);
+    expect(diffSets([stored], [{ ...stored, target: { weight: 60, reps: 12, sets: 4 } }]).changed).toHaveLength(1);
   });
 });

@@ -3,7 +3,7 @@ import { useDb } from '../state/profileDb';
 import { comparePair, fitSize, photoDate, photoId, POSES, timeline, weightNear, type PhotoMeta, type Pose } from '../domain/photos';
 import { localDate } from '../domain/ids';
 import { trend } from '../domain/body';
-import { fmtDate } from '../domain/format';
+import { fmtDate, fmtDay } from '../domain/format';
 import type { PhotosStore } from '../state/usePhotos';
 import type { BodyStore } from '../state/useBody';
 
@@ -72,7 +72,7 @@ export function PhotosScreen({ photos, body, today, onBack }: { photos: PhotosSt
       const img = await decode(file);
       const [full, thumb] = [await encode(img, 1600), await encode(img, 320)];
       const ok = await photos.add({ id, date: when, pose, width: full.width, height: full.height, addedAt: new Date().toISOString() }, full.blob, thumb.blob);
-      if (ok) setMsg(`Saved ${pose} photo for ${when}.`);
+      if (ok) setMsg(`Saved ${pose} photo for ${fmtDay(when, today)}.`);
     } catch (e) { setMsg(`Could not read that image: ${String(e)}`); }
     finally { setBusy(false); }
   }
@@ -129,7 +129,7 @@ export function PhotosScreen({ photos, body, today, onBack }: { photos: PhotosSt
             {[0, 1].map((k) => (
               <figure key={k}>
                 <select aria-label={k === 0 ? 'Before' : 'After'} value={pair[k]} onChange={(e) => setPick(k === 0 ? [e.target.value, pair[1]] : [pair[0], e.target.value])}>
-                  {dates.map((d) => <option key={d} value={d}>{d}</option>)}
+                  {dates.map((d) => <option key={d} value={d}>{fmtDay(d, today)}</option>)}
                 </select>
                 <Img id={photoId(pair[k], cmpPose)} kind="full" version={photos.version} label={alt({ pose: cmpPose, date: pair[k] })} />
                 <figcaption>{weight(pair[k]) ? <b>{weight(pair[k])}</b> : <span className="muted small">no weigh-in</span>}</figcaption>

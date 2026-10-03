@@ -1,5 +1,6 @@
 import { defaultSettings, settingsKey } from './progression';
 import { sameExercise } from './stats';
+import { addDays } from './analytics';
 import type { Program, ProgramDay } from './program';
 import type { SetEntry } from './types';
 
@@ -66,6 +67,12 @@ export function suggestTime(entries: SetEntry[], date: string, exercise: string,
   }
   const next = Math.min((secs(day.at(-1)!) + typical) * 1000, now.getTime());
   return hhmm(new Date(next));
+}
+
+/** The day a workout belongs to: past midnight, the previous day while its last timed set is under `hours` old. */
+export function sessionDay(entries: SetEntry[], today: string, now: Date, hours = 3): string {
+  const last = entries.filter((e) => e.loggedAt).reduce<SetEntry | null>((a, e) => (!a || secs(e) > secs(a) ? e : a), null);
+  return last && last.date === addDays(today, -1) && now.getTime() - secs(last) * 1000 <= hours * 3600e3 ? last.date : today;
 }
 
 /** The most sets per session (8–20) whose every day `est`imates within `minutes`; 8 if none fits. */

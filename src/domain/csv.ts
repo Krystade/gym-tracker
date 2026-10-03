@@ -1,4 +1,5 @@
 import { normalizeName, setId } from './ids';
+import { byOrderDone } from './stats';
 import { isFlag, isRegion, type Flag, type SetEntry } from './types';
 
 export const CSV_HEADER = ['date', 'exercise', 'as_written', 'set', 'weight_lb', 'reps', 'rir', 'flags', 'note', 'source', 'pain_region', 'pain_severity',
@@ -7,8 +8,8 @@ const REQUIRED = ['date', 'exercise', 'set', 'weight_lb', 'reps'];
 
 export interface CsvError { row: number; message: string }
 
-export const compareEntries = (a: SetEntry, b: SetEntry): number =>
-  a.date.localeCompare(b.date) || a.seq - b.seq || a.setNo - b.setNo;
+/** By date, then in the order done (as History shows it), so the file reads like the screen. */
+export const compareEntries = (a: SetEntry, b: SetEntry): number => a.date.localeCompare(b.date) || byOrderDone(a, b);
 
 const esc = (v: string): string => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 
@@ -59,6 +60,7 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
   if (missing.length) return { entries, errors: [{ row: 1, message: `Missing columns: ${missing.join(', ')}` }] };
   const col = (r: string[], name: string) => { const i = header.indexOf(name); return i < 0 ? '' : (r[i] ?? ''); };
 
+  const seen = new Map<string, number>();
   rows.slice(1).forEach((r, i) => {
     const rowNo = i + 2;
     if (r.every((f) => f.trim() === '')) return;
@@ -97,8 +99,13 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     const source = col(r, 'source').trim() || defaultSource;
     const asWritten = col(r, 'as_written');
     const note = col(r, 'note');
+    // The id ignores case and spacing, so the second row would silently replace the first on import.
+    const id = setId(source, date, exercise, setNo);
+    const first = seen.get(id);
+    if (first !== undefined) return fail(`Same set as row ${first} (${date}, ${exercise}, set ${setNo})`);
+    seen.set(id, rowNo);
     entries.push({
-      id: setId(source, date, exercise, setNo),
+      id,
       date, seq: i, exercise, setNo, weight, reps, source,
       flags: flagParts as Flag[],
       ...(rir !== undefined && { rir }),
@@ -113,4 +120,25 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     });
   });
   return { entries, errors };
+}
+
+// Sorted keys at every level, so field order never reads as a change.
+const canon = (v: unknown): unknown =>
+  Array.isArray(v) ? v.map(canon)
+  : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => [k, canon(x)]))
+  : v;
+// `seq` is the import row index for a CSV and a timestamp for a live set, so it says nothing about whether the set changed.
+const sig = ({ seq: _seq, ...rest }: SetEntry): string => JSON.stringify(canon(rest));
+
+/** Which incoming sets are new, which differ from the stored set with the same id, and how many are already identical. */
+export function diffSets(existing: SetEntry[], incoming: SetEntry[]): { fresh: SetEntry[]; changed: SetEntry[]; same: number } {
+  const by = new Map(existing.map((e) => [e.id, sig(e)]));
+  const out = { fresh: [] as SetEntry[], changed: [] as SetEntry[], same: 0 };
+  for (const e of incoming) {
+    const had = by.get(e.id);
+    if (had === undefined) out.fresh.push(e);
+    else if (had === sig(e)) out.same++;
+    else out.changed.push(e);
+  }
+  return out;
 }

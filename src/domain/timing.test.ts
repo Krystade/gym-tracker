@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PACE, estimateSeconds, paces, perSessionForMinutes, perSetSeconds, sessionMinutes, suggestTime } from './timing';
+import { DEFAULT_PACE, estimateSeconds, paces, perSessionForMinutes, perSetSeconds, sessionDay, sessionMinutes, suggestTime } from './timing';
 import type { SetEntry } from './types';
 import type { Program } from './program';
 
@@ -44,6 +44,24 @@ describe('estimates', () => {
     const est = (d: Program['days'][number]) => d.slots[0].sets * 3; // 3 min a set
     expect(perSessionForMinutes(45, build, est)).toBe(15);
     expect(perSessionForMinutes(10, build, est)).toBe(8); // floor
+  });
+});
+
+describe('sessionDay', () => {
+  const now = new Date('2026-10-02T00:20:00');
+  it('stays on yesterday while its last timed set is under 3 hours old', () => {
+    expect(sessionDay([at('2026-10-01', '23:40')], '2026-10-02', now)).toBe('2026-10-01');
+  });
+  it('moves to today once the last set is older than that', () => {
+    expect(sessionDay([at('2026-10-01', '20:00')], '2026-10-02', now)).toBe('2026-10-02');
+  });
+  it('is today with no sets, a set today, or a set two days ago', () => {
+    expect(sessionDay([], '2026-10-02', now)).toBe('2026-10-02');
+    expect(sessionDay([at('2026-10-02', '00:10')], '2026-10-02', now)).toBe('2026-10-02');
+    expect(sessionDay([at('2026-09-30', '23:50')], '2026-10-02', now)).toBe('2026-10-02');
+  });
+  it('ignores sets without a time', () => {
+    expect(sessionDay([at('2026-10-01', '23:40', 'Bench Press', false)], '2026-10-02', now)).toBe('2026-10-02');
   });
 });
 
