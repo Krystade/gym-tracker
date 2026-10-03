@@ -236,3 +236,40 @@ describe('tier order', () => {
     expect(curls[0]).toBe('Cable Curl');
   });
 });
+
+describe('varied days', () => {
+  const reps = (ex: string, n: number) => Array.from({ length: n }, (_, i) => s(`2026-09-${10 + i}`, ex));
+  const hist = [...reps('Incline DB Curl', 8), ...reps('Bayesian Cable Curl', 6), ...reps('Cable Pushdown', 8), ...reps('Overhead DB Triceps Extension', 6)];
+  const prof = () => { const p = defaultProfile(); p.tiers.Biceps = 1; p.tiers.Triceps = 1; return p; };
+  const directOn = (p: Program, d: number, m: Muscle) => p.days[d].slots.filter((sl) => muscleVector(sl.exercise)?.[m] === 1);
+
+  it('trains each priority muscle every day, leading each day with a different lift you know', () => {
+    const p = buildProgram(prof(), hist, { days: 2, perSession: 14 }, NOW);
+    for (const m of ['Biceps', 'Triceps'] as Muscle[]) {
+      const [a, b] = [0, 1].map((d) => directOn(p, d, m).sort((x, y) => y.sets - x.sets));
+      expect(a.length, `${m} on Day A`).toBeGreaterThan(0);
+      expect(b.length, `${m} on Day B`).toBeGreaterThan(0);
+      expect(a[0].exercise, `${m}: each day leads with its own lift`).not.toBe(b[0].exercise);
+    }
+  });
+  it('repeats a lift you know before bringing in one you have never done', () => {
+    // Two known lifts each for Biceps and Triceps, and one known row: the extra sets go to those, not to catalog lifts.
+    const p = buildProgram(prof(), [...hist, ...reps('Seated Cable Row', 6)], { days: 2, perSession: 14 }, NOW);
+    const isNew = (ex: string) => p.newToYou?.includes(ex);
+    for (const m of ['Biceps', 'Triceps'] as Muscle[]) for (const d of [0, 1]) expect(directOn(p, d, m).filter((sl) => isNew(sl.exercise)).map((sl) => sl.exercise), m).toEqual([]);
+    const rows = [0, 1].flatMap((d) => directOn(p, d, 'Mid-Back').map((sl) => sl.exercise));
+    expect(rows.filter(isNew), 'Mid-Back').toEqual([]);
+  });
+  it('repeats a lift across days when the gym has no other for that muscle', () => {
+    const available = new Set([...CATALOG].filter((n) => muscleVector(n)?.Biceps !== 1 || n === 'Hammer Curl'));
+    const p = buildProgram(prof(), hist, { days: 2, perSession: 14 }, NOW, { available });
+    for (const d of [0, 1]) expect(directOn(p, d, 'Biceps').map((sl) => sl.exercise)).toEqual(['Hammer Curl']);
+    expect(p.unavailable).toEqual([]);
+  });
+  it('keeps the weekly volume per muscle', () => {
+    // Measured on HEAD 5986f7b (the per-week allocator) for these exact inputs, before this change.
+    const before: Partial<Record<Muscle, number>> = { Chest: 2, Triceps: 13, Biceps: 12, 'Front Delts': 1, 'Side Delts': 2 };
+    const v = programVolume(buildProgram(prof(), hist, { days: 2, perSession: 14 }, NOW));
+    for (const m of MUSCLES) expect(Math.abs(v[m] - (before[m] ?? 0)), m).toBeLessThanOrEqual(2);
+  });
+});
