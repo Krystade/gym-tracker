@@ -34,7 +34,8 @@ export function TodayScreen({ store, settings, programs, body, gyms, date, today
   const [extra, setExtra] = useState<string[]>(() => getDraft<string[]>(owner, `${CARDS}:${date}`, date) ?? []);
   useEffect(() => { saveDraft(owner, `${CARDS}:${date}`, date, extra); }, [owner, date, extra]);
   const logged = exerciseNames(store.entries.filter((e) => e.date === date)).reverse();
-  const cards = [...logged, ...extra.filter((x) => !logged.some((l) => sameExercise(l, x)))];
+  // `extra` is the day's card order: logging a set must not move an added card. Lifts logged elsewhere come first.
+  const cards = [...logged.filter((l) => !extra.some((x) => sameExercise(l, x))), ...extra];
   const plan = todayPlanFor(programs, store.entries, date);
   // Record the day once a working set is logged, so rotation and adherence don't depend on tapping the plan.
   // Only today: looking back at an older day must not record it and move today's rotation.
@@ -48,7 +49,9 @@ export function TodayScreen({ store, settings, programs, body, gyms, date, today
   const [planOpen, setPlanOpen] = useState<boolean | null>(null);
   const open = planOpen ?? cards.length === 0;
   const [jump, setJump] = useState<string | null>(null);
-  const goTo = (n: string) => { addCard(n); setPlanOpen(false); setJump(n); };
+  // A folded (finished) card opens when the plan sends you to it; the card clears the request once it has used it.
+  const [openReq, setOpenReq] = useState<string | null>(null);
+  const goTo = (n: string) => { addCard(n); setPlanOpen(false); setOpenReq(n); setJump(n); };
   useEffect(() => {
     if (!jump || picking || swapFor) return;
     document.querySelector(`[data-card="${CSS.escape(jump.toLowerCase())}"]`)?.scrollIntoView({ block: 'start' });
@@ -82,7 +85,8 @@ export function TodayScreen({ store, settings, programs, body, gyms, date, today
       )}
       {cards.length === 0 && <p className="muted">{date < today ? 'Nothing logged that day.' : 'Nothing logged yet today.'}</p>}
       {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} today={today} store={store} settings={settings} onOpen={onOpen}
-        plannedSets={plannedSets(programs.program, plan, n)} gym={gyms.active?.name} />)}
+        plannedSets={plannedSets(programs.program, plan, n)} gym={gyms.active?.name}
+        openReq={openReq != null && sameExercise(openReq, n)} onOpenReq={() => setOpenReq(null)} />)}
       <button className="primary wide" onClick={() => setPicking(true)}>Add exercise</button>
     </>
   );

@@ -19,10 +19,13 @@ const TargetIcon = () => (
   </svg>
 );
 
-export function ExerciseCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym }: {
+export function ExerciseCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = false, onOpenReq }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
+  openReq?: boolean; onOpenReq?: () => void;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
+  // Once the user has opened a finished card it stays open (more sets are theirs to add); a reload starts it folded again.
+  const [opened, setOpened] = useState(false);
   const [pr, setPr] = useState<string | null>(null);
   useEffect(() => { if (!pr) return; const t = setTimeout(() => setPr(null), 6000); return () => clearTimeout(t); }, [pr]);
   const today = store.entries.filter((e) => e.date === date && sameExercise(e.exercise, exercise)).sort(byOrderDone); // in the order done: a late set sits where it happened
@@ -64,10 +67,30 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
     return true;
   }
 
+  const working = today.filter(isWorking);
+  const complete = plannedSets != null && plannedSets > 0 && working.length >= plannedSets;
+  // The plan sent you here: open a folded card, but a card that isn't finished has nothing to open, so don't pin it open.
+  if (openReq && complete && !opened) setOpened(true);
+  useEffect(() => { if (openReq) onOpenReq?.(); }, [openReq, onOpenReq]);
+  if (complete && !opened) {
+    const top = working.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && (b.reps ?? 0) > (a.reps ?? 0)) ? b : a));
+    return (
+      <section className="card folded" data-card={exercise.toLowerCase()}>
+        <button className="fold-line" aria-expanded="false" aria-label={`Show ${exercise}`} onClick={() => setOpened(true)}>
+          <b>{exercise}</b>
+          <span className="ok">{working.length}/{plannedSets} sets ✓</span>
+          <span className="muted nw">{fmtSet(top)}</span>
+        </button>
+        {pr && <p role="status" className="pr">{pr}</p>}
+      </section>
+    );
+  }
+
   return (
     <section className="card" data-card={exercise.toLowerCase()}>
       <header className="card-head">
         <button className="link" onClick={() => onOpen(exercise)}>{exercise}</button>
+        {complete && <button className="mini" aria-expanded="true" onClick={() => setOpened(false)}>Fold</button>}
         {best && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.e1rm))} lb</span>}
       </header>
       {last && <p className="muted">Last ({fmtDate(last.date)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
