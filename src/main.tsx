@@ -1,10 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './ui/App';
-import { requestPersistence } from './db/db';
+import { storagePersistence } from './db/db';
 import './ui/styles.css';
 
-void requestPersistence();
+void storagePersistence();
 
 // A phone keeps the app open for days, so look for a new deploy whenever it comes back, and
 // switch to it once it's in: typed sets are drafts, so the reload loses nothing.

@@ -10,6 +10,7 @@ import { parseBodyFile, toBodyCsv, type CsvKind } from '../domain/body';
 import { parseProfileJson } from '../domain/profile';
 import { parseAliasesJson } from '../domain/notes';
 import { useDb } from '../state/profileDb';
+import { knownStoragePersistence, storagePersistence } from '../db/db';
 import { parseCsv, toCsv, type CsvError } from '../domain/csv';
 import { exerciseNames, sessionsByDate } from '../domain/stats';
 import { localDate } from '../domain/ids';
@@ -24,8 +25,8 @@ export function DataScreen({ store, profile, body, sync, people, onOpenPaste }: 
   const [ask, setAsk] = useState<{ what: string; changed: number; fresh: number } | null>(null);
   const answer = useRef<((replace: boolean) => void) | null>(null);
   const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [persisted, setPersisted] = useState<boolean | null>(null);
-  useEffect(() => { void navigator.storage?.persisted?.().then(setPersisted); }, []);
+  const [persisted, setPersisted] = useState<boolean | null | undefined>(knownStoragePersistence);
+  useEffect(() => { if (persisted === undefined) void storagePersistence().then(setPersisted); }, []);
   const sessions = sessionsByDate(store.entries);
 
   async function onFiles(files: File[]) {

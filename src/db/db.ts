@@ -147,6 +147,15 @@ export async function requestPersistence(): Promise<boolean | null> {
   return (await navigator.storage.persisted()) || navigator.storage.persist();
 }
 
+// Asked once, at launch: the answer is the phone's, not a person's. A Data screen that asked on every mount (and every switch of
+// person remounts it) set state as it opened; landing mid-keystroke, that re-render put the field's old value back.
+let persistence: Promise<boolean | null> | undefined;
+let persistenceAnswer: boolean | null | undefined;
+export const storagePersistence = (): Promise<boolean | null> =>
+  persistence ??= requestPersistence().then((v) => (persistenceAnswer = v), () => (persistenceAnswer = null));
+/** The launch's answer, or undefined while it's still pending. */
+export const knownStoragePersistence = (): boolean | null | undefined => persistenceAnswer;
+
 export const getBody = async (): Promise<BodyDay[]> => (await db()).getAll('body');
 export const putBody = async (d: BodyDay): Promise<void> => { await (await db()).put('body', d); };
 export async function putBodyMany(days: BodyDay[]): Promise<void> {

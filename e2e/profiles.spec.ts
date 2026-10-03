@@ -252,3 +252,19 @@ test('a future time restored after a profile switch is still blocked', async ({ 
   await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('19:00');
   await expect(page.getByRole('button', { name: 'Add set' })).toBeDisabled(); // a restored time is a typed time
 });
+
+test('a name typed the moment the Data screen opens or remounts after a switch is not dropped', async ({ page }) => {
+  // The launch's storage check answers at once; any later one answers at the worst moment, in the middle of a keystroke's
+  // input event, where its state update re-renders the field with its old value and the typed text is lost.
+  await page.addInitScript(() => {
+    const pending: ((v: boolean) => void)[] = [];
+    let calls = 0;
+    Object.defineProperty(navigator.storage, 'persisted', { value: () => (calls++ === 0 ? Promise.resolve(true) : new Promise<boolean>((ok) => pending.push(ok))) });
+    addEventListener('input', () => { for (const ok of pending.splice(0)) ok(true); }, true);
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data' }).click();
+  await addPerson(page, 'Sam');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Kim');
+  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Kim');
+});
