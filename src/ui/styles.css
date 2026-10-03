@@ -1,7 +1,13 @@
 :root {
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
   --bg: #0e1116; --surface: #171b22; --surface-2: #212733; --line: #2c3442;
+  /* Control boundaries need 3:1 against --bg and --surface (WCAG 1.4.11); --line stays for decorative card edges. */
+  --line-strong: #5f6b7d;
+  /* Small red text: --danger itself is for fills and big marks. */
+  --danger-text: #ff8a8a;
   --text: #e9edf3; --muted: #9aa5b4; --accent: #f5b83d; --accent-ink: #1a1305;
   --danger: #ef6b6b; --warn: #f0a24a; --pain: #ef6b6b; --ok: #5fcf8f;
   color-scheme: dark;
@@ -23,13 +29,14 @@ p { margin: 6px 0; }
 .import-confirm { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--warn); border-radius: 10px; }
 
 .app { min-height: 100dvh; display: flex; flex-direction: column; }
-.screen { flex: 1; padding: calc(var(--sat) + 12px) 16px calc(var(--sab) + 84px); }
-.banner { position: sticky; top: 0; z-index: 5; padding: calc(var(--sat) + 8px) 16px 8px; background: var(--danger); color: #fff; font-weight: 600; }
+/* Capped and centred for landscape and tablets; the side insets keep it out from under the notch. */
+.screen { flex: 1; width: 100%; max-width: 720px; margin-inline: auto; padding: calc(var(--sat) + 12px) calc(16px + var(--sar)) calc(var(--sab) + 84px) calc(16px + var(--sal)); }
+.banner { position: sticky; top: 0; z-index: 5; padding: calc(var(--sat) + 8px) calc(16px + var(--sar)) 8px calc(16px + var(--sal)); background: var(--danger); color: #1a0505; font-weight: 600; }
 
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
   display: grid; grid-template-columns: repeat(5, 1fr);
-  padding-bottom: var(--sab); background: var(--bg);
+  padding: 0 var(--sar) var(--sab) var(--sal); background: var(--bg);
   border-top: 1px solid var(--line);
 }
 .tabs button { min-height: 56px; padding: 0 2px; background: none; border: 0; color: var(--muted); font-size: 14px; font-weight: 600; }
@@ -39,18 +46,26 @@ button, .button {
   min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--surface-2); color: var(--text); font: inherit; font-size: 16px; font-weight: 600;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;
+  transition: transform .06s, filter .06s;
 }
+/* The tap highlight is off (below), so this is the only press feedback. */
+button:active:not(:disabled), .button:active { transform: scale(0.97); filter: brightness(1.15); }
+@media (prefers-reduced-motion: reduce) { button:active:not(:disabled), .button:active { transform: none; } button, .button { transition: none; } }
 button:disabled, .button[aria-disabled='true'] { opacity: 0.45; }
 .primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.danger { color: var(--danger); }
+/* Disabled primary would be a muddy mustard at .45 opacity; read as an inert control instead. */
+.primary:disabled { background: var(--surface-2); color: var(--muted); border-color: var(--line); opacity: 1; }
+.danger { color: var(--danger-text); }
 .wide { width: 100%; margin-top: 12px; }
+.card > .wide:first-child { margin-top: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .link { background: none; border: 0; padding: 0; color: var(--text); font-size: 18px; font-weight: 700; justify-content: flex-start; text-align: left; }
 
 input, select, textarea {
   font: inherit; font-size: 16px; min-height: 44px; width: 100%; padding: 0 12px;
-  border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text);
+  border-radius: 10px; border: 1px solid var(--line-strong); background: var(--bg); color: var(--text);
 }
-input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 0; }
 
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 12px; }
 .card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; }
@@ -82,7 +97,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
 .stepper button { padding: 0; font-size: 22px; touch-action: manipulation; }
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 44px; }
 .chip-label { font-size: 13px; color: var(--muted); margin-right: 2px; }
-.chip { min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: 22px; touch-action: manipulation; font-size: 14px; font-weight: 600; }
+.chip { min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: 22px; touch-action: manipulation; font-size: 14px; font-weight: 600; border-color: var(--line-strong); }
 .chip[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .form-actions { display: flex; gap: 8px; }
 .form-actions .primary { flex: 1; }
@@ -162,7 +177,7 @@ h3 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600;
 @media (max-width: 359px) { .mrow { grid-template-columns: 76px 1fr 66px 14px; } .mword { display: none; } }
 .mtarget { color: var(--muted); font-size: 11px; }
 .mstat { color: var(--muted); white-space: nowrap; font-size: 12px; }
-.mstat.under b { color: #d03b3b; } .mstat.on b { color: #0ca30c; } .mstat.over b { color: #fab219; }
+.mstat.under b { color: var(--danger-text); } .mstat.on b { color: #0ca30c; } .mstat.over b { color: #fab219; }
 .cal-legend { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
 .cal-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 .chart-table summary { min-height: 44px; display: flex; align-items: center; color: var(--muted); font-size: 14px; cursor: pointer; }
@@ -177,8 +192,8 @@ h3 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); font-weight: 600;
 .test-due span { align-self: stretch; }
 
 /* Program */
-.today-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.today-head h1 { margin: 4px 0 12px; }
+.today-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.today-head h1 { margin: 4px 0; }
 .plan h2 { margin-bottom: 6px; }
 .plan-toggle { width: 100%; padding: 0; border: 0; background: none; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left; font-size: inherit; }
 .plan-slots, .prog-slots { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
@@ -293,7 +308,7 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: 16px;
 .paste-notes { flex: 1 1 100%; overflow-wrap: anywhere; }
 
 /* Profiles: the switcher sits on top of every screen, under the notch. */
-.profile-bar { position: sticky; top: 0; z-index: 3; margin: calc(-1 * (var(--sat) + 12px)) -16px 8px; padding: calc(var(--sat) + 6px) 16px 6px; background: var(--bg); border-bottom: 1px solid var(--line); flex-wrap: nowrap; overflow-x: auto; scroll-padding-inline: 16px; }
+.profile-bar { position: sticky; top: 0; z-index: 3; margin: calc(-1 * (var(--sat) + 12px)) calc(-16px - var(--sar)) 8px calc(-16px - var(--sal)); padding: calc(var(--sat) + 6px) calc(16px + var(--sar)) 6px calc(16px + var(--sal)); background: var(--bg); border-bottom: 1px solid var(--line); flex-wrap: nowrap; overflow-x: auto; scroll-padding-inline: 16px; }
 .chip.person { display: inline-flex; align-items: center; gap: 6px; padding-left: 4px; white-space: nowrap; }
 .profile-bar .chip { flex: none; max-width: 45vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The ellipsis needs a block-ish box of its own: a bare text node inside the inline-flex chip just spills. */
@@ -311,8 +326,8 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: 16px;
 
 /* Late sets: the day switcher on Today, the past-day banner, the time field. */
 .day-switch { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.day-switch h1 { margin: 4px 0 12px; font-size: 22px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.day-switch .mini { min-width: 44px; }
+.day-switch h1 { margin: 4px 0; font-size: 22px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.day-switch .mini { min-width: 44px; font-size: 26px; line-height: 1; }
 .past-day { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .when { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .when label { display: grid; gap: 4px; flex: 1 1 140px; font-size: 13px; color: var(--muted); }
