@@ -82,3 +82,14 @@ export function exerciseNames(entries: SetEntry[]): string[] {
 
 export const canonicalName = (entries: SetEntry[], name: string): string =>
   exerciseNames(entries).find((n) => sameExercise(n, name)) ?? normalizeName(name);
+
+/** A day's lifts in the order each was started: adding a set later in the day never moves a lift. */
+export function dayOrder(entries: SetEntry[], date: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const e of entries.filter((x) => x.date === date).sort(byOrderDone)) {
+    const k = key(e.exercise);
+    if (!seen.has(k)) { seen.add(k); out.push(normalizeName(e.exercise)); }
+  }
+  return out;
+}

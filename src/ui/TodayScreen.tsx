@@ -3,7 +3,7 @@ import { planToRecord } from '../domain/program';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import type { ProgramStore } from '../state/useProgram';
-import { exerciseNames, sameExercise } from '../domain/stats';
+import { dayOrder, exerciseNames, sameExercise } from '../domain/stats';
 import { fmtDay } from '../domain/format';
 import { ExerciseCard } from './ExerciseCard';
 import { Energy } from './Energy';
@@ -33,7 +33,7 @@ export function TodayScreen({ store, settings, programs, body, gyms, date, today
   // One list per day, so opening a past day doesn't overwrite today's.
   const [extra, setExtra] = useState<string[]>(() => getDraft<string[]>(owner, `${CARDS}:${date}`, date) ?? []);
   useEffect(() => { saveDraft(owner, `${CARDS}:${date}`, date, extra); }, [owner, date, extra]);
-  const logged = exerciseNames(store.entries.filter((e) => e.date === date)).reverse();
+  const logged = dayOrder(store.entries, date);
   // `extra` is the day's card order: logging a set must not move an added card. Lifts logged elsewhere come first.
   const cards = [...logged.filter((l) => !extra.some((x) => sameExercise(l, x))), ...extra];
   const plan = todayPlanFor(programs, store.entries, date);

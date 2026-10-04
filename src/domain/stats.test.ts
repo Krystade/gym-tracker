@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { bestSet, canonicalName, currentE1rm, e1rm, e1rmSeries, estimateWeightForReps, exerciseNames, lastSession, sessionsByDate, sessionsFor } from './stats';
+import { bestSet, canonicalName, currentE1rm, e1rm, e1rmSeries, estimateWeightForReps, dayOrder, exerciseNames, lastSession, sessionsByDate, sessionsFor } from './stats';
 import { buildAppSet, derivedFlags } from './buildSet';
 import { fmtSet, fmtWeight } from './format';
 
@@ -107,5 +107,18 @@ describe('format', () => {
     expect(fmtWeight(60)).toBe('60');
     expect(fmtSet(s('d', 'x', 1, 0, 15))).toBe('BW × 15');
     expect(fmtSet(s('d', 'x', 1, 100, null))).toBe('100 × ?');
+  });
+});
+
+describe('dayOrder', () => {
+  it('orders a day’s lifts by when each was started, so a later set does not move a lift', () => {
+    const d = '2026-10-01';
+    const data = [s(d, 'Lat Pulldown', 1, 100, 10), s(d, 'Bench', 1, 135, 8), s(d, 'Row', 1, 90, 10), s(d, 'Lat Pulldown', 2, 100, 9), s('2026-09-30', 'Curl', 1, 30, 12)];
+    expect(dayOrder(data, d)).toEqual(['Lat Pulldown', 'Bench', 'Row']);
+  });
+  it('goes by the time a set was done when it was logged later', () => {
+    const d = '2026-10-01';
+    const data = [s(d, 'Bench', 1, 135, 8, { loggedAt: `${d}T18:30:00` }), s(d, 'Row', 1, 100, 10, { loggedAt: `${d}T18:00:00` })];
+    expect(dayOrder(data, d)).toEqual(['Row', 'Bench']);
   });
 });
