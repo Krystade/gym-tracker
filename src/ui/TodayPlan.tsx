@@ -33,20 +33,22 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
   }, [entries, plan.date]);
   const live = day.slots.filter((s) => !plan.skips.includes(s.exercise));
   const finished = live.filter((s) => doneOf(plan.swaps[s.exercise] ?? s.exercise) >= s.sets).length;
+  // The second line of the header: how long it runs when open, how far along when folded. Inside the
+  // toggle, so it fills the 44 px tap area instead of sitting under it.
+  const length = () => {
+    const todo = live.map((s) => ({ exercise: plan.swaps[s.exercise] ?? s.exercise, sets: s.sets }));
+    const mins = Math.round(estimateSeconds(todo, pace, warm) / 60);
+    const first = timedDay(entries, plan.date)[0];
+    const start = first ? new Date(first.loggedAt!) : null;
+    return <span className="muted small" aria-label="Plan length">≈ {mins} min{start && ` · started ${hhmm(start)} · ends ≈ ${hhmm(new Date(start.getTime() + mins * 60_000))}`}</span>;
+  };
   return (
     <section className="card plan" aria-label={title}>
       <h2><button type="button" className="plan-toggle" aria-expanded={open} onClick={onToggle}>
         <span>{title} · {day.name}</span>
-        {!open && <span className="muted small">{finished} of {live.length} done</span>}
+        {open ? length() : <span className="muted small">{finished} of {live.length} done</span>}
       </button></h2>
       {open && (<>
-      {(() => {
-        const todo = day.slots.filter((s) => !plan.skips.includes(s.exercise)).map((s) => ({ exercise: plan.swaps[s.exercise] ?? s.exercise, sets: s.sets }));
-        const mins = Math.round(estimateSeconds(todo, pace, warm) / 60);
-        const first = timedDay(entries, plan.date)[0];
-        const start = first ? new Date(first.loggedAt!) : null;
-        return <p className="muted small" aria-label="Plan length">≈ {mins} min{start && ` · started ${hhmm(start)} · ends ≈ ${hhmm(new Date(start.getTime() + mins * 60_000))}`}</p>;
-      })()}
       {program.days.length > 1 && (
         <div className="chips" role="group" aria-label="Program day">
           {program.days.map((d, i) => (

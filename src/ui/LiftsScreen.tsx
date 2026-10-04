@@ -2,12 +2,14 @@
 import { useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import { exerciseNames, sessionsFor } from '../domain/stats';
-import { fmtDate, plural } from '../domain/format';
+import { fmtDay, plural } from '../domain/format';
+import { localDate } from '../domain/ids';
 import { CATALOG } from '../domain/catalog';
 import { sameExercise } from '../domain/stats';
 
 export function LiftsScreen({ store, onOpen }: { store: SetsStore; onOpen: (name: string) => void }) {
   const [q, setQ] = useState('');
+  const today = localDate(new Date());
   const query = q.trim().toLowerCase();
   const logged = exerciseNames(store.entries);
   const names = logged.filter((n) => n.toLowerCase().includes(query));
@@ -23,7 +25,7 @@ export function LiftsScreen({ store, onOpen }: { store: SetsStore; onOpen: (name
           return (
             <button key={n} className="row-button" onClick={() => onOpen(n)}>
               <b>{n}</b>
-              <span className="muted">{plural(s.length, 'session')} · last {fmtDate(s[0].date)}</span>
+              <span className="muted">{plural(s.length, 'session')} · last {fmtDay(s[0].date, today)}</span>
             </button>
           );
         })}

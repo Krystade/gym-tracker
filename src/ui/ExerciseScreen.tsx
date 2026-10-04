@@ -9,7 +9,7 @@ import { calibrate, calibratedE1rm, testDue, weightForReps } from '../domain/est
 import { localDate } from '../domain/ids';
 import { addDays } from '../domain/analytics';
 import { estimateRir, priorE1rm, rirOffset } from '../domain/progression';
-import { fmtDate, fmtDay, fmtSet, fmtWeight, plural } from '../domain/format';
+import { fmtDay, fmtSet, fmtWeight, plural } from '../domain/format';
 import { LineChart } from './LineChart';
 import { SetRowContent } from './SetRow';
 import { SwapSuggestions } from './SwapSuggestions';
@@ -82,20 +82,23 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
       <button onClick={onBack}>‹ Back</button>
       <h1>{name}</h1>
       <SuggestionCard s={sug} onLog={trainedToday ? undefined : onLog} />
-      <div className="tiles">
-        {hold ? <div className="tile"><span>Best hold</span><b>{longest ? `${longest} s` : '—'}</b></div> : <>
-          <div className="tile"><span>Est. 1RM</span><b>{current ? lb(current) : '—'}</b></div>
-          <div className="tile"><span>Est. {n}RM</span><b>{current ? lb(weightForReps(cal.formula, current, n)) : '—'}</b></div>
-          <div className="tile"><span>Best set{best ? ` · ${fmtDay(best.set.date, today)}` : ''}</span><b>{best ? fmtSet(best.set).replace(/^(\d\S*) ×/, '$1 lb ×') : '—'}</b></div>
-        </>}
-        <div className="tile"><span>Sessions</span><b>{sessions.length}</b></div>
-      </div>
+      {/* The chips sit right under the estimate they change, not over the chart (which is always e1RM). */}
       {!hold && <>
+      <div className="tiles tiles-est">
+        <div className="tile"><span>Est. 1RM</span><b>{current ? lb(current) : '—'}</b></div>
+        <div className="tile"><span>Est. {n}RM</span><b>{current ? lb(weightForReps(cal.formula, current, n)) : '—'}</b></div>
+      </div>
       <div className="chips" role="group" aria-label="Rep max">
         {[3, 5, 6, 8, 10].map((k) => <button key={k} type="button" className="chip" aria-pressed={n === k} onClick={() => setN(k)}>{k}RM</button>)}
       </div>
       <p className="muted small">{cal.tests ? `${cal.formula === 'wd' ? 'Weight-adjusted formula' : 'Epley'} · calibrated · ${plural(cal.tests, 'test')}${cal.errorPct != null ? ` · ±${Math.round(cal.errorPct)}%` : ''}` : 'Epley · no tests yet'}</p>
       </>}
+      <div className="tiles">
+        {hold
+          ? <div className="tile"><span>Best hold</span><b>{longest ? `${longest} s` : '—'}</b></div>
+          : <div className="tile"><span>Best set{best ? ` · ${fmtDay(best.set.date, today)}` : ''}</span><b>{best ? fmtSet(best.set).replace(/^(\d\S*) ×/, '$1 lb ×') : '—'}</b></div>}
+        <div className="tile"><span>Sessions</span><b>{sessions.length}</b></div>
+      </div>
       <section className="card">
         <LineChart points={series} today={today} {...(hold ? { label: 'Longest hold over time', unit: 's', noun: '', column: 'Longest hold (s)' } : {})} />
         {series.length > 1 && <p className="muted small">{hold ? 'Longest hold per session · PRs filled' : 'Best estimated 1RM per session · PRs filled'}</p>}
@@ -111,7 +114,7 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
         const prior = priorE1rm(store.entries, name, s.date);
         return (
           <section className="card" key={s.date}>
-            <p><b>{fmtDate(s.date)}</b></p>
+            <p><b>{fmtDay(s.date, today)}</b></p>
             <ol className="sets">
               {s.sets.map((x, i) => (
                 <li key={x.id} className="set-row"><SetRowContent s={x} no={i + 1} estRir={estimateRir(x, s.sets, prior, offset)} /></li>

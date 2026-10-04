@@ -25,8 +25,9 @@ export function ExercisePicker({ recent, onPick, onCancel, suggested = [], gym =
       </div>
       {!query && <SwapSuggestions items={suggested} onPick={onPick} />}
       <ul className="picker-list">
-        {query && !exact && <li><button className="primary" onClick={() => onPick(query)}>Add “{query}”</button></li>}
         {here.slice(0, 60).map(item)}
+        {/* After the matches, so a slip of the thumb picks a real lift; with no match it's the one thing to do. */}
+        {query && !exact && <li><button className={here.length ? undefined : 'primary'} onClick={() => onPick(query)}>Add “{query}” as a new lift</button></li>}
         {gym && away.length > 0 && <li className="picker-divider muted small">Not at {gym.name}</li>}
         {gym && away.slice(0, 30).map(item)}
       </ul>

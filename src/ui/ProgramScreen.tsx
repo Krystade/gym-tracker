@@ -78,7 +78,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
         <p className="muted small">{gym ? 'Only lifts this gym can do are used.' : 'Without a gym, any lift can be picked.'}</p>
       </section>
       <section className={frame}>
-        <p className="muted small">Built from your priorities: each set goes to the priority muscle furthest below its weekly target, using the lifts you actually do. Full-body days: an exercise with enough weekly sets repeats on every day, so priority muscles are trained each session.</p>
+        <p className="muted small">Built from your priorities: each set goes to the priority muscle furthest below its weekly target, using the lifts you actually do. Full-body days: every day trains your priority muscles, with a different lift for a muscle where you have one.</p>
         <div className="settings-grid two">
           <label>Days per week<input aria-label="Days per week" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} /></label>
           {mode === 'sets'

@@ -3,7 +3,7 @@ import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import { bestSet, byOrderDone, e1rm, lastSession, sameExercise } from '../domain/stats';
 import { estimateRir, isWorking, nextTarget, prCheck, priorE1rm, rirOffset } from '../domain/progression';
-import { fmtDate, fmtSet, fmtWeight } from '../domain/format';
+import { fmtDay, fmtSet, fmtWeight } from '../domain/format';
 import type { Flag, SetEntry } from '../domain/types';
 import { SetForm, type SetFormValue } from './SetForm';
 import { isHoldLift } from '../domain/care';
@@ -93,8 +93,8 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
         {complete && <button className="mini" aria-expanded="true" onClick={() => setOpened(false)}>Fold</button>}
         {best && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.e1rm))} lb</span>}
       </header>
-      {last && <p className="muted">Last ({fmtDate(last.date)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
-      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.sets} × {sug.reps}{sug.unit}+{fmtLoad(sug.weight)}{sug.warmups.length > 0 && <span className="muted"> · warm-up {fmtRamp(sug)}</span>}</span></p>}
+      {last && <p className="muted">Last ({fmtDay(last.date, realToday)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
+      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.sets} × {sug.reps}{sug.unit}+{fmtLoad(sug.weight)}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}</span></p>}
       <ol className="sets" aria-label={`Sets for ${exercise}`}>
         {today.map((s, i) => (
           <li key={s.id}>

@@ -86,9 +86,9 @@ test('the tiles say lb, and the best set is dated like the rest of the app', asy
   await open(page);
   await seed(page, 'Bench Press', 15);
   await openLift(page, 'Bench Press');
-  const tiles = page.locator('.tiles');
-  await expect(tiles).not.toContainText(/\d{4}-\d{2}-\d{2}/);
-  await expect(tiles).toContainText(/Best set · .*Sep 30/);
+  const tiles = page.locator('.screen'); // the tiles come in two rows: the estimates, then best set and sessions
+  await expect(tiles.locator('.tile', { hasText: /\d{4}-\d{2}-\d{2}/ })).toHaveCount(0);
+  await expect(tiles.locator('.tile', { hasText: 'Best set' })).toContainText(/Best set · .*Sep 30/);
   await expect(tiles.locator('.tile', { hasText: 'Est. 1RM' })).toHaveText(/Est\. 1RM\s*\d+ lb$/);
   await expect(tiles.locator('.tile', { hasText: 'Est. 6RM' })).toHaveText(/Est\. 6RM\s*\d+ lb$/);
   await expect(tiles.locator('.tile', { hasText: 'Sessions' })).toHaveText(/Sessions\s*15$/);
@@ -104,7 +104,7 @@ test('"Not now" quiets the test banner for this lift, and it stays quiet after a
   await expect(banner).toHaveCount(0);
   await page.reload();
   await openLift(page, 'Bench Press');
-  await expect(page.locator('.tiles')).toBeVisible(); // loaded, so a missing banner is not just a slow render
+  await expect(page.locator('.tiles').first()).toBeVisible(); // loaded, so a missing banner is not just a slow render
   await expect(banner).toHaveCount(0);
   // Fourteen days on, it is due again.
   await page.clock.setFixedTime(new Date('2026-10-16T18:00:00'));
