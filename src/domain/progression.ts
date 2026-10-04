@@ -10,9 +10,10 @@ export const settingsKey = (name: string): string => normalizeName(name).toLower
 
 const ISOLATION = /(curl|raise|fly|flye|extension|pushdown|push down|kickback|crunch|calf|face pull|rear delt|shrug|pec deck|pull-in|pullover|wrist|leg raise|sit-up|rotation|abduction|adduction)/i;
 
-export function defaultSettings(name: string): ExerciseSettings {
+/** `hold`: the lift is timed — known by name, or by its log (callers that have the log pass it). */
+export function defaultSettings(name: string, hold = isHold(name)): ExerciseSettings {
   // Holds count seconds: 20–40 s, as in the back-resilience block.
-  if (isHold(name)) return { key: settingsKey(name), repMin: 20, repMax: 40, increment: 5 };
+  if (hold) return { key: settingsKey(name), repMin: 20, repMax: 40, increment: 5 };
   const iso = ISOLATION.test(name);
   return { key: settingsKey(name), repMin: iso ? 10 : 8, repMax: iso ? 15 : 12, increment: 5 };
 }
@@ -83,7 +84,7 @@ export function estimateRir(set: SetEntry, sessionSets: SetEntry[], prior: numbe
   return clamp(Math.round(shortfall(set, prior) + offset), 0, 5);
 }
 
-export interface Target { kind: 'increase' | 'reps' | 'repeat'; weight: number; reps: number; last: SetEntry[]; text: string }
+export interface Target { kind: 'increase' | 'reps' | 'repeat' | 'maxed'; weight: number; reps: number; last: SetEntry[]; text: string }
 
 const lb = (w: number) => (w === 0 ? 'BW' : `${Math.round(w * 100) / 100} lb`);
 
@@ -103,9 +104,13 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
     const w = top + st.increment;
     return { kind: 'increase', weight: w, reps: st.repMin, last: last.sets, text: `Go up: ${lb(w)} × ${st.repMin}${unit}+` };
   }
-  // Bodyweight has no weight to add, so its rep target is not capped by the range. Holds step in 5 s, like the stepper.
+  // A bodyweight hold at the top of its range has nowhere to go in time: add weight or a harder variation.
+  if (unit && top === 0 && minReps >= st.repMax) {
+    return { kind: 'maxed', weight: 0, reps: st.repMax, last: last.sets, text: `BW × ${st.repMax}s on every set: add weight or try a harder variation` };
+  }
+  // Bodyweight reps have no weight to add, so their target is not capped by the range. Holds step in 5 s, like the stepper.
   const step = unit ? 5 : 1;
-  const reps = top === 0 ? minReps + step : Math.min(minReps + step, st.repMax);
+  const reps = top === 0 && !unit ? minReps + step : Math.min(minReps + step, st.repMax);
   return { kind: 'reps', weight: top, reps, last: last.sets, text: `${lb(top)} × ${reps}${unit}+ on every set` };
 }
 

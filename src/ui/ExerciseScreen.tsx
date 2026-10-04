@@ -36,22 +36,33 @@ function holdSeries(sessions: ReturnType<typeof sessionsFor>): SeriesPoint[] {
   return out;
 }
 
-function SettingsEditor({ name, settings }: { name: string; settings: SettingsStore }) {
-  const cur = settings.get(name);
+function SettingsEditor({ name, settings, hold }: { name: string; settings: SettingsStore; hold: boolean }) {
+  const cur = settings.get(name, hold);
   const [min, setMin] = useState(String(cur.repMin));
   const [max, setMax] = useState(String(cur.repMax));
   const [inc, setInc] = useState(String(cur.increment));
   const [saved, setSaved] = useState(false);
   const vMin = Number(min), vMax = Number(max), vInc = Number(inc);
-  const valid = Number.isInteger(vMin) && Number.isInteger(vMax) && vMin >= 1 && vMax >= vMin && vMax <= 50 && vInc > 0 && vInc <= 50;
+  // A hold's range is in seconds; its increment is weight added once every hold reaches the top.
+  const unit = hold ? 'seconds' : 'reps', top = hold ? 300 : 50;
+  const whole = (v: number) => Number.isInteger(v) && v >= 1;
+  const problem = !whole(vMin) || !whole(vMax) ? `Min and max ${unit} are whole numbers`
+    : vMax < vMin ? `Max ${unit} can’t be below min ${unit}`
+    : vMax > top ? `Max ${unit} go up to ${top}`
+    : !(vInc > 0 && vInc <= 50) ? `${hold ? 'Added weight' : 'The increment'} is more than 0 and up to 50 lb`
+    : null;
+  const valid = !problem;
   return (
     <section className="card" role="group" aria-label="Progression settings">
-      <p className="muted small">Double progression: stay at a weight until every working set reaches max reps, then add the increment.</p>
+      <p className="muted small">{hold
+        ? 'Add 5 s each time until every hold reaches max seconds, then add weight or move to a harder variation.'
+        : 'Double progression: stay at a weight until every working set reaches max reps, then add the increment.'}</p>
       <div className="settings-grid">
-        <label>Min reps<input aria-label="Min reps" inputMode="numeric" value={min} onChange={(e) => { setMin(e.target.value); setSaved(false); }} /></label>
-        <label>Max reps<input aria-label="Max reps" inputMode="numeric" value={max} onChange={(e) => { setMax(e.target.value); setSaved(false); }} /></label>
-        <label>Increment (lb)<input aria-label="Increment" inputMode="decimal" value={inc} onChange={(e) => { setInc(e.target.value.replace(',', '.')); setSaved(false); }} /></label>
+        <label>Min {unit}<input aria-label={`Min ${unit}`} inputMode="numeric" value={min} onChange={(e) => { setMin(e.target.value); setSaved(false); }} /></label>
+        <label>Max {unit}<input aria-label={`Max ${unit}`} inputMode="numeric" value={max} onChange={(e) => { setMax(e.target.value); setSaved(false); }} /></label>
+        <label>{hold ? 'Add weight (lb)' : 'Increment (lb)'}<input aria-label={hold ? 'Add weight' : 'Increment'} inputMode="decimal" value={inc} onChange={(e) => { setInc(e.target.value.replace(',', '.')); setSaved(false); }} /></label>
       </div>
+      {problem && <p role="status" className="small err">{problem}</p>}
       <button className="wide" disabled={!valid} onClick={async () => { await settings.save({ ...cur, repMin: vMin, repMax: vMax, increment: vInc }); setSaved(true); }}>
         {saved ? 'Saved' : 'Save settings'}
       </button>
@@ -62,9 +73,9 @@ function SettingsEditor({ name, settings }: { name: string; settings: SettingsSt
 export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack }: {
   name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void;
 }) {
-  const { s: sug, trainedToday } = nextTime(store.entries, name, settings.get(name), date, plannedSets(programs.program, todayPlanFor(programs, store.entries, date), name));
-  const sessions = sessionsFor(store.entries, name);
   const hold = isHoldLift(name, store.entries);
+  const { s: sug, trainedToday } = nextTime(store.entries, name, settings.get(name, hold), date, plannedSets(programs.program, todayPlanFor(programs, store.entries, date), name));
+  const sessions = sessionsFor(store.entries, name);
   // A hold has no 1RM: its trend is the longest hold of each session, in seconds.
   const series = hold ? holdSeries(sessions) : e1rmSeries(store.entries, name);
   const longest = hold ? Math.max(0, ...series.map((p) => p.e1rm)) : 0;
@@ -106,7 +117,7 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
       {!hold && due && !(snoozed && today < snoozed) && (
         <p className="card note-card test-due">
           <span>Time for a test: pick a weight you can do about 8–12 times, go to failure with good form, and tick <b>Test</b>. It tunes these estimates.</span>
-          <button className="mini" onClick={() => void settings.save({ ...settings.get(name), testSnoozedUntil: addDays(today, 14) })}>Not now</button>
+          <button className="mini" onClick={() => void settings.save({ ...settings.get(name, hold), testSnoozedUntil: addDays(today, 14) })}>Not now</button>
         </p>
       )}
       {sessions.length > 0 && <h2>History</h2>}
@@ -125,7 +136,7 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
       })}
       {!all && sessions.length > HISTORY_CAP && <button className="wide" onClick={() => setAll(true)}>Show all {sessions.length} sessions</button>}
       <SwapSuggestions items={swapSuggestions(name, store.entries, today, 5, gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined)} />
-      <SettingsEditor key={name} name={name} settings={settings} />
+      <SettingsEditor key={name} name={name} settings={settings} hold={hold} />
     </>
   );
 }

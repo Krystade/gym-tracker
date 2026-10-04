@@ -72,10 +72,10 @@ describe('one hold check for every line', () => {
   const day1 = '2026-09-28', day2 = '2026-09-30', today = '2026-10-02';
   it('a custom lift whose sets carry the hold flag is timed in seconds, in the unit and in the target', () => {
     const name = 'Wall Sit Hold X';
-    const log = [s(day1, name, 0, 40, ['hold']), s(day1, name, 0, 40, ['hold']), s(day2, name, 0, 40, ['hold']), s(day2, name, 0, 40, ['hold'])];
-    const x = suggest(log, name, defaultSettings(name), today, null);
+    const log = [s(day1, name, 0, 30, ['hold']), s(day1, name, 0, 30, ['hold']), s(day2, name, 0, 30, ['hold']), s(day2, name, 0, 30, ['hold'])];
+    const x = suggest(log, name, defaultSettings(name, true), today, null);
     expect(x.unit).toBe(' s');
-    expect(nextTarget(log, name, defaultSettings(name), today)!.text).toMatch(/s\+ on every set$/);
+    expect(nextTarget(log, name, defaultSettings(name, true), today)!.text).toBe('BW × 35s+ on every set');
   });
   it('a known hold logged without the flag is still timed in seconds in both', () => {
     const log = [s(day1, 'Plank', 0, 30), s(day2, 'Plank', 0, 30)];

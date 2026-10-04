@@ -37,7 +37,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   useEffect(() => { if (editing) editBox.current?.scrollIntoView({ block: 'nearest' }); }, [editing?.id]);
   const last = lastSession(store.entries, exercise, date);
   const best = bestSet(store.entries, exercise);
-  const st = settings.get(exercise);
+  const st = settings.get(exercise, hold);
   const target = nextTarget(store.entries, exercise, st, date);
   const sug = suggest(store.entries, exercise, st, date, plannedSets);
   const pace = useMemo(() => paces(store.entries), [store.entries]);
@@ -94,7 +94,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
         {best && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.e1rm))} lb</span>}
       </header>
       {last && <p className="muted">Last ({fmtDay(last.date, realToday)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
-      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.sets} × {sug.reps}{sug.unit}+{fmtLoad(sug.weight)}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}</span></p>}
+      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.sets} × {sug.reps}{sug.unit}{sug.kind !== 'maxed' && '+'}{fmtLoad(sug.weight)}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}</span></p>}
       <ol className="sets" aria-label={`Sets for ${exercise}`}>
         {today.map((s, i) => (
           <li key={s.id}>

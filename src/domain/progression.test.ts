@@ -15,6 +15,10 @@ describe('settings', () => {
     expect(defaultSettings('Bench Press')).toMatchObject({ repMin: 8, repMax: 12 });
     expect(settingsKey('  Bench   press ')).toBe('bench press');
   });
+  it('defaults a hold, known by name or by its log, to 20–40 s', () => {
+    expect(defaultSettings('Plank')).toMatchObject({ repMin: 20, repMax: 40 });
+    expect(defaultSettings('Wall Sit Hold X', true)).toMatchObject({ repMin: 20, repMax: 40 });
+  });
 });
 
 describe('isWorking', () => {
@@ -140,5 +144,20 @@ describe('rirOffset learns from first sets only', () => {
     const first = days.map((d) => s(d, 1, 30, 10, { rir: 2 }));
     const later = days.map((d) => s(d, 2, 30, 6, { rir: 2 })); // 4 short of best at RIR 2 → would drag the mean offset from 2 to 0
     expect(rirOffset([...base, ...first, ...later], 'Curl')).toBe(2);
+  });
+});
+
+describe('nextTarget for a bodyweight hold', () => {
+  const H = { key: 'plank', repMin: 20, repMax: 40, increment: 5 };
+  const p = (date: string, setNo: number, secs: number): SetEntry =>
+    ({ id: `p|${date}|${setNo}`, date, seq: seq++, exercise: 'Plank', setNo, weight: 0, reps: secs, flags: ['hold', 'bodyweight'], source: 't' });
+  it('adds 5 s up to the top of the range', () => {
+    expect(nextTarget([p('2026-10-01', 1, 30), p('2026-10-01', 2, 30)], 'Plank', H, '2026-10-02')).toMatchObject({ kind: 'reps', weight: 0, reps: 35 });
+    expect(nextTarget([p('2026-10-01', 1, 38), p('2026-10-01', 2, 38)], 'Plank', H, '2026-10-02')).toMatchObject({ reps: 40 });
+  });
+  it('at the top, keeps the time and says to add weight or move to a harder variation', () => {
+    const t = nextTarget([p('2026-10-01', 1, 40), p('2026-10-01', 2, 45)], 'Plank', H, '2026-10-02')!;
+    expect(t).toMatchObject({ kind: 'maxed', weight: 0, reps: 40 });
+    expect(t.text).toMatch(/harder variation/);
   });
 });

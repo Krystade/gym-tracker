@@ -66,3 +66,39 @@ test('a hold logs seconds with no RIR chips', async ({ page }) => {
   await expect(plank.getByRole('textbox', { name: 'Seconds' })).toBeVisible();
   await expect(plank.getByRole('group', { name: 'RIR' })).toHaveCount(0);
 });
+
+test('progression settings say why they can’t be saved', async ({ page }) => {
+  await seed(page);
+  await page.getByRole('button', { name: 'Lifts' }).click();
+  await page.getByRole('button', { name: /Bench Press/ }).click();
+  const card = page.getByRole('group', { name: 'Progression settings' });
+  await card.getByRole('textbox', { name: 'Max reps' }).fill('6');
+  await expect(card.getByRole('button', { name: 'Save settings' })).toBeDisabled();
+  await expect(card.getByRole('status')).toHaveText('Max reps can’t be below min reps');
+  await card.getByRole('textbox', { name: 'Max reps' }).fill('12');
+  await expect(card.getByRole('status')).toHaveCount(0);
+});
+
+test('a hold’s progression settings are in seconds, and go past 50', async ({ page }) => {
+  await seed(page, ['2026-10-01,Plank,,1,0,40,,hold,,sample', '2026-10-01,Plank,,2,0,40,,hold,,sample']);
+  await page.getByRole('button', { name: 'Lifts' }).click();
+  await page.getByRole('button', { name: /Plank/ }).click();
+  const card = page.getByRole('group', { name: 'Progression settings' });
+  await expect(card.getByRole('textbox', { name: /reps/i })).toHaveCount(0);
+  await card.getByRole('textbox', { name: 'Max seconds' }).fill('90');
+  await expect(card.getByRole('textbox', { name: 'Min seconds' })).toHaveValue('20');
+  await expect(card.getByRole('textbox', { name: 'Add weight' })).toBeVisible();
+  await card.getByRole('button', { name: 'Save settings' }).click();
+  await expect(card.getByRole('button', { name: 'Saved' })).toBeVisible();
+});
+
+test('a hold held at the top of its range says to add weight or go harder, not “40 s+”', async ({ page }) => {
+  await seed(page, ['2026-10-01,Plank,,1,0,40,,hold,,sample', '2026-10-01,Plank,,2,0,40,,hold,,sample']);
+  await page.getByRole('button', { name: 'Lifts' }).click();
+  await page.getByRole('button', { name: /Plank/ }).click();
+  const next = page.getByRole('region', { name: 'Next time' });
+  await expect(next.locator('.big')).toHaveText('2 × 40 s @ BW');
+  await expect(next).toContainText('harder variation');
+  await page.getByRole('button', { name: 'Log it today' }).click();
+  await expect(page.locator('[data-card="plank"]').getByLabel('Target')).toHaveText(/^2 × 40 s @ BW/);
+});
