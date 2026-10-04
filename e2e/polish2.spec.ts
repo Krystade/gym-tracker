@@ -121,3 +121,39 @@ test('fold-away sections show an arrow that turns when open', async ({ page }) =
   await page.getByRole('button', { name: 'Build program' }).click();
   expect((await marker(page.locator('details.builder > summary'))).content).toBe('"›"');
 });
+
+async function openGymSetup(page: Page) {
+  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await page.locator('details.builder > summary').click();
+  await page.getByRole('button', { name: 'Set up your gym' }).click();
+}
+
+test('a full gym is one tap, and each section can be ticked or cleared at once', async ({ page }) => {
+  await seed(page);
+  await openGymSetup(page);
+  const boxes = page.getByRole('checkbox');
+  const total = await boxes.count();
+  await page.getByRole('button', { name: 'Full gym' }).click();
+  await expect(page.locator('input[type=checkbox]:checked')).toHaveCount(total);
+  const machines = page.getByRole('group', { name: 'Machines' });
+  const n = await machines.getByRole('checkbox').count();
+  await machines.getByRole('button', { name: 'Clear Machines' }).click();
+  await expect(machines.locator('input:checked')).toHaveCount(0);
+  await expect(page.locator('input[type=checkbox]:checked')).toHaveCount(total - n);
+  await machines.getByRole('button', { name: 'Tick all Machines' }).click();
+  await expect(machines.locator('input:checked')).toHaveCount(n);
+});
+
+test('a gym with no gear ticked says so on the program instead of listing every muscle', async ({ page }) => {
+  await seed(page);
+  await openGymSetup(page);
+  await page.getByRole('textbox', { name: 'Gym name' }).fill('Hotel');
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  page.on('dialog', (d) => void d.accept());
+  await page.locator('details.builder > summary').click();
+  await page.locator('details.builder').getByRole('button', { name: 'Rebuild program' }).click();
+  await expect(page.getByRole('button', { name: /^Remove / }).first()).toBeVisible();
+  await expect(page.getByText('No gear ticked at Hotel: only bodyweight lifts are used.')).toBeVisible();
+  await expect(page.getByText(/Nothing at this gym trains/)).toHaveCount(0);
+});

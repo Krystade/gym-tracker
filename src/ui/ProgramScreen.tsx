@@ -37,6 +37,8 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
   const setShare = (v: number) => void profile.save({ ...profile.profile, lowShare: Math.round(Math.min(0.5, Math.max(0, v)) * 100) / 100 });
   const unset = Object.values(profile.profile.tiers).every((t) => t === 3);
   const gym = gyms.active;
+  // A gym saved before any gear was ticked: say that, rather than list every muscle it can't train.
+  const bare = !!gym && gym.equipment.length === 0 && gym.include.length === 0;
   const d = Number(days), s = Number(per), m = Number(mins);
   const valid = Number.isInteger(d) && d >= 1 && d <= 6 && (mode === 'sets' ? Number.isInteger(s) && s >= 8 && s <= 20 : Number.isInteger(m) && m >= 20 && m <= 150);
   const today = localDate(new Date());
@@ -119,7 +121,8 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
       )}
       {!p && builder}
       {over.length > 0 && <p className="warn small" role="status">{over.map((x) => `${x.name} ≈ ${dayMinutes(x)} min`).join(', ')}: over your {budget}. Train fewer days a week or allow more minutes, then rebuild.</p>}
-      {p?.unavailable?.length ? <p className="warn small">Nothing at this gym trains: {p.unavailable.join(', ')}.</p> : null}
+      {bare ? <p className="warn small">No gear ticked at {gym.name}: only bodyweight lifts are used.</p>
+        : p?.unavailable?.length ? <p className="warn small">Nothing at this gym trains: {p.unavailable.join(', ')}.</p> : null}
       {p && p.days.map((day, di) => (
         <section className="card" key={day.name}>
           <h2>{day.name} · {day.slots.reduce((a, x) => a + x.sets, 0)} sets · ≈ {dayMinutes(day)} min</h2>

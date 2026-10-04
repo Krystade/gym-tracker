@@ -6,6 +6,7 @@ import { normalizeName } from '../domain/ids';
 import { sameExercise } from '../domain/stats';
 
 const newGym = (n: number): Gym => ({ id: `g${Date.now().toString(36)}`, name: n ? `Gym ${n + 1}` : 'My gym', equipment: [], exclude: [], include: [] });
+const ALL_GEAR = EQUIPMENT_GROUPS.flatMap(([, items]) => items);
 const without = (xs: string[], name: string) => xs.filter((x) => !sameExercise(x, name));
 
 export function GymsScreen({ gyms, logged, fresh, onBack }: { gyms: GymsStore; logged: string[]; fresh?: boolean; onBack: () => void }) {
@@ -45,9 +46,17 @@ export function GymsScreen({ gyms, logged, fresh, onBack }: { gyms: GymsStore; l
       <section className="card">
         <label className="field">Gym name<input value={g.name} onChange={(e) => update((x) => ({ ...x, name: e.target.value }))} /></label>
       </section>
-      {EQUIPMENT_GROUPS.map(([label, items]) => (
+      <button className="wide" disabled={ALL_GEAR.every((e) => g.equipment.includes(e))}
+        onClick={() => update((x) => ({ ...x, equipment: [...ALL_GEAR] }))}>Full gym: tick all gear</button>
+      {EQUIPMENT_GROUPS.map(([label, items]) => {
+        const all = items.every((e) => g.equipment.includes(e));
+        return (
         <fieldset key={label} className="card gear">
           <legend>{label}</legend>
+          <button type="button" className="mini gear-all" aria-label={all ? `Clear ${label}` : `Tick all ${label}`}
+            onClick={() => update((x) => ({ ...x, equipment: all ? x.equipment.filter((y) => !items.includes(y)) : [...x.equipment.filter((y) => !items.includes(y)), ...items] }))}>
+            {all ? 'Clear' : 'Tick all'}
+          </button>
           {items.map((e) => (
             <label key={e} className="check">
               <input type="checkbox" checked={g.equipment.includes(e)}
@@ -56,7 +65,8 @@ export function GymsScreen({ gyms, logged, fresh, onBack }: { gyms: GymsStore; l
             </label>
           ))}
         </fieldset>
-      ))}
+        );
+      })}
       <section className="card">
         <h2>Exercises here</h2>
         <p className="muted small">Exclude a lift the gear can’t really do (a weak cable stack, a broken machine). Add lifts that need nothing listed above, or that aren’t in the app’s list.</p>
