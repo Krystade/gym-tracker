@@ -290,6 +290,11 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: var(-
 /* The help card sits below the Read notes button, not against it. */
 .paste-help { margin-top: 12px; }
 .paste-help summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+/* A flex summary loses the browser's disclosure triangle, so these draw their own, like a History day. */
+.chart-table > summary, details.builder > summary, .paste-help > summary { list-style: none; gap: 8px; }
+.chart-table > summary::-webkit-details-marker, details.builder > summary::-webkit-details-marker, .paste-help > summary::-webkit-details-marker { display: none; }
+.chart-table > summary::after, details.builder > summary::after, .paste-help > summary::after { content: '›'; font-size: var(--fs-lg); color: var(--muted); transition: transform 0.15s; }
+.chart-table[open] > summary::after, details.builder[open] > summary::after, .paste-help[open] > summary::after { transform: rotate(90deg); }
 .paste-help pre { font-size: var(--fs-sm); white-space: pre-wrap; background: var(--surface-2); padding: 8px; border-radius: 8px; overflow-wrap: anywhere; }
 .paste-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
 .paste-date { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }

@@ -102,3 +102,22 @@ test('a hold held at the top of its range says to add weight or go harder, not �
   await page.getByRole('button', { name: 'Log it today' }).click();
   await expect(page.locator('[data-card="plank"]').getByLabel('Target')).toHaveText(/^2 × 40 s @ BW/);
 });
+
+const marker = (s: ReturnType<Page['locator']>) => s.evaluate((el) => {
+  const st = getComputedStyle(el, '::after');
+  return { content: st.content, turned: st.transform !== 'none' };
+});
+
+test('fold-away sections show an arrow that turns when open', async ({ page }) => {
+  await seed(page, ['2026-09-28,Bench Press,,1,130,8,,,,sample', '2026-10-01,Bench Press,,1,135,8,,,,sample']);
+  await page.getByRole('button', { name: 'Lifts' }).click();
+  await page.getByRole('button', { name: /Bench Press/ }).click();
+  const table = page.locator('.chart-table > summary').first();
+  expect(await marker(table)).toEqual({ content: '"›"', turned: false });
+  await table.click();
+  expect(await marker(table)).toEqual({ content: '"›"', turned: true });
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Today' }).click();
+  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await page.getByRole('button', { name: 'Build program' }).click();
+  expect((await marker(page.locator('details.builder > summary'))).content).toBe('"›"');
+});
