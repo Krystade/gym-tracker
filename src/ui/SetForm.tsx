@@ -82,7 +82,15 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   // Asked on every render, so "now" stays current as the user types.
   const latest = whenOpen ? when?.max?.() ?? null : null;
   const tooLate = !!time && time !== time0 && latest != null && time > latest;
-  const valid = weight.trim() !== '' && Number.isFinite(w) && w >= 0 && (r === null || (Number.isInteger(r) && r >= 0 && r < 1000)) && !tooLate;
+  const unit = hold ? 'Seconds' : 'Reps';
+  // Why Add set is off, said under the fields; a time later than now explains itself by the time field.
+  const problem = weight.trim() === '' ? 'Enter a weight (0 for bodyweight)'
+    : !Number.isFinite(w) || w < 0 ? 'Weight must be a number'
+    : r !== null && (!Number.isInteger(r) || r < 0) ? `${unit} must be a whole number`
+    : r !== null && r >= 1000 ? `${unit} go up to 999`
+    : w === 0 && r === 0 ? `A set needs a weight or ${unit.toLowerCase()}`
+    : null;
+  const valid = !problem && !tooLate;
   const busy = useRef(false);
 
   async function submit() {
@@ -112,14 +120,16 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
     <form className="set-form" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       <div className="steppers">
         <Stepper label="Weight" value={weight} onChange={touch(setWeight)} step={5} mode="decimal" />
-        <Stepper label={hold ? 'Seconds' : 'Reps'} value={reps} onChange={touch(setReps)} step={hold ? 5 : 1} mode="numeric" />
+        <Stepper label={unit} value={reps} onChange={touch(setReps)} step={hold ? 5 : 1} mode="numeric" />
       </div>
-      <div className="chips" role="group" aria-label="RIR">
+      {problem && <p role="status" className="small err">{problem}</p>}
+      {/* Reps in reserve doesn't apply to a timed hold. */}
+      {!hold && <div className="chips" role="group" aria-label="RIR">
         <span className="chip-label">RIR</span>
         {[0, 1, 2, 3, 4].map((n) => (
           <button type="button" key={n} className="chip" aria-pressed={rir === n} onClick={() => touch(setRir)(rir === n ? undefined : n)}>{n === 4 ? '4+' : n}</button>
         ))}
-      </div>
+      </div>}
       {/* Above the button once open, so a time that blocks Add set never hides behind the fold. */}
       {whenField}
       <div className="form-actions">

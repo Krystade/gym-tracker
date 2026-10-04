@@ -25,3 +25,44 @@ test('adding a set to a lift done earlier in the day keeps its card in place', a
   await expect(lat.locator('.sets li')).toHaveCount(3);
   expect(await order(page)).toEqual(['lat pulldown', 'bench press', 'cable curl']);
 });
+
+test('a warm-up set is tagged “warm-up”, not the raw flag', async ({ page }) => {
+  await seed(page);
+  const bench = page.locator('[data-card="bench press"]');
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('bench press');
+  await page.locator('.picker-list').getByRole('button', { name: /^Bench Press/ }).first().click();
+  await bench.getByRole('button', { name: /^More/ }).click();
+  await bench.getByRole('group', { name: 'Flags' }).getByRole('button', { name: 'Warm-up' }).click();
+  await bench.getByRole('button', { name: 'Add set' }).click();
+  await expect(bench.locator('.sets .tag')).toHaveText('warm-up');
+});
+
+test('a set the form won’t take says why', async ({ page }) => {
+  await seed(page);
+  const curl = page.locator('[data-card="cable curl"]');
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('cable curl');
+  await page.locator('.picker-list').getByRole('button', { name: /^Cable Curl/ }).first().click();
+  const add = curl.getByRole('button', { name: 'Add set' });
+  await curl.getByRole('textbox', { name: 'Reps' }).fill('1000');
+  await expect(add).toBeDisabled();
+  await expect(curl.getByRole('status')).toHaveText('Reps go up to 999');
+  await curl.getByRole('textbox', { name: 'Reps' }).fill('0');
+  await curl.getByRole('textbox', { name: 'Weight' }).fill('0');
+  await expect(add).toBeDisabled(); // a 0 × 0 set records nothing
+  await expect(curl.getByRole('status')).toHaveText('A set needs a weight or reps');
+  await curl.getByRole('textbox', { name: 'Reps' }).fill('12');
+  await expect(add).toBeEnabled();
+  await expect(curl.getByRole('status')).toHaveCount(0);
+});
+
+test('a hold logs seconds with no RIR chips', async ({ page }) => {
+  await seed(page);
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('plank');
+  await page.locator('.picker-list').getByRole('button', { name: /^Plank/ }).first().click();
+  const plank = page.locator('[data-card="plank"]');
+  await expect(plank.getByRole('textbox', { name: 'Seconds' })).toBeVisible();
+  await expect(plank.getByRole('group', { name: 'RIR' })).toHaveCount(0);
+});
