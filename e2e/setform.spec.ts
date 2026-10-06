@@ -42,6 +42,7 @@ test('More reopens for a drafted note, and folds after the set is saved', async 
   await page.getByRole('button', { name: 'Today', exact: true }).click();
   await expect(more(page)).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('textbox', { name: 'Note' })).toHaveValue('felt strong');
+  await page.getByRole('textbox', { name: 'Weight' }).fill('135'); // no history: the weight starts empty
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(1);
   await expect(more(page)).toHaveAttribute('aria-expanded', 'false');

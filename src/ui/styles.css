@@ -39,6 +39,8 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
 .screen { flex: 1; width: 100%; max-width: 720px; margin-inline: auto; padding: calc(var(--sat) + 12px) calc(16px + var(--sar)) calc(var(--sab) + 84px) calc(16px + var(--sal)); }
 .banner { position: sticky; top: 0; z-index: 5; padding: calc(var(--sat) + 8px) calc(16px + var(--sar)) 8px calc(16px + var(--sal)); background: var(--danger); color: #1a0505; font-weight: 600; }
 
+.set-form button, .set-form .pain-box { scroll-margin-bottom: calc(72px + var(--sab)); }
+.card.folded .left-row { margin: 0 12px 12px; }
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
   display: grid; grid-template-columns: repeat(5, 1fr);

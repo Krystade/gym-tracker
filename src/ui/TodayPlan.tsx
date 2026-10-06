@@ -14,6 +14,13 @@ export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: str
     ?? { key: `day:${date}`, date, day: nextDay(store.program, store.plans, entries, date), skips: [], swaps: {} };
 };
 
+/** The day's lifts not yet done and not skipped, by the names they're done under (swaps applied). */
+export function leftToDo(program: Program, plan: DayPlan, entries: SetEntry[]): string[] {
+  const day = plan.quick != null ? { slots: plan.slots ?? [] } : program.days[plan.day] ?? program.days[0];
+  return day.slots.filter((s) => !plan.skips.includes(s.exercise)).map((s) => ({ ex: plan.swaps[s.exercise] ?? s.exercise, sets: s.sets }))
+    .filter(({ ex, sets }) => entries.filter((e) => e.date === plan.date && sameExercise(e.exercise, ex) && isWorking(e)).length < sets).map(({ ex }) => ex);
+}
+
 /** `buildQuick`: a one-off day of lifts that fits, for the Quick chip. */
 export function TodayPlan({ program, plan, entries, past, open, onToggle, onChange, onOpen, onSwap, buildQuick }: {
   program: Program; plan: DayPlan; entries: SetEntry[]; past?: boolean; open: boolean; onToggle: () => void;
@@ -55,6 +62,7 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
         <span>{title} · {day.name}</span>
         {open ? length() : <span className="muted small">{finished} of {live.length} done</span>}
       </button></h2>
+
       {open && (<>
       <div className="chips" role="group" aria-label="Program day">
         {program.days.map((d, i) => (

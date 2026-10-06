@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Profile } from '../domain/profile';
 import { planToRecord, quickDay } from '../domain/program';
 import type { SetsStore } from '../state/useSets';
@@ -15,7 +15,7 @@ import { getDraft, saveDraft } from '../state/drafts';
 const CARDS = '#cards';
 import { ExercisePicker } from './ExercisePicker';
 import { swapSuggestions } from '../domain/care';
-import { TodayPlan, todayPlanFor } from './TodayPlan';
+import { leftToDo, TodayPlan, todayPlanFor } from './TodayPlan';
 import { WeighIn } from './WeighIn';
 import type { BodyStore } from '../state/useBody';
 import type { GymsStore } from '../state/useGyms';
@@ -23,7 +23,9 @@ import { availableSet } from '../domain/equipment';
 import { CATALOG } from '../domain/catalog';
 import { addDays } from '../domain/analytics';
 
-export function TodayScreen({ store, settings, programs, body, gyms, profile, date, today, carried, onSplit, onDay, onOpen, onOpenProgram }: {
+export function TodayScreen({ who, store, settings, programs, body, gyms, profile, date, today, carried, onSplit, onDay, onOpen, onOpenProgram }: {
+  /** Whose sets these are, named only when several people share the phone. */
+  who?: string;
   store: SetsStore; settings: SettingsStore; programs: ProgramStore; body: BodyStore; gyms: GymsStore; profile: Profile; date: string; today: string;
   carried?: boolean; onSplit?: () => void; onDay: (d: string) => void; onOpen: (name: string) => void; onOpenProgram: () => void;
 }) {
@@ -58,7 +60,26 @@ export function TodayScreen({ store, settings, programs, body, gyms, profile, da
     document.querySelector(`[data-card="${CSS.escape(jump.toLowerCase())}"]`)?.scrollIntoView({ block: 'start' });
     setJump(null);
   }, [jump, picking, swapFor]);
+  const left = programs.program && plan ? leftToDo(programs.program, plan, store.entries) : [];
   const hasPlan = date >= today || programs.plans.some((p) => p.date === date) || logged.length > 0;
+
+  // A card folding shrinks the page; near the bottom the browser then clamps the scroll and the page jumps. The screen
+  // keeps the tallest height it has had, letting the extra go once it is below the viewport, where losing it moves nothing.
+  const outer = useRef<HTMLDivElement>(null), inner = useRef<HTMLDivElement>(null);
+  const shown = !picking && !(swapFor && plan);
+  useLayoutEffect(() => {
+    const o = outer.current, i = inner.current;
+    if (!o || !i) return;
+    let floor = 0;
+    const ro = new ResizeObserver(() => { if (i.offsetHeight > floor) { floor = i.offsetHeight; o.style.minHeight = `${floor}px`; } });
+    ro.observe(i);
+    const onScroll = () => {
+      const f = Math.max(i.offsetHeight, Math.min(floor, innerHeight - o.getBoundingClientRect().top));
+      if (f < floor) { floor = f; o.style.minHeight = `${floor}px`; }
+    };
+    addEventListener('scroll', onScroll, { passive: true });
+    return () => { ro.disconnect(); removeEventListener('scroll', onScroll); };
+  }, [shown]);
 
   const available = gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined;
   if (picking) return <ExercisePicker recent={exerciseNames(store.entries)} gym={gyms.active} onCancel={() => setPicking(false)}
@@ -67,7 +88,7 @@ export function TodayScreen({ store, settings, programs, body, gyms, profile, da
     onPick={(n) => { void programs.savePlan({ ...plan, swaps: { ...plan.swaps, [swapFor]: n } }); goTo(n); setSwapFor(null); }} />;
 
   return (
-    <>
+    <div ref={outer}><div ref={inner}>
       <div className="today-head">
         <div className="day-switch">
           <button className="mini" aria-label="Previous day" onClick={() => onDay(addDays(date, -1))}>‹</button>
@@ -87,9 +108,10 @@ export function TodayScreen({ store, settings, programs, body, gyms, profile, da
       )}
       {cards.length === 0 && <p className="muted">{date < today ? 'Nothing logged that day.' : 'Nothing logged yet today.'}</p>}
       {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} today={today} store={store} settings={settings} onOpen={onOpen}
-        plannedSets={plannedSets(programs.program, plan, n)} gym={gyms.active?.name}
+        plannedSets={plannedSets(programs.program, plan, n)} gym={gyms.active?.name} who={who} left={hasPlan ? left : []} onGo={goTo}
+        swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
         openReq={openReq != null && sameExercise(openReq, n)} onOpenReq={() => setOpenReq(null)} />)}
       <button className="primary wide" onClick={() => setPicking(true)}>Add exercise</button>
-    </>
+    </div></div>
   );
 }

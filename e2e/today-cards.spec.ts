@@ -70,7 +70,9 @@ test('a lift folds to one line when it reaches its planned sets, and tapping ope
   await expect(c).toContainText(`${n}/${n} sets`);
   await expect(c).toContainText('135 × 8');
   await expect(c.getByRole('textbox', { name: 'Weight' })).toBeHidden();
-  expect((await c.boundingBox())!.height).toBeLessThan(80);
+  // The fold is one line; the card under it also offers what's left of the plan.
+  expect((await folded.boundingBox())!.height).toBeLessThan(80);
+  await expect(c.getByRole('group', { name: 'Left to do' })).toBeVisible();
   expect((await folded.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   // Tap: the form is back, and one more set leaves it open.
   await folded.click();

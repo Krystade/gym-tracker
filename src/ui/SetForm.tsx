@@ -32,8 +32,11 @@ interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; not
  * `when`: the set may have been done earlier — `always` shows the time field (a past day), otherwise "Did this earlier?" opens it.
  * `suggest` is asked when the field opens, so it reflects the clock then. An empty field means unknown.
  */
-export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day, hold: holdLift }: {
-  exercise: string; initial: SetFormValue; submitLabel: string;
+export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day, hold: holdLift, heaviest = 0 }: {
+  /** An empty weight (null) is for a lift with nothing to suggest from. */
+  exercise: string; initial: Omit<SetFormValue, 'weight'> & { weight: number | null }; submitLabel: string;
+  /** The heaviest working weight logged for this lift: over twice it asks once before saving. */
+  heaviest?: number;
   /** Timed in seconds: a known hold, or a lift logged as one (the card knows the log; the name alone doesn't). */
   hold?: boolean;
   onSubmit: (v: SetFormValue) => Promise<boolean>; onDelete?: () => void; onCancel?: () => void; keepDraft?: boolean;
@@ -55,7 +58,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
     resuggest.current = false;
     setTime(when.suggest() ?? '');
   }, [when?.suggest, when?.always]);
-  const [weight, setWeight] = useState(d?.weight ?? String(initial.weight));
+  const [weight, setWeight] = useState(d?.weight ?? (initial.weight == null ? '' : String(initial.weight)));
   const [reps, setReps] = useState(d?.reps ?? (initial.reps == null ? '' : String(initial.reps)));
   const [rir, setRir] = useState<number | undefined>(d ? d.rir : initial.rir);
   const [flags, setFlags] = useState<Flag[]>(d?.flags ?? initial.flags.filter((f) => f !== 'bodyweight' && f !== 'partial'));
@@ -92,9 +95,16 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
     : null;
   const valid = !problem && !tooLate;
   const busy = useRef(false);
+  // A weight far over the best is asked about once; the same weight tapped again is kept.
+  const [asked, setAsked] = useState<number | null>(null);
+  const typo = heaviest > 0 && Number.isFinite(w) && w > heaviest * 2;
+  const submitBtn = useRef<HTMLButtonElement>(null);
+  const painBox = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (pain) painBox.current?.scrollIntoView({ block: 'nearest' }); }, [pain]);
 
   async function submit() {
     if (!valid || busy.current) return;
+    if (typo && asked !== w) { setAsked(w); return; }
     busy.current = true; // a fast double tap would otherwise log the set twice
     try {
       const withHold: Flag[] = hold && !flags.includes('hold') ? [...flags, 'hold'] : flags;
@@ -105,7 +115,13 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       });
       if (ok && when) { if (when.always) resuggest.current = true; else setWhenOpen(false); }
       if (ok && keepDraft) { clearDraft(owner.profile, draftKey); dirty.current = false; }
-      if (ok) { setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); setMoreOpen(false); }
+      // A growing list of sets pushes Add set down; keep it where the thumb is.
+      // Only when it has actually gone under the tab bar, and after the re-render: a set that finishes the lift folds the card instead.
+      if (ok) requestAnimationFrame(() => {
+        const b = submitBtn.current, bar = document.querySelector('nav.tabs')?.getBoundingClientRect().top ?? innerHeight;
+        if (b && b.getBoundingClientRect().bottom > bar) b.scrollIntoView({ block: 'nearest' });
+      });
+      if (ok) { setAsked(null); setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); setMoreOpen(false); }
     } finally { busy.current = false; }
   }
 
@@ -123,6 +139,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
         <Stepper label={unit} value={reps} onChange={touch(setReps)} step={hold ? 5 : 1} mode="numeric" />
       </div>
       {problem && <p role="status" className="small err">{problem}</p>}
+      {!problem && typo && asked === w && <p role="status" className="small err">{weight} lb is {Math.round(w / heaviest)}× your best: tap {submitLabel.split(' ·')[0]} again to keep it</p>}
       {/* Reps in reserve doesn't apply to a timed hold. */}
       {!hold && <div className="chips" role="group" aria-label="RIR">
         <span className="chip-label">RIR</span>
@@ -135,7 +152,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       <div className="form-actions">
         {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
         {onDelete && <button type="button" className="danger" onClick={onDelete}>Delete</button>}
-        <button type="submit" className="primary" disabled={!valid}>{submitLabel}</button>
+        <button ref={submitBtn} type="submit" className="primary" disabled={!valid}>{submitLabel}</button>
       </div>
       <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>{moreOpen || !moreHint ? 'More' : `More · ${moreHint}`}</button>
       {moreOpen && (
@@ -146,7 +163,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
             ))}
           </div>
           {pain && (
-            <>
+            <div ref={painBox} className="pain-box">
               <div className="chips" role="group" aria-label="Pain region">
                 <span className="chip-label">Where</span>
                 {REGIONS.map((x) => <button type="button" key={x} className="chip" aria-pressed={region === x} onClick={() => touch(setRegion)(x)}>{cap(x)}</button>)}
@@ -155,7 +172,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
                 <span className="chip-label">How bad</span>
                 {SEVERITY.map(([n, label]) => <button type="button" key={n} className="chip" aria-pressed={severity === n} onClick={() => touch(setSeverity)(n)}>{label}</button>)}
               </div>
-            </>
+            </div>
           )}
           {when && !when.always && !whenOpen && <button type="button" className="chip" onClick={() => { setTime(when.suggest() ?? ''); setWhenOpen(true); }}>Did this earlier?</button>}
           <input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => touch(setNote)(e.target.value)} />

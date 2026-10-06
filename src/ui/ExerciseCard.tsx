@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import { bestSet, byOrderDone, e1rm, lastSession, sameExercise } from '../domain/stats';
@@ -12,6 +12,7 @@ import { suggest } from '../domain/suggest';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
 import { hhmm, paces, suggestTime } from '../domain/timing';
 import { localDate } from '../domain/ids';
+import { gearOf } from '../domain/equipment';
 
 const TargetIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -19,9 +20,15 @@ const TargetIcon = () => (
   </svg>
 );
 
-export function ExerciseCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = false, onOpenReq }: {
+export function ExerciseCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = false, onOpenReq, who, swappedFrom, left = [], onGo }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
   openReq?: boolean; onOpenReq?: () => void;
+  /** Named on Add set when several people share the phone. */
+  who?: string;
+  /** The planned lift this one was swapped in for. */
+  swappedFrom?: string;
+  /** The plan's lifts still to do, offered on the card you just finished so you can take whichever machine is free. */
+  left?: string[]; onGo?: (exercise: string) => void;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
   // Once the user has opened a finished card it stays open (more sets are theirs to add); a reload starts it folded again.
@@ -37,6 +44,13 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   useEffect(() => { if (editing) editBox.current?.scrollIntoView({ block: 'nearest' }); }, [editing?.id]);
   const last = lastSession(store.entries, exercise, date);
   const best = bestSet(store.entries, exercise);
+  // The heaviest working set ever: a weight far above it is more likely a typo than a jump.
+  // A lift swapped in with no history of its own is checked against the one it replaces.
+  const heaviest = useMemo(() => {
+    const top = (n: string) => store.entries.filter((e) => sameExercise(e.exercise, n) && isWorking(e)).reduce((m, e) => Math.max(m, e.weight), 0);
+    return top(exercise) || (swappedFrom ? top(swappedFrom) : 0);
+  }, [store.entries, exercise, swappedFrom]);
+  const from = useMemo(() => (swappedFrom ? lastSession(store.entries, swappedFrom, date) : null), [store.entries, swappedFrom, date]);
   const st = settings.get(exercise, hold);
   const target = nextTarget(store.entries, exercise, st, date);
   const sug = suggest(store.entries, exercise, st, date, plannedSets);
@@ -50,9 +64,10 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   // The last set actually done here, not a pasted one that sorts after it.
   const seed = today.findLast((s) => s.loggedAt) ?? today.at(-1);
   const pulley: Flag[] = (seed ?? last?.sets.find(isWorking))?.flags.includes('double_pulley') ? ['double_pulley'] : [];
-  const initial: SetFormValue = seed ? { weight: seed.weight, reps: seed.reps ?? st.repMin, flags: pulley }
+  // With nothing to go on, a lift that needs gear starts empty: a prefilled 0 would log a weighted lift as bodyweight.
+  const initial: Omit<SetFormValue, 'weight'> & { weight: number | null } = seed ? { weight: seed.weight, reps: seed.reps ?? st.repMin, flags: pulley }
     : target ? { weight: target.weight, reps: target.reps, flags: pulley }
-    : { weight: 0, reps: st.repMin, flags: [] };
+    : { weight: hold || gearOf(exercise) === 'no equipment' ? 0 : null, reps: st.repMin, flags: [] };
 
   async function addSet(v: SetFormValue): Promise<boolean> {
     setPr(null);
@@ -72,7 +87,13 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   // The plan sent you here: open a folded card, but a card that isn't finished has nothing to open, so don't pin it open.
   if (openReq && complete && !opened) setOpened(true);
   useEffect(() => { if (openReq) onOpenReq?.(); }, [openReq, onOpenReq]);
-  if (complete && !opened) {
+  const folded = complete && !opened;
+  // Finished while on screen: this card is where you are, so it offers what's left.
+  const wasFolded = useRef(folded);
+  const [justDone, setJustDone] = useState(false);
+  useLayoutEffect(() => { if (folded && !wasFolded.current) setJustDone(true); wasFolded.current = folded; }, [folded]);
+
+  if (folded) {
     const top = working.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && (b.reps ?? 0) > (a.reps ?? 0)) ? b : a));
     return (
       <section className="card folded" data-card={exercise.toLowerCase()}>
@@ -82,6 +103,12 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
           <span className="muted nw">{fmtSet(top)}</span>
         </button>
         {pr && <p role="status" className="pr">{pr}</p>}
+        {justDone && onGo && left.length > 0 && (
+          <div className="chips left-row" role="group" aria-label="Left to do">
+            <span className="chip-label">Left</span>
+            {left.map((ex) => <button key={ex} type="button" className="chip" onClick={() => onGo(ex)}>{ex}</button>)}
+          </div>
+        )}
       </section>
     );
   }
@@ -94,6 +121,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
         {best && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.e1rm))} lb</span>}
       </header>
       {last && <p className="muted card-last">Last ({fmtDay(last.date, realToday)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
+      {swappedFrom && <p className="muted card-last">For {swappedFrom}{from && <> · last {from.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</>}</p>}
       {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.sets} × {sug.reps}{sug.unit}{sug.kind !== 'maxed' && '+'}{fmtLoad(sug.weight)}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}</span></p>}
       <ol className="sets" aria-label={`Sets for ${exercise}`}>
         {today.map((s, i) => (
@@ -133,7 +161,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
           }} />
         </div>
       ) : (
-        <SetForm key="new" exercise={exercise} hold={hold} initial={initial} submitLabel="Add set" onSubmit={addSet} keepDraft day={date}
+        <SetForm key="new" exercise={exercise} hold={hold} initial={initial} submitLabel={who ? `Add set · ${who}` : 'Add set'} onSubmit={addSet} keepDraft day={date} heaviest={heaviest}
           when={{ suggest: suggestWhen, always: date < realToday, max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined }} />
       )}
     </section>
