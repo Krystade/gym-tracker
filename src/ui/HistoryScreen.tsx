@@ -6,6 +6,7 @@ import { localDate } from '../domain/ids';
 import type { SetEntry } from '../domain/types';
 import { Fragment, useMemo } from 'react';
 import { paces, sessionMinutes } from '../domain/timing';
+import { prIds } from '../domain/summary';
 
 function byExercise(sets: SetEntry[]): [string, SetEntry[]][] {
   const out: [string, SetEntry[]][] = [];
@@ -20,6 +21,7 @@ export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; on
   const sessions = sessionsByDate(store.entries);
   const today = localDate(new Date());
   const pace = useMemo(() => paces(store.entries), [store.entries]);
+  const prs = useMemo(() => prIds(store.entries), [store.entries]);
   if (!sessions.length) return (<><h1>History</h1><p className="muted">No history yet — import it from the Data tab.</p></>);
   return (
     <>
@@ -31,7 +33,7 @@ export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; on
           <details className="day" key={s.date} open={i === 0}>
             <summary>
               <span className="day-date">{fmtDay(s.date, today)}</span>
-              <span className="muted small">{plural(groups.length, 'exercise')} · {plural(s.sets.length, 'set')}{mins != null && ` · ${mins} min`}</span>
+              <span className="muted small">{plural(groups.length, 'exercise')} · {plural(s.sets.length, 'set')}{mins != null && ` · ${mins} min`}{s.sets.some((x) => prs.has(x.id)) && <>{' '}<span className="tag pr-tag">PR</span></>}</span>
             </summary>
             <div className="day-body">
               {groups.map(([name, sets]) => {
@@ -42,7 +44,7 @@ export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; on
                 <button key={name} className="row-button" onClick={() => onOpen(name)}>
                   <b>{name}</b>
                   <span className="muted">
-                    {working.map((x, j) => <Fragment key={x.id}>{j > 0 && ', '}<span className="nw">{fmtSet(x)}{x.flags.includes('pain') && <>{' '}<span className="pain-mark">pain</span></>}</span></Fragment>)}
+                    {working.map((x, j) => <Fragment key={x.id}>{j > 0 && ', '}<span className="nw">{fmtSet(x)}{prs.has(x.id) && <>{' '}<span className="tag pr-tag">PR</span></>}{x.flags.includes('pain') && <>{' '}<span className="pain-mark">pain</span></>}</span></Fragment>)}
                     {warm > 0 && `${working.length ? ' + ' : ''}${plural(warm, 'warm-up')}`}
                   </span>
                   {sets.filter((x) => x.note).map((x) => <span key={x.id} className="muted">“{x.note}”</span>)}

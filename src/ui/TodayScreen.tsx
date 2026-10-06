@@ -7,6 +7,7 @@ import type { ProgramStore } from '../state/useProgram';
 import { dayOrder, exerciseNames, sameExercise } from '../domain/stats';
 import { fmtDay } from '../domain/format';
 import { ExerciseCard } from './ExerciseCard';
+import { SessionSummary } from './SessionSummary';
 import { Energy } from './Energy';
 import { plannedSets } from '../domain/suggest';
 import { activeProfileDb } from '../db/db';
@@ -111,6 +112,8 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
         plannedSets={plannedSets(programs.program, plan, n)} gym={gyms.active?.name} who={who} left={hasPlan ? left : []} onGo={goTo}
         swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
         openReq={openReq != null && sameExercise(openReq, n)} onOpenReq={() => setOpenReq(null)} />)}
+      {/* Below the cards, so the card you're logging on never moves down. */}
+      <SessionSummary entries={store.entries} date={date} past={date < today} />
       <button className="primary wide" onClick={() => setPicking(true)}>Add exercise</button>
     </div></div>
   );

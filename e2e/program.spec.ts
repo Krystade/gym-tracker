@@ -41,6 +41,7 @@ test('build a program, then run today from it with skip and log', async ({ page 
   const name = (await first.getByRole('button').first().getAttribute('data-exercise'))!;
   await first.getByRole('button').first().click();
   await expect(page.getByRole('list', { name: `Sets for ${name}` })).toBeAttached();
+  await page.getByRole('textbox', { name: 'Weight' }).fill('50'); // no history: the weight starts empty
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByRole('list', { name: `Sets for ${name}` }).getByRole('listitem')).toHaveCount(1);
   await openPlan(page); // the plan folds once a card is on screen
@@ -55,6 +56,7 @@ test('logging without touching the plan still records the session for adherence'
   await page.getByRole('button', { name: '‹ Back' }).click();
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
+  await page.getByRole('textbox', { name: 'Weight' }).fill('50'); // no history: the weight starts empty
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem')).toHaveCount(1);
   await page.getByRole('button', { name: 'Stats' }).click();

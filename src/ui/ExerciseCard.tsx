@@ -13,6 +13,7 @@ import { fmtLoad, fmtRamp } from './SuggestionCard';
 import { hhmm, paces, suggestTime } from '../domain/timing';
 import { localDate } from '../domain/ids';
 import { gearOf } from '../domain/equipment';
+import { prSetIds } from '../domain/summary';
 
 const TargetIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -50,6 +51,8 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
     const top = (n: string) => store.entries.filter((e) => sameExercise(e.exercise, n) && isWorking(e)).reduce((m, e) => Math.max(m, e.weight), 0);
     return top(exercise) || (swappedFrom ? top(swappedFrom) : 0);
   }, [store.entries, exercise, swappedFrom]);
+  // PRs stay marked on their rows; the banner only announces one.
+  const prs = useMemo(() => prSetIds(store.entries, date), [store.entries, date]);
   const from = useMemo(() => (swappedFrom ? lastSession(store.entries, swappedFrom, date) : null), [store.entries, swappedFrom, date]);
   const st = settings.get(exercise, hold);
   const target = nextTarget(store.entries, exercise, st, date);
@@ -92,6 +95,18 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   const wasFolded = useRef(folded);
   const [justDone, setJustDone] = useState(false);
   useLayoutEffect(() => { if (folded && !wasFolded.current) setJustDone(true); wasFolded.current = folded; }, [folded]);
+  // A growing list of sets pushes Add set down: once a new set has rendered, bring it back above the tab bar if it went
+  // under. Not when that set finished the lift: the card has folded and there is nothing to reach.
+  const box = useRef<HTMLElement>(null);
+  const count = useRef(today.length);
+  useEffect(() => {
+    const grew = today.length > count.current;
+    count.current = today.length;
+    if (!grew || folded || editing) return;
+    const b = box.current?.querySelector<HTMLElement>('.set-form button[type=submit]');
+    const bar = document.querySelector('nav.tabs')?.getBoundingClientRect().top ?? innerHeight;
+    if (b && b.getBoundingClientRect().bottom > bar) b.scrollIntoView({ block: 'nearest' });
+  }, [today.length, folded, editing]);
 
   if (folded) {
     const top = working.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && (b.reps ?? 0) > (a.reps ?? 0)) ? b : a));
@@ -100,6 +115,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
         <button className="fold-line" aria-expanded="false" aria-label={`Show ${exercise}`} onClick={() => setOpened(true)}>
           <b>{exercise}</b>
           <span className="ok">{working.length}/{plannedSets} sets ✓</span>
+          {working.some((x) => prs.has(x.id)) && <span className="tag pr-tag">PR</span>}
           <span className="muted nw">{fmtSet(top)}</span>
         </button>
         {pr && <p role="status" className="pr">{pr}</p>}
@@ -114,7 +130,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   }
 
   return (
-    <section className="card" data-card={exercise.toLowerCase()}>
+    <section ref={box} className="card" data-card={exercise.toLowerCase()}>
       <header className="card-head">
         <button className="link" onClick={() => onOpen(exercise)}>{exercise}</button>
         {complete && <button className="mini" aria-expanded="true" onClick={() => setOpened(false)}>Fold</button>}
@@ -127,7 +143,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
         {today.map((s, i) => (
           <li key={s.id}>
             <button className={editing?.id === s.id ? 'set-row editing' : 'set-row'} aria-current={editing?.id === s.id ? 'true' : undefined} onClick={() => setEditing(s)}>
-              <SetRowContent s={s} no={i + 1} estRir={estimateRir(s, today, prior, offset)} />
+              <SetRowContent s={s} no={i + 1} estRir={estimateRir(s, today, prior, offset)} pr={prs.has(s.id)} />
             </button>
           </li>
         ))}

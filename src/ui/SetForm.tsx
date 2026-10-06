@@ -98,7 +98,6 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   // A weight far over the best is asked about once; the same weight tapped again is kept.
   const [asked, setAsked] = useState<number | null>(null);
   const typo = heaviest > 0 && Number.isFinite(w) && w > heaviest * 2;
-  const submitBtn = useRef<HTMLButtonElement>(null);
   const painBox = useRef<HTMLDivElement>(null);
   useEffect(() => { if (pain) painBox.current?.scrollIntoView({ block: 'nearest' }); }, [pain]);
 
@@ -115,12 +114,6 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       });
       if (ok && when) { if (when.always) resuggest.current = true; else setWhenOpen(false); }
       if (ok && keepDraft) { clearDraft(owner.profile, draftKey); dirty.current = false; }
-      // A growing list of sets pushes Add set down; keep it where the thumb is.
-      // Only when it has actually gone under the tab bar, and after the re-render: a set that finishes the lift folds the card instead.
-      if (ok) requestAnimationFrame(() => {
-        const b = submitBtn.current, bar = document.querySelector('nav.tabs')?.getBoundingClientRect().top ?? innerHeight;
-        if (b && b.getBoundingClientRect().bottom > bar) b.scrollIntoView({ block: 'nearest' });
-      });
       if (ok) { setAsked(null); setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); setMoreOpen(false); }
     } finally { busy.current = false; }
   }
@@ -152,7 +145,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       <div className="form-actions">
         {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
         {onDelete && <button type="button" className="danger" onClick={onDelete}>Delete</button>}
-        <button ref={submitBtn} type="submit" className="primary" disabled={!valid}>{submitLabel}</button>
+        <button type="submit" className="primary" disabled={!valid}>{submitLabel}</button>
       </div>
       <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>{moreOpen || !moreHint ? 'More' : `More · ${moreHint}`}</button>
       {moreOpen && (
