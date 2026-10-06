@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { SetEntry } from '../domain/types';
 import { isWorking } from '../domain/progression';
-import { nextDay, type DayPlan, type Program } from '../domain/program';
+import { nextDay, type DayPlan, type Program, type Slot } from '../domain/program';
 import { sameExercise } from '../domain/stats';
 import { isHoldLift } from '../domain/care';
 import type { ProgramStore } from '../state/useProgram';
@@ -14,11 +14,15 @@ export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: str
     ?? { key: `day:${date}`, date, day: nextDay(store.program, store.plans, entries, date), skips: [], swaps: {} };
 };
 
-export function TodayPlan({ program, plan, entries, past, open, onToggle, onChange, onOpen, onSwap }: {
+/** `buildQuick`: a one-off day of lifts that fits, for the Quick chip. */
+export function TodayPlan({ program, plan, entries, past, open, onToggle, onChange, onOpen, onSwap, buildQuick }: {
   program: Program; plan: DayPlan; entries: SetEntry[]; past?: boolean; open: boolean; onToggle: () => void;
   onChange: (p: DayPlan) => void; onOpen: (exercise: string) => void; onSwap: (original: string) => void;
+  buildQuick: (fits: (slots: Slot[]) => boolean) => Slot[];
 }) {
-  const day = program.days[plan.day] ?? program.days[0];
+  const quick = plan.quick != null;
+  const day = quick ? { name: 'Quick', slots: plan.slots ?? [] } : program.days[plan.day] ?? program.days[0];
+  const [minutes, setMinutes] = useState(String(plan.quick ?? program.minutes ?? 30));
   const doneOf = (ex: string) => entries.filter((e) => e.date === plan.date && sameExercise(e.exercise, ex) && isWorking(e)).length;
   const title = past ? 'Plan' : 'Today’s plan';
   const pace = useMemo(() => paces(entries), [entries]);
@@ -31,6 +35,9 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
       return cache.get(k)!;
     };
   }, [entries, plan.date]);
+  // Quick: as many pairs of sets as fit the minutes, from your own pace with warm-ups.
+  const pickQuick = (mins: number) => onChange({ ...plan, quick: mins, skips: [], swaps: {},
+    slots: buildQuick((slots) => estimateSeconds(slots, pace, warm) <= mins * 60) });
   const live = day.slots.filter((s) => !plan.skips.includes(s.exercise));
   const finished = live.filter((s) => doneOf(plan.swaps[s.exercise] ?? s.exercise) >= s.sets).length;
   // The second line of the header: how long it runs when open, how far along when folded. Inside the
@@ -49,12 +56,21 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
         {open ? length() : <span className="muted small">{finished} of {live.length} done</span>}
       </button></h2>
       {open && (<>
-      {program.days.length > 1 && (
-        <div className="chips" role="group" aria-label="Program day">
-          {program.days.map((d, i) => (
-            <button key={d.name} type="button" className="chip" aria-pressed={i === plan.day} onClick={() => onChange({ ...plan, day: i, skips: [], swaps: {}, slots: undefined })}>{d.name}</button>
-          ))}
-        </div>
+      <div className="chips" role="group" aria-label="Program day">
+        {program.days.map((d, i) => (
+          <button key={d.name} type="button" className="chip" aria-pressed={!quick && i === plan.day} onClick={() => onChange({ ...plan, day: i, skips: [], swaps: {}, slots: undefined, quick: undefined })}>{d.name}</button>
+        ))}
+        <button type="button" className="chip" aria-pressed={quick} onClick={() => { if (!quick) pickQuick(Number(minutes) || 30); }}>Quick</button>
+      </div>
+      {quick && (
+        <label className="quick-minutes">Minutes
+          <input aria-label="Minutes" inputMode="numeric" value={minutes} onChange={(e) => {
+            setMinutes(e.target.value);
+            const n = Number(e.target.value);
+            if (Number.isInteger(n) && n >= 5 && n <= 180) pickQuick(n);
+          }} />
+          <span className="muted small">What your week is furthest behind on</span>
+        </label>
       )}
       <ol className="plan-slots" aria-label="Planned exercises">
         {day.slots.map((slot) => {

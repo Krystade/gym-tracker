@@ -371,3 +371,5 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: var(-
 .chart .goal, .chart .goal-lbl { pointer-events: none; }
 .chart .goal-lbl { paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
 .confirm-delete .form-actions { margin-top: 8px; }
+.quick-minutes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; }
+.quick-minutes input { width: 72px; }

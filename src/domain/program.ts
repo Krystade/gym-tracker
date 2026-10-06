@@ -12,7 +12,8 @@ export interface ProgramDay { name: string; slots: Slot[] }
 export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string; /** Minutes per session it was built for; unset when built by sets. */ minutes?: number; /** Set once its days were hand-edited; a rebuild drops it. */ edited?: boolean; newToYou?: string[]; unavailable?: Muscle[] }
 /** What happened to the program on one date: which day was run, and what was skipped or swapped. */
 /** `slots` is the day as planned when the session was logged, so later program edits don't rewrite history. */
-export interface DayPlan { key: string; date: string; day: number; skips: string[]; swaps: Record<string, string>; slots?: Slot[] }
+/** `quick`: a one-off Quick day built for this many minutes; its `slots` are the day, and it doesn't move the rotation. */
+export interface DayPlan { key: string; date: string; day: number; skips: string[]; swaps: Record<string, string>; slots?: Slot[]; quick?: number }
 
 export const MAX_SETS_PER_DAY = 4;
 /** Sets are allocated in pairs so no exercise is ever programmed for a single set. */
@@ -167,7 +168,7 @@ const trainedOn = (entries: SetEntry[], date: string) => entries.some((e) => e.d
 
 /** The day after the last one actually trained; a plan with nothing logged doesn't count. */
 export function nextDay(p: Program, plans: DayPlan[], entries: SetEntry[], today: string): number {
-  const last = plans.filter((x) => x.date < today && x.day < p.days.length && trainedOn(entries, x.date)).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const last = plans.filter((x) => x.date < today && x.quick == null && x.day < p.days.length && trainedOn(entries, x.date)).sort((a, b) => b.date.localeCompare(a.date))[0];
   return last ? (last.day + 1) % p.days.length : 0;
 }
 
@@ -202,4 +203,43 @@ export function planToRecord(p: Program, plans: DayPlan[], entries: SetEntry[], 
   const base = stored ?? { key: `day:${date}`, date, day: nextDay(p, plans, entries, date), skips: [], swaps: {} };
   const day = p.days[base.day] ?? p.days[0];
   return day ? { ...base, day: p.days[base.day] ? base.day : 0, slots: structuredClone(day.slots) } : null;
+}
+
+/**
+ * A one-off day that fits the time you have: a pair of sets at a time to the muscle furthest behind its weekly target
+ * over the last 7 days (as a fraction, weighted by priority, like the builder), ties to whatever was trained longest ago.
+ * The day's own sets don't count, so the plan holds while you work through it. `fits`: whether the slots fit the time.
+ */
+export function quickDay(profile: Profile, entries: SetEntry[], date: string, fits: (slots: Slot[]) => boolean, ctx: BuildContext = {}): Slot[] {
+  const weekAgo = addDays(date, -7);
+  const achieved = zero();
+  const last = new Map<Muscle, string>();
+  for (const e of entries) {
+    if (e.date >= date || !isWorking(e)) continue;
+    for (const [m, f] of Object.entries(muscleVector(e.exercise) ?? {}) as [Muscle, number][]) {
+      if (e.date >= weekAgo) achieved[m] += f;
+      if (f > 0 && e.date > (last.get(m) ?? '')) last.set(m, e.date);
+    }
+  }
+  const cands = new Map<Muscle, string[]>(MUSCLES.map((m) => [m, candidates(m, entries, date, ctx)]));
+  const done = new Set<Muscle>(MUSCLES.filter((m) => !cands.get(m)!.length));
+  const score = (m: Muscle, bound: 0 | 1) => {
+    const goal = profile.targets[profile.tiers[m]][bound];
+    return goal > 0 ? (TIER_WEIGHT[profile.tiers[m]] * (goal - achieved[m])) / goal : 0;
+  };
+  const day = new Map<string, number>();
+  const slots = () => [...day].map(([exercise, sets]) => { const st = defaultSettings(exercise); return { exercise, sets, repMin: st.repMin, repMax: st.repMax }; });
+  for (;;) {
+    const open = MUSCLES.filter((m) => !done.has(m));
+    const below = (bound: 0 | 1) => open.filter((m) => score(m, bound) > 0)
+      .sort((a, b) => score(b, bound) - score(a, bound) || (last.get(a) ?? '').localeCompare(last.get(b) ?? ''));
+    const m = below(0)[0] ?? below(1)[0];
+    if (!m) break;
+    const ex = cands.get(m)!.find((c) => (day.get(c) ?? 0) + UNIT <= MAX_SETS_PER_DAY);
+    if (!ex) { done.add(m); continue; }
+    day.set(ex, (day.get(ex) ?? 0) + UNIT);
+    if (!fits(slots())) { day.set(ex, day.get(ex)! - UNIT); if (!day.get(ex)) day.delete(ex); break; }
+    for (const [mm, f] of Object.entries(muscleVector(ex) ?? {}) as [Muscle, number][]) achieved[mm] += f * UNIT;
+  }
+  return slots().sort((a, b) => bestTier(a.exercise, profile) - bestTier(b.exercise, profile) || b.sets - a.sets);
 }

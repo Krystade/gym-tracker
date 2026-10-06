@@ -113,7 +113,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} onBack={() => setProgramOpen(false)} />
           : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={day} onBack={() => setExercise(null)}
             onLog={() => { logToday(person.id, day, exercise); setLogDay(null); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />
-          : tab === 'today' ? <TodayScreen key={logDay ?? day} store={store} settings={settings} programs={programs} body={body} gyms={gyms} date={logDay ?? day} today={day}
+          : tab === 'today' ? <TodayScreen key={logDay ?? day} store={store} settings={settings} programs={programs} body={body} gyms={gyms} profile={profile.profile} date={logDay ?? day} today={day}
             carried={day !== date && !logDay} onSplit={() => setCarryOff(date)}
             onDay={(d) => { setLogDay(d === day ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={() => { setProgramOpen(true); window.scrollTo(0, 0); }} />
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />

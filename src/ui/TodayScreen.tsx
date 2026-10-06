@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { planToRecord } from '../domain/program';
+import type { Profile } from '../domain/profile';
+import { planToRecord, quickDay } from '../domain/program';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import type { ProgramStore } from '../state/useProgram';
@@ -22,8 +23,8 @@ import { availableSet } from '../domain/equipment';
 import { CATALOG } from '../domain/catalog';
 import { addDays } from '../domain/analytics';
 
-export function TodayScreen({ store, settings, programs, body, gyms, date, today, carried, onSplit, onDay, onOpen, onOpenProgram }: {
-  store: SetsStore; settings: SettingsStore; programs: ProgramStore; body: BodyStore; gyms: GymsStore; date: string; today: string;
+export function TodayScreen({ store, settings, programs, body, gyms, profile, date, today, carried, onSplit, onDay, onOpen, onOpenProgram }: {
+  store: SetsStore; settings: SettingsStore; programs: ProgramStore; body: BodyStore; gyms: GymsStore; profile: Profile; date: string; today: string;
   carried?: boolean; onSplit?: () => void; onDay: (d: string) => void; onOpen: (name: string) => void; onOpenProgram: () => void;
 }) {
   const [picking, setPicking] = useState(false);
@@ -81,6 +82,7 @@ export function TodayScreen({ store, settings, programs, body, gyms, date, today
       <Energy body={body} date={date} />
       {programs.program && plan && hasPlan && (
         <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today} open={open} onToggle={() => setPlanOpen(!open)}
+          buildQuick={(fits) => quickDay(profile, store.entries, date, fits, available ? { available, include: gyms.active!.include } : {})}
           onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} />
       )}
       {cards.length === 0 && <p className="muted">{date < today ? 'Nothing logged that day.' : 'Nothing logged yet today.'}</p>}
