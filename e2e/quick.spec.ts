@@ -24,13 +24,14 @@ test('a Quick day fits the minutes given and goes to what the week has missed', 
   await plan.getByRole('textbox', { name: 'Minutes' }).fill('20');
   await expect(plan.getByRole('button', { name: /Today’s plan · Quick/ })).toBeVisible();
   const names = plan.getByRole('list', { name: 'Planned exercises' }).locator('.plan-name b');
-  await expect(names.first()).toBeVisible();
+  // The day is rebuilt for 20 once the typing lands: wait for it rather than read the 30-minute day.
+  const length = async () => Number((await plan.getByLabel('Plan length').innerText()).match(/≈ (\d+) min/)![1]);
+  await expect.poll(length).toBeLessThanOrEqual(20);
+  const mins = await length();
+  expect(mins).toBeGreaterThanOrEqual(12);
   const lifts = await names.allInnerTexts();
   expect(lifts).not.toContain('Machine Chest Press');
   expect(lifts).not.toContain('Lat Pulldown');
-  const mins = Number((await plan.getByLabel('Plan length').innerText()).match(/≈ (\d+) min/)![1]);
-  expect(mins).toBeLessThanOrEqual(20);
-  expect(mins).toBeGreaterThanOrEqual(12);
 
   // Kept for the day, and Day A is still a tap away.
   await page.reload();

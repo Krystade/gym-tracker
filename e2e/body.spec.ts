@@ -8,6 +8,8 @@ test('weigh in, import MyFitnessPal, see the trend, export body CSV', async ({ p
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t: string) => { (window as unknown as { copied: string }).copied = t; } } });
   });
+  // The fixtures end mid-September: pin the clock near them, so the 4-week rate has recent weigh-ins whatever today is.
+  await page.clock.install({ time: new Date('2026-09-20T12:00:00') });
   await page.goto('/');
   const weigh = page.getByRole('group', { name: 'Weigh-in' });
   await weigh.getByRole('textbox', { name: 'Weigh-in (lb)' }).fill('183.4');
