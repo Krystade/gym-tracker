@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { normalizeName } from '../domain/ids';
+import { sameExercise } from '../domain/stats';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import { bestSet, e1rmSeries, exerciseNames, sessionsFor, type SeriesPoint } from '../domain/stats';
@@ -70,8 +72,48 @@ function SettingsEditor({ name, settings, hold }: { name: string; settings: Sett
   );
 }
 
-export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack }: {
+/** Rename the lift, or merge it into one you already log. Two taps: the first says what will move. */
+function RenameLift({ name, store, settings, gyms, programs, onRenamed }: {
+  name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; programs: ProgramStore; onRenamed: (to: string) => void;
+}) {
+  const [to, setTo] = useState('');
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const typed = normalizeName(to);
+  const logged = exerciseNames(store.entries);
+  const into = logged.find((n) => sameExercise(n, typed) && !sameExercise(n, name));
+  const target = into ?? CATALOG.find((n) => sameExercise(n, typed)) ?? typed;
+  const valid = typed !== '' && target !== name;
+  const moving = store.entries.filter((e) => sameExercise(e.exercise, name)).length;
+  const go = async () => {
+    setBusy(true);
+    const ok = await store.rename(name, target);
+    if (ok) {
+      // Gyms are shared: a lift added to a gym by hand keeps its place under the new name.
+      const gs = gyms.gyms.map((g) => ({ ...g, include: [...new Set(g.include.map((x) => (sameExercise(x, name) ? target : x)))] }));
+      if (gs.some((g, i) => g.include.join() !== gyms.gyms[i].include.join())) await gyms.save(gs, gyms.active?.id);
+      await Promise.all([programs.reload(), settings.reload()]);
+      onRenamed(target);
+    }
+    setBusy(false);
+  };
+  return (
+    <section className="card" role="group" aria-label="Rename or merge">
+      <h2>Rename or merge</h2>
+      <p className="muted small">Type a new name, or the name of a lift you already log to merge this one into it. Its sets, plan and settings move over.</p>
+      <input aria-label="New name" list="rename-names" value={to} onChange={(e) => { setTo(e.target.value); setArmed(false); }} placeholder={name} />
+      <datalist id="rename-names">{logged.filter((n) => n !== name).map((n) => <option key={n} value={n} />)}</datalist>
+      {armed && valid && <p className="small" role="status">{plural(moving, 'set')} {moving === 1 ? 'moves' : 'move'} to {target}.</p>}
+      <button className="wide" disabled={!valid || busy} onClick={() => (armed ? void go() : setArmed(true))}>
+        {armed ? `Tap again to ${into ? 'merge' : 'rename'}` : into ? `Merge into ${into}` : 'Rename'}
+      </button>
+    </section>
+  );
+}
+
+export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed }: {
   name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void;
+  onRenamed: (to: string) => void;
 }) {
   const hold = isHoldLift(name, store.entries);
   const { s: sug, trainedToday } = nextTime(store.entries, name, settings.get(name, hold), date, plannedSets(programs.program, todayPlanFor(programs, store.entries, date), name));
@@ -137,6 +179,7 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
       {!all && sessions.length > HISTORY_CAP && <button className="wide" onClick={() => setAll(true)}>Show all {sessions.length} sessions</button>}
       <SwapSuggestions items={swapSuggestions(name, store.entries, today, 5, gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined)} />
       <SettingsEditor key={name} name={name} settings={settings} hold={hold} />
+      <RenameLift key={`rename-${name}`} name={name} store={store} settings={settings} gyms={gyms} programs={programs} onRenamed={onRenamed} />
     </>
   );
 }

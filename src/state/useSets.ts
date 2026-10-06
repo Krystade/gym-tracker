@@ -71,6 +71,14 @@ export function useSets() {
     return true;
   }, []);
 
+  /** Renames a lift, or merges it into another: see db.renameLift. */
+  const rename = useCallback(async (from: string, to: string): Promise<boolean> => {
+    try { await db.renameLift(from, to); } catch (err) { setError(`Renaming failed — nothing was changed. ${String(err)}`); return false; }
+    await reload();
+    announce();
+    return true;
+  }, [reload]);
+
   const importEntries = useCallback(async (list: SetEntry[]): Promise<{ added: number; updated: number } | null> => {
     let result;
     try { result = await db.putMany(list); } catch (err) { setError(`Import failed — your existing sets are unchanged. ${String(err)}`); return null; }
@@ -82,6 +90,6 @@ export function useSets() {
   // Reads the database, not state: back-to-back files in one pick must see each other's rows.
   const diff = useCallback(async (list: SetEntry[]) => diffSets(await db.getAllSets(), list), [db]);
 
-  return { entries, loading, error, add, update, remove, restore, importEntries, diff };
+  return { entries, loading, error, add, update, remove, restore, rename, importEntries, diff };
 }
 export type SetsStore = ReturnType<typeof useSets>;

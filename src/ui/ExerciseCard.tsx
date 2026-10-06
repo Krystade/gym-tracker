@@ -38,7 +38,8 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   useEffect(() => { if (!pr) return; const t = setTimeout(() => setPr(null), 6000); return () => clearTimeout(t); }, [pr]);
   // A delete happens straight away; for 8 s the set can come back.
   const [gone, setGone] = useState<{ set: SetEntry; no: number } | null>(null);
-  useEffect(() => { if (!gone) return; const t = setTimeout(() => setGone(null), 8000); return () => clearTimeout(t); }, [gone]);
+  // Started before paint, so the 8 s run from when the offer first shows.
+  useLayoutEffect(() => { if (!gone) return; const t = setTimeout(() => setGone(null), 8000); return () => clearTimeout(t); }, [gone]);
   const today = store.entries.filter((e) => e.date === date && sameExercise(e.exercise, exercise)).sort(byOrderDone); // in the order done: a late set sits where it happened
   // The set being edited may vanish (deleted in another tab, an import): close the editor rather than offer "Delete set 0".
   if (editing && !today.some((x) => x.id === editing.id)) setEditing(null);

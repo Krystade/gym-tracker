@@ -7,11 +7,10 @@ export function useProgram() {
   const [program, setProgram] = useState<Program | null>(null);
   const [plans, setPlans] = useState<DayPlan[]>([]);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    void Promise.all([db.getProgram(), db.getDayPlans()])
-      .then(([p, d]) => { setProgram(p ?? null); setPlans(d); })
-      .catch((e) => setError(`Could not load the program: ${String(e)}`));
-  }, []);
+  const reload = useCallback(() => Promise.all([db.getProgram(), db.getDayPlans()])
+    .then(([p, d]) => { setProgram(p ?? null); setPlans(d); })
+    .catch((e) => setError(`Could not load the program: ${String(e)}`)), []);
+  useEffect(() => { void reload(); }, [reload]);
   const save = useCallback(async (p: Program) => {
     try { await db.putProgram(p); setProgram(p); setError(null); } catch (e) { setError(`Saving the program failed: ${String(e)}`); }
   }, []);
@@ -19,6 +18,6 @@ export function useProgram() {
     try { await db.putDayPlan(d); setPlans((xs) => [...xs.filter((x) => x.key !== d.key), d]); setError(null); }
     catch (e) { setError(`Saving today's plan failed: ${String(e)}`); }
   }, []);
-  return { program, plans, error, save, savePlan };
+  return { program, plans, error, save, savePlan, reload };
 }
 export type ProgramStore = ReturnType<typeof useProgram>;

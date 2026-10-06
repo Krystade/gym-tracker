@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { addSet, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, restoreSet, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
+import { addSet, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
 import { buildAppSet } from '../domain/buildSet';
@@ -26,6 +26,33 @@ describe('db', () => {
     await putSet(e);
     await deleteSet(e.id);
     expect(await getAllSets()).toEqual([]);
+  });
+});
+
+describe('renameLift', () => {
+  it('moves sets (tombstoning the old ids), program slots, day plans, settings and name mappings in one go', async () => {
+    const mk = (exercise: string, setNo: number) => buildAppSet([], { date: '2026-09-01', exercise, weight: 50, reps: 10, flags: [] }, new Date(2026, 8, 1, 18, setNo));
+    const a = { ...mk('Pushdown', 1), setNo: 1 }, b = { ...mk('Pushdown', 2), setNo: 2 };
+    a.id = 'app|2026-09-01|pushdown|1'; b.id = 'app|2026-09-01|pushdown|2';
+    await putSet(a); await putSet(b);
+    await putProgram({ key: 'program', perSession: 4, createdAt: 'x', days: [{ name: 'Day A', slots: [{ exercise: 'Pushdown', sets: 2, repMin: 8, repMax: 12 }] }] });
+    await putDayPlan({ key: 'day:2026-09-01', date: '2026-09-01', day: 0, skips: [], swaps: { Pushdown: 'Rope Pushdown' } });
+    await putSettings({ key: 'pushdown', repMin: 10, repMax: 15, increment: 5 });
+    await putAliases({ pushdowns: 'Pushdown' });
+    expect(await renameLift('Pushdown', 'Cable Pushdown')).toBe(2);
+    const sets = await getAllSets();
+    expect(sets.map((e) => [e.exercise, e.id]).sort()).toEqual([['Cable Pushdown', 'app|2026-09-01|cable pushdown|1'], ['Cable Pushdown', 'app|2026-09-01|cable pushdown|2']]);
+    expect(await getTombstones()).toEqual(new Set([a.id, b.id]));
+    expect((await getProgram())!.days[0].slots[0].exercise).toBe('Cable Pushdown');
+    expect((await getDayPlans())[0].swaps).toEqual({ 'Cable Pushdown': 'Rope Pushdown' });
+    expect((await getAllSettings()).map((x) => [x.key, x.repMin])).toEqual([['cable pushdown', 10]]);
+    expect(await getAliases()).toEqual({ pushdowns: 'Cable Pushdown', pushdown: 'Cable Pushdown' });
+  });
+  it('keeps the target lift’s own settings on a merge', async () => {
+    await putSettings({ key: 'pushdown', repMin: 10, repMax: 15, increment: 5 });
+    await putSettings({ key: 'cable pushdown', repMin: 6, repMax: 8, increment: 10 });
+    await renameLift('Pushdown', 'Cable Pushdown');
+    expect((await getAllSettings()).map((x) => [x.key, x.repMin])).toEqual([['cable pushdown', 6]]);
   });
 });
 

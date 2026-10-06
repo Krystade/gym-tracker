@@ -7,6 +7,8 @@ import type { BodyDay } from '../domain/body';
 import type { PhotoMeta } from '../domain/photos';
 import type { SyncConfig } from '../domain/sync';
 import type { Gym } from '../domain/equipment';
+import { renameAliases, renameInPlan, renameInProgram, renameSets } from '../domain/rename';
+import { settingsKey } from '../domain/progression';
 
 const STORE = 'sets';
 /** The first profile: it keeps the original database, so existing data needs no migration. */
@@ -128,6 +130,40 @@ export async function restoreSet(e: SetEntry): Promise<void> {
   await Promise.all([tx.objectStore(STORE).put(e), cfg.put({ key: 'deleted', ids: (cur?.ids ?? []).filter((x) => x !== e.id) }), tx.done]);
 }
 
+/**
+ * Renames a lift, or merges it into another, in one transaction: its sets (old ids tombstoned, so sync can't bring them back),
+ * program slots, day plans, settings (the target's own win) and name mappings. Returns how many sets moved.
+ */
+export async function renameLift(from: string, to: string): Promise<number> {
+  const tx = (await db()).transaction([STORE, 'config', 'settings', 'program'], 'readwrite');
+  try {
+    const sets = tx.objectStore(STORE), cfg = tx.objectStore('config'), st = tx.objectStore('settings'), prog = tx.objectStore('program');
+    const { put, remove } = renameSets((await sets.getAll()) as SetEntry[], from, to);
+    for (const id of remove) sets.delete(id).catch(() => {}); // tx.done carries the failure
+    for (const e of put) sets.put(e).catch(() => {});
+    const dead: { ids: string[] } | undefined = await cfg.get('deleted');
+    await cfg.put({ key: 'deleted', ids: [...new Set([...(dead?.ids ?? []), ...remove])] });
+    const al: { map: Record<string, string> } | undefined = await cfg.get('aliases');
+    await cfg.put({ key: 'aliases', map: renameAliases(al?.map ?? {}, from, to) });
+    const [fk, tk] = [settingsKey(from), settingsKey(to)];
+    if (fk !== tk) {
+      const old: ExerciseSettings | undefined = await st.get(fk);
+      if (old && !(await st.get(tk))) await st.put({ ...old, key: tk });
+      if (old) await st.delete(fk);
+    }
+    for (const row of (await prog.getAll()) as (Program | DayPlan)[]) {
+      const next = row.key === 'program' ? renameInProgram(row as Program, from, to) : row.key.startsWith('day:') ? renameInPlan(row as DayPlan, from, to) : null;
+      if (next) await prog.put(next);
+    }
+    await tx.done;
+    return put.length;
+  } catch (e) {
+    try { tx.abort(); } catch { /* already aborted */ }
+    await tx.done.catch(() => {});
+    throw e;
+  }
+}
+
 export const getAllSettings = async (): Promise<ExerciseSettings[]> => (await db()).getAll('settings');
 export const putSettings = async (s: ExerciseSettings): Promise<void> => { await (await db()).put('settings', s); };
 
@@ -222,7 +258,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 
 // Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
 const PER_PROFILE = {
-  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, putMany, getAllSettings, putSettings, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
+  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, putMany, getAllSettings, putSettings, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
   getBody, putBody, putBodyMany, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, addTombstone, getAliases, putAliases,
 };
 export type ProfileDb = typeof PER_PROFILE;

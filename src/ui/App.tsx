@@ -20,6 +20,11 @@ function logToday(profile: string, date: string, exercise: string) {
   const cards = getDraft<string[]>(profile, `#cards:${date}`, date) ?? [];
   if (!cards.some((c) => sameExercise(c, exercise))) saveDraft(profile, `#cards:${date}`, date, [...cards, exercise]);
 }
+/** A renamed lift's card on Today follows it to the new name. */
+function renameToday(profile: string, date: string, from: string, to: string) {
+  const cards = getDraft<string[]>(profile, `#cards:${date}`, date);
+  if (cards?.some((c) => sameExercise(c, from))) saveDraft(profile, `#cards:${date}`, date, [...new Set(cards.map((c) => (sameExercise(c, from) ? to : c)))]);
+}
 import { PhotosScreen } from './PhotosScreen';
 import { PasteScreen } from './PasteScreen';
 import { ProgramScreen } from './ProgramScreen';
@@ -112,6 +117,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : photosOpen ? <PhotosScreen photos={photos} body={body} today={date} onBack={() => setPhotosOpen(false)} />
           : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} onBack={() => setProgramOpen(false)} />
           : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={day} onBack={() => setExercise(null)}
+            onRenamed={(to) => { renameToday(person.id, day, exercise, to); setExercise(to); window.scrollTo(0, 0); }}
             onLog={() => { logToday(person.id, day, exercise); setLogDay(null); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'today' ? <TodayScreen key={logDay ?? day} who={people.people.length > 1 ? person.name : undefined} store={store} settings={settings} programs={programs} body={body} gyms={gyms} profile={profile.profile} date={logDay ?? day} today={day}
             carried={day !== date && !logDay} onSplit={() => setCarryOff(date)}
