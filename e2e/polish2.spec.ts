@@ -157,3 +157,19 @@ test('a gym with no gear ticked says so on the program instead of listing every 
   await expect(page.getByText('No gear ticked at Hotel: only bodyweight lifts are used.')).toBeVisible();
   await expect(page.getByText(/Nothing at this gym trains/)).toHaveCount(0);
 });
+
+test('a card’s Best and Last lines are the same size, and an idle profile chip keeps its initials circle', async ({ page }) => {
+  await seed(page, ['2026-10-01,Seated Cable Row,,1,130,7,,,,sample', '2026-10-01,Seated Cable Row,,2,110,12,,,,sample']);
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('seated cable row');
+  await page.locator('.picker-list').getByRole('button', { name: /^Seated Cable Row/ }).first().click();
+  const card = page.locator('[data-card="seated cable row"]');
+  const size = (t: RegExp) => card.getByText(t).evaluate((el) => getComputedStyle(el).fontSize);
+  expect(await size(/^Last \(/)).toBe(await size(/^Best /));
+  await page.getByRole('button', { name: 'Data' }).click();
+  await page.getByRole('textbox', { name: 'Name' }).fill('Sam');
+  await page.getByRole('button', { name: 'Add Sam' }).click();
+  const idle = page.getByRole('group', { name: 'Who’s training' }).locator('button[aria-pressed=false]');
+  const [circle, chip] = await idle.evaluate((el) => [getComputedStyle(el.querySelector('.initials')!).backgroundColor, getComputedStyle(el).backgroundColor]);
+  expect(circle).not.toBe(chip);
+});
