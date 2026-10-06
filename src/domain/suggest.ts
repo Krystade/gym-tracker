@@ -28,17 +28,19 @@ export function plannedSets(program: Program | null, plan: DayPlan | null, exerc
 const ISOLATION = (name: string) => defaultSettings(name).repMin >= 10;
 const r5 = (w: number) => Math.round(w / 5) * 5;
 
-/** A short ramp to the working weight for compound lifts of 60 lb or more; nothing under 20 lb is listed. */
+/**
+ * One ramp set at about 55% for compound lifts of 60 lb or more; nothing under 20 lb is listed. Warm-up sets only
+ * measurably help near-maximal loads, and this is 8–15 rep work, so it's the least that still grooves the lift.
+ */
 export function warmups(weight: number, exercise: string): Ramp[] {
   if (weight < 60 || isHold(exercise) || ISOLATION(exercise)) return [];
-  const steps: [number, number][] = weight >= 185 ? [[0.4, 8], [0.6, 5], [0.8, 2]] : [[0.5, 8], [0.75, 4]];
-  const out: Ramp[] = [];
-  for (const [f, reps] of steps) {
-    const w = r5(weight * f);
-    if (w >= 20 && w < weight && !out.some((x) => x.weight === w)) out.push({ weight: w, reps });
-  }
-  return out;
+  const w = r5(weight * 0.55);
+  return w >= 20 && w < weight ? [{ weight: w, reps: 5 }] : [];
 }
+
+/** A compound lift already worked on `date` (not this one) means the session is warm: only the first compound ramps. */
+const warmAlready = (entries: SetEntry[], exercise: string, date: string) =>
+  entries.some((e) => e.date === date && isWorking(e) && !sameExercise(e.exercise, exercise) && warmups(e.weight, e.exercise).length > 0);
 
 /** What to do next time: weight and reps from double progression, sets from the program or last session. Ignores `date`'s own sets. */
 export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null): Suggestion {
@@ -55,7 +57,7 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
     : t.kind === 'repeat' ? 'Last time had no complete sets: repeat the weight and log every rep.'
     : t.kind === 'maxed' ? `You held ${st.repMax}${unit} on every set: add weight, or move to a harder variation.`
     : `Same weight; beat last time with ${t.reps}${unit}+ on every set.`;
-  return { unit, weight: t.weight, reps: t.reps, repMax: st.repMax, sets: clamped, setsFrom, kind: t.kind, reason, warmups: warmups(t.weight, exercise) };
+  return { unit, weight: t.weight, reps: t.reps, repMax: st.repMax, sets: clamped, setsFrom, kind: t.kind, reason, warmups: warmAlready(entries, exercise, date) ? [] : warmups(t.weight, exercise) };
 }
 
 /**

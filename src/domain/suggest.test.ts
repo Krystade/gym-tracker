@@ -44,14 +44,24 @@ describe('suggest', () => {
 
 describe('warmups', () => {
   it('ramps to heavy weights in 5 lb steps, and skips light, bodyweight and timed work', () => {
-    expect(warmups(225, 'Bench Press')).toEqual([{ weight: 90, reps: 8 }, { weight: 135, reps: 5 }, { weight: 180, reps: 2 }]);
-    expect(warmups(100, 'Bench Press')).toEqual([{ weight: 50, reps: 8 }, { weight: 75, reps: 4 }]);
+    // One ramp set at about 55%: warm-up sets only pay off near-maximal loads, and time is short.
+    expect(warmups(225, 'Bench Press')).toEqual([{ weight: 125, reps: 5 }]);
+    expect(warmups(100, 'Bench Press')).toEqual([{ weight: 55, reps: 5 }]);
     expect(warmups(40, 'Bench Press')).toEqual([]);
     expect(warmups(0, 'Pull-up')).toEqual([]);
     expect(warmups(100, 'Plank')).toEqual([]);
   });
   it('skips the ramp for isolation lifts', () => {
     expect(warmups(100, 'Cable Curl')).toEqual([]);
+  });
+  it('only the session’s first compound lift gets the ramp', () => {
+    const st = defaultSettings('Bench Press');
+    const log = [s('2026-09-28', 'Bench Press', 135, 10), s('2026-09-28', 'Bench Press', 135, 10)];
+    expect(suggest(log, 'Bench Press', st, '2026-10-02', null).warmups).toHaveLength(1);
+    // A compound already done today: Bench comes second, so it starts at its working weight.
+    expect(suggest([...log, s('2026-10-02', 'Leg Press', 200, 10)], 'Bench Press', st, '2026-10-02', null).warmups).toEqual([]);
+    // Isolation work before it doesn't count, and nor do Bench's own sets today.
+    expect(suggest([...log, s('2026-10-02', 'Cable Curl', 40, 12), s('2026-10-02', 'Bench Press', 135, 10)], 'Bench Press', st, '2026-10-02', null).warmups).toHaveLength(1);
   });
 });
 

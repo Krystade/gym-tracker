@@ -80,3 +80,12 @@ describe('suggestTime', () => {
     expect(suggestTime([at('2026-09-28', '18:00', 'Bench Press', false)], '2026-09-28', 'Bench Press', paces([]), now)).toBeNull();
   });
 });
+
+describe('warm-ups in a time estimate', () => {
+  it('count once a session: only the first lift that warms up', () => {
+    const p = { perSet: new Map<string, number>(), transition: 0 };
+    const one = estimateSeconds([{ exercise: 'Bench Press', sets: 1 }], p, () => 1);
+    const two = estimateSeconds([{ exercise: 'Bench Press', sets: 1 }, { exercise: 'Leg Press', sets: 1 }], p, () => 1);
+    expect(two - one).toBe(perSetSeconds(p, 'Leg Press'));
+  });
+});

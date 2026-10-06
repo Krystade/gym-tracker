@@ -28,7 +28,7 @@ test('open an exercise: next sets × reps @ weight with a warm-up, history below
   const card = page.getByRole('region', { name: 'Next time' });
   await expect(card).toContainText('3 × 8–12 @ 140 lb');
   await expect(card).toContainText('+5 lb');
-  await expect(card).toContainText('Warm-up: 70 × 8 · 105 × 4');
+  await expect(card).toContainText('Warm-up: 75 × 5');
   await expect(page.getByRole('heading', { name: 'History' })).toBeVisible();
   await expect(page.getByText('135 × 12').first()).toBeVisible();
   await page.screenshot({ path: 'screenshots/20-suggestion.png', fullPage: true });
