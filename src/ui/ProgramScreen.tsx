@@ -58,7 +58,9 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
   const budget = p?.minutes;
   const over = p && budget != null && p.perSession <= 8 ? p.days.filter((x) => dayMinutes(x) > budget) : [];
 
-  const edit = (fn: (x: Program) => void) => { if (!p) return; const next: Program = structuredClone(p); fn(next); next.edited = true; setRemoved(null); void programs.save(next); };
+  // The program a rebuild replaced, until you undo it or change the new one.
+  const [prev, setPrev] = useState<Program | null>(null);
+  const edit = (fn: (x: Program) => void) => { if (!p) return; const next: Program = structuredClone(p); fn(next); next.edited = true; setRemoved(null); setPrev(null); void programs.save(next); };
 
   if (gymsOpen) return <GymsScreen gyms={gyms} logged={exerciseNames(entries)} fresh={!gym} onBack={() => { setGymsOpen(false); window.scrollTo(0, 0); }} />;
   if (addTo != null) return <ExercisePicker recent={exerciseNames(entries)} gym={gym} onCancel={() => setAddTo(null)} onPick={(name) => {
@@ -99,13 +101,14 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
         </div>
         <p className="muted small">The most of each week spent on priority 3–4 muscles while priority 1–2 still need sets.</p>
         <button className="primary wide" disabled={!valid} onClick={() => {
-          if (p && !confirm(p.edited ? 'Rebuild the program? Changes you made to its days (added, removed or re-counted lifts) will be lost.' : 'Rebuild the program?')) return;
           const ctx = gym ? { available: availableSet(gym, [...CATALOG, ...exerciseNames(entries), ...gym.include]), include: gym.include } : {};
           const build = (perSession: number) => buildProgram(profile.profile, entries, { days: d, perSession }, new Date(), ctx);
           setRemoved(null); // an undo for the old program must not land in the new one
+          setPrev(p); // no confirm: the old program, edits and all, is one tap away
           // By minutes: the most sets per session whose every day fits, estimated from your own pace.
           void programs.save(mode === 'minutes' ? { ...build(perSessionForMinutes(m, build, dayMinutes)), minutes: m } : build(s));
         }}>{p ? 'Rebuild program' : 'Build program'}</button>
+        {prev && <p className="undo-note" role="status">Program rebuilt. <button className="mini" onClick={() => { void programs.save(prev); setPrev(null); }}>Undo</button></p>}
       </section>
     </>
   );

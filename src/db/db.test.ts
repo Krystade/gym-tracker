@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { addSet, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
+import { addSet, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, restoreSet, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
 import { buildAppSet } from '../domain/buildSet';
@@ -26,6 +26,18 @@ describe('db', () => {
     await putSet(e);
     await deleteSet(e.id);
     expect(await getAllSets()).toEqual([]);
+  });
+});
+
+describe('restoreSet', () => {
+  it('puts an undone delete back and drops only its tombstone', async () => {
+    const [a] = parseCsv(CSV).entries;
+    await putSet(a);
+    await addTombstone('older');
+    await deleteSetWithTombstone(a.id);
+    await restoreSet(a);
+    expect(await getAllSets()).toEqual([a]);
+    expect(await getTombstones()).toEqual(new Set(['older']));
   });
 });
 

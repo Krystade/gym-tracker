@@ -143,3 +143,18 @@ test('a weight over twice your best asks once before saving', async ({ page }) =
   await card.getByRole('button', { name: /^Add set/ }).click();
   await expect(card.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem')).toHaveCount(2);
 });
+
+test('a plan row carries the weight its card will suggest, so you can load the machine before opening it', async ({ page }) => {
+  await buildProgram(page);
+  const list = page.getByRole('list', { name: 'Planned exercises' });
+  if (!(await list.isVisible())) await page.getByRole('button', { name: /^Today’s plan/ }).click();
+  const known = list.getByRole('listitem').filter({ has: page.locator('.plan-name[data-exercise="Pull-up"], .plan-name[data-exercise="Cable Curl"]') }).first();
+  const name = (await known.locator('.plan-name').getAttribute('data-exercise'))!;
+  const row = (await known.locator('.plan-name').innerText()).replace(/\s+/g, ' ');
+  // A lift with no history has nothing to suggest.
+  const fresh = list.getByRole('listitem').filter({ hasNot: page.locator('.plan-name[data-exercise="Pull-up"], .plan-name[data-exercise="Cable Curl"]') }).first();
+  await expect(fresh.locator('.plan-name')).not.toContainText('@');
+  await known.locator('.plan-name').click();
+  const target = (await page.locator(`[data-card="${name.toLowerCase()}"]`).getByLabel('Target').innerText()).match(/@ [^\s]+( lb)?/)![0];
+  expect(row).toContain(target);
+});

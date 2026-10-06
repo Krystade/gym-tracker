@@ -265,13 +265,14 @@ test('deleting a late set names it by the number on its row', async ({ page }) =
   await logBench(page, '135', '9');
   const rows = page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem');
   await expect(rows).toHaveCount(6);
-  // The late set was entered 6th but done 4th: the prompt must say 4.
-  let msg = '';
-  page.once('dialog', async (d) => { msg = d.message(); await d.dismiss(); });
+  // The late set was entered 6th but done 4th: the undo offer must say 4, and Undo puts it back 4th.
   await rows.nth(3).getByRole('button').click();
   await page.getByRole('button', { name: 'Delete' }).click();
-  await expect.poll(() => msg).toBe('Delete set 4?');
+  const note = page.getByRole('status').filter({ hasText: 'Set 4 deleted' });
+  await expect(rows).toHaveCount(5);
+  await note.getByRole('button', { name: 'Undo' }).click();
   await expect(rows).toHaveCount(6);
+  await expect(rows.nth(3)).toContainText('135 × 9');
 });
 
 const pastMidnight = async (page: import('@playwright/test').Page, last: string) => {

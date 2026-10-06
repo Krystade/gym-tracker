@@ -36,6 +36,9 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
   const [opened, setOpened] = useState(false);
   const [pr, setPr] = useState<string | null>(null);
   useEffect(() => { if (!pr) return; const t = setTimeout(() => setPr(null), 6000); return () => clearTimeout(t); }, [pr]);
+  // A delete happens straight away; for 8 s the set can come back.
+  const [gone, setGone] = useState<{ set: SetEntry; no: number } | null>(null);
+  useEffect(() => { if (!gone) return; const t = setTimeout(() => setGone(null), 8000); return () => clearTimeout(t); }, [gone]);
   const today = store.entries.filter((e) => e.date === date && sameExercise(e.exercise, exercise)).sort(byOrderDone); // in the order done: a late set sits where it happened
   // The set being edited may vanish (deleted in another tab, an import): close the editor rather than offer "Delete set 0".
   if (editing && !today.some((x) => x.id === editing.id)) setEditing(null);
@@ -148,6 +151,7 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
           </li>
         ))}
       </ol>
+      {gone && <p className="undo-note" role="status">Set {gone.no} deleted. <button className="mini" onClick={async () => { if (await store.restore(gone.set)) setGone(null); }}>Undo</button></p>}
       {pr && <p role="status" className="pr">{pr}</p>}
       {editing ? (
         <div ref={editBox} className="edit-box">
@@ -156,7 +160,8 @@ export function ExerciseCard({ exercise, date, today: realToday = date, store, s
           onCancel={() => setEditing(null)}
           onDelete={async () => {
             const no = today.findIndex((x) => x.id === editing.id) + 1; // the number on the row, not the entry order
-            if (confirm(`Delete set ${no}?`) && (await store.remove(editing.id))) setEditing(null);
+            const set = editing;
+            if (await store.remove(set.id)) { setEditing(null); setGone({ set, no }); }
           }}
           when={{
             suggest: () => (editing.loggedAt ? hhmm(new Date(editing.loggedAt)) : null),

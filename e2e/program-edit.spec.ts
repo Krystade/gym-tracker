@@ -89,29 +89,27 @@ test('the undo note goes on the next edit and after eight seconds', async ({ pag
   await expect(page.getByRole('status').filter({ hasText: 'Removed' })).toHaveCount(0);
 });
 
-test('rebuilding warns about lost edits only when there are some', async ({ page }) => {
+test('rebuilding asks nothing and can be undone, edits and all', async ({ page }) => {
   await build(page);
-  const msgs: string[] = [];
-  page.on('dialog', (d) => { msgs.push(d.message()); void d.accept(); });
-  await openBuilder(page);
-  const rebuild = page.getByRole('button', { name: 'Rebuild program' });
-  await rebuild.click();
-  await expect.poll(() => msgs.length).toBe(1);
-  expect(msgs[0]).toBe('Rebuild the program?');
+  let dialogs = 0;
+  page.on('dialog', (d) => { dialogs++; void d.dismiss(); });
   // Edit: one more set on the first lift of Day A.
   const row = dayA(page).first();
   const count = row.locator('.prog-sets');
   const n = Number(await count.innerText());
   await row.getByRole('button', { name: /^More sets of / }).click();
   await expect(count).toHaveText(String(n + 1));
-  await rebuild.click();
-  await expect.poll(() => msgs.length).toBe(2);
-  expect(msgs[1]).toBe('Rebuild the program? Changes you made to its days (added, removed or re-counted lifts) will be lost.');
-  // The rebuild replaced the edited program: a plain confirm again.
+  await openBuilder(page);
+  await page.getByRole('button', { name: 'Rebuild program' }).click();
   await expect(count).toHaveText(String(n));
-  await rebuild.click();
-  await expect.poll(() => msgs.length).toBe(3);
-  expect(msgs[2]).not.toContain('will be lost');
+  const undo = page.getByRole('status').filter({ hasText: 'Program rebuilt' });
+  await undo.getByRole('button', { name: 'Undo' }).click();
+  await expect(count).toHaveText(String(n + 1));
+  await expect(undo).toHaveCount(0);
+  expect(dialogs).toBe(0);
+  await page.reload(); // the restored program is the saved one
+  await openProgram(page);
+  await expect(dayA(page).first().locator('.prog-sets')).toHaveText(String(n + 1));
 });
 
 test('a rebuild drops a pending undo, so it cannot splice an old lift into the new program', async ({ page }) => {

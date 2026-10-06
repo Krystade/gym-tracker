@@ -7,6 +7,7 @@ import { isHoldLift } from '../domain/care';
 import type { ProgramStore } from '../state/useProgram';
 import { estimateSeconds, hhmm, paces, timedDay } from '../domain/timing';
 import { warmupCount } from '../domain/suggest';
+import { fmtLoad } from './SuggestionCard';
 
 export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: string): DayPlan | null => {
   if (!store.program) return null;
@@ -22,10 +23,12 @@ export function leftToDo(program: Program, plan: DayPlan, entries: SetEntry[]): 
 }
 
 /** `buildQuick`: a one-off day of lifts that fits, for the Quick chip. */
-export function TodayPlan({ program, plan, entries, past, open, onToggle, onChange, onOpen, onSwap, buildQuick }: {
+export function TodayPlan({ program, plan, entries, past, open, onToggle, onChange, onOpen, onSwap, buildQuick, loadFor }: {
   program: Program; plan: DayPlan; entries: SetEntry[]; past?: boolean; open: boolean; onToggle: () => void;
   onChange: (p: DayPlan) => void; onOpen: (exercise: string) => void; onSwap: (original: string) => void;
   buildQuick: (fits: (slots: Slot[]) => boolean) => Slot[];
+  /** The weight the lift's card will suggest, if it has one. */
+  loadFor?: (exercise: string, sets: number) => number | null;
 }) {
   const quick = plan.quick != null;
   const day = quick ? { name: 'Quick', slots: plan.slots ?? [] } : program.days[plan.day] ?? program.days[0];
@@ -91,7 +94,7 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
                 <b>{target}</b>
                 {target !== slot.exercise && <span className="muted small">for {slot.exercise}</span>}
                 {/* The count rides under the name, so the name gets the width it needs. */}
-                <span className="muted small"><span className="plan-count">{skipped ? 'Skipped' : `${Math.min(done, slot.sets)}/${slot.sets}`}</span> · {slot.repMin}–{slot.repMax}{isHoldLift(slot.exercise, entries) ? ' s hold' : ' reps'}</span>
+                <span className="muted small"><span className="plan-count">{skipped ? 'Skipped' : `${Math.min(done, slot.sets)}/${slot.sets}`}</span> · {slot.repMin}–{slot.repMax}{isHoldLift(slot.exercise, entries) ? ' s hold' : ' reps'}{!skipped && loadFor && fmtLoad(loadFor(target, slot.sets))}</span>
               </button>
               <button type="button" onClick={() => onChange({ ...plan, skips: skipped ? plan.skips.filter((x) => x !== slot.exercise) : [...plan.skips, slot.exercise] })}>
                 {skipped ? 'Undo' : 'Skip'}

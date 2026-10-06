@@ -9,13 +9,14 @@ import { fmtDay } from '../domain/format';
 import { ExerciseCard } from './ExerciseCard';
 import { SessionSummary } from './SessionSummary';
 import { Energy } from './Energy';
-import { plannedSets } from '../domain/suggest';
+import { plannedSets, suggest } from '../domain/suggest';
+import { nextTarget } from '../domain/progression';
 import { activeProfileDb } from '../db/db';
 import { getDraft, saveDraft } from '../state/drafts';
 
 const CARDS = '#cards';
 import { ExercisePicker } from './ExercisePicker';
-import { swapSuggestions } from '../domain/care';
+import { isHoldLift, swapSuggestions } from '../domain/care';
 import { leftToDo, TodayPlan, todayPlanFor } from './TodayPlan';
 import { WeighIn } from './WeighIn';
 import type { BodyStore } from '../state/useBody';
@@ -61,6 +62,11 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
     document.querySelector(`[data-card="${CSS.escape(jump.toLowerCase())}"]`)?.scrollIntoView({ block: 'start' });
     setJump(null);
   }, [jump, picking, swapFor]);
+  // The weight the card will suggest, worked out the same way, so the row tells you what to load before you open it.
+  const loadFor = (ex: string, sets: number): number | null => {
+    const st = settings.get(ex, isHoldLift(ex, store.entries));
+    return nextTarget(store.entries, ex, st, date) ? suggest(store.entries, ex, st, date, sets).weight : null;
+  };
   const left = programs.program && plan ? leftToDo(programs.program, plan, store.entries) : [];
   const hasPlan = date >= today || programs.plans.some((p) => p.date === date) || logged.length > 0;
 
@@ -105,7 +111,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
       {programs.program && plan && hasPlan && (
         <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today} open={open} onToggle={() => setPlanOpen(!open)}
           buildQuick={(fits) => quickDay(profile, store.entries, date, fits, available ? { available, include: gyms.active!.include } : {})}
-          onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} />
+          onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} loadFor={loadFor} />
       )}
       {cards.length === 0 && <p className="muted">{date < today ? 'Nothing logged that day.' : 'Nothing logged yet today.'}</p>}
       {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} today={today} store={store} settings={settings} onOpen={onOpen}

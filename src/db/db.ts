@@ -120,6 +120,14 @@ export async function deleteSetWithTombstone(id: string): Promise<void> {
   await tx.done;
 }
 
+/** Undoes a delete: the set goes back and its tombstone goes, in one transaction. */
+export async function restoreSet(e: SetEntry): Promise<void> {
+  const tx = (await db()).transaction([STORE, 'config'], 'readwrite');
+  const cfg = tx.objectStore('config');
+  const cur: { ids: string[] } | undefined = await cfg.get('deleted');
+  await Promise.all([tx.objectStore(STORE).put(e), cfg.put({ key: 'deleted', ids: (cur?.ids ?? []).filter((x) => x !== e.id) }), tx.done]);
+}
+
 export const getAllSettings = async (): Promise<ExerciseSettings[]> => (await db()).getAll('settings');
 export const putSettings = async (s: ExerciseSettings): Promise<void> => { await (await db()).put('settings', s); };
 
@@ -214,7 +222,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 
 // Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
 const PER_PROFILE = {
-  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, putMany, getAllSettings, putSettings, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
+  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, putMany, getAllSettings, putSettings, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
   getBody, putBody, putBodyMany, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, addTombstone, getAliases, putAliases,
 };
 export type ProfileDb = typeof PER_PROFILE;

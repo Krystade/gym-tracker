@@ -63,6 +63,14 @@ export function useSets() {
     return true;
   }, []);
 
+  const restore = useCallback(async (e: SetEntry): Promise<boolean> => {
+    try { await db.restoreSet(e); } catch (err) { fail('Undoing the delete', err); return false; }
+    ref.current = [...ref.current.filter((x) => x.id !== e.id), e];
+    setEntries(ref.current);
+    announce();
+    return true;
+  }, []);
+
   const importEntries = useCallback(async (list: SetEntry[]): Promise<{ added: number; updated: number } | null> => {
     let result;
     try { result = await db.putMany(list); } catch (err) { setError(`Import failed — your existing sets are unchanged. ${String(err)}`); return null; }
@@ -74,6 +82,6 @@ export function useSets() {
   // Reads the database, not state: back-to-back files in one pick must see each other's rows.
   const diff = useCallback(async (list: SetEntry[]) => diffSets(await db.getAllSets(), list), [db]);
 
-  return { entries, loading, error, add, update, remove, importEntries, diff };
+  return { entries, loading, error, add, update, remove, restore, importEntries, diff };
 }
 export type SetsStore = ReturnType<typeof useSets>;
