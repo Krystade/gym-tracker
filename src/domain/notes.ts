@@ -85,7 +85,10 @@ function applyNote(s: NoteSet, raw: string): void {
 }
 
 /** The sets in one line's text after the exercise name. Text before the first set goes to it; text after a set, to that set. */
-export function readSets(text: string, hold: boolean): { lead: string; sets: NoteSet[] } {
+export function readSets(raw: string, hold: boolean): { lead: string; sets: NoteSet[] } {
+  // "135 lbs x 10" and "135 for 8" (or "225 for 5x3") said the way people write them.
+  const text = raw.replace(/(\d+(?:\.\d+)?)\s*lbs?\b\s*(?=[x×*])/gi, '$1')
+    .replace(/(?<![\w.:])(\d+(?:\.\d+)?)\s+for\s+(\d{1,3})(?:\s*[x×*]\s*(\d{1,2}))?(?![\w.:])/gi, (_, w, r, n) => `${w}x${r}${n ? `x${n}` : ''}`);
   const ts = tokens(text, hold);
   if (!ts.length) return { lead: tidy(text), sets: [] };
   const lead = tidy(text.slice(0, ts[0].start));
@@ -108,6 +111,19 @@ const WEEKDAY = String.raw`(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+)?`;
 const NUMERIC = new RegExp(String.raw`^${WEEKDAY}(?:(\d{4})-(\d{1,2})-(\d{1,2})|(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?|(\d{1,2})-(\d{1,2})-(\d{2}|\d{4}))(?![\d/x×*.\-])`, 'i');
 const MONTH_FIRST = new RegExp(String.raw`^${WEEKDAY}${MONTH_WORD}\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?`, 'i');
 const DAY_FIRST = new RegExp(String.raw`^${WEEKDAY}(\d{1,2})(?:st|nd|rd|th)?\s+${MONTH_WORD}(?:,?\s+(\d{4}))?(?![\w])`, 'i');
+
+// A line that is only a day: "Sunday", "wed.", "yesterday".
+const DAY_LINE = /^(sun|mon|tue|wed|thu|fri|sat)(?:day|s|sday|nesday|rs|rsday|urday)?\.?:?$|^(yesterday|today):?$/i;
+const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+const dow = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay();
+/** The day a bare weekday means: the first one after the last written date, or else the latest one up to today. */
+function dayLineDate(m: RegExpExecArray, after: string | null, today: string): string {
+  if (m[2]) return /^y/i.test(m[2]) ? addDays(today, -1) : today;
+  const want = DAYS.indexOf(m[1].toLowerCase());
+  if (after) { const d = addDays(after, ((want - dow(after) + 6) % 7) + 1); if (d <= today) return d; }
+  return addDays(today, -((dow(today) - want + 7) % 7));
+}
 
 function validDate(y: number, m: number, d: number): string | null {
   const dt = new Date(Date.UTC(y, m - 1, d));
@@ -186,6 +202,7 @@ function splitName(line: string): { name: string; rest: string; sep: boolean } {
 /** Classify every line of a pasted log. Lines before the first date are today's. */
 export function parseNotes(text: string, today: string, isHold: (name: string) => boolean): NoteLine[] {
   let date = today;
+  let written: string | null = null; // the last date written out, which a bare weekday counts on from
   let current: string | undefined; // the exercise a bare "80x10" line continues
   const out: NoteLine[] = [];
   text.split(/\r?\n/).forEach((raw, index) => {
@@ -193,12 +210,14 @@ export function parseNotes(text: string, today: string, isHold: (name: string) =
     let line = raw.trim().replace(/^(?:[-*•◦▪☐☑✓✔]|\d{1,2}[.)])\s+/, '');
     const push = (l: Omit<NoteLine, 'index' | 'raw' | 'date'>) => out.push({ index, raw, date, ...l });
     if (!line) { push({ kind: 'blank' }); return; }
+    const day = DAY_LINE.exec(line);
+    if (day) { date = written = dayLineDate(day, written, today); current = undefined; push({ kind: 'date' }); return; }
     const d = parseNoteDate(line, today);
     if (d) {
-      if (!d.rest || !/\d/.test(d.rest)) { date = d.date; current = undefined; push({ kind: 'date' }); return; }
+      if (!d.rest || !/\d/.test(d.rest)) { date = written = d.date; current = undefined; push({ kind: 'date' }); return; }
       // "9/30 Smith squat 135x8": a date and a sets line in one — but only if the rest really is sets.
       const after = splitName(d.rest);
-      if (/[a-z]/i.test(after.name) && readSets(after.rest, false).sets.length) { date = d.date; current = undefined; line = d.rest; }
+      if (/[a-z]/i.test(after.name) && readSets(after.rest, false).sets.length) { date = written = d.date; current = undefined; line = d.rest; }
     }
     const split = splitName(line);
     const { rest, sep } = split;
@@ -222,12 +241,15 @@ export function parseNotes(text: string, today: string, isHold: (name: string) =
   return out;
 }
 
+// Short names people write, mapped only to a lift that exists. Not initials: Romanian Deadlift would be "RD".
+const ABBR: Record<string, string> = { rdl: 'Romanian Deadlift' };
+
 export function matchExercise(name: string, known: string[], aliases: Record<string, string>): { exercise: string; how: 'alias' | 'exact' | 'fuzzy' | 'new'; suggestions: string[] } {
   const key = nameKey(name);
   const ranked = [...new Set(known)].map((k) => [k, nameSimilarity(name, k)] as const).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]);
   const suggestions = ranked.slice(0, 5).map(([k]) => k);
   if (aliases[key]) return { exercise: aliases[key], how: 'alias', suggestions };
-  const exact = known.find((k) => nameKey(k) === key);
+  const exact = known.find((k) => nameKey(k) === key) ?? (ABBR[key] && known.find((k) => nameKey(k) === nameKey(ABBR[key])));
   if (exact) return { exercise: exact, how: 'exact', suggestions };
   if (ranked[0] && ranked[0][1] >= 0.5) return { exercise: ranked[0][0], how: 'fuzzy', suggestions };
   return { exercise: normalizeName(name), how: 'new', suggestions };

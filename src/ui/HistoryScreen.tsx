@@ -23,10 +23,23 @@ export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; on
   const pace = useMemo(() => paces(store.entries), [store.entries]);
   const prs = useMemo(() => prIds(store.entries), [store.entries]);
   if (!sessions.length) return (<><h1>History</h1><p className="muted">No history yet — import it from the Data tab.</p></>);
+  // By month, newest first. This month and last start open (and the newest month, if both are empty); older ones fold.
+  const months: { key: string; days: typeof sessions }[] = [];
+  for (const s of sessions) {
+    const key = s.date.slice(0, 7);
+    if (months.at(-1)?.key === key) months.at(-1)!.days.push(s); else months.push({ key, days: [s] });
+  }
+  const [ty, tm] = today.split('-').map(Number);
+  const lastMonth = tm === 1 ? `${ty - 1}-12` : `${ty}-${String(tm - 1).padStart(2, '0')}`;
+  const monthName = (key: string) => new Date(Number(key.slice(0, 4)), Number(key.slice(5)) - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   return (
     <>
       <h1>History</h1>
-      {sessions.map((s, i) => {
+      {months.map((mo, mi) => (
+      <details className="month" key={mo.key} open={mi === 0 || mo.key >= lastMonth}>
+        <summary><span>{monthName(mo.key)} · {plural(mo.days.length, 'session')}</span></summary>
+      {mo.days.map((s) => {
+        const i = sessions.indexOf(s);
         const groups = byExercise(s.sets);
         const mins = sessionMinutes(store.entries, s.date, pace);
         return (
@@ -56,6 +69,8 @@ export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; on
           </details>
         );
       })}
+      </details>
+      ))}
     </>
   );
 }

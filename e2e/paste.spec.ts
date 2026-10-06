@@ -3,7 +3,7 @@ import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
 // Synthetic notes: one day already in the sample history, one broken line, one unknown name, one non-lift line.
-const NOTES = ['1/12/26', 'Cable curls: 70x12 80x8', '1/14/26', 'Lat pull down: 100x12 100x10', 'Pushdowns: 50 for 12', 'Zercher thing: 135x5', 'Run: 2 miles'].join('\n');
+const NOTES = ['1/12/26', 'Cable curls: 70x12 80x8', '1/14/26', 'Lat pull down: 100x12 100x10', 'Pushdowns: 50 by 12', 'Zercher thing: 135x5', 'Run: 2 miles'].join('\n');
 
 test('paste from notes: review, fix a line, map a name, add once', async ({ page }) => {
   await page.goto('/');

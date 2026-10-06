@@ -30,7 +30,7 @@ export const prSetIds = (entries: SetEntry[], date: string): Set<string> => {
 };
 
 /** The heaviest working set, more reps breaking a tie. */
-const topSet = (sets: SetEntry[]) => sets.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && (b.reps ?? 0) > (a.reps ?? 0)) ? b : a));
+export const topSet = (sets: SetEntry[]) => sets.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && (b.reps ?? 0) > (a.reps ?? 0)) ? b : a));
 
 export interface DaySummary {
   lifts: { exercise: string; top: SetEntry; last: SetEntry | null; pr: boolean }[];

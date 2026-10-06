@@ -149,6 +149,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .chart .grid { stroke: var(--line); stroke-width: 1; opacity: .6; }
 .readout { margin: 0 0 4px; font-size: 14px; font-variant-numeric: tabular-nums; min-height: 1.4em; }
 
+details.month > summary { list-style: none; cursor: pointer; min-height: 44px; display: flex; align-items: center; justify-content: space-between; font-weight: 700; color: var(--muted); }
+details.month > summary::-webkit-details-marker { display: none; }
+details.month > summary::after { content: '›'; font-size: var(--fs-xl); transition: transform 0.15s; }
+details.month[open] > summary::after { transform: rotate(90deg); }
 details.day { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); margin-bottom: 10px; }
 details.day > summary { min-height: 48px; padding: 12px; list-style: none; cursor: pointer; display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 8px; }
 details.day > summary .day-date { font-weight: 600; grid-column: 1; }

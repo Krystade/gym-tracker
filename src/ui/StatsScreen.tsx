@@ -34,11 +34,12 @@ function Priorities({ profile }: { profile: ProfileStore }) {
             if (Number.isInteger(n) && n >= 1 && n <= 7) void profile.save({ ...p, weeklyGoal: n });
           }} />
       </label>
+      <p className="muted small">1 gets the most sets each week, 4 the least.</p>
       <div className="prio-grid">
         {MUSCLES.map((m) => (
           <label key={m}>{m}
             <select aria-label={m} value={p.tiers[m]} onChange={(e) => void profile.save({ ...p, tiers: { ...p.tiers, [m]: Number(e.target.value) as Tier } })}>
-              {[1, 2, 3, 4].map((t) => <option key={t} value={t}>Priority {t}</option>)}
+              {([1, 2, 3, 4] as Tier[]).map((t) => <option key={t} value={t}>{t} · {p.targets[t][0]}–{p.targets[t][1]} sets</option>)}
             </select>
           </label>
         ))}

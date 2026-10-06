@@ -34,3 +34,44 @@ test('a PR stays marked on its row, in the day summary and in History', async ({
   await nav(page, 'History');
   await expect(page.locator('details.day').first().locator('summary')).toContainText('PR');
 });
+
+test('a Lifts row says what you lifted last time', async ({ page }) => {
+  await page.goto('/');
+  await nav(page, 'Data');
+  await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // Cable Curl, last 70 × 12 · 80 × 8 · 80 × (partial)
+  await expect(page.getByText(/Imported 6 new/)).toBeVisible();
+  await nav(page, 'Lifts');
+  await expect(page.getByRole('button', { name: /^Cable Curl/ })).toContainText('80 × 8');
+});
+
+test('History is grouped by month, with only recent months open', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-06T18:00:00') });
+  await page.goto('/');
+  await nav(page, 'Data');
+  await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // two days in January 2026
+  await expect(page.getByText(/Imported 6 new/)).toBeVisible();
+  await nav(page, 'Today');
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Cable Curl');
+  await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
+  await page.locator('[data-card="cable curl"]').getByRole('button', { name: /^Add set/ }).click();
+  await nav(page, 'History');
+  const months = page.locator('details.month');
+  await expect(months).toHaveCount(2);
+  await expect(months.nth(0).locator('> summary')).toContainText('October 2026');
+  await expect(months.nth(0)).toHaveAttribute('open', '');
+  await expect(months.nth(1).locator('> summary')).toContainText('January 2026 · 2 sessions');
+  await expect(months.nth(1)).not.toHaveAttribute('open');
+  await months.nth(1).locator('> summary').click();
+  await expect(months.nth(1).locator('details.day')).toHaveCount(2);
+});
+
+test('the priority picker says what each priority asks for', async ({ page }) => {
+  await page.goto('/');
+  await nav(page, 'Data');
+  await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // Stats shows Priorities once there's a log
+  await expect(page.getByText(/Imported 6 new/)).toBeVisible();
+  await nav(page, 'Stats');
+  await expect(page.getByText('1 gets the most sets each week, 4 the least.')).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Biceps' }).locator('option').first()).toHaveText('1 · 12–16 sets');
+});

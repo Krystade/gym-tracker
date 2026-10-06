@@ -2,7 +2,9 @@
 import { useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import { exerciseNames, sessionsFor } from '../domain/stats';
-import { fmtDay, plural } from '../domain/format';
+import { fmtDay, fmtSet, plural } from '../domain/format';
+import { isWorking } from '../domain/progression';
+import { topSet } from '../domain/summary';
 import { localDate } from '../domain/ids';
 import { CATALOG } from '../domain/catalog';
 import { sameExercise } from '../domain/stats';
@@ -22,10 +24,11 @@ export function LiftsScreen({ store, onOpen }: { store: SetsStore; onOpen: (name
       <div className="day-body" style={{ padding: '12px 0' }}>
         {names.map((n) => {
           const s = sessionsFor(store.entries, n);
+          const work = s[0].sets.filter(isWorking);
           return (
             <button key={n} className="row-button" onClick={() => onOpen(n)}>
               <b>{n}</b>
-              <span className="muted">{plural(s.length, 'session')} · last {fmtDay(s[0].date, today)}</span>
+              <span className="muted">{plural(s.length, 'session')} · last {fmtDay(s[0].date, today)}{work.length > 0 && <> · <span className="nw">{fmtSet(topSet(work))}</span></>}</span>
             </button>
           );
         })}

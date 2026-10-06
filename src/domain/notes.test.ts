@@ -241,3 +241,29 @@ describe('Phase 9 review fixes: neighbours', () => {
     expect(brief('225x5, 3 sets')).toEqual([[225, 5, '']]);
   });
 });
+
+describe('UX round 3: notes as written', () => {
+  it('reads a line that is only a weekday as the latest such day, never in the future', () => {
+    // TODAY is Thursday 2026-10-01.
+    const lines = (t: string) => parseNotes(t, TODAY, () => false).filter((l) => l.kind === 'sets').map((l) => [l.name, l.date]);
+    expect(lines('Sunday\nCurl: 30x10\nyesterday\nRow: 80x10\nThursday\nDips: BWx8')).toEqual([
+      ['Curl', '2026-09-27'], ['Row', '2026-09-30'], ['Dips', TODAY],
+    ]);
+    // After a written date, a weekday is the next one after it.
+    expect(lines('9/21\nCurl: 30x10\nWed\nRow: 80x10')).toEqual([['Curl', '2026-09-21'], ['Row', '2026-09-23']]);
+    // Only the whole line: an exercise that starts like a weekday stays an exercise.
+    expect(parseNotes('Monster walks: BWx10', TODAY, () => false)[0]).toMatchObject({ kind: 'sets', name: 'Monster walks', date: TODAY });
+  });
+  it('reads "lb"/"lbs" before the x, and "135 for 8"', () => {
+    expect(brief('135 lbs x 10, 140lb x 8')).toEqual([[135, 10, ''], [140, 8, '']]);
+    expect(brief('135 for 8')).toEqual([[135, 8, '']]);
+    expect(brief('225 for 5x3')).toEqual([[225, 5, ''], [225, 5, ''], [225, 5, '']]);
+    expect(brief('held for 30s')).toEqual([]);
+  });
+  it('maps RDL to Romanian Deadlift when that lift is known', () => {
+    expect(matchExercise('RDL', ['Romanian Deadlift', 'Lat Pulldown'], {})).toMatchObject({ exercise: 'Romanian Deadlift', how: 'exact' });
+    expect(matchExercise('RDLs', ['Romanian Deadlift'], {})).toMatchObject({ exercise: 'Romanian Deadlift' });
+    expect(matchExercise('RDL', ['Lat Pulldown'], {})).toMatchObject({ how: 'new' });
+    expect(matchExercise('RDL', ['Romanian Deadlift'], { rdl: 'DB Romanian Deadlift' })).toMatchObject({ exercise: 'DB Romanian Deadlift', how: 'alias' });
+  });
+});
