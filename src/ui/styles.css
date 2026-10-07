@@ -149,7 +149,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .note { flex-basis: 100%; font-size: var(--fs-sm); color: var(--muted); padding-left: 1.5em; overflow-wrap: anywhere; }
 
 .set-form { display: grid; gap: 10px; margin-top: 8px; }
-.steppers { display: grid; grid-template-columns: 1fr 140px; gap: 10px 16px; }
+.steppers { display: grid; grid-template-columns: 1fr 140px; gap: 10px 12px; }
 /* Under 360px two steppers side by side clip "152.5"; stack them. */
 @media (max-width: 359px) { .steppers { grid-template-columns: 1fr; } }
 .stepper { display: grid; gap: 4px; font-size: var(--fs-sm); color: var(--muted); }
