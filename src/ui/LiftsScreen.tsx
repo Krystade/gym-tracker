@@ -21,7 +21,7 @@ export function LiftsScreen({ store, onOpen }: { store: SetsStore; onOpen: (name
     <>
       <h1>Lifts</h1>
       <input type="search" aria-label="Filter lifts" placeholder="Search lifts" value={q} onChange={(e) => setQ(e.target.value)} />
-      <div className="day-body" style={{ padding: '12px 0' }}>
+      <div className="lift-list">
         {names.map((n) => {
           const s = sessionsFor(store.entries, n);
           const work = s[0].sets.filter(isWorking);

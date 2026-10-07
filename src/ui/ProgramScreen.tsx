@@ -115,7 +115,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
 
   return (
     <>
-      <button onClick={onBack}>‹ Back</button>
+      <button className="back" onClick={onBack}>‹ Back</button>
       <h1>Program</h1>
       {unset && (
         <section className="card note-card">

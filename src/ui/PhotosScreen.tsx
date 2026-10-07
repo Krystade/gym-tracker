@@ -100,7 +100,7 @@ export function PhotosScreen({ photos, body, today, onBack }: { photos: PhotosSt
 
   return (
     <>
-      <button onClick={onBack}>‹ Back</button>
+      <button className="back" onClick={onBack}>‹ Back</button>
       <h1>Progress photos</h1>
       <section className="card">
         <p className="muted small">Kept only on this phone — never uploaded, exported or synced. Same spot, light and time of day each time.</p>

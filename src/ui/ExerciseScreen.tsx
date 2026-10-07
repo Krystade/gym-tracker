@@ -132,7 +132,7 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
   const offset = rirOffset(store.entries, name);
   return (
     <>
-      <button onClick={onBack}>‹ Back</button>
+      <button className="back" onClick={onBack}>‹ Back</button>
       <h1>{name}</h1>
       <SuggestionCard s={sug} onLog={trainedToday ? undefined : onLog} />
       {/* The chips sit right under the estimate they change, not over the chart (which is always e1RM). */}

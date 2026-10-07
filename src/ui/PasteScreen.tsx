@@ -61,7 +61,7 @@ export function PasteScreen({ store, today, onBack, onDone }: { store: SetsStore
 
   if (done) return (
     <>
-      <button onClick={onBack}>‹ Back</button>
+      <button className="back" onClick={onBack}>‹ Back</button>
       <h1>Paste from notes</h1>
       <p role="status" className="card">{done}</p>
       <button className="primary wide" onClick={onDone}>View history</button>
@@ -71,7 +71,7 @@ export function PasteScreen({ store, today, onBack, onDone }: { store: SetsStore
 
   if (!raws) return (
     <>
-      <button onClick={onBack}>‹ Back</button>
+      <button className="back" onClick={onBack}>‹ Back</button>
       <h1>Paste from notes</h1>
       <label className="paste-label">Workout notes
         <textarea className="paste" rows={12} value={text} onChange={(e) => setText(e.target.value)} placeholder={EXAMPLE} />

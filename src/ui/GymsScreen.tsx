@@ -23,7 +23,7 @@ export function GymsScreen({ gyms, logged, fresh, onBack }: { gyms: GymsStore; l
 
   if (!g) return (
     <>
-      <button onClick={onBack}>‹ Back</button>
+      <button className="back" onClick={onBack}>‹ Back</button>
       <h1>Gyms</h1>
       <p className="muted">List what your gym has, and the program and swap suggestions only use lifts you can do there.</p>
       <button className="primary wide" onClick={add}>Add gym</button>
@@ -37,7 +37,7 @@ export function GymsScreen({ gyms, logged, fresh, onBack }: { gyms: GymsStore; l
 
   return (
     <>
-      <button onClick={onBack}>‹ Back</button>
+      <button className="back" onClick={onBack}>‹ Back</button>
       <h1>Gyms</h1>
       {!draft && <div className="chips gym-chips" role="group" aria-label="Active gym">
         {gyms.gyms.map((x) => <button key={x.id} className={`chip${x.id === g.id ? ' primary' : ''}`} aria-pressed={x.id === g.id} onClick={() => void gyms.save(gyms.gyms, x.id)}><span className="pname">{x.name}</span></button>)}
@@ -52,7 +52,8 @@ export function GymsScreen({ gyms, logged, fresh, onBack }: { gyms: GymsStore; l
         const all = items.every((e) => g.equipment.includes(e));
         return (
         <fieldset key={label} className="card gear">
-          <legend>{label}</legend>
+          <legend className="sr-only">{label}</legend>
+          <b className="gear-title" aria-hidden="true">{label}</b>
           <button type="button" className="mini gear-all" aria-label={all ? `Clear ${label}` : `Tick all ${label}`}
             onClick={() => update((x) => ({ ...x, equipment: all ? x.equipment.filter((y) => !items.includes(y)) : [...x.equipment.filter((y) => !items.includes(y)), ...items] }))}>
             {all ? 'Clear' : 'Tick all'}

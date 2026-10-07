@@ -38,7 +38,7 @@ export function BarChart({ label, points, format, tick = String, unit, goal }: {
         })}
         {/* After the bars, so a week that meets the goal can't hide it. */}
         {goal != null && <line x1={L} x2={W - R} y1={Y(goal)} y2={Y(goal)} className="goal" />}
-        {goal != null && <text x={W - R} y={Y(goal) - 3} className="lbl goal-lbl" textAnchor="end">goal</text>}
+        {goal != null && <text x={W - R} y={Y(goal) - 6} className="lbl goal-lbl" textAnchor="end">goal</text>}
         <text x={L} y={H - 6} className="lbl">{md(points[0].x)}</text>
         <text x={W - R} y={H - 6} className="lbl" textAnchor="end">{md(points.at(-1)!.x)}</text>
       </svg>
