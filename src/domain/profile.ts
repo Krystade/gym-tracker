@@ -1,7 +1,7 @@
 import { MUSCLES, type Muscle } from './muscles';
 
 export type Tier = 1 | 2 | 3 | 4;
-export interface Profile { key: 'profile'; tiers: Record<Muscle, Tier>; weeklyGoal: number; targets: Record<Tier, [number, number]>; lowShare?: number }
+export interface Profile { key: 'profile'; tiers: Record<Muscle, Tier>; weeklyGoal: number; targets: Record<Tier, [number, number]>; lowShare?: number; /** Tiers whose targets were set by hand; the rest fit the week (see domain/targets). */ custom?: Tier[] }
 /** Share of weekly sets the builder may spend on priority 3–4 muscles while priority 1–2 still need sets. */
 export const DEFAULT_LOW_SHARE = 0.2;
 

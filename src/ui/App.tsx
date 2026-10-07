@@ -11,6 +11,7 @@ import { usePeople, type PeopleStore } from '../state/usePeople';
 import type { Person } from '../db/db';
 import { ProfileBar } from './ProfileBar';
 import { ProfileDbProvider } from '../state/profileDb';
+import { useFittedProfile } from '../state/useFittedProfile';
 import { getDraft, saveDraft } from '../state/drafts';
 import { sameExercise } from '../domain/stats';
 import { sessionDay } from '../domain/timing';
@@ -96,7 +97,7 @@ interface Nav {
 function PersonScreens({ person, people, gyms, nav }: { person: Person; people: PeopleStore; gyms: GymsStore; nav: Nav }) {
   const store = useSets();
   const settings = useSettings();
-  const profile = useProfile();
+  const rawProfile = useProfile();
   const programs = useProgram();
   const body = useBody();
   const photos = usePhotos();
@@ -105,6 +106,8 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.
   const [carryOff, setCarryOff] = useState<string | null>(null);
   const day = carryOff === date ? date : sessionDay(store.entries, date, new Date());
+  // Every screen reads targets fitted to your week; the Data tab imports and exports the stored profile as it is.
+  const profile = useFittedProfile(rawProfile, programs.program, store.entries, day);
   const error = store.error ?? programs.error ?? body.error ?? photos.error ?? gyms.error ?? people.error;
 
   return (
@@ -125,7 +128,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />
-          : <DataScreen store={store} profile={profile} body={body} sync={sync} people={people} onOpenPaste={() => { setPasteOpen(true); window.scrollTo(0, 0); }} />}
+          : <DataScreen store={store} profile={rawProfile} body={body} sync={sync} people={people} onOpenPaste={() => { setPasteOpen(true); window.scrollTo(0, 0); }} />}
       </main>
     </>
   );

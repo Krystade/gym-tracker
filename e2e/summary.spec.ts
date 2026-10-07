@@ -72,6 +72,8 @@ test('the priority picker says what each priority asks for', async ({ page }) =>
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // Stats shows Priorities once there's a log
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await nav(page, 'Stats');
-  await expect(page.getByText('1 gets the most sets each week, 4 the least.')).toBeVisible();
-  await expect(page.getByRole('combobox', { name: 'Biceps' }).locator('option').first()).toHaveText('1 · 12–16 sets');
+  await expect(page.getByRole('group', { name: 'Weekly sets' })).toContainText('1 gets the most, 4 the least.');
+  // The picker offers the same fitted range the Weekly sets list shows for priority 1.
+  const range = (await page.locator('.tier-target').first().innerText()).match(/^1 · ([\d.]+–[\d.]+) sets/)![1];
+  await expect(page.getByRole('combobox', { name: 'Biceps' }).locator('option').first()).toHaveText(`1 · ${range} sets`);
 });

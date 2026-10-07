@@ -90,7 +90,7 @@ async function seed(page: Pg, body = true) {
 }
 
 test('stats: early in the week, a muscle keeping up with the week reads on pace, with its target beside the value', async ({ page }) => {
-  // Monday: three Bench sets (Chest 3 of the default 5–8). Wednesday: behind the target, ahead of the week.
+  // Monday: two Bench sets. Chest (priority 3) fits one 15-set session × 2 a week to 2.5–4. Wednesday: behind the target, ahead of the week.
   await page.clock.install({ time: new Date('2026-09-28T18:00:00') });
   await page.goto('/');
   await page.getByRole('button', { name: 'Add exercise' }).click();
@@ -98,12 +98,11 @@ test('stats: early in the week, a muscle keeping up with the week reads on pace,
   await page.getByRole('button', { name: 'Bench Press', exact: true }).click();
   await logBench(page, '135', '10');
   await logBench(page, '135', '10');
-  await logBench(page, '135', '10');
   await page.clock.setFixedTime(new Date('2026-09-30T09:00:00'));
   await page.reload();
   await page.getByRole('button', { name: 'Stats' }).click();
   const chest = page.locator('.mrow[aria-label^="Chest:"]');
-  await expect(chest.locator('.mval')).toHaveText('3 / 5–8');
+  await expect(chest.locator('.mval')).toHaveText('2 / 2.5–4');
   await expect(chest.locator('.mstat')).toHaveText(/on pace/);
   await expect(chest).toHaveAttribute('aria-label', /on pace/);
   // Nothing logged for Calves: behind any pace.

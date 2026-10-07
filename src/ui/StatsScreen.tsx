@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { SetsStore } from '../state/useSets';
-import type { ProfileStore } from '../state/useProfile';
+import type { FittedProfileStore } from '../state/useFittedProfile';
 import type { ProgramStore } from '../state/useProgram';
 import { adherence } from '../domain/program';
 import { addDays, calendarDays, streak, weekStart, weeklyMuscleSets, weeklySummary } from '../domain/analytics';
@@ -20,7 +20,32 @@ import { PhotosCard } from './PhotosScreen';
 const tons = (n: number) => (n >= 1000 ? `${fmtWeight(Math.round(n / 100) / 10)}k` : fmtWeight(Math.round(n)));
 const fmt = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
 
-function Priorities({ profile }: { profile: ProfileStore }) {
+const fmtN = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
+
+/** One priority's weekly range: fitted to the week, or yours, with a way to set it or hand it back. */
+function TierTarget({ t, profile }: { t: Tier; profile: FittedProfileStore }) {
+  const [lo, hi] = profile.profile.targets[t];
+  const mine = profile.fit.custom.includes(t);
+  const [edit, setEdit] = useState<[string, string] | null>(null);
+  const v = edit && [Number(edit[0]), Number(edit[1])] as [number, number];
+  const ok = !!v && v.every((n) => Number.isFinite(n) && n >= 0 && n <= 40) && v[0] <= v[1] && edit!.every((x) => x.trim() !== '');
+  return (
+    <li className="tier-target">
+      <span>{t} · {fmtN(lo)}–{fmtN(hi)} sets · <span className="muted">{mine ? 'yours' : 'auto'}</span></span>
+      {edit ? (
+        <span className="tier-edit">
+          <label>Min<input aria-label="Min" inputMode="decimal" value={edit[0]} onChange={(e) => setEdit([e.target.value, edit[1]])} /></label>
+          <label>Max<input aria-label="Max" inputMode="decimal" value={edit[1]} onChange={(e) => setEdit([edit[0], e.target.value])} /></label>
+          <button className="mini" disabled={!ok} onClick={async () => { await profile.setTarget(t, v); setEdit(null); }}>Save</button>
+        </span>
+      ) : mine
+        ? <button className="mini" onClick={() => void profile.setTarget(t, null)}>Use auto</button>
+        : <button className="mini" onClick={() => setEdit([fmtN(lo), fmtN(hi)])}>Edit</button>}
+    </li>
+  );
+}
+
+function Priorities({ profile }: { profile: FittedProfileStore }) {
   const p = profile.profile;
   const [goal, setGoal] = useState(String(p.weeklyGoal));
   return (
@@ -34,7 +59,10 @@ function Priorities({ profile }: { profile: ProfileStore }) {
             if (Number.isInteger(n) && n >= 1 && n <= 7) void profile.save({ ...p, weeklyGoal: n });
           }} />
       </label>
-      <p className="muted small">1 gets the most sets each week, 4 the least.</p>
+      <section className="sub" role="group" aria-label="Weekly sets">
+        <p className="muted small">Weekly sets per muscle, fitted to {profile.budget.sessions} sessions × {profile.budget.perSession} sets. 1 gets the most, 4 the least.</p>
+        <ol className="tier-targets">{([1, 2, 3, 4] as Tier[]).map((t) => <TierTarget key={t} t={t} profile={profile} />)}</ol>
+      </section>
       <div className="prio-grid">
         {MUSCLES.map((m) => (
           <label key={m}>{m}
@@ -49,7 +77,7 @@ function Priorities({ profile }: { profile: ProfileStore }) {
 }
 
 export function StatsScreen({ store, profile, programs, body, photos, today, onOpenPhotos }: {
-  store: SetsStore; profile: ProfileStore; programs: ProgramStore; body: BodyStore; photos: PhotosStore; today: string; onOpenPhotos: () => void;
+  store: SetsStore; profile: FittedProfileStore; programs: ProgramStore; body: BodyStore; photos: PhotosStore; today: string; onOpenPhotos: () => void;
 }) {
   const p = profile.profile;
   if (!store.entries.length) return (<><h1>Stats</h1><p className="muted">No sessions yet — log a workout or import your history on the Data tab.</p><BodyCard body={body} today={today} /><PhotosCard photos={photos} onOpen={onOpenPhotos} /></>);
