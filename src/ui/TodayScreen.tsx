@@ -10,7 +10,7 @@ import { ExerciseCard } from './ExerciseCard';
 import { SessionSummary } from './SessionSummary';
 import { Energy } from './Energy';
 import { plannedSets, suggest } from '../domain/suggest';
-import { nextTarget } from '../domain/progression';
+import { isWorking, nextTarget } from '../domain/progression';
 import { activeProfileDb } from '../db/db';
 import { getDraft, saveDraft } from '../state/drafts';
 
@@ -50,13 +50,13 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
     if (r) void programs.savePlan(r);
   }, [programs.program, programs.plans, programs.savePlan, store.entries, date, today]);
   const addCard = (n: string) => setExtra((xs) => (xs.some((x) => sameExercise(x, n)) ? xs : [...xs, n]));
-  // A new card lands at the bottom, off-screen: bring it up. Null = automatic (folded once any card is on screen).
+  // Null = automatic: open while the day has lifts left, folded once every planned lift is done or skipped.
   const [planOpen, setPlanOpen] = useState<boolean | null>(null);
-  const open = planOpen ?? cards.length === 0;
   const [jump, setJump] = useState<string | null>(null);
   // A folded (finished) card opens when the plan sends you to it; the card clears the request once it has used it.
   const [openReq, setOpenReq] = useState<string | null>(null);
-  const goTo = (n: string) => { addCard(n); setPlanOpen(false); setOpenReq(n); setJump(n); };
+  // A new card lands at the bottom, off-screen: bring it up. The plan stays as it was; it's the list of what's next.
+  const goTo = (n: string) => { addCard(n); setOpenReq(n); setJump(n); };
   useEffect(() => {
     if (!jump || picking || swapFor) return;
     document.querySelector(`[data-card="${CSS.escape(jump.toLowerCase())}"]`)?.scrollIntoView({ block: 'start' });
@@ -68,6 +68,8 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
     return nextTarget(store.entries, ex, st, date) ? suggest(store.entries, ex, st, date, sets).weight : null;
   };
   const left = programs.program && plan ? leftToDo(programs.program, plan, store.entries) : [];
+  const done = !!programs.program && !!plan && left.length === 0 && store.entries.some((e) => e.date === date && isWorking(e));
+  const open = planOpen ?? !done;
   const hasPlan = date >= today || programs.plans.some((p) => p.date === date) || logged.length > 0;
 
   // A card folding shrinks the page; near the bottom the browser then clamps the scroll and the page jumps. The screen

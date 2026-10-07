@@ -27,24 +27,40 @@ test('tapping a planned lift jumps to its card', async ({ page }) => {
     await expect(page.getByRole('list', { name: `Sets for ${n}` })).toBeAttached();
   }
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.getByRole('button', { name: /^Today’s plan/ }).click();
   const row = page.getByRole('list', { name: 'Planned exercises' }).getByRole('listitem').nth(1).locator('.plan-name');
   const lift = (await row.getAttribute('data-exercise'))!;
   await row.click();
   await expect(page.locator('[data-card]').getByRole('button', { name: lift, exact: true })).toBeInViewport();
-  await expect(page.getByRole('button', { name: /^Today’s plan/ })).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('button', { name: /^Today’s plan/ })).toHaveAttribute('aria-expanded', 'true'); // lifts are still left
 });
 
-test('the plan folds once a card is on screen and opens on tap', async ({ page }) => {
+test('the plan stays open while lifts are left, and folds once the day is done', async ({ page }) => {
   await buildProgram(page);
-  await expect(page.getByRole('list', { name: 'Planned exercises' })).toBeVisible();
+  const list = page.getByRole('list', { name: 'Planned exercises' });
+  await expect(list).toBeVisible();
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
   await expect(page.getByRole('list', { name: 'Sets for Cable Curl' })).toBeAttached();
-  await expect(page.getByRole('list', { name: 'Planned exercises' })).toBeHidden();
+  await expect(list).toBeVisible(); // a card on screen doesn't fold it
+  // Skip all but the first lift, then finish that one: nothing left, so the plan folds.
+  const rows = list.getByRole('listitem');
+  const n = await rows.count();
+  for (let i = 1; i < n; i++) await rows.nth(i).getByRole('button', { name: 'Skip' }).click();
+  const first = rows.first();
+  const name = (await first.locator('.plan-name').getAttribute('data-exercise'))!;
+  const sets = Number((await first.locator('.plan-count').textContent())!.split('/')[1]);
+  await first.locator('.plan-name').click();
+  const card = page.locator(`[data-card="${name.toLowerCase()}"]`);
+  for (let i = 0; i < sets; i++) {
+    const w = card.getByRole('textbox', { name: 'Weight' });
+    if ((await w.inputValue()) === '') await w.fill('50');
+    await card.getByRole('button', { name: /^Add set/ }).click();
+    if (i < sets - 1) await expect(list).toBeVisible(); // one lift started isn't the day done
+  }
+  await expect(list).toBeHidden();
   await expect(page.getByRole('heading', { name: /^Today’s plan · Day A/ })).toBeVisible();
   await page.getByRole('button', { name: /^Today’s plan/ }).click();
-  await expect(page.getByRole('list', { name: 'Planned exercises' })).toBeVisible();
+  await expect(list).toBeVisible();
 });
 
 test('an empty past day shows no plan', async ({ page }) => {
@@ -68,7 +84,7 @@ test('the past-day banner is one line at 375 wide', async ({ page }) => {
   expect((await page.locator('.past-day').boundingBox())!.height).toBeLessThan(80);
 });
 
-test('with logged sets the plan starts folded, even after a reload', async ({ page }) => {
+test('with sets logged but lifts left, the plan is still open after a reload', async ({ page }) => {
   await buildProgram(page);
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
@@ -78,8 +94,8 @@ test('with logged sets the plan starts folded, even after a reload', async ({ pa
   await expect(page.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem')).toHaveCount(1);
   await page.reload();
   await expect(page.getByRole('list', { name: 'Sets for Cable Curl' })).toBeAttached();
-  await expect(page.getByRole('button', { name: /^Today’s plan/ })).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByRole('list', { name: 'Planned exercises' })).toBeHidden();
+  await expect(page.getByRole('button', { name: /^Today’s plan/ })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('list', { name: 'Planned exercises' })).toBeVisible();
 });
 
 test('a jump lands the card below the profile bar', async ({ page }) => {
@@ -100,7 +116,7 @@ test('a jump lands the card below the profile bar', async ({ page }) => {
     await row(i).click();
   }
   await page.evaluate(() => window.scrollTo(0, 0));
-  await plan.click();
+  await expect(plan).toHaveAttribute('aria-expanded', 'true');
   const lift = (await row(0).getAttribute('data-exercise'))!;
   await row(0).click();
   const head = page.locator('[data-card]').getByRole('button', { name: lift, exact: true });

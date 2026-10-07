@@ -96,7 +96,7 @@ test('tapping a folded lift in the plan opens its card and scrolls to it', async
   await expect(card(page, lift).getByRole('button', { name: `Show ${lift}` })).toBeVisible();
   for (const x of ['Bench Press', 'Lat Pulldown', 'Cable Curl']) await addLift(page, x);
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.getByRole('button', { name: /^Today’s plan/ }).click();
+  await expect(page.getByRole('button', { name: /^Today’s plan/ })).toHaveAttribute('aria-expanded', 'true'); // open while lifts are left
   await page.getByRole('list', { name: 'Planned exercises' }).locator(`.plan-name[data-exercise="${lift}"]`).click();
   await expect(card(page, lift).getByRole('textbox', { name: 'Weight' })).toBeVisible();
   await expect(card(page, lift).getByRole('button', { name: lift, exact: true })).toBeInViewport();

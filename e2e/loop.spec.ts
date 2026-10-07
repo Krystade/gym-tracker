@@ -60,7 +60,7 @@ test('folding a finished card does not jump the page', async ({ page }) => {
   await addCard(page, 'Cable Curl');
   await addCard(page, 'Pull-up');
   await page.evaluate(() => scrollTo(0, 0));
-  await page.getByRole('button', { name: /^Today’s plan/ }).click();
+  await expect(page.getByRole('button', { name: /^Today’s plan/ })).toHaveAttribute('aria-expanded', 'true'); // open while lifts are left
   const { sets, card } = await firstPlanned(page); // the last card on the page
   for (let i = 0; i < sets - 1; i++) await logSet(card);
   // Saves land async; measure once they've rendered, or Playwright's own click scroll chases the moving button.
@@ -91,7 +91,7 @@ test('a swapped-in card says what it replaces', async ({ page }) => {
   await row.locator('.plan-name').click();
   await logSet(page.locator(`[data-card="${orig.toLowerCase()}"]`)); // 50 lb on the original
   await page.evaluate(() => scrollTo(0, 0));
-  await page.getByRole('button', { name: /^Today’s plan/ }).click();
+  await expect(page.getByRole('button', { name: /^Today’s plan/ })).toHaveAttribute('aria-expanded', 'true'); // open while lifts are left
   await row.getByRole('button', { name: 'Swap' }).click();
   await page.getByLabel('Suggested swaps').getByRole('button').first().click();
   const card = page.locator('[data-card]').filter({ hasText: new RegExp(`For ${orig}`) });
