@@ -74,7 +74,9 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
     return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(id); };
   }, []);
   const open = (name: string) => { setExercise(name); window.scrollTo(0, 0); };
-  const nav = { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open, showTour: () => setTour(true) };
+  const nav = { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open,
+    // The walkthrough points at Today, so it opens there.
+    showTour: () => { setTab('today'); setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); window.scrollTo(0, 0); setTour(true); } };
 
   return (
     <div className="app">
@@ -84,7 +86,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
       {tour && <Walkthrough onClose={() => setTour(false)} />}
       <nav className="tabs" aria-label="Sections">
         {TABS.map(([t, label]) => (
-          <button key={t} aria-current={tab === t && !exercise && !programOpen && !photosOpen && !pasteOpen ? 'page' : undefined} onClick={() => { setTab(t); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); }}>{label}</button>
+          <button key={t} data-tour={t} aria-current={tab === t && !exercise && !programOpen && !photosOpen && !pasteOpen ? 'page' : undefined} onClick={() => { setTab(t); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); }}>{label}</button>
         ))}
       </nav>
     </div>

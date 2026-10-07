@@ -99,12 +99,12 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
   return (
     <div ref={outer}><div ref={inner}>
       <div className="today-head">
-        <div className="day-switch">
+        <div className="day-switch" data-tour="day">
           <button className="mini" aria-label="Previous day" onClick={() => onDay(addDays(date, -1))}>‹</button>
           <h1>{fmtDay(date, today)}</h1>
           <button className="mini" aria-label="Next day" disabled={date >= today} onClick={() => onDay(addDays(date, 1))}>›</button>
         </div>
-        <button onClick={onOpenProgram}>Program</button>
+        <button data-tour="program" onClick={onOpenProgram}>Program</button>
       </div>
       {date < today && <p className="card note-card past-day"><span>Logging to a past day</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={() => onDay(today)}>Back to today</button></p>}
       {carried && <p className="card note-card past-day"><span>Still logging {fmtDay(today, today)}’s workout</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={onSplit}>Today</button></p>}
@@ -122,7 +122,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
         openReq={openReq != null && sameExercise(openReq, n)} onOpenReq={() => setOpenReq(null)} />)}
       {/* Below the cards, so the card you're logging on never moves down. */}
       <SessionSummary entries={store.entries} date={date} past={date < today} />
-      <button className="primary wide" onClick={() => setPicking(true)}>Add exercise</button>
+      <button className="primary wide" data-tour="add" onClick={() => setPicking(true)}>Add exercise</button>
     </div></div>
   );
 }
