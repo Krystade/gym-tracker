@@ -36,6 +36,7 @@ import { LiftsScreen } from './LiftsScreen';
 import { ExerciseScreen } from './ExerciseScreen';
 import { DataScreen } from './DataScreen';
 import { StatsScreen } from './StatsScreen';
+import { Walkthrough, walkthroughPending } from './Walkthrough';
 
 type Tab = 'today' | 'history' | 'lifts' | 'stats' | 'data';
 const TABS: [Tab, string][] = [['today', 'Today'], ['history', 'History'], ['lifts', 'Lifts'], ['stats', 'Stats'], ['data', 'Data']];
@@ -52,6 +53,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const [programOpen, setProgramOpen] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
+  const [tour, setTour] = useState(walkthroughPending);
   const [tab, setTab] = useState<Tab>('today');
   const [exercise, setExercise] = useState<string | null>(null);
   const [date, setDate] = useState(() => localDate(new Date()));
@@ -72,13 +74,14 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
     return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(id); };
   }, []);
   const open = (name: string) => { setExercise(name); window.scrollTo(0, 0); };
-  const nav = { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open };
+  const nav = { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open, showTour: () => setTour(true) };
 
   return (
     <div className="app">
       <ProfileDbProvider key={people.active!.id} id={people.active!.id}>
         <PersonScreens person={people.active!} people={people} gyms={gyms} nav={nav} />
       </ProfileDbProvider>
+      {tour && <Walkthrough onClose={() => setTour(false)} />}
       <nav className="tabs" aria-label="Sections">
         {TABS.map(([t, label]) => (
           <button key={t} aria-current={tab === t && !exercise && !programOpen && !photosOpen && !pasteOpen ? 'page' : undefined} onClick={() => { setTab(t); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); }}>{label}</button>
@@ -91,7 +94,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
 interface Nav {
   tab: Tab; exercise: string | null; date: string; logDay: string | null; setLogDay: (d: string | null) => void; programOpen: boolean; photosOpen: boolean; pasteOpen: boolean;
   setTab: (t: Tab) => void; setExercise: (x: string | null) => void; setProgramOpen: (b: boolean) => void; setPhotosOpen: (b: boolean) => void; setPasteOpen: (b: boolean) => void;
-  open: (name: string) => void;
+  open: (name: string) => void; showTour: () => void;
 }
 
 function PersonScreens({ person, people, gyms, nav }: { person: Person; people: PeopleStore; gyms: GymsStore; nav: Nav }) {
@@ -102,7 +105,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const body = useBody();
   const photos = usePhotos();
   const sync = useSync(store, body, person);
-  const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open } = nav;
+  const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open, showTour } = nav;
   // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.
   const [carryOff, setCarryOff] = useState<string | null>(null);
   const day = carryOff === date ? date : sessionDay(store.entries, date, new Date());
@@ -128,7 +131,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />
-          : <DataScreen store={store} profile={rawProfile} body={body} sync={sync} people={people} onOpenPaste={() => { setPasteOpen(true); window.scrollTo(0, 0); }} />}
+          : <DataScreen store={store} profile={rawProfile} body={body} sync={sync} people={people} onOpenPaste={() => { setPasteOpen(true); window.scrollTo(0, 0); }} onShowWalkthrough={showTour} />}
       </main>
     </>
   );

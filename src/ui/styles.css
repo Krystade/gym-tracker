@@ -47,6 +47,16 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
   padding: 0 var(--sar) var(--sab) var(--sal); background: var(--bg);
   border-top: 1px solid var(--line);
 }
+.walkthrough {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; max-width: 640px; margin: 0 auto;
+  padding: 16px calc(16px + var(--sar)) calc(16px + var(--sab)) calc(16px + var(--sal));
+  background: var(--surface); border-top: 1px solid var(--line-strong); border-radius: var(--r-md) var(--r-md) 0 0;
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 0.4);
+}
+.walkthrough h2 { margin: 4px 0 8px; }
+.walkthrough p { margin: 0 0 12px; }
+.walk-actions { display: flex; justify-content: space-between; gap: 8px; }
+.walk-actions span { display: flex; gap: 8px; }
 .tabs button { min-height: 56px; padding: 0 2px; background: none; border: 0; color: var(--muted); font-size: 14px; font-weight: 600; }
 .tabs button[aria-current='page'] { color: var(--accent); }
 
