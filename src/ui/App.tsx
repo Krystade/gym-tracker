@@ -6,6 +6,7 @@ import { useProgram } from '../state/useProgram';
 import { useBody } from '../state/useBody';
 import { usePhotos } from '../state/usePhotos';
 import { useSync } from '../state/useSync';
+import { useCloud } from '../state/useCloud';
 import { useGyms, type GymsStore } from '../state/useGyms';
 import { usePeople, type PeopleStore } from '../state/usePeople';
 import type { Person } from '../db/db';
@@ -107,6 +108,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const body = useBody();
   const photos = usePhotos();
   const sync = useSync(store, body, person);
+  const cloud = useCloud(store, body, person);
   const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open, showTour } = nav;
   // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.
   const [carryOff, setCarryOff] = useState<string | null>(null);
@@ -133,7 +135,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />
-          : <DataScreen store={store} profile={rawProfile} body={body} sync={sync} people={people} onOpenPaste={() => { setPasteOpen(true); window.scrollTo(0, 0); }} onShowWalkthrough={showTour} />}
+          : <DataScreen store={store} profile={rawProfile} body={body} sync={sync} cloud={cloud} people={people} onOpenPaste={() => { setPasteOpen(true); window.scrollTo(0, 0); }} onShowWalkthrough={showTour} />}
       </main>
     </>
   );

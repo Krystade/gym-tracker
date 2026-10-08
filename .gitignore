@@ -50,6 +50,7 @@ gym-backup*.json
 !**/*.sample.json
 !public/**/*.json
 !.vscode/*.json
+!firebase.json
 
 # Local agent workspace
 .superpowers/
@@ -64,3 +65,7 @@ journal*.txt
 !robots.txt
 *notes*.md
 *journal*.md
+
+# --- Firebase emulator output ---
+*-debug.log
+.firebase/

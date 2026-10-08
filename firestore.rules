@@ -1,0 +1,51 @@
+rules_version = '2';
+// Gym Tracker. Each person's log is theirs; a friend reads it while the owner's friends list names them.
+// Tested in rules/firestore.rules.test.ts against the emulator (npm run test:rules).
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() { return request.auth != null; }
+    function me(uid) { return signedIn() && request.auth.uid == uid; }
+    function friendOf(uid) { return signedIn() && exists(/databases/$(db)/documents/users/$(uid)/friends/$(request.auth.uid)); }
+    function liveInvite(uid, token) {
+      return token is string && exists(/databases/$(db)/documents/users/$(uid)/invites/$(token))
+        && get(/databases/$(db)/documents/users/$(uid)/invites/$(token)).data.expires > request.time;
+    }
+
+    // Exact-name lookup only: nobody can list who's here.
+    match /usernames/{name} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && name.matches('^[a-z0-9_]{3,20}$')
+        && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid == request.auth.uid;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /users/{uid} {
+      // Name only, so a request can say who it's from.
+      allow get: if signedIn();
+      allow create, update: if me(uid) && request.resource.data.keys().hasOnly(['username', 'displayName']);
+      allow delete: if me(uid);
+
+      match /months/{m} { allow read: if me(uid) || friendOf(uid); allow write: if me(uid); }
+      match /meta/{d}   { allow read: if me(uid) || friendOf(uid); allow write: if me(uid); }
+
+      match /friends/{f} {
+        allow read: if me(uid);
+        allow delete: if me(uid) || me(f);
+        // Your own list; or the friend adds themselves, holding your invite or answering their request you sent.
+        allow create: if me(uid)
+          || (me(f) && liveInvite(uid, request.resource.data.via))
+          || (me(f) && exists(/databases/$(db)/documents/users/$(f)/requests/$(uid)));
+      }
+      match /invites/{t} {
+        allow read, write: if me(uid);
+        allow get: if signedIn();
+      }
+      match /requests/{from} {
+        allow create: if me(from) && from != uid && exists(/databases/$(db)/documents/users/$(uid))
+          && request.resource.data.keys().hasOnly(['username', 'sent']);
+        allow read, delete: if me(uid) || me(from);
+      }
+    }
+  }
+}

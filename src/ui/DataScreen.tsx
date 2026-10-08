@@ -4,6 +4,8 @@ import type { ProfileStore } from '../state/useProfile';
 import type { BodyStore } from '../state/useBody';
 import type { SyncStore } from '../state/useSync';
 import { SyncCard } from './SyncCard';
+import { AccountCard } from './AccountCard';
+import type { CloudStore } from '../state/useCloud';
 import { PeopleCard } from './PeopleCard';
 import type { PeopleStore } from '../state/usePeople';
 import { parseBodyFile, toBodyCsv, type CsvKind } from '../domain/body';
@@ -18,7 +20,7 @@ import { fmtDay, plural } from '../domain/format';
 
 const KIND: Partial<Record<CsvKind, string>> = { body: 'Body data', 'mfp-weight': 'MyFitnessPal weight', 'mfp-nutrition': 'MyFitnessPal nutrition' };
 
-export function DataScreen({ store, profile, body, sync, people, onOpenPaste, onShowWalkthrough }: { store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; people: PeopleStore; onOpenPaste: () => void; onShowWalkthrough: () => void }) {
+export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPaste, onShowWalkthrough }: { store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; cloud: CloudStore; people: PeopleStore; onOpenPaste: () => void; onShowWalkthrough: () => void }) {
   const db = useDb();
   const [bodyMsgs, setBodyMsgs] = useState<{ ok: boolean; text: string }[]>([]);
   const [result, setResult] = useState<{ added: number; updated: number; same: number; kept: boolean; errors: CsvError[] } | null>(null);
@@ -144,6 +146,7 @@ export function DataScreen({ store, profile, body, sync, people, onOpenPaste, on
           ? <p className="muted" role="status">{bodyFallback}</p>
           : <textarea className="csv" aria-label="Body CSV export" readOnly value={bodyFallback} onFocus={(e) => e.currentTarget.select()} />)}
       </section>
+      <AccountCard cloud={cloud} people={people.people} />
       <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} />
       <PeopleCard people={people} />
       <section className="card"><button className="wide" onClick={onShowWalkthrough}>Show walkthrough</button></section>

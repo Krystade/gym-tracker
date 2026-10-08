@@ -6,6 +6,7 @@ import type { DayPlan, Program } from '../domain/program';
 import type { BodyDay } from '../domain/body';
 import type { PhotoMeta } from '../domain/photos';
 import type { SyncConfig } from '../domain/sync';
+import type { Seen } from '../domain/cloud';
 import type { Gym } from '../domain/equipment';
 import { renameAliases, renameInPlan, renameInProgram, renameSets } from '../domain/rename';
 import { settingsKey } from '../domain/progression';
@@ -230,6 +231,16 @@ export async function deletePhoto(id: string): Promise<void> {
 export const getSyncConfig = async (): Promise<SyncConfig | undefined> => (await shared()).get('kv', 'sync');
 export const putSyncConfig = async (c: SyncConfig): Promise<void> => { await (await shared()).put('kv', c); };
 export const deleteSyncConfig = async (): Promise<void> => { await (await shared()).delete('kv', 'sync'); };
+/** The account this phone is signed in to, and which person on the phone it belongs to. */
+export interface CloudLink { key: 'cloud'; uid: string; email: string; person: string }
+export const getCloudLink = async (): Promise<CloudLink | undefined> => (await shared()).get('kv', 'cloud');
+export const putCloudLink = async (c: CloudLink): Promise<void> => { await (await shared()).put('kv', c); };
+export const deleteCloudLink = async (): Promise<void> => { await (await shared()).delete('kv', 'cloud'); };
+/** What this person's last cloud sync left each month as (see domain/cloud monthsToSync), for one account. */
+export interface CloudSeen { key: 'cloud-seen'; uid: string; seen: Seen; at?: string }
+export async function getCloudSeen(): Promise<CloudSeen | undefined> { return (await db()).get('config', 'cloud-seen'); }
+export async function putCloudSeen(c: CloudSeen): Promise<void> { await (await db()).put('config', c); }
+
 /** Ids of sets deleted on this phone, so sync never brings them back. */
 export async function getTombstones(): Promise<Set<string>> {
   const x: { ids: string[] } | undefined = await (await db()).get('config', 'deleted');
@@ -259,7 +270,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 // Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
 const PER_PROFILE = {
   getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, putMany, getAllSettings, putSettings, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
-  getBody, putBody, putBodyMany, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, addTombstone, getAliases, putAliases,
+  getBody, putBody, putBodyMany, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
 };
 export type ProfileDb = typeof PER_PROFILE;
 const bound = new Map<string, ProfileDb>();

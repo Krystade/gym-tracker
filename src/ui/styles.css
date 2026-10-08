@@ -351,6 +351,9 @@ details.builder[open] > summary { margin-bottom: 8px; }
 .sync-form { display: grid; gap: 8px; }
 .sync-form label { display: grid; gap: 6px; color: var(--muted); font-size: var(--fs-sm); }
 .sync-form input { min-height: 44px; }
+.small-link { font-size: var(--fs-sm); font-weight: 500; color: var(--muted); min-height: 44px; justify-self: start; }
+.danger-zone { margin-top: 12px; }
+.danger-zone > summary { min-height: 44px; display: flex; align-items: center; color: var(--danger-text); cursor: pointer; }
 .sync-form ol { padding-left: 18px; margin: 6px 0; }
 .sync-saved { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; overflow-wrap: anywhere; }
 

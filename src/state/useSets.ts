@@ -63,6 +63,15 @@ export function useSets() {
     return true;
   }, []);
 
+  /** Sets deleted on another phone: gone here too, each with its tombstone. */
+  const removeMany = useCallback(async (ids: string[]): Promise<boolean> => {
+    try { for (const id of ids) await db.deleteSetWithTombstone(id); } catch (err) { fail('Removing synced deletes', err); await reload(); return false; }
+    const gone = new Set(ids);
+    setEntries((xs) => xs.filter((x) => !gone.has(x.id)));
+    announce();
+    return true;
+  }, [reload]);
+
   const restore = useCallback(async (e: SetEntry): Promise<boolean> => {
     try { await db.restoreSet(e); } catch (err) { fail('Undoing the delete', err); return false; }
     ref.current = [...ref.current.filter((x) => x.id !== e.id), e];
@@ -90,6 +99,6 @@ export function useSets() {
   // Reads the database, not state: back-to-back files in one pick must see each other's rows.
   const diff = useCallback(async (list: SetEntry[]) => diffSets(await db.getAllSets(), list), [db]);
 
-  return { entries, loading, error, add, update, remove, restore, rename, importEntries, diff };
+  return { entries, loading, error, add, update, remove, removeMany, restore, rename, importEntries, diff };
 }
 export type SetsStore = ReturnType<typeof useSets>;
