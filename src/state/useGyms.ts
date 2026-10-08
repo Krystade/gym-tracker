@@ -6,9 +6,8 @@ export function useGyms() {
   const [gyms, setGyms] = useState<Gym[]>([]);
   const [activeId, setActiveId] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    void getGyms().then((x) => { current.current = x; setGyms(x.gyms); setActiveId(x.active); }).catch((e) => setError(`Could not load gyms: ${String(e)}`));
-  }, []);
+  const reload = useCallback(() => getGyms().then((x) => { current.current = x; setGyms(x.gyms); setActiveId(x.active); }).catch((e) => setError(`Could not load gyms: ${String(e)}`)), []);
+  useEffect(() => { void reload(); }, [reload]);
   const current = useRef<{ gyms: Gym[]; active?: string }>({ gyms: [] });
   // Shown at once (a checkbox must follow the tap); put back if the write fails.
   const save = useCallback(async (next: Gym[], active: string | undefined): Promise<boolean> => {
@@ -22,6 +21,6 @@ export function useGyms() {
     }
   }, []);
   const active = gyms.find((g) => g.id === activeId) ?? null;
-  return { gyms, active, error, save };
+  return { gyms, active, error, save, reload };
 }
 export type GymsStore = ReturnType<typeof useGyms>;

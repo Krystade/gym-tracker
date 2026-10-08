@@ -237,7 +237,7 @@ export const getCloudLink = async (): Promise<CloudLink | undefined> => (await s
 export const putCloudLink = async (c: CloudLink): Promise<void> => { await (await shared()).put('kv', c); };
 export const deleteCloudLink = async (): Promise<void> => { await (await shared()).delete('kv', 'cloud'); };
 /** What this person's last cloud sync left each month as (see domain/cloud monthsToSync), for one account. */
-export interface CloudSeen { key: 'cloud-seen'; uid: string; seen: Seen; at?: string }
+export interface CloudSeen { key: 'cloud-seen'; uid: string; seen: Seen; at?: string; /** Settings, program and the rest: see cloud/sync MetaSeen. */ meta?: { items: Record<string, string>; at: number } }
 export async function getCloudSeen(): Promise<CloudSeen | undefined> { return (await db()).get('config', 'cloud-seen'); }
 export async function putCloudSeen(c: CloudSeen): Promise<void> { await (await db()).put('config', c); }
 

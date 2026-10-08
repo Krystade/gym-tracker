@@ -108,7 +108,11 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const body = useBody();
   const photos = usePhotos();
   const sync = useSync(store, body, person);
-  const cloud = useCloud(store, body, person);
+  // Settings pulled from the account are saved on the phone, then every screen reads them again.
+  const cloud = useCloud(store, body, person, {
+    reload: () => { void rawProfile.reload(); void programs.reload(); void settings.reload(); void gyms.reload(); },
+    rev: [rawProfile.profile, programs.program, programs.plans, settings.get, gyms.gyms],
+  });
   const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, open, showTour } = nav;
   // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.
   const [carryOff, setCarryOff] = useState<string | null>(null);

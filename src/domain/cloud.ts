@@ -66,7 +66,9 @@ export function splitByMonth(sets: SetEntry[], body: BodyDay[], tombstones: Set<
 
 /** A short fingerprint of a month on the phone, to tell whether it changed since the last sync. */
 export function monthHash(m: LocalMonth): string {
-  const s = JSON.stringify([[...m.sets].sort(byTime).map(stable), [...m.body].sort((a, b) => (a.date < b.date ? -1 : 1)).map(stable), [...m.tombstones].sort()]);
+  return hash(JSON.stringify([[...m.sets].sort(byTime).map(stable), [...m.body].sort((a, b) => (a.date < b.date ? -1 : 1)).map(stable), [...m.tombstones].sort()]));
+}
+function hash(s: string): string {
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
@@ -83,4 +85,32 @@ export function monthsToSync(local: Map<string, LocalMonth>, remoteIndex: Record
     const s = seen[m], l = local.get(m);
     return (l ? monthHash(l) : '') !== (s?.hash ?? '') || (remoteIndex[m] ?? 0) !== (s?.at ?? 0);
   });
+}
+
+/**
+ * Everything else that's yours, flattened to one item per key (`profile`, `program`, `day:<date>`, `settings:<lift>`, `alias:<name>`,
+ * `gyms`), so two phones merge as a union. `seen` holds each item's fingerprint as the last sync left it.
+ */
+export type MetaItems = Record<string, unknown>;
+export interface MergedMeta { items: MetaItems; pull: MetaItems; changed: boolean; seen: Record<string, string> }
+
+const deep = (x: unknown): unknown => Array.isArray(x) ? x.map(deep)
+  : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).filter(([, v]) => v !== undefined).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => [k, deep(v)])) : x;
+/** A fingerprint that ignores key order and undefined fields. */
+export const metaHash = (x: unknown): string => hash(JSON.stringify(deep(x)));
+
+/** Per item: one the phone changed since the last sync wins (so a first sync keeps the phone's own); otherwise the cloud's. */
+export function mergeMeta(local: MetaItems, remote: MetaItems | null, seen: Record<string, string>): MergedMeta {
+  const items: MetaItems = {}, pull: MetaItems = {}, next: Record<string, string> = {};
+  for (const k of new Set([...Object.keys(local), ...Object.keys(remote ?? {})])) {
+    const l = local[k], r = remote?.[k];
+    const lh = l === undefined ? '' : metaHash(l);
+    const v = l !== undefined && (lh !== seen[k] || r === undefined) ? l : r;
+    if (v === undefined) continue;
+    items[k] = v;
+    next[k] = metaHash(v);
+    if (next[k] !== lh) pull[k] = v;
+  }
+  const changed = metaHash(items) !== metaHash(remote ?? {});
+  return { items: clean(items), pull: clean(pull), changed, seen: next };
 }

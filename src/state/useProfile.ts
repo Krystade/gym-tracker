@@ -5,8 +5,9 @@ import { defaultProfile, type Profile } from '../domain/profile';
 export function useProfile() {
   const db = useDb();
   const [profile, setProfile] = useState<Profile>(defaultProfile);
-  useEffect(() => { void db.getProfile().then((p) => { if (p) setProfile({ ...defaultProfile(), ...p }); }).catch(() => {}); }, []);
+  const reload = useCallback(() => db.getProfile().then((p) => { if (p) setProfile({ ...defaultProfile(), ...p }); }).catch(() => {}), []);
+  useEffect(() => { void reload(); }, [reload]);
   const save = useCallback(async (p: Profile) => { setProfile(p); await db.putProfile(p); }, []);
-  return { profile, save };
+  return { profile, save, reload };
 }
-export type ProfileStore = ReturnType<typeof useProfile>;
+export type ProfileStore = Pick<ReturnType<typeof useProfile>, 'profile' | 'save'>;

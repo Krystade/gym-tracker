@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
 // Accounts against the local Auth and Firestore emulators (the app uses them on 127.0.0.1). Synthetic users only.
@@ -74,6 +75,33 @@ test('a set logged on one phone reaches another that signs in, both ways, and a 
   await syncNow(a);
   await nav(a, 'Today');
   await expect(rows(a)).toHaveCount(1);
+});
+
+test('a log kept on the phone before an account moves over on first sign-in, priorities included', async ({ browser }) => {
+  const mail = email();
+  const a = await phone(browser);
+  await nav(a, 'Data');
+  await a.getByLabel('Import CSV').setInputFiles(path.join(import.meta.dirname, 'fixtures', 'history.sample.csv')); // January
+  await expect(a.getByText('✓ Imported 6 new sets')).toBeVisible();
+  await a.getByLabel('Import CSV').setInputFiles(path.join(import.meta.dirname, 'fixtures', 'profile.sample.json'));
+  await expect(a.getByText('Profile imported: 2 muscles prioritised')).toBeVisible();
+  await logBench(a, '135', '8'); // October
+  await enter(a, mail, 'Create account');
+  await expect(account(a).getByRole('status')).toHaveText('Synced: 7 sets from this phone saved to your account');
+
+  const b = await phone(browser);
+  await enter(b, mail, 'Sign in');
+  await expect(account(b).getByRole('status')).toHaveText('Synced: 7 sets in, program and settings updated');
+  await b.waitForTimeout(4500); // the follow-up sync (the import changed the log) mustn't wipe the message
+  await expect(account(b).getByRole('status')).toHaveText('Synced: 7 sets in, program and settings updated');
+  await nav(b, 'Today');
+  await expect(rows(b)).toHaveCount(1);
+  await nav(b, 'Lifts');
+  await b.getByRole('button', { name: /Cable Curl/ }).click();
+  await expect(b.getByRole('img', { name: 'Estimated 1RM over time' }).locator('circle.pt')).toHaveCount(2);
+  await nav(b, 'Stats');
+  await expect(b.getByRole('combobox', { name: 'Calves' })).toHaveValue('1');
+  await expect(b.getByRole('textbox', { name: 'Sessions per week goal' })).toHaveValue('3');
 });
 
 test('a wrong password says so, and signing out keeps the log on the phone', async ({ browser }) => {

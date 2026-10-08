@@ -3,17 +3,19 @@ import { deleteCloudLink, getCloudLink, putCloudLink, type CloudLink, type Perso
 import { useDb } from './profileDb';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { deleteCloudData, syncCloud } from '../cloud/sync';
+import { readMeta, writeMeta } from '../cloud/meta';
 import type { SetsStore } from './useSets';
 import type { BodyStore } from './useBody';
 
 export type CloudStatus = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'done'; text: string } | { kind: 'error'; text: string };
 const QUIET_MS = 3000; // after the last change, so a run of sets syncs once
+const NEWS_MS = 60_000;
 
 /**
  * The account this phone is signed in to. Its log syncs with the person it was linked to at sign-in; while another person
  * on the phone is open, nothing syncs. Firebase loads only once there's an account (or the Account card asks for it).
  */
-export function useCloud(store: SetsStore, body: BodyStore, person: Person) {
+export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta: { reload: () => void; rev: unknown[] }) {
   const db = useDb();
   const [link, setLink] = useState<CloudLink | null | undefined>(undefined);
   const [status, setStatus] = useState<CloudStatus>({ kind: 'idle' });
@@ -25,8 +27,9 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person) {
 
   // One sync at a time; a request during one runs once more after it.
   const running = useRef(false), again = useRef(false);
-  const latest = useRef({ store, body, link });
-  latest.current = { store, body, link };
+  const news = useRef<{ text: string; at: number } | null>(null);
+  const latest = useRef({ store, body, link, meta });
+  latest.current = { store, body, link, meta };
   const run = useCallback(async (): Promise<void> => {
     const l = latest.current.link;
     if (!l || l.person !== person.id) return;
@@ -38,14 +41,25 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person) {
       if (c.auth.currentUser?.uid !== l.uid) { await c.auth.authStateReady(); }
       if (c.auth.currentUser?.uid !== l.uid) throw Object.assign(new Error('signed out'), { code: 'auth/requires-recent-login' });
       const prev = await db.getCloudSeen();
-      const { store: s, body: b } = latest.current;
-      const r = await syncCloud(c, l.uid, { sets: s.entries, body: b.days, tombstones: await db.getTombstones(), seen: prev?.uid === l.uid ? prev.seen : {} },
-        { importSets: (x) => s.importEntries(x), importBody: (x) => b.importDays(x), removeSets: (x) => s.removeMany(x) });
+      const { store: s, body: b, meta: m } = latest.current;
+      // A first sync with this account uploads everything already on the phone, so a log kept before signing in moves over.
+      const first = prev?.uid !== l.uid;
+      const r = await syncCloud(c, l.uid, {
+        sets: s.entries, body: b.days, tombstones: await db.getTombstones(), seen: prev && !first ? prev.seen : {},
+        meta: await readMeta(db), metaSeen: (prev && !first && prev.meta) || { items: {}, at: 0 },
+      }, {
+        importSets: (x) => s.importEntries(x), importBody: (x) => b.importDays(x), removeSets: (x) => s.removeMany(x),
+        importMeta: async (x) => { await writeMeta(db, x); m.reload(); },
+      });
       const at = new Date().toISOString();
-      await db.putCloudSeen({ key: 'cloud-seen', uid: l.uid, seen: r.seen, at });
+      await db.putCloudSeen({ key: 'cloud-seen', uid: l.uid, seen: r.seen, meta: r.metaSeen, at });
       setLastSync(at);
-      const got = [r.pulled && `${r.pulled} set${r.pulled === 1 ? '' : 's'} in`, r.removed && `${r.removed} removed`].filter(Boolean).join(', ');
-      setStatus({ kind: 'done', text: `Synced${got ? `: ${got}` : ''}` });
+      const n = s.entries.length;
+      const got = [first && n && `${n} set${n === 1 ? '' : 's'} from this phone saved to your account`, r.pulled && `${r.pulled} set${r.pulled === 1 ? '' : 's'} in`,
+        r.removed && `${r.removed} removed`, r.metaPulled && 'program and settings updated'].filter(Boolean).join(', ');
+      // The follow-up sync a few seconds later (the import changed the log) has nothing to say; keep what this one said.
+      if (got) news.current = { text: `Synced: ${got}`, at: Date.now() };
+      setStatus({ kind: 'done', text: got ? `Synced: ${got}` : news.current && Date.now() - news.current.at < NEWS_MS ? news.current.text : 'Synced' });
     } catch (e) {
       setStatus({ kind: 'error', text: e instanceof Error && !(e as { code?: string }).code ? e.message : cloudError(e) });
     } finally {
@@ -59,7 +73,7 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person) {
     if (!mine || store.loading) return;
     const t = setTimeout(() => void run(), QUIET_MS);
     return () => clearTimeout(t);
-  }, [mine, store.entries, body.days, store.loading, run]);
+  }, [mine, store.entries, body.days, store.loading, run, ...meta.rev]);
   useEffect(() => {
     if (!mine) return;
     const on = () => { if (document.visibilityState === 'visible') void run(); };

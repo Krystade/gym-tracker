@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeMonth, monthHash, monthOf, monthsToSync, splitByMonth, type CloudMonth } from './cloud';
+import { mergeMeta, mergeMonth, metaHash, monthHash, monthOf, monthsToSync, splitByMonth, type CloudMonth } from './cloud';
 import type { SetEntry } from './types';
 
 // Synthetic sets only.
@@ -79,5 +79,40 @@ describe('splitByMonth and monthsToSync', () => {
     const seen = { '2026-09': { hash: monthHash(local.get('2026-09')!), at: 5 }, '2026-10': { hash: 'old', at: 5 } };
     expect(monthsToSync(local, { '2026-09': 5, '2026-10': 5, '2026-08': 3 }, seen).sort()).toEqual(['2026-08', '2026-10']);
     expect(monthsToSync(local, { '2026-09': 6 }, seen).sort()).toEqual(['2026-09', '2026-10']);
+  });
+});
+
+describe('mergeMeta', () => {
+  const program = { key: 'program', perSession: 5 }, bench = { key: 'bench press', repMin: 6, repMax: 10 };
+  it('a first sync uploads all of the phone\'s settings, and a fresh phone takes the cloud\'s', () => {
+    const up = mergeMeta({ program, 'settings:bench press': bench }, null, {});
+    expect(up.changed).toBe(true);
+    expect(up.items).toEqual({ program, 'settings:bench press': bench });
+    expect(up.pull).toEqual({});
+    const down = mergeMeta({}, up.items, {});
+    expect(down.changed).toBe(false);
+    expect(down.pull).toEqual({ program, 'settings:bench press': bench });
+    expect(down.seen).toEqual(up.seen);
+  });
+  it('takes the union, the phone winning what it changed and the cloud winning what only it changed', () => {
+    const first = mergeMeta({ program, 'alias:pushdowns': 'Cable Pushdown' }, null, {});
+    const edited = { ...program, perSession: 6 }, cloudBench = { ...bench, repMax: 12 };
+    const r = mergeMeta({ program: edited, 'alias:pushdowns': 'Cable Pushdown' },
+      { program: { ...program, perSession: 4 }, 'alias:pushdowns': 'Rope Pushdown', 'settings:bench press': cloudBench }, first.seen);
+    expect(r.items).toEqual({ program: edited, 'alias:pushdowns': 'Rope Pushdown', 'settings:bench press': cloudBench });
+    expect(r.pull).toEqual({ 'alias:pushdowns': 'Rope Pushdown', 'settings:bench press': cloudBench });
+    expect(r.changed).toBe(true);
+  });
+  it('a phone that already has its own settings keeps them on its first sync', () => {
+    const r = mergeMeta({ program }, { program: { ...program, perSession: 4 } }, {});
+    expect(r.items.program).toEqual(program);
+    expect(r.pull).toEqual({});
+  });
+  it('nothing changed on either side is a no-op', () => {
+    const first = mergeMeta({ program }, null, {});
+    const again = mergeMeta({ program: { perSession: 5, key: 'program' } }, first.items, first.seen);
+    expect(again).toMatchObject({ changed: false, pull: {} });
+    expect(mergeMeta({ program }, {}, first.seen).items).toEqual({ program }); // the cloud lost it: the phone puts it back
+    expect(metaHash({ a: 1, b: { c: 2, d: 3 } })).toBe(metaHash({ b: { d: 3, c: 2 }, a: 1 }));
   });
 });
