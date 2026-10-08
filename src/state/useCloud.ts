@@ -4,18 +4,20 @@ import { useDb } from './profileDb';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { deleteCloudData, syncCloud } from '../cloud/sync';
 import { readMeta, writeMeta } from '../cloud/meta';
+import { listRequests } from '../cloud/friends';
 import type { SetsStore } from './useSets';
 import type { BodyStore } from './useBody';
 
 export type CloudStatus = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'done'; text: string } | { kind: 'error'; text: string };
 const QUIET_MS = 3000; // after the last change, so a run of sets syncs once
 const NEWS_MS = 60_000;
+const POLL_MS = 120_000;
 
 /**
  * The account this phone is signed in to. Its log syncs with the person it was linked to at sign-in; while another person
  * on the phone is open, nothing syncs. Firebase loads only once there's an account (or the Account card asks for it).
  */
-export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta: { reload: () => void; rev: unknown[] }) {
+export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta: { reload: () => void; rev: unknown[]; onRequests?: (n: number) => void }) {
   const db = useDb();
   const [link, setLink] = useState<CloudLink | null | undefined>(undefined);
   const [status, setStatus] = useState<CloudStatus>({ kind: 'idle' });
@@ -54,6 +56,7 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
       const at = new Date().toISOString();
       await db.putCloudSeen({ key: 'cloud-seen', uid: l.uid, seen: r.seen, meta: r.metaSeen, at });
       setLastSync(at);
+      void listRequests(c, l.uid).then((x) => latest.current.meta.onRequests?.(x.length), () => {}); // the Friends tab's dot
       const n = s.entries.length;
       const got = [first && n && `${n} set${n === 1 ? '' : 's'} from this phone saved to your account`, r.pulled && `${r.pulled} set${r.pulled === 1 ? '' : 's'} in`,
         r.removed && `${r.removed} removed`, r.metaPulled && 'program and settings updated'].filter(Boolean).join(', ');
@@ -78,7 +81,9 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
     if (!mine) return;
     const on = () => { if (document.visibilityState === 'visible') void run(); };
     document.addEventListener('visibilitychange', on);
-    return () => document.removeEventListener('visibilitychange', on);
+    // And every couple of minutes while it's open, so another phone's sets and friends' requests turn up without a tap.
+    const t = setInterval(() => { if (document.visibilityState === 'visible') void run(); }, POLL_MS);
+    return () => { document.removeEventListener('visibilitychange', on); clearInterval(t); };
   }, [mine, run]);
 
   const enter = useCallback(async (how: 'up' | 'in', email: string, password: string): Promise<boolean> => {

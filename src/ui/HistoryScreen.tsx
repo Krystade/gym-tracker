@@ -17,7 +17,8 @@ function byExercise(sets: SetEntry[]): [string, SetEntry[]][] {
   return out.map(([n, xs]) => [n, xs.sort(byOrderDone)]);
 }
 
-export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; onOpen: (name: string) => void; onAddTo: (date: string) => void }) {
+/** Without onAddTo (a friend's log) it's read-only. */
+export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; onOpen: (name: string) => void; onAddTo?: (date: string) => void }) {
   const sessions = sessionsByDate(store.entries);
   const today = localDate(new Date());
   const pace = useMemo(() => paces(store.entries), [store.entries]);
@@ -64,7 +65,7 @@ export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; on
                 </button>
                 );
               })}
-              <button className="wide" onClick={() => onAddTo(s.date)}>Add to this day</button>
+              {onAddTo && <button className="wide" onClick={() => onAddTo(s.date)}>Add to this day</button>}
             </div>
           </details>
         );

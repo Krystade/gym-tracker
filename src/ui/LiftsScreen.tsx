@@ -9,14 +9,15 @@ import { localDate } from '../domain/ids';
 import { CATALOG } from '../domain/catalog';
 import { sameExercise } from '../domain/stats';
 
-export function LiftsScreen({ store, onOpen }: { store: SetsStore; onOpen: (name: string) => void }) {
+/** `loggedOnly`: a friend's lifts, without the catalogue's never-logged ones. */
+export function LiftsScreen({ store, onOpen, loggedOnly }: { store: SetsStore; onOpen: (name: string) => void; loggedOnly?: boolean }) {
   const [q, setQ] = useState('');
   const today = localDate(new Date());
   const query = q.trim().toLowerCase();
   const logged = exerciseNames(store.entries);
   const names = logged.filter((n) => n.toLowerCase().includes(query));
   // Searching also finds lifts never logged, so any exercise can be opened for a suggestion.
-  const fresh = query ? CATALOG.filter((c) => c.toLowerCase().includes(query) && !logged.some((l) => sameExercise(l, c))) : [];
+  const fresh = query && !loggedOnly ? CATALOG.filter((c) => c.toLowerCase().includes(query) && !logged.some((l) => sameExercise(l, c))) : [];
   return (
     <>
       <h1>Lifts</h1>

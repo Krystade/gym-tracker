@@ -75,6 +75,8 @@ async function syncMeta({ F, db }: Pick<Cloud, 'F' | 'db'>, uid: string, input: 
 export async function deleteCloudData({ F, db }: Cloud, uid: string): Promise<void> {
   const index = ((await F.getDoc(F.doc(db, `users/${uid}/meta/index`))).data()?.months ?? {}) as Record<string, number>;
   const refs = Object.keys(index).map((m) => F.doc(db, `users/${uid}/months/${m}`));
+  // Off your friends' lists too (the rules let you delete yourself from them), so nobody keeps a link to a gone account.
+  for (const d of (await F.getDocs(F.collection(db, `users/${uid}/friends`))).docs) refs.push(F.doc(db, `users/${d.id}/friends/${uid}`));
   for (const sub of ['meta', 'friends', 'invites', 'requests']) {
     for (const d of (await F.getDocs(F.collection(db, `users/${uid}/${sub}`))).docs) refs.push(d.ref);
   }

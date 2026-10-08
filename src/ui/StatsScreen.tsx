@@ -45,11 +45,11 @@ function TierTarget({ t, profile }: { t: Tier; profile: FittedProfileStore }) {
   );
 }
 
-function Priorities({ profile }: { profile: FittedProfileStore }) {
+function Priorities({ profile, readOnly }: { profile: FittedProfileStore; readOnly?: boolean }) {
   const p = profile.profile;
   const [goal, setGoal] = useState(String(p.weeklyGoal));
   return (
-    <section className="card">
+    <fieldset className="card plain" disabled={readOnly}>
       <h2>Priorities</h2>
       <label className="goal-row">Sessions per week goal
         <input aria-label="Sessions per week goal" inputMode="numeric" value={goal}
@@ -72,15 +72,16 @@ function Priorities({ profile }: { profile: FittedProfileStore }) {
           </label>
         ))}
       </div>
-    </section>
+    </fieldset>
   );
 }
 
-export function StatsScreen({ store, profile, programs, body, photos, today, onOpenPhotos }: {
-  store: SetsStore; profile: FittedProfileStore; programs: ProgramStore; body: BodyStore; photos: PhotosStore; today: string; onOpenPhotos: () => void;
+/** A friend's Stats: no photos, and their priorities shown but not editable. */
+export function StatsScreen({ store, profile, programs, body, photos, today, onOpenPhotos, readOnly }: {
+  store: SetsStore; profile: FittedProfileStore; programs: ProgramStore; body: BodyStore; photos: PhotosStore | null; today: string; onOpenPhotos: () => void; readOnly?: boolean;
 }) {
   const p = profile.profile;
-  if (!store.entries.length) return (<><h1>Stats</h1><p className="muted">No sessions yet — log a workout or import your history on the Data tab.</p><BodyCard body={body} today={today} /><PhotosCard photos={photos} onOpen={onOpenPhotos} /></>);
+  if (!store.entries.length) return (<><h1>Stats</h1><p className="muted">No sessions yet — log a workout or import your history on the Data tab.</p><BodyCard body={body} today={today} />{photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}</>);
   const weeks = weeklySummary(store.entries, 12, today);
   const st = streak(weeklySummary(store.entries, 104, today), p.weeklyGoal);
   const thisWeek = weeks.at(-1)!;
@@ -126,9 +127,9 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
         <Calendar days={days} today={today} />
       </section>
       <BodyCard body={body} today={today} />
-      <PhotosCard photos={photos} onOpen={onOpenPhotos} />
+      {photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}
       <CareCard entries={store.entries} today={today} />
-      <Priorities profile={profile} />
+      <Priorities profile={profile} readOnly={readOnly} />
     </>
   );
 }

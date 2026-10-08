@@ -36,6 +36,7 @@ export function loadCloud(): Promise<Cloud> {
 
 /** Plain words for Firebase's error codes. */
 export function cloudError(e: unknown): string {
+  if ((e as { plain?: boolean })?.plain) return (e as Error).message;
   const code = (e as { code?: string })?.code ?? '';
   const known: Record<string, string> = {
     'auth/invalid-credential': 'Wrong email or password.',

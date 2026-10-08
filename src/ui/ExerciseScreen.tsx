@@ -111,9 +111,10 @@ function RenameLift({ name, store, settings, gyms, programs, onRenamed }: {
   );
 }
 
-export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed }: {
+/** `readOnly`: a friend's lift, charts and history only. */
+export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, readOnly }: {
   name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void;
-  onRenamed: (to: string) => void;
+  onRenamed: (to: string) => void; readOnly?: boolean;
 }) {
   const hold = isHoldLift(name, store.entries);
   const { s: sug, trainedToday } = nextTime(store.entries, name, settings.get(name, hold), date, plannedSets(programs.program, todayPlanFor(programs, store.entries, date), name));
@@ -134,7 +135,7 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
     <>
       <button className="back" onClick={onBack}>‹ Back</button>
       <h1>{name}</h1>
-      <SuggestionCard s={sug} onLog={trainedToday ? undefined : onLog} />
+      {!readOnly && <SuggestionCard s={sug} onLog={trainedToday ? undefined : onLog} />}
       {/* The chips sit right under the estimate they change, not over the chart (which is always e1RM). */}
       {!hold && <>
       <div className="tiles tiles-est">
@@ -156,7 +157,7 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
         <LineChart points={series} today={today} {...(hold ? { label: 'Longest hold over time', unit: 's', noun: '', column: 'Longest hold (s)' } : {})} />
         {series.length > 1 && <p className="muted small">{hold ? 'Longest hold per session · PRs filled' : 'Best estimated 1RM per session · PRs filled'}</p>}
       </section>
-      {!hold && due && !(snoozed && today < snoozed) && (
+      {!readOnly && !hold && due && !(snoozed && today < snoozed) && (
         <p className="card note-card test-due">
           <span>Time for a test: pick a weight you can do about 8–12 times, go to failure with good form, and tick <b>Test</b>. It tunes these estimates.</span>
           <button className="mini" onClick={() => void settings.save({ ...settings.get(name, hold), testSnoozedUntil: addDays(today, 14) })}>Not now</button>
@@ -177,9 +178,11 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
         );
       })}
       {!all && sessions.length > HISTORY_CAP && <button className="wide" onClick={() => setAll(true)}>Show all {sessions.length} sessions</button>}
+      {!readOnly && <>
       <SwapSuggestions items={swapSuggestions(name, store.entries, today, 5, gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined)} />
       <SettingsEditor key={name} name={name} settings={settings} hold={hold} />
       <RenameLift key={`rename-${name}`} name={name} store={store} settings={settings} gyms={gyms} programs={programs} onRenamed={onRenamed} />
+      </>}
     </>
   );
 }

@@ -43,7 +43,7 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
 .card.folded .left-row { margin: 0 12px 12px; }
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
   padding: 0 var(--sar) var(--sab) var(--sal); background: var(--bg);
   border-top: 1px solid var(--line);
 }
@@ -83,7 +83,8 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
   .walkthrough, .walk-card, .spotlight::after { animation: none; }
   .spotlight, .walk-dots span { transition: none; }
 }
-.tabs button { min-height: 56px; padding: 0 2px; background: none; border: 0; color: var(--muted); font-size: 14px; font-weight: 600; }
+.tabs button { min-height: 56px; padding: 0 1px; background: none; border: 0; color: var(--muted); font-size: 13px; font-weight: 600; position: relative; }
+.tab-dot { position: absolute; top: 12px; right: calc(50% - 30px); width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .tabs button[aria-current='page'] { color: var(--accent); }
 
 button, .button {
@@ -449,3 +450,19 @@ p + .sync-form, p + .field { margin-top: 12px; }
 .confirm-delete .form-actions { margin-top: 8px; }
 .quick-minutes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; }
 .quick-minutes input { width: 72px; }
+
+/* Friends */
+.friend-list { list-style: none; margin: 0; padding: 0; }
+.friend-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; border-top: 1px solid var(--line); }
+.friend-list li:first-child { border-top: 0; }
+.friend-list .link { padding: 0; min-height: 44px; font-size: var(--fs-md); }
+.friend-actions { display: flex; gap: 8px; flex: none; }
+.invite-link input { font-size: 14px; }
+fieldset.plain { min-width: 0; }
+fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
+.viewing-bar {
+  position: sticky; top: 0; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: calc(8px + var(--sat)) calc(16px + var(--sar)) 8px calc(16px + var(--sal));
+  background: var(--surface-2); border-bottom: 1px solid var(--accent);
+}
+.viewing-bar + .screen { padding-top: 12px; }
