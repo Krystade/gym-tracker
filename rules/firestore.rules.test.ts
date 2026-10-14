@@ -113,3 +113,26 @@ describe('usernames and profiles', () => {
     await assertFails(setDoc(doc(as('eve'), 'users/alice'), { username: 'x', displayName: 'x' }));
   });
 });
+
+describe('gyms sent to a friend', () => {
+  const gym = { name: 'Home', equipment: ['barbell'], exclude: [], include: [] };
+  const sent = (from: string) => ({ from, fromName: from, gym, sent: 1 });
+  it('a friend can send you one; you read it and clear it', async () => {
+    await assertSucceeds(setDoc(doc(as('bob'), 'users/alice/gymInbox/g1'), sent('bob')));
+    await assertSucceeds(getDocs(collection(as('alice'), 'users/alice/gymInbox')));
+    await assertSucceeds(deleteDoc(doc(as('alice'), 'users/alice/gymInbox/g1')));
+  });
+  it('a stranger cannot send one, nor read yours', async () => {
+    await assertFails(setDoc(doc(as('eve'), 'users/alice/gymInbox/g1'), sent('eve')));
+    await seed((db) => setDoc(doc(db, 'users/alice/gymInbox/g2'), sent('bob')));
+    await assertFails(getDoc(doc(as('eve'), 'users/alice/gymInbox/g2')));
+    await assertFails(deleteDoc(doc(as('eve'), 'users/alice/gymInbox/g2')));
+  });
+  it('a friend cannot send as someone else, add other fields, or read your inbox', async () => {
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/gymInbox/g1'), sent('carol')));
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/gymInbox/g1'), { ...sent('bob'), months: {} }));
+    await seed((db) => setDoc(doc(db, 'users/alice/gymInbox/g2'), sent('bob')));
+    await assertFails(getDocs(collection(as('bob'), 'users/alice/gymInbox')));
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/gymInbox/g2'), { ...sent('bob'), sent: 2 })); // no rewriting one already there
+  });
+});

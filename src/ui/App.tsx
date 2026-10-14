@@ -163,7 +163,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
         {store.loading ? <p className="muted">Loading…</p>
           : pasteOpen ? <PasteScreen store={store} today={date} onBack={() => setPasteOpen(false)} onDone={() => { setPasteOpen(false); setTab('history'); window.scrollTo(0, 0); }} />
           : photosOpen ? <PhotosScreen photos={photos} body={body} today={date} onBack={() => setPhotosOpen(false)} />
-          : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} onBack={() => setProgramOpen(false)} />
+          : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} uid={cloud.mine ? cloud.link?.uid : null} onBack={() => setProgramOpen(false)} />
           : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={day} onBack={() => setExercise(null)}
             onRenamed={(to) => { renameToday(person.id, day, exercise, to); setExercise(to); window.scrollTo(0, 0); }}
             onLog={() => { logToday(person.id, day, exercise); setLogDay(null); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />
@@ -172,7 +172,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
             onDay={(d) => { setLogDay(d === day ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={() => { setProgramOpen(true); window.scrollTo(0, 0); }} />
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
-          : tab === 'friends' ? <FriendsScreen cloud={cloud} pending={nav.pending} onPendingDone={nav.clearPending} onView={nav.view} onRequests={nav.setWaiting} onSignIn={() => { setTab('data'); window.scrollTo(0, 0); }} />
+          : tab === 'friends' ? <FriendsScreen cloud={cloud} gyms={gyms} pending={nav.pending} onPendingDone={nav.clearPending} onView={nav.view} onRequests={nav.setWaiting} onSignIn={() => { setTab('data'); window.scrollTo(0, 0); }} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />
           : <DataScreen store={store} profile={rawProfile} body={body} sync={sync} cloud={cloud} people={people} onOpenPaste={() => { setPasteOpen(true); window.scrollTo(0, 0); }} onShowWalkthrough={showTour} />}
       </main>

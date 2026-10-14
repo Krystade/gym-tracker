@@ -2,10 +2,11 @@ import type { CloudStore } from '../state/useCloud';
 import type { Friend } from '../cloud/friends';
 import type { Invite } from '../domain/invite';
 import { FriendsCard } from './FriendsCard';
+import type { GymsStore } from '../state/useGyms';
 
 /** Friends need an account: signed out, this points to the Account card on Data. */
-export function FriendsScreen({ cloud, pending, onPendingDone, onView, onRequests, onSignIn }: {
-  cloud: CloudStore; pending: Invite | null; onPendingDone: () => void; onView: (f: Friend) => void; onRequests: (n: number) => void; onSignIn: () => void;
+export function FriendsScreen({ cloud, gyms, pending, onPendingDone, onView, onRequests, onSignIn }: {
+  cloud: CloudStore; gyms: GymsStore; pending: Invite | null; onPendingDone: () => void; onView: (f: Friend) => void; onRequests: (n: number) => void; onSignIn: () => void;
 }) {
   return (
     <>
@@ -17,7 +18,7 @@ export function FriendsScreen({ cloud, pending, onPendingDone, onView, onRequest
             <button className="primary wide" onClick={onSignIn}>Sign in or create an account</button>
           </section>
         ) : !cloud.mine ? <p className="muted">The account on this phone belongs to another person here; switch to them to see friends.</p>
-        : <FriendsCard uid={cloud.link.uid} pending={pending} onPendingDone={onPendingDone} onView={onView} onRequests={onRequests} />}
+        : <FriendsCard uid={cloud.link.uid} gyms={gyms} pending={pending} onPendingDone={onPendingDone} onView={onView} onRequests={onRequests} />}
     </>
   );
 }

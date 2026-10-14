@@ -46,6 +46,12 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['username', 'sent']);
         allow read, delete: if me(uid) || me(from);
       }
+      // A gym a friend sent you: they create it as themselves, only you read or clear it, nobody rewrites it.
+      match /gymInbox/{id} {
+        allow create: if signedIn() && request.resource.data.from == request.auth.uid && friendOf(uid)
+          && request.resource.data.keys().hasOnly(['from', 'fromName', 'gym', 'sent']);
+        allow read, delete: if me(uid);
+      }
     }
   }
 }

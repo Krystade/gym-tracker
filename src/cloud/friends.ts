@@ -1,4 +1,5 @@
 import type { BodyDay } from '../domain/body';
+import type { Gym } from '../domain/equipment';
 import type { CloudMonth, MetaItems } from '../domain/cloud';
 import { newToken, type Invite } from '../domain/invite';
 import type { SetEntry } from '../domain/types';
@@ -120,4 +121,19 @@ export async function readFriend({ F, db }: Cloud, uid: string): Promise<FriendD
     body: months.flatMap((m) => m?.body ?? []),
     meta: Object.fromEntries(Object.entries(items).map(([k, v]) => [k, JSON.parse(v) as unknown])),
   };
+}
+
+/** A gym a friend sent you, waiting under Friends until you add it or dismiss it. */
+export interface SentGym { id: string; from: string; fromName: string; gym: Omit<Gym, 'id'> }
+export async function sendGym({ F, db }: Cloud, me: string, myName: string, to: string, g: Gym, now = Date.now()): Promise<void> {
+  const { id: _id, ...gym } = g;
+  await F.addDoc(F.collection(db, `users/${to}/gymInbox`), { from: me, fromName: myName, gym, sent: now });
+}
+export async function listSentGyms({ F, db }: Cloud, me: string): Promise<SentGym[]> {
+  return (await F.getDocs(F.collection(db, `users/${me}/gymInbox`))).docs
+    .map((d) => ({ id: d.id, ...(d.data() as Omit<SentGym, 'id'> & { sent: number }) }))
+    .sort((a, b) => a.sent - b.sent).map(({ id, from, fromName, gym }) => ({ id, from, fromName, gym }));
+}
+export async function clearSentGym({ F, db }: Cloud, me: string, id: string): Promise<void> {
+  await F.deleteDoc(F.doc(db, `users/${me}/gymInbox/${id}`));
 }

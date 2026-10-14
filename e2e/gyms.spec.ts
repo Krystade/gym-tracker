@@ -74,3 +74,34 @@ test('a gym without machines gets a plan it can do; exclusions and inclusions st
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Leg Press');
   await expect(page.getByText('Not at Downtown')).toBeVisible();
 });
+
+test('a gym copied as text is added back from text with the same gear', async ({ page }) => {
+  // WebKit grants no clipboard permissions to tests; a stand-in clipboard records what the app writes.
+  await page.addInitScript(() => {
+    let held = '';
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (s: string) => { held = s; }, readText: async () => held } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await page.getByRole('button', { name: 'Set up your gym' }).click();
+  await page.getByLabel('Gym name').fill('Garage');
+  await page.getByRole('checkbox', { name: 'barbell', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'leg press', exact: true }).check();
+  const share = page.getByRole('region', { name: 'Share this gym' });
+  await share.getByRole('button', { name: 'Copy as text' }).click();
+  await expect(share.getByRole('status')).toHaveText('Copied. Paste it in a message.');
+  const text = await page.evaluate(() => navigator.clipboard.readText());
+  expect(text).toBe('Gym Tracker gym: Garage\nEquipment: barbell, leg press');
+
+  await page.getByRole('button', { name: '+ From text' }).click();
+  const add = page.getByRole('region', { name: 'Add from text' });
+  await add.getByLabel('Paste a copied gym').fill('nope');
+  await expect(add.getByRole('status')).toHaveText('This doesn’t look like a copied gym.');
+  await add.getByLabel('Paste a copied gym').fill(`check this out\n${text}`);
+  await expect(add.getByRole('status')).toHaveText('Garage · 2 pieces of gear');
+  await add.getByRole('button', { name: 'Add gym' }).click();
+  await expect(page.getByRole('group', { name: 'Active gym' }).getByRole('button', { name: 'Garage (2)' })).toBeVisible();
+  await expect(page.getByLabel('Gym name')).toHaveValue('Garage (2)');
+  await expect(page.getByRole('checkbox', { name: 'leg press', exact: true })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'dumbbells', exact: true })).not.toBeChecked();
+});

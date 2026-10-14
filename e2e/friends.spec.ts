@@ -1,14 +1,15 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
 // Friends against the local Auth and Firestore emulators. Synthetic users only.
-const T = new Date('2026-10-02T18:00:00');
+// Today at 18:00: the emulator checks invite expiry against the real clock, so a fixed date goes stale within a week.
+const T = new Date(new Date().setHours(18, 0, 0, 0));
 const PASSWORD = 'synthetic-pass-1';
 const rand = () => Math.random().toString(36).slice(2, 10);
 const nav = (page: Page, t: string) => page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: t, exact: true }).click();
 const friends = (page: Page) => page.getByRole('region', { name: 'Friends', exact: true });
 const note = (page: Page) => friends(page).getByRole('status');
 
-async function person(browser: Browser, opts: { bench?: boolean } = {}) {
+async function person(browser: Browser, opts: { bench?: boolean; gym?: string } = {}) {
   const ctx = await browser.newContext({ storageState: { cookies: [], origins: [{ origin: 'http://127.0.0.1:4173', localStorage: [{ name: 'gym-tracker:walkthrough', value: 'done' }] }] } });
   const page = await ctx.newPage();
   await page.clock.install({ time: T });
@@ -20,6 +21,15 @@ async function person(browser: Browser, opts: { bench?: boolean } = {}) {
     await page.getByRole('textbox', { name: 'Weight' }).first().fill('135');
     await page.getByRole('textbox', { name: 'Reps' }).first().fill('8');
     await page.getByRole('button', { name: 'Add set' }).first().click();
+  }
+  if (opts.gym) {
+    await page.getByRole('button', { name: 'Program', exact: true }).click();
+    await page.getByRole('button', { name: 'Set up your gym' }).click();
+    await page.getByLabel('Gym name').fill(opts.gym);
+    await page.getByRole('checkbox', { name: 'barbell', exact: true }).check();
+    await page.getByRole('checkbox', { name: 'dumbbells', exact: true }).check();
+    await page.getByRole('button', { name: '‹ Back' }).click();
+    await page.getByRole('button', { name: '‹ Back' }).click();
   }
   const name = `u${rand()}`;
   await nav(page, 'Friends');
@@ -110,4 +120,56 @@ test('an invite link opened while signed in makes you friends; your own link say
   await friends(d.page).getByRole('textbox', { name: /Got an invite link/ }).fill(link);
   await friends(d.page).getByRole('button', { name: 'Accept invite' }).click();
   await expect(friends(d.page).getByRole('alert')).toHaveText('That invite has expired or was cancelled. Ask for a new link.');
+});
+
+async function befriend(a: { page: Page }, b: { page: Page; name: string }) {
+  await friends(a.page).getByRole('button', { name: 'Make an invite link' }).click();
+  const link = await friends(a.page).getByRole('textbox', { name: 'Your invite link' }).inputValue();
+  await b.page.goto(link);
+  await expect(note(b.page)).toHaveText(/are now friends/);
+}
+const openGyms = async (page: Page) => {
+  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await page.getByRole('button', { name: 'Change' }).click();
+};
+
+test('a friend’s gym can be added to yours from their Stats', async ({ browser }) => {
+  const a = await person(browser, { gym: 'Garage' });
+  const b = await person(browser);
+  await befriend(a, b);
+  await friends(b.page).getByRole('button', { name: `@${a.name}` }).click();
+  const theirs = b.page.getByRole('region', { name: 'Their gyms' });
+  await expect(theirs).toContainText('Garage · 2 pieces of gear');
+  await theirs.getByRole('button', { name: 'Add to my gyms' }).click();
+  await expect(theirs.getByRole('status')).toHaveText('Added Garage to your gyms.');
+  await b.page.getByRole('button', { name: 'Back to you' }).click();
+  await nav(b.page, 'Today');
+  await openGyms(b.page);
+  await expect(b.page.getByLabel('Gym name')).toHaveValue('Garage');
+  await expect(b.page.getByRole('checkbox', { name: 'dumbbells', exact: true })).toBeChecked();
+  await expect(b.page.getByRole('checkbox', { name: 'leg press', exact: true })).not.toBeChecked();
+});
+
+test('a gym sent to a friend waits under Friends until they add it', async ({ browser }) => {
+  const a = await person(browser, { gym: 'Garage' });
+  const b = await person(browser);
+  await befriend(a, b);
+  await nav(a.page, 'Today');
+  await openGyms(a.page);
+  const share = a.page.getByRole('region', { name: 'Share this gym' });
+  await share.getByRole('button', { name: 'Send to a friend' }).click();
+  await share.getByRole('list', { name: 'Send to' }).getByRole('button', { name: 'Send' }).click();
+  await expect(share.getByRole('status')).toHaveText(`Sent Garage to ${b.name}.`);
+
+  await nav(b.page, 'Today');
+  await nav(b.page, 'Friends');
+  const inbox = friends(b.page).getByRole('region', { name: 'Gyms sent to you' });
+  await expect(inbox).toContainText(`@${a.name} sent you a gym: Garage`);
+  await inbox.getByRole('button', { name: 'Add' }).click();
+  await expect(note(b.page)).toHaveText('Added Garage to your gyms.');
+  await expect(inbox).toHaveCount(0);
+  await nav(b.page, 'Today');
+  await openGyms(b.page);
+  await expect(b.page.getByLabel('Gym name')).toHaveValue('Garage');
+  await expect(b.page.getByRole('checkbox', { name: 'barbell', exact: true })).toBeChecked();
 });

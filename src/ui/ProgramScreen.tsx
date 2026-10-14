@@ -18,7 +18,7 @@ import { warmupCount } from '../domain/suggest';
 import { localDate } from '../domain/ids';
 import type { ProgramDay } from '../domain/program';
 
-export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { programs: ProgramStore; profile: ProfileStore; entries: SetEntry[]; gyms: GymsStore; onBack: () => void }) {
+export function ProgramScreen({ programs, profile, entries, gyms, uid, onBack }: { programs: ProgramStore; profile: ProfileStore; entries: SetEntry[]; gyms: GymsStore; uid?: string | null; onBack: () => void }) {
   const p = programs.program;
   const [days, setDays] = useState(String(p?.days.length ?? profile.profile.weeklyGoal));
   const [per, setPer] = useState(String(p?.perSession ?? 14));
@@ -62,7 +62,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, onBack }: { pr
   const [prev, setPrev] = useState<Program | null>(null);
   const edit = (fn: (x: Program) => void) => { if (!p) return; const next: Program = structuredClone(p); fn(next); next.edited = true; setRemoved(null); setPrev(null); void programs.save(next); };
 
-  if (gymsOpen) return <GymsScreen gyms={gyms} logged={exerciseNames(entries)} fresh={!gym} onBack={() => { setGymsOpen(false); window.scrollTo(0, 0); }} />;
+  if (gymsOpen) return <GymsScreen gyms={gyms} logged={exerciseNames(entries)} fresh={!gym} uid={uid} onBack={() => { setGymsOpen(false); window.scrollTo(0, 0); }} />;
   if (addTo != null) return <ExercisePicker recent={exerciseNames(entries)} gym={gym} onCancel={() => setAddTo(null)} onPick={(name) => {
     const st = defaultSettings(name);
     edit((x) => { if (!x.days[addTo].slots.some((sl) => sl.exercise === name)) x.days[addTo].slots.push({ exercise: name, sets: 3, repMin: st.repMin, repMax: st.repMax }); });

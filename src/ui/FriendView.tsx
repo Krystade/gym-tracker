@@ -14,6 +14,8 @@ import { HistoryScreen } from './HistoryScreen';
 import { LiftsScreen } from './LiftsScreen';
 import { StatsScreen } from './StatsScreen';
 import { ExerciseScreen } from './ExerciseScreen';
+import type { Gym } from '../domain/equipment';
+import { copyGym } from '../domain/share';
 
 export type FriendTab = 'history' | 'lifts' | 'stats';
 const noop = async () => {};
@@ -65,5 +67,31 @@ function Screens({ data, tab, exercise, today, gyms, onOpen, onExerciseBack }: {
   if (exercise) return <ExerciseScreen readOnly name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={today} onLog={() => {}} onBack={onExerciseBack} onRenamed={() => {}} />;
   if (tab === 'history') return <HistoryScreen store={store} onOpen={onOpen} />;
   if (tab === 'lifts') return <LiftsScreen loggedOnly store={store} onOpen={onOpen} />;
-  return <StatsScreen readOnly store={store} profile={profile} programs={programs} body={body} photos={null} today={today} onOpenPhotos={() => {}} />;
+  return (<>
+    <StatsScreen readOnly store={store} profile={profile} programs={programs} body={body} photos={null} today={today} onOpenPhotos={() => {}} />
+    <TheirGyms list={(data.meta.gyms as { gyms?: Gym[] } | undefined)?.gyms ?? []} gyms={gyms} />
+  </>);
+}
+
+/** A friend's gyms, each one copyable into yours (a new gym; theirs is untouched). */
+function TheirGyms({ list, gyms }: { list: Gym[]; gyms: GymsStore }) {
+  const [added, setAdded] = useState<string | null>(null);
+  if (!list.length) return null;
+  return (
+    <section className="card" aria-label="Their gyms">
+      <h2>Their gyms</h2>
+      <ul className="friend-list">
+        {list.map((g) => (
+          <li key={g.id}>
+            <span>{g.name}<span className="muted small"> · {g.equipment.length} {g.equipment.length === 1 ? 'piece' : 'pieces'} of gear</span></span>
+            <button className="mini" onClick={() => {
+              const n = copyGym(g, gyms.gyms);
+              void gyms.save([...gyms.gyms, n], gyms.active?.id ?? n.id).then((ok) => { if (ok) setAdded(n.name); });
+            }}>Add to my gyms</button>
+          </li>
+        ))}
+      </ul>
+      {added && <p className="muted small" role="status">Added {added} to your gyms.</p>}
+    </section>
+  );
 }

@@ -1,21 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
 import { cloudError, loadCloud, type Cloud } from '../cloud/firebase';
 import {
-  acceptInvite, acceptRequest, claimUsername, declineRequest, listFriends, listRequests, liveInvite, makeInvite, myUsername, removeFriend, revokeInvites, sendRequest,
-  type Friend, type Request,
+  acceptInvite, acceptRequest, claimUsername, clearSentGym, listSentGyms, declineRequest, listFriends, listRequests, liveInvite, makeInvite, myUsername, removeFriend, revokeInvites, sendRequest,
+  type Friend, type Request, type SentGym,
 } from '../cloud/friends';
+import type { GymsStore } from '../state/useGyms';
+import { copyGym } from '../domain/share';
 import { cleanUsername, inviteUrl, parseInvite, USERNAME, type Invite } from '../domain/invite';
 
 type Msg = { ok: boolean; text: string } | null;
 const base = () => `${location.origin}${location.pathname}`;
 
 /** Find friends by username or an invite link; tap one to see their log. Only while signed in. */
-export function FriendsCard({ uid, pending, onPendingDone, onView, onRequests }: {
-  uid: string; pending: Invite | null; onPendingDone: () => void; onView: (f: Friend) => void; onRequests: (n: number) => void;
+export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onRequests }: {
+  uid: string; gyms: GymsStore; pending: Invite | null; onPendingDone: () => void; onView: (f: Friend) => void; onRequests: (n: number) => void;
 }) {
   const [me, setMe] = useState<string | null | undefined>(undefined);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
+  const [sentGyms, setSentGyms] = useState<SentGym[]>([]);
   const [invite, setInvite] = useState<Invite | null>(null);
   const [name, setName] = useState('');
   const [find, setFind] = useState('');
@@ -25,8 +28,8 @@ export function FriendsCard({ uid, pending, onPendingDone, onView, onRequests }:
   const [msg, setMsg] = useState<Msg>(null);
 
   const refresh = useCallback(async (c: Cloud) => {
-    const [f, r, i] = await Promise.all([listFriends(c, uid), listRequests(c, uid), liveInvite(c, uid)]);
-    setFriends(f); setRequests(r); setInvite(i); onRequests(r.length);
+    const [f, r, i, s] = await Promise.all([listFriends(c, uid), listRequests(c, uid), liveInvite(c, uid), listSentGyms(c, uid)]);
+    setFriends(f); setRequests(r); setInvite(i); setSentGyms(s); onRequests(r.length + s.length);
   }, [uid, onRequests]);
   /** One action at a time; its outcome (or the error in plain words) shows under the card's heading. */
   const act = useCallback(async (f: (c: Cloud) => Promise<string | void>) => {
@@ -91,6 +94,27 @@ export function FriendsCard({ uid, pending, onPendingDone, onView, onRequests }:
                 <span className="friend-actions">
                   <button className="primary" disabled={busy} onClick={() => void act(async (c) => { await acceptRequest(c, uid, r.uid); return `You and ${r.name} are now friends.`; })}>Accept</button>
                   <button disabled={busy} onClick={() => void act(async (c) => { await declineRequest(c, uid, r.uid); })}>Decline</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {sentGyms.length > 0 && (
+        <section className="sub" aria-label="Gyms sent to you">
+          <h3>Gyms sent to you</h3>
+          <ul className="friend-list">
+            {sentGyms.map((s) => (
+              <li key={s.id}>
+                <span>@{s.fromName} sent you a gym: <b>{s.gym.name}</b></span>
+                <span className="friend-actions">
+                  <button className="primary" disabled={busy} onClick={() => void act(async (c) => {
+                    const n = copyGym(s.gym, gyms.gyms);
+                    if (!(await gyms.save([...gyms.gyms, n], gyms.active?.id ?? n.id))) throw new Error('Saving the gym on this phone failed.');
+                    await clearSentGym(c, uid, s.id);
+                    return `Added ${n.name} to your gyms.`;
+                  })}>Add</button>
+                  <button disabled={busy} onClick={() => void act(async (c) => { await clearSentGym(c, uid, s.id); })}>Dismiss</button>
                 </span>
               </li>
             ))}
