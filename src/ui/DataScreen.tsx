@@ -20,7 +20,7 @@ import { fmtDay, plural } from '../domain/format';
 
 const KIND: Partial<Record<CsvKind, string>> = { body: 'Body data', 'mfp-weight': 'MyFitnessPal weight', 'mfp-nutrition': 'MyFitnessPal nutrition' };
 
-export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPaste, onShowWalkthrough }: { store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; cloud: CloudStore; people: PeopleStore; onOpenPaste: () => void; onShowWalkthrough: () => void }) {
+export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPaste, onShowWalkthrough, onOpenCharacters }: { store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; cloud: CloudStore; people: PeopleStore; onOpenPaste: () => void; onShowWalkthrough: () => void; onOpenCharacters: () => void }) {
   const db = useDb();
   const [bodyMsgs, setBodyMsgs] = useState<{ ok: boolean; text: string }[]>([]);
   const [result, setResult] = useState<{ added: number; updated: number; same: number; kept: boolean; errors: CsvError[] } | null>(null);
@@ -149,7 +149,7 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
       <AccountCard cloud={cloud} people={people.people} />
       <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} />
       <PeopleCard people={people} />
-      <section className="card"><button className="wide" onClick={onShowWalkthrough}>Show walkthrough</button></section>
+      <section className="card"><button className="wide" onClick={onShowWalkthrough}>Show walkthrough</button><button className="wide" onClick={onOpenCharacters}>Characters (preview)</button></section>
       <p className="muted small">Build {__BUILD_ID__} · {__BUILT_AT__.slice(0, 16).replace('T', ' ')} UTC</p>
     </>
   );
