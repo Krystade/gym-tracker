@@ -149,7 +149,7 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
       <AccountCard cloud={cloud} people={people.people} />
       <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} />
       <PeopleCard people={people} />
-      <section className="card"><button className="wide" onClick={onShowWalkthrough}>Show walkthrough</button><button className="wide" onClick={onOpenCharacters}>Characters (preview)</button></section>
+      <section className="card"><button className="wide" onClick={onShowWalkthrough}>Show walkthrough</button><button className="wide" onClick={onOpenCharacters}>Characters (preview)</button><button className="wide" onClick={() => location.assign(`${import.meta.env.BASE_URL}tools/accessory-placer.html`)}>Accessory placer</button></section>
       <p className="muted small">Build {__BUILD_ID__} · {__BUILT_AT__.slice(0, 16).replace('T', ' ')} UTC</p>
     </>
   );
