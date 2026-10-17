@@ -123,3 +123,38 @@ test('a rebuild drops a pending undo, so it cannot splice an old lift into the n
   await expect.poll(() => names(page)).toEqual(before);
   await expect(page.getByRole('status').filter({ hasText: 'Removed' })).toHaveCount(0);
 });
+
+test('a lift added to a day, or the back block, goes before its cardio', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Stats' }).click();
+  await page.getByRole('combobox', { name: 'Cardio' }).selectOption('2');
+  await page.getByRole('button', { name: 'Today' }).click();
+  await openProgram(page);
+  await page.getByRole('button', { name: 'Set up your gym' }).click();
+  for (const e of ['dumbbells', 'flat bench', 'cable stack', 'treadmill']) await page.getByRole('checkbox', { name: e, exact: true }).check();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  await page.getByRole('textbox', { name: 'Days per week' }).fill('2');
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await expect.poll(async () => (await names(page)).at(-1)).toBe('Treadmill');
+  await page.getByRole('button', { name: 'Add exercise to Day A' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Zercher Carry');
+  await page.getByRole('button', { name: 'Add “Zercher Carry” as a new lift' }).click();
+  await expect.poll(async () => (await names(page)).slice(-2)).toEqual(['Zercher Carry', 'Treadmill']);
+  await page.getByRole('button', { name: 'Add back-resilience block' }).click();
+  await expect.poll(async () => (await names(page)).at(-1)).toBe('Treadmill');
+  await page.screenshot({ path: 'screenshots/r7-add-before-cardio.png', fullPage: true });
+});
+
+test('reopening the builder keeps sizing by minutes', async ({ page }) => {
+  await page.goto('/');
+  await openProgram(page);
+  await page.getByRole('button', { name: 'Minutes', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Minutes per session' }).fill('45');
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await expect(page.getByRole('heading', { name: /^Day A · / })).toBeVisible();
+  await page.reload();
+  await openProgram(page);
+  await openBuilder(page);
+  await expect(page.getByRole('button', { name: 'Minutes', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('textbox', { name: 'Minutes per session' })).toHaveValue('45');
+});

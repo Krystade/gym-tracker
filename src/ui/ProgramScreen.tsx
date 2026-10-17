@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { SetEntry } from '../domain/types';
 import type { ProfileStore } from '../state/useProfile';
 import type { ProgramStore } from '../state/useProgram';
-import { buildProgram, cardioSlot, MAX_SETS_PER_DAY, programVolume, type Program } from '../domain/program';
+import { addSlot, buildProgram, cardioSlot, MAX_SETS_PER_DAY, programVolume, type Program } from '../domain/program';
 import { isCardio } from '../domain/cardio';
 import { defaultSettings } from '../domain/progression';
 import { exerciseNames } from '../domain/stats';
@@ -19,13 +19,14 @@ import { warmupCount } from '../domain/suggest';
 import { localDate } from '../domain/ids';
 import type { ProgramDay } from '../domain/program';
 
-export function ProgramScreen({ programs, profile, entries, gyms, uid, onBack }: { programs: ProgramStore; profile: ProfileStore; entries: SetEntry[]; gyms: GymsStore; uid?: string | null; onBack: () => void }) {
+export function ProgramScreen({ programs, profile, entries, gyms, uid, onBack, onOpenPriorities }: { programs: ProgramStore; profile: ProfileStore; entries: SetEntry[]; gyms: GymsStore; uid?: string | null; onBack: () => void; onOpenPriorities: () => void }) {
   const p = programs.program;
   const [days, setDays] = useState(String(p?.days.length ?? profile.profile.weeklyGoal));
   const [per, setPer] = useState(String(p?.perSession ?? 14));
   const [addTo, setAddTo] = useState<number | null>(null);
-  const [mode, setMode] = useState<'sets' | 'minutes'>('sets');
-  const [mins, setMins] = useState('60');
+  // A program built by minutes reopens sized by minutes.
+  const [mode, setMode] = useState<'sets' | 'minutes'>(p?.minutes != null ? 'minutes' : 'sets');
+  const [mins, setMins] = useState(String(p?.minutes ?? 60));
   const [gymsOpen, setGymsOpen] = useState(false);
   // The last lift removed, so one tap puts it back where it was.
   const [removed, setRemoved] = useState<{ day: number; at: number; slot: ProgramDay['slots'][number] } | null>(null);
@@ -66,8 +67,8 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, onBack }:
   if (gymsOpen) return <GymsScreen gyms={gyms} logged={exerciseNames(entries)} fresh={!gym} uid={uid} onBack={() => { setGymsOpen(false); window.scrollTo(0, 0); }} />;
   if (addTo != null) return <ExercisePicker recent={exerciseNames(entries)} gym={gym} onCancel={() => setAddTo(null)} onPick={(name) => {
     const st = defaultSettings(name);
-    // A cardio machine goes in as a 15-minute slot, after the lifts.
-    edit((x) => { if (!x.days[addTo].slots.some((sl) => sl.exercise === name)) x.days[addTo].slots.push(isCardio(name) ? cardioSlot(name, 15) : { exercise: name, sets: 3, repMin: st.repMin, repMax: st.repMax }); });
+    // A cardio machine goes in as a 15-minute slot, after the lifts; a lift goes before the day's cardio.
+    edit((x) => { if (!x.days[addTo].slots.some((sl) => sl.exercise === name)) addSlot(x.days[addTo], isCardio(name) ? cardioSlot(name, 15) : { exercise: name, sets: 3, repMin: st.repMin, repMax: st.repMax }); });
     setAddTo(null);
   }} />;
 
@@ -122,6 +123,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, onBack }:
       {unset && (
         <section className="card note-card">
           <p><b>Priorities aren’t set.</b> Every muscle is priority 3, so the plan spreads sets evenly over all of them. Set priorities on Stats, or import your profile file on Data, then build.</p>
+          <button className="mini" onClick={onOpenPriorities}>Set priorities</button>
         </section>
       )}
       {!p && builder}
@@ -162,7 +164,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, onBack }:
           <h2>Back resilience</h2>
           <p className="muted small">McGill’s big 3 (bird dog, side plank, curl-up) as timed holds, 2 sets of 20–40 s on every day. Core endurance work helps with non-specific low back pain.</p>
           <button className="wide" disabled={p.days.every((dd) => BACK_BLOCK.every((b) => dd.slots.some((sl) => sl.exercise === b.exercise)))}
-            onClick={() => edit((x) => { for (const dd of x.days) for (const b of BACK_BLOCK) if (!dd.slots.some((sl) => sl.exercise === b.exercise)) dd.slots.push({ ...b }); })}>Add back-resilience block</button>
+            onClick={() => edit((x) => { for (const dd of x.days) for (const b of BACK_BLOCK) if (!dd.slots.some((sl) => sl.exercise === b.exercise)) addSlot(dd, { ...b }); })}>Add back-resilience block</button>
         </section>
       )}
       {p && (

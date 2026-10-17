@@ -50,7 +50,7 @@ function Priorities({ profile, readOnly, cardioMinutes }: { profile: FittedProfi
   const p = profile.profile;
   const [goal, setGoal] = useState(String(p.weeklyGoal));
   return (
-    <fieldset className="card plain" disabled={readOnly}>
+    <fieldset className="card plain" id="priorities" disabled={readOnly}>
       <h2>Priorities</h2>
       <label className="goal-row">Sessions per week goal
         <input aria-label="Sessions per week goal" inputMode="numeric" value={goal}
@@ -91,7 +91,8 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
   store: SetsStore; profile: FittedProfileStore; programs: ProgramStore; body: BodyStore; photos: PhotosStore | null; today: string; onOpenPhotos: () => void; readOnly?: boolean;
 }) {
   const p = profile.profile;
-  if (!store.entries.length) return (<><h1>Stats</h1><p className="muted">No sessions yet — log a workout or import your history on the Data tab.</p><BodyCard body={body} today={today} />{photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}</>);
+  // A new user sets priorities before the first workout, so they're here with an empty log too.
+  if (!store.entries.length) return (<><h1>Stats</h1><p className="muted">No sessions yet — log a workout or import your history on the Data tab.</p><BodyCard body={body} today={today} />{photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}<Priorities profile={profile} readOnly={readOnly} cardioMinutes={0} /></>);
   const weeks = weeklySummary(store.entries, 12, today);
   const st = streak(weeklySummary(store.entries, 104, today), p.weeklyGoal);
   const thisWeek = weeks.at(-1)!;

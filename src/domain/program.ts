@@ -98,8 +98,10 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   const weekly = new Map<string, number>();
   const saturated = new Set<Muscle>(); // no lift left with room this week
   const cands = new Map<Muscle, string[]>(MUSCLES.map((m) => [m, candidates(m, entries, today, ctx)]));
-  const unavailable = MUSCLES.filter((m) => !cands.get(m)!.length && profile.targets[profile.tiers[m]][0] > 0);
-  for (const m of unavailable) saturated.add(m);
+  const missing = MUSCLES.filter((m) => !cands.get(m)!.length && profile.targets[profile.tiers[m]][0] > 0);
+  for (const m of missing) saturated.add(m);
+  // Worth a warning only for priority 1–2: a gym that can't train a priority 3–4 muscle is no news.
+  const unavailable = missing.filter((m) => profile.tiers[m] <= 2);
 
   // Greedy, a pair of sets at a time: the muscle furthest below its tier's lower target *as a fraction of it*,
   // weighted by tier, goes next; once every lower target is met, the same toward the upper targets. Using the
@@ -172,6 +174,12 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
 
 /** A cardio slot of `minutes` on `machine`. */
 export const cardioSlot = (machine: string, minutes: number): Slot => ({ exercise: machine, sets: 1, repMin: 0, repMax: 0, minutes });
+
+/** Adds a slot to a day: a lift before the day's first cardio slot, so cardio stays last; cardio at the end. */
+export function addSlot(day: ProgramDay, slot: Slot) {
+  const at = slot.minutes == null ? day.slots.findIndex((x) => x.minutes != null) : -1;
+  day.slots.splice(at < 0 ? day.slots.length : at, 0, slot);
+}
 
 /** Weekly fractional sets per muscle for one pass through every day. */
 export function programVolume(p: Program): Record<Muscle, number> {

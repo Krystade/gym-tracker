@@ -293,7 +293,7 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 .plan-count { font-variant-numeric: tabular-nums; }
 .plan-slots li.done .plan-count { font-weight: 600; }
 /* A jump lands a card below the sticky profile bar. */
-[data-card] { scroll-margin-top: calc(var(--sat) + 72px); }
+[data-card], #priorities { scroll-margin-top: calc(var(--sat) + 72px); }
 .plan-slots button:not(.plan-name) { padding: 0 4px; font-size: 14px; }
 .prog-slots li { display: grid; grid-template-columns: 1fr 44px 28px 44px 56px; align-items: center; gap: 4px; }
 /* Remove sits a thumb-width away from the steppers: it deletes. */
