@@ -53,6 +53,11 @@ describe('summary, streak, calendar', () => {
     const r = streak(weeklySummary(e, 5, '2026-09-30'), 2);
     expect(r).toEqual({ current: 1, best: 2, thisWeekMet: false });
   });
+  it('counts warm-ups toward tonnage but not toward sets or sessions; holds stay out of tonnage', () => {
+    const w = weeklySummary([s('2026-09-28', 'Bench Press', 100, 10), s('2026-09-28', 'Bench Press', 45, 10, { flags: ['warmup'] }),
+      s('2026-09-29', 'Squat', 135, 5, { flags: ['warmup'] }), s('2026-09-28', 'Plate Pinch Hold', 45, 30, { flags: ['hold'] })], 1, '2026-09-30'); // the 29th: warm-ups alone
+    expect(w[0]).toMatchObject({ sessions: 1, sets: 2, tonnage: 1000 + 450 + 675 });
+  });
   it('returns zeroed results for no data', () => {
     expect(weeklySummary([], 3, '2026-09-30').every((x) => x.sessions === 0 && x.tonnage === 0)).toBe(true);
     expect(streak(weeklySummary([], 3, '2026-09-30'), 2)).toEqual({ current: 0, best: 0, thisWeekMet: false });

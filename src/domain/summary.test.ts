@@ -30,11 +30,11 @@ describe('prSetIds', () => {
     expect([...prSetIds([old, today], TODAY)]).toEqual([today.id]);
   });
 
-  it('ignores warm-ups, holds and other lifts', () => {
+  it('counts a warm-up like any set; another lift done for the first time is no PR', () => {
     const base = s('2026-09-28', 'Bench Press', 135, 8);
     const warm = s(TODAY, 'Bench Press', 200, 5, ['warmup']);
     const curl = s(TODAY, 'Cable Curl', 80, 10);
-    expect(prSetIds([base, warm, curl], TODAY).size).toBe(0);
+    expect([...prSetIds([base, warm, curl], TODAY)]).toEqual([warm.id]);
   });
 });
 
