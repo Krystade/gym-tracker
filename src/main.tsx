@@ -5,8 +5,10 @@ import { storagePersistence } from './db/db';
 import { anyDirty } from './state/drafts';
 import { reloadWhenSafe } from './state/appUpdate';
 import './ui/styles.css';
+import { pinChromeToVisualViewport } from './ui/viewportPin';
 
 void storagePersistence();
+pinChromeToVisualViewport();
 
 // A phone keeps the app open for days, so look for a new deploy whenever it comes back, and switch to it once it's in:
 // typed sets and added cards are drafts that outlive the reload, and while a form is half-typed it waits for the background.
