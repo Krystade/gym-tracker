@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { cloudError, loadCloud } from '../cloud/firebase';
-import { readFriendWindow, type Friend, type FriendWindow } from '../cloud/friends';
+import { readFriendWindow, type Friend, type FriendNews, type FriendWindow } from '../cloud/friends';
 import { addDays, weekStart } from '../domain/analytics';
 import { fmtWeek, KIND_LABEL, KINDS, lastTraining, orbitDays, statusLength, STATUS_MAX, weekNumbers, type Day, type Kind } from '../domain/orbit';
 import type { SetEntry } from '../domain/types';
 import type { StatusStore } from '../state/useStatus';
 import { ChartTable } from './charts/ChartTable';
+import { Latest, MessageButton } from './MessageButton';
 
 // Every friend on one screen: a line each across the days, coloured by what they trained. Cycle data never comes here:
 // friends' rows read only their months and status phrase, and your own row only your log.
@@ -24,9 +25,9 @@ const cache = new Map<string, { at: number; win: FriendWindow }>();
 type Load = { win?: FriendWindow; error?: string };
 interface Row { id: string; name: string; label: string; status: string; days: Day[]; sets: SetEntry[]; me: boolean; friend?: Friend; error?: string; loading?: boolean }
 
-export function Orbit({ uid, friends, entries, today, status, onOpenFriend, onOpenMine, onInvite }: {
-  uid: string; friends: Friend[] | null; entries: SetEntry[]; today: string; status: StatusStore;
-  onOpenFriend: (f: Friend) => void; onOpenMine: () => void; onInvite: () => void;
+export function Orbit({ uid, friends, entries, today, status, news, onOpenFriend, onOpenMine, onInvite, onMessage }: {
+  uid: string; friends: Friend[] | null; entries: SetEntry[]; today: string; status: StatusStore; news?: FriendNews | null;
+  onOpenFriend: (f: Friend) => void; onOpenMine: () => void; onInvite: () => void; /** A friend's thread: pings and messages. */ onMessage?: (f: Friend) => void;
 }) {
   const from = addDays(today, -(SPAN - 1));
   const [loads, setLoads] = useState<Record<string, Load>>({});
@@ -161,6 +162,12 @@ export function Orbit({ uid, friends, entries, today, status, onOpenFriend, onOp
                 <div className="orbit-head">
                   <button className="link orbit-name" onClick={open}>{r.label}</button>
                   {r.me ? <StatusEdit status={status} /> : r.status && <span className="orbit-bubble">{r.status}</span>}
+                  {r.friend && onMessage && (
+                    <span className="msg-end">
+                      <Latest news={news} uid={r.friend.uid} />
+                      <MessageButton name={r.friend.name} unread={news?.unread[r.friend.uid] ?? 0} onClick={() => onMessage(r.friend!)} />
+                    </span>
+                  )}
                 </div>
                 <svg className="orbit-line" width={width} height={LINE_H} aria-hidden="true" onClick={open}>
                   <line x1={0} x2={width} y1={LINE_H / 2} y2={LINE_H / 2} className="orbit-rest" />

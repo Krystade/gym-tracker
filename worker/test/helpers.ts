@@ -104,6 +104,8 @@ function typed(v: unknown): Record<string, unknown> {
 export class World {
   docs = new Map<string, { fields: Record<string, unknown>; createTime: number }>();
   reads: { path: string; uid: string }[] = [];
+  /** As if the rules let anyone signed in read a gym or message sent to someone: the Worker's own checks must hold alone. */
+  loose = false;
   put(path: string, fields: Record<string, unknown> = {}, createTime = Date.now()) { this.docs.set(path, { fields, createTime }); return this; }
   friends(a: string, b: string, createTime = Date.now()) { return this.put(`users/${a}/friends/${b}`, { since: 1 }, createTime).put(`users/${b}/friends/${a}`, { since: 1 }, createTime); }
   private may(path: string, uid: string) {
@@ -112,7 +114,7 @@ export class World {
     if (uid === owner) return true;
     if (coll === 'meta' || coll === 'months') return this.docs.has(`users/${owner}/friends/${uid}`);
     if (coll === 'requests') return id === uid;
-    if (coll === 'gymInbox' || coll === 'inbox') return this.docs.get(path)?.fields.from === uid; // a missing one: no resource, refused
+    if (coll === 'gymInbox' || coll === 'inbox') return this.loose || this.docs.get(path)?.fields.from === uid; // a missing one: no resource, refused
     return false;
   }
   get(path: string, authorization: string | null): Response {

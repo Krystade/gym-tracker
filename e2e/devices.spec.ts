@@ -299,7 +299,7 @@ test('Friends and a friend’s view fit each phone', async ({ browser }) => {
   await b.friends.getByRole('region', { name: 'Invite' }).getByRole('button', { name: 'Accept' }).click();
   await expect(b.friends.getByRole('status')).toHaveText(/are now friends/);
   await check(b.page, 'friends');
-  await b.friends.getByRole('button', { name: `@${a.name}` }).click();
+  await b.friends.getByRole('button', { name: `@${a.name}`, exact: true }).click();
   await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toBeVisible();
   await check(b.page, 'friend-stats');
   await goto(b.page, 'History');

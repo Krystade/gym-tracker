@@ -67,12 +67,12 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   await expect(req).toContainText(`@${b.name} wants to be friends`);
   await req.getByRole('button', { name: 'Accept' }).click();
   await expect(note(a.page)).toHaveText(`You and @${b.name} are now friends.`);
-  await expect(friends(a.page).getByRole('region', { name: 'Your friends' }).getByRole('button', { name: `@${b.name}` })).toBeVisible();
+  await expect(friends(a.page).getByRole('region', { name: 'Your friends' }).getByRole('button', { name: `@${b.name}`, exact: true })).toBeVisible();
 
   // b looks at a's log: the same screens, nothing to edit.
   await goto(b.page, 'Today');
   await goto(b.page, 'Friends');
-  await friends(b.page).getByRole('button', { name: `@${a.name}` }).click();
+  await friends(b.page).getByRole('button', { name: `@${a.name}`, exact: true }).click();
   await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing @${a.name}`);
   await expect(b.page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
   await expect(b.page.getByRole('combobox', { name: 'Chest' })).toBeDisabled();
@@ -92,9 +92,15 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
 
   await goto(a.page, 'Today');
   await goto(a.page, 'Friends');
-  await friends(a.page).getByRole('button', { name: 'Remove' }).click();
-  await friends(a.page).getByRole('button', { name: 'Tap again to remove' }).click();
-  await expect(note(a.page)).toHaveText(`Removed @${b.name}. Neither of you can see the other’s log now.`);
+  // Remove is in the friend's thread, under More, and asks twice.
+  await friends(a.page).getByRole('region', { name: 'Your friends' }).getByRole('button', { name: `Message @${b.name}` }).click();
+  const sheet = a.page.getByRole('dialog', { name: `Messages with @${b.name}` });
+  await sheet.getByRole('button', { name: 'More' }).click();
+  await sheet.getByRole('button', { name: 'Remove' }).click();
+  await sheet.getByRole('button', { name: 'Tap again to remove' }).click();
+  await expect(sheet.getByRole('status')).toHaveText(`Removed @${b.name}. Neither of you can see the other’s log now.`);
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await expect(friends(a.page).getByRole('region', { name: 'Your friends' })).toContainText('None yet');
   await goto(b.page, 'Friends');
   await expect(friends(b.page).getByRole('region', { name: 'Your friends' })).toContainText('None yet');
 });
@@ -125,7 +131,7 @@ test('an invite link asks before it befriends, says what each side sees, and wor
   await c.page.goto(link);
   await friends(c.page).getByRole('region', { name: 'Invite' }).getByRole('button', { name: 'Accept' }).click();
   await expect(note(c.page)).toHaveText(`You and @${a.name} are now friends.`);
-  await friends(c.page).getByRole('button', { name: `@${a.name}` }).click();
+  await friends(c.page).getByRole('button', { name: `@${a.name}`, exact: true }).click();
   await goto(c.page, 'History');
   await expect(c.page.getByRole('button', { name: /Bench Press/ })).toContainText('135 × 8');
 
@@ -160,7 +166,7 @@ test('a friend’s gym can be added to yours from their Stats', async ({ browser
   const a = await person(browser, { gym: 'Garage' });
   const b = await person(browser);
   await befriend(a, b);
-  await friends(b.page).getByRole('button', { name: `@${a.name}` }).click();
+  await friends(b.page).getByRole('button', { name: `@${a.name}`, exact: true }).click();
   const theirs = b.page.getByRole('region', { name: 'Their gyms' });
   await expect(theirs).toContainText('Garage · 2 pieces of gear');
   await theirs.getByRole('button', { name: 'Add to my gyms' }).click();

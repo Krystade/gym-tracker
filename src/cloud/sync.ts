@@ -71,26 +71,36 @@ async function syncMeta({ F, db }: Pick<Cloud, 'F' | 'db'>, uid: string, input: 
   return { metaSeen: { items: merged.seen, at }, metaPulled: Object.keys(merged.pull).length };
 }
 
-/** Every cloud document of this account that the owner can delete: the log, the index, friends, invites, requests and private (cycle). */
+/**
+ * Every cloud document of this account that the owner can delete: the log, the index, friends, invites, requests, private
+ * (cycle), gyms and messages sent to you, who you blocked, and your send counters.
+ */
 export async function deleteCloudData({ F, db }: Cloud, uid: string): Promise<void> {
   const index = ((await F.getDoc(F.doc(db, `users/${uid}/meta/index`))).data()?.months ?? {}) as Record<string, number>;
   const refs = Object.keys(index).map((m) => F.doc(db, `users/${uid}/months/${m}`));
   // Off your friends' lists too (the rules let you delete yourself from them), so nobody keeps a link to a gone account.
   for (const d of (await F.getDocs(F.collection(db, `users/${uid}/friends`))).docs) refs.push(F.doc(db, `users/${d.id}/friends/${uid}`));
-  for (const sub of ['meta', 'friends', 'invites', 'requests', 'private']) {
-    // Before the rules for private are deployed, listing it is refused; there's nothing in it to delete then. Any other
-    // failure (offline, a timeout) stops the delete, so an account is never deleted with its cycle days left behind.
+  // Before the rules for a newer collection are deployed, listing it is refused; there's nothing in it to delete then. Any
+  // other failure (offline, a timeout) stops the delete, so an account is never deleted with anything left behind.
+  const refused = (e: unknown) => { if ((e as { code?: string }).code === 'permission-denied') return { docs: [] }; throw e; };
+  const newer = new Set(['private', 'gymInbox', 'inbox', 'blocked', 'sendRate']);
+  const listed = async (sub: string) => {
     const list = F.getDocs(F.collection(db, `users/${uid}/${sub}`));
-    const refused = (e: unknown) => { if ((e as { code?: string }).code === 'permission-denied') return { docs: [] }; throw e; };
-    for (const d of (await (sub === 'private' ? list.catch(refused) : list)).docs) refs.push(d.ref);
-  }
+    return (await (newer.has(sub) ? list.catch(refused) : list)).docs.map((d) => d.ref);
+  };
+  for (const sub of ['meta', 'friends', 'invites', 'requests', 'private', 'gymInbox', 'inbox', 'blocked']) refs.push(...(await listed(sub)));
+  // The send counters go in the same write as the profile: the rules let a counter inside its hour go only with the account.
+  const last = await listed('sendRate');
   const profile = await F.getDoc(F.doc(db, `users/${uid}`));
   const username = profile.data()?.username as string | undefined;
   if (username) refs.push(F.doc(db, `usernames/${username}`));
-  refs.push(F.doc(db, `users/${uid}`));
-  for (let i = 0; i < refs.length; i += 400) {
+  last.push(F.doc(db, `users/${uid}`));
+  const chunks: (typeof refs)[] = [];
+  for (let i = 0; i < refs.length; i += 400) chunks.push(refs.slice(i, i + 400));
+  chunks.push(last);
+  for (const c of chunks) {
     const b = F.writeBatch(db);
-    for (const r of refs.slice(i, i + 400)) b.delete(r);
+    for (const r of c) b.delete(r);
     await b.commit();
   }
 }

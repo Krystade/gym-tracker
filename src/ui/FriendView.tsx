@@ -17,13 +17,15 @@ import { StatsScreen } from './StatsScreen';
 import { ExerciseScreen } from './ExerciseScreen';
 import type { Gym } from '../domain/equipment';
 import { copyGym } from '../domain/share';
+import { MessageButton } from './MessageButton';
 
 export type FriendTab = 'history' | 'lifts' | 'stats';
 const noop = async () => {};
 
 /** A friend's log on the same screens, read-only. It's read once when opened; their phone is where it changes. */
-export function FriendView({ friend, tab, exercise, today, gyms, onOpen, onBack, onExerciseBack }: {
-  friend: Friend; tab: FriendTab; exercise: string | null; today: string; gyms: GymsStore; onOpen: (n: string) => void; onBack: () => void; onExerciseBack: () => void;
+export function FriendView({ friend, tab, exercise, today, gyms, unread = 0, onOpen, onBack, onExerciseBack, onMessage }: {
+  friend: Friend; tab: FriendTab; exercise: string | null; today: string; gyms: GymsStore; unread?: number; onOpen: (n: string) => void; onBack: () => void; onExerciseBack: () => void;
+  /** Their thread, for kudos while you look at their log. */ onMessage?: () => void;
 }) {
   const [state, setState] = useState<{ data?: FriendData; error?: string }>({});
   useEffect(() => {
@@ -37,7 +39,10 @@ export function FriendView({ friend, tab, exercise, today, gyms, onOpen, onBack,
     <>
       <div className="viewing-bar" role="region" aria-label="Viewing a friend">
         <span>Viewing <b>@{friend.name}</b></span>
-        <button className="mini" onClick={onBack}>Back to you</button>
+        <span className="bar-actions">
+          {onMessage && <MessageButton name={friend.name} unread={unread} onClick={onMessage} />}
+          <button className="mini" onClick={onBack}>Back to you</button>
+        </span>
       </div>
       <main className="screen">
         {state.error ? <p role="alert" className="warn">{state.error}</p>

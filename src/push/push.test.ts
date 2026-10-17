@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { acceptedNote, buildPayload, cut, DELIVERY, friendTopic, gymNote, noteOf, recapNote, remindNote, requestNote, restNote, testNote, withMore, type Kind } from './payload';
+import {
+  acceptedNote, buildPayload, cut, DELIVERY, friendTopic, gymNote, messageNote, noteOf, pingNote, PRESET_KEYS, recapNote, remindNote, requestNote, restNote, testNote, withMore, type Kind,
+} from './payload';
 import { defaultPrefs, withDefaults } from './client';
 import { isRoute, parseOpen, tabOf } from './routes';
 import { onNotificationClick, onPush, type SwDeps } from './sw-push';
@@ -50,6 +52,29 @@ describe('payload', () => {
     expect(buildPayload('request', requestNote('jake'), APP).notification.navigate).toBe(`${APP}#open=friends`);
   });
 
+  it('words pings and messages with the friend as the title, and lands them on the friend with the badge', () => {
+    expect(pingNote('jake', 'strong')).toEqual({ title: 'jake', body: '💪 Strong' });
+    expect(PRESET_KEYS.map((k) => pingNote('j', k).body)).toEqual(['💪 Strong', '🔥 On fire', '👏 Nice work', '🏋️ Gym today?', '👀 Did you lift?', '🫡 On it']);
+    expect(pingNote('jake', 'kiss').body).toBe('sent you a ping'); // a ping this version doesn't know
+    expect(pingNote('jake', undefined).body).toBe('sent you a ping');
+    expect(messageNote('jake', '  see you at 6  ')).toEqual({ title: 'jake', body: 'see you at 6' });
+    expect(messageNote('jake', 'line one\nline two\u0000').body).toBe('line one line two');
+    expect(messageNote('jake', '').body).toBe('sent you a message');
+    expect(messageNote('jake', '💪'.repeat(80)).body).toBe('💪'.repeat(70)); // 140 UTF-16 units, as the rules count
+    expect(messageNote('jake', 'x'.repeat(139) + '💪').body).toBe('x'.repeat(139)); // never half an emoji
+    const p = buildPayload('ping', pingNote('jake', 'fire'), APP, { route: 'friend.u1', badge: 3 });
+    expect(p.notification).toMatchObject({ title: 'jake', body: '🔥 On fire', navigate: `${APP}#open=friend.u1`, app_badge: '3', data: { kind: 'ping', route: 'friend.u1' } });
+    expect(buildPayload('message', messageNote('a', 'hi'), APP, { badge: 0 }).notification.app_badge).toBe('0');
+  });
+
+  it('keeps the biggest message under 1 KB', () => {
+    const name = 'x'.repeat(20);
+    for (const t of ['💪'.repeat(70), '頑'.repeat(140), '"\\'.repeat(70), '\u0001'.repeat(140), 'e\u0301'.repeat(70)]) {
+      const p = buildPayload('message', messageNote(name, t), APP, { route: `friend.${'u'.repeat(28)}`, badge: 9999 });
+      expect(new TextEncoder().encode(JSON.stringify(p)).length).toBeLessThan(1024);
+    }
+  });
+
   it('gives each sender a topic of 22 URL-safe characters, the same every time', async () => {
     const a = await friendTopic('uid-a');
     expect(a).toMatch(/^[A-Za-z0-9_-]{22}$/);
@@ -59,7 +84,8 @@ describe('payload', () => {
 
   it('turns friend activity on for prefs saved before it existed, and keeps what was chosen', () => {
     const old = { kinds: { rest: false, remind: true, recap: false }, reminder: { days: [1], at: '07:00' }, recap: { day: 3, at: '09:00' } };
-    expect(withDefaults(old as never, 2)).toEqual({ ...old, kinds: { rest: false, remind: true, recap: false, activity: true } });
+    expect(withDefaults(old as never, 2)).toEqual({ ...old, kinds: { rest: false, remind: true, recap: false, activity: true, friends: true } });
+    expect(withDefaults({ ...defaultPrefs(2), kinds: { ...defaultPrefs(2).kinds, friends: false } }, 2).kinds.friends).toBe(false);
     expect(withDefaults({ ...defaultPrefs(2), kinds: { ...defaultPrefs(2).kinds, activity: false } }, 2).kinds.activity).toBe(false);
     expect(withDefaults(null, 2)).toEqual(defaultPrefs(2));
   });

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { CloudStore } from '../state/useCloud';
-import type { Friend } from '../cloud/friends';
+import type { Friend, FriendNews } from '../cloud/friends';
+import type { ThreadWith } from './ThreadSheet';
 import type { Invite } from '../domain/invite';
 import type { SetEntry } from '../domain/types';
 import type { StatusStore } from '../state/useStatus';
@@ -9,9 +10,10 @@ import { Orbit } from './Orbit';
 import type { GymsStore } from '../state/useGyms';
 
 /** Friends need an account: signed out, this points to the Account card on More. It opens from More, so Back goes there. */
-export function FriendsScreen({ cloud, gyms, pending, entries, status, today, onPendingDone, onView, onRequests, onSignIn, onBack, onOpenMine }: {
+export function FriendsScreen({ cloud, gyms, pending, entries, status, today, news, newsRev, onPendingDone, onView, onChanged, onMessage, onSignIn, onBack, onOpenMine }: {
   cloud: CloudStore; gyms: GymsStore; pending: Invite | null; entries: SetEntry[]; status: StatusStore; today: string;
-  onPendingDone: () => void; onView: (f: Friend) => void; onRequests: (n: number) => void; onSignIn: () => void; onBack: () => void; onOpenMine: () => void;
+  /** Requests, gyms and unread messages; `newsRev` moves whenever they're read again. */ news: FriendNews | null; newsRev: number;
+  onPendingDone: () => void; onView: (f: Friend) => void; onChanged: () => void; onMessage: (f: ThreadWith) => void; onSignIn: () => void; onBack: () => void; onOpenMine: () => void;
 }) {
   const [friends, setFriends] = useState<Friend[] | null>(null);
   // The invite controls sit in the list below; Orbit's Invite button brings them up.
@@ -28,8 +30,8 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, on
           </section>
         ) : !cloud.mine ? <p className="muted">The account on this phone belongs to another person here; switch to them to see friends.</p>
         : (<>
-          <Orbit uid={cloud.link.uid} friends={friends} entries={entries} today={today} status={status} onOpenFriend={onView} onOpenMine={onOpenMine} onInvite={invite} />
-          <FriendsCard uid={cloud.link.uid} gyms={gyms} pending={pending} onPendingDone={onPendingDone} onView={onView} onRequests={onRequests} onFriends={setFriends} />
+          <Orbit uid={cloud.link.uid} friends={friends} entries={entries} today={today} status={status} news={news} onOpenFriend={onView} onOpenMine={onOpenMine} onInvite={invite} onMessage={onMessage} />
+          <FriendsCard uid={cloud.link.uid} gyms={gyms} pending={pending} news={news} newsRev={newsRev} onPendingDone={onPendingDone} onView={onView} onChanged={onChanged} onMessage={onMessage} onFriends={setFriends} />
         </>)}
     </>
   );

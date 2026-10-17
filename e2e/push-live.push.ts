@@ -182,8 +182,17 @@ async function phoneKeys(name: string) {
   };
 }
 
-/** A Home Screen phone with notifications on, an account and a username. */
-async function friendPhone(browser: import('@playwright/test').Browser, who: string) {
+/** Turns notifications on from More, every friend switch on. */
+async function enrol(page: Page) {
+  await nav(page, 'More');
+  await card(page).getByRole('button', { name: 'Turn on notifications' }).click();
+  await expect(card(page).getByRole('status')).toHaveText('Notifications are on.');
+  await expect(card(page).getByRole('checkbox', { name: /Friend activity/ })).toBeChecked();
+  await expect(card(page).getByRole('checkbox', { name: /Pings and messages/ })).toBeChecked();
+}
+
+/** A Home Screen phone with an account and a username, and notifications on unless `notify` is false. */
+async function friendPhone(browser: import('@playwright/test').Browser, who: string, notify = true) {
   const keys = await phoneKeys(who);
   const app = String(test.info().project.use.baseURL).replace(/\/$/, '');
   const ctx = await browser.newContext({ viewport: { width: 375, height: 812 }, storageState: { cookies: [], origins: [{ origin: app, localStorage: [{ name: 'gym-tracker:walkthrough', value: 'done' }] }] } });
@@ -207,9 +216,7 @@ async function friendPhone(browser: import('@playwright/test').Browser, who: str
   await account.getByLabel('Password').fill('synthetic-pass-1');
   await account.getByRole('button', { name: 'Create account' }).click();
   await expect(account.getByText(/^Signed in as/)).toBeVisible();
-  await card(page).getByRole('button', { name: 'Turn on notifications' }).click();
-  await expect(card(page).getByRole('status')).toHaveText('Notifications are on.');
-  await expect(card(page).getByRole('checkbox', { name: /Friend activity/ })).toBeChecked();
+  if (notify) await enrol(page);
   await goto(page, 'Friends');
   const friends = page.getByRole('region', { name: 'Friends', exact: true });
   await friends.getByRole('textbox', { name: 'Username' }).fill(name);
@@ -248,4 +255,57 @@ test('friend activity: a request rings the person asked, accepting rings the ask
   await card(b.page).getByRole('checkbox', { name: /Friend activity/ }).uncheck();
   await expect.poll(async () => ((await worker(b.page, 'GET', '/status')) as { prefs: { kinds: { activity: boolean } } }).prefs.kinds.activity, { timeout: 10_000 }).toBe(false);
   await Promise.all([a.close(), b.close()]);
+});
+
+test('pings and messages: a friend’s ping rings with their name and the badge, a muted friend’s doesn’t, and the tap opens the thread', async ({ browser }) => {
+  test.setTimeout(150_000);
+  // B turns notifications on only once the friendships are made, so the requests' and acceptances' pushes (1 a minute
+  // from each friend) don't hold back the pings this test is about.
+  const [a, b, c] = await Promise.all([friendPhone(browser, 'a', false), friendPhone(browser, 'b', false), friendPhone(browser, 'c', false)]);
+  for (const f of [a, c]) {
+    await b.friends.getByRole('textbox', { name: 'Their username' }).fill(f.name);
+    await b.friends.getByRole('button', { name: 'Send request' }).click();
+    await expect(b.friends.getByRole('status')).toHaveText(`Request sent to @${f.name}.`);
+    await f.page.reload();
+    await goto(f.page, 'Friends');
+    await f.friends.getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
+    await expect(f.friends.getByRole('status')).toHaveText(`You and @${b.name} are now friends.`);
+  }
+  await enrol(b.page);
+  expect(b.keys.pushes()).toHaveLength(0);
+
+  // B mutes C from C's thread; the Worker gets C in the prefs' muted list.
+  await goto(b.page, 'Friends');
+  const thread = (p: Page, n: string) => p.getByRole('dialog', { name: `Messages with @${n}` });
+  await b.friends.getByRole('region', { name: 'Your friends' }).getByRole('button', { name: `Message @${c.name}` }).click();
+  await thread(b.page, c.name).getByRole('button', { name: `Mute @${c.name}` }).click();
+  await expect(thread(b.page, c.name).getByRole('button', { name: `Unmute @${c.name}` })).toBeVisible();
+  await thread(b.page, c.name).getByRole('button', { name: 'Close' }).click();
+  await expect.poll(async () => ((await worker(b.page, 'GET', '/status')) as { prefs: { muted?: string[] } }).prefs.muted?.length, { timeout: 10_000 }).toBe(1);
+
+  // C messages B, then A pings B. Only A's rings: C is muted. A's badge is 2, so C's message did reach B's Worker first.
+  const send = async (f: typeof a, what: () => Promise<void>, sent: string) => {
+    await f.friends.getByRole('region', { name: 'Your friends' }).getByRole('button', { name: `Message @${b.name}` }).click();
+    await what();
+    await expect(thread(f.page, b.name).getByRole('status')).toHaveText(sent);
+  };
+  await send(c, async () => {
+    await thread(c.page, b.name).getByRole('textbox', { name: `Message @${b.name}` }).fill('leg day?');
+    await thread(c.page, b.name).getByRole('button', { name: 'Send', exact: true }).click();
+  }, 'Sent');
+  await send(a, () => thread(a.page, b.name).getByRole('button', { name: 'Send 💪 Strong' }).click(), 'Sent 💪');
+  await expect.poll(() => b.keys.pushes().length, { timeout: 15_000 }).toBe(1);
+  const ping = b.keys.pushes()[0];
+  expect(ping.headers).toMatchObject({ urgency: 'normal', ttl: '86400', 'content-encoding': 'aes128gcm' });
+  expect(String(ping.headers.topic)).toMatch(/^[\w-]{22}$/);
+  const n = (await b.keys.read(ping)).notification as { title: string; body: string; navigate: string; app_badge?: string; data: { kind: string; route: string } };
+  expect(n).toMatchObject({ title: a.name, body: '💪 Strong', app_badge: '2', data: { kind: 'ping' } });
+  expect(n.data.route).toMatch(/^friend\.[\w-]+$/);
+  // C's never comes: its message was counted (the 2) before A's ping went, so it was held back, not late.
+  expect(b.keys.pushes()).toHaveLength(1);
+
+  // The tap: the app opens on A's thread, with the ping in it.
+  await b.page.goto(n.navigate);
+  await expect(thread(b.page, a.name).getByRole('list', { name: 'Messages' })).toContainText('💪 Strong');
+  await Promise.all([a.close(), b.close(), c.close()]);
 });

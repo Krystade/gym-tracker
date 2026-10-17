@@ -23,6 +23,7 @@ const emulators = process.env.E2E_EMULATORS === 'external' ? [] : [
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: true,
+  globalSetup: './e2e/rules.setup.ts', // this worktree's firestore.rules into emulators already running
   reporter: 'list',
   // The device profile's 375×629 is Safari-with-toolbars; the installed app gets the full 375×812.
   use: { ...devices['iPhone 13 Mini'], viewport: { width: 375, height: 812 }, baseURL: `${origin}/`,

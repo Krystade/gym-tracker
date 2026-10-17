@@ -116,7 +116,7 @@ test('Orbit shows a friend’s week as kinds, their status and numbers, at 375×
     await orbit(a.page).getByRole('button', { name: 'Refresh' }).click();
     await expect(row.locator('.orbit-bubble')).toHaveText('Leg day survivor 🦵', { timeout: 1000 });
   }).toPass({ timeout: 20_000 });
-  await expect(row.getByRole('button', { name: `@${b.name}` })).toBeVisible();
+  await expect(row.getByRole('button', { name: `@${b.name}`, exact: true })).toBeVisible();
   await expect(row).toContainText('2 sessions · 5 sets');
   await expect(row.locator(`[data-date="${iso(Y)}"]`)).toHaveAttribute('data-kind', 'legs');
   await expect(row.locator(`[data-date="${iso(T)}"]`)).toHaveAttribute('data-kind', 'push');
@@ -146,7 +146,7 @@ test('Orbit shows a friend’s week as kinds, their status and numbers, at 375×
   await expect(friends(a.page).getByRole('region', { name: 'Add a friend' })).toBeInViewport();
 
   // Tapping B's row opens B's log; your own row opens your History.
-  await row.getByRole('button', { name: `@${b.name}` }).click();
+  await row.getByRole('button', { name: `@${b.name}`, exact: true }).click();
   await expect(a.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing @${b.name}`);
   await a.page.getByRole('button', { name: 'Back to you' }).click();
   await orbit(a.page).getByTestId('orbit-me').getByRole('button', { name: 'You', exact: true }).click();

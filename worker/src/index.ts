@@ -54,6 +54,7 @@ async function handle(req: Request, env: Env): Promise<Response> {
       console.log(JSON.stringify({ kind: push.kind, outcome }));
       return json({ ok: true });
     }
+    case 'POST /badge': await box.setBadge(v.badge(await body(req))); return json({ ok: true });
     case 'POST /test': {
       const status = await box.sendTest(v.deviceId((await body(req) as { sub?: unknown })?.sub));
       if (status == null) throw new Http(404, 'device');

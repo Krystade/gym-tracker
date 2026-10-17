@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, Timestamp, updateDoc, writeBatch, type Firestore } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
 
 // Synthetic users: alice owns the data, bob is her friend, eve is a stranger.
 let env: RulesTestEnvironment;
@@ -218,6 +218,160 @@ describe('the push Worker’s reads over REST', () => {
     expect(g.body!.fields.from.stringValue).toBe('bob');
     expect((await rest('eve', 'users/alice/gymInbox/g1')).status).toBe(403);
     expect((await rest('carol', 'users/alice/requests/eve')).status).toBe(403);
+  });
+});
+
+describe('pings and messages (inbox), with the sender’s counter (sendRate)', () => {
+  type Rate = { at: Timestamp; win: Timestamp; n: number };
+  /** One send, as the app makes it: the inbox document and the sender's counter in one write. */
+  const send = (from: string, to: string, data: Record<string, unknown>, rate: Partial<Record<keyof Rate, unknown>> = {}, id = `m${Math.random().toString(36).slice(2, 8)}`) => {
+    const db = as(from), b = writeBatch(db);
+    b.set(doc(db, `users/${to}/inbox/${id}`), { from, at: serverTimestamp(), ...data });
+    b.set(doc(db, `users/${from}/sendRate/${to}`), { at: serverTimestamp(), win: serverTimestamp(), n: 1, ...rate });
+    return b.commit();
+  };
+  const ping = (e = 'strong') => ({ kind: 'p', e });
+  const msg = (t: string) => ({ kind: 'm', t });
+  const ago = (ms: number) => Timestamp.fromMillis(Date.now() - ms);
+  const seedRate = (r: Rate) => seed((db) => setDoc(doc(db, 'users/bob/sendRate/alice'), r));
+  const clearRate = () => seed((db) => deleteDoc(doc(db, 'users/bob/sendRate/alice')));
+
+  it('a friend’s ping and message go in; a stranger’s don’t', async () => {
+    await assertSucceeds(send('bob', 'alice', ping()));
+    await seedRate({ at: ago(5000), win: ago(60_000), n: 1 });
+    const win = ((await getDoc(doc(as('bob'), 'users/bob/sendRate/alice'))).data() as Rate).win;
+    await assertSucceeds(send('bob', 'alice', msg('x'.repeat(140)), { win, n: 2 }));
+    await assertFails(send('eve', 'alice', ping()));
+  });
+  it('only the six pings, 1 to 140 characters, the four keys and no more', async () => {
+    for (const e of ['strong', 'fire', 'clap', 'gym', 'eyes', 'salute']) {
+      await clearRate();
+      await assertSucceeds(send('bob', 'alice', ping(e)));
+    }
+    await clearRate();
+    await assertFails(send('bob', 'alice', ping('kiss')));
+    await assertFails(send('bob', 'alice', msg('')));
+    await assertFails(send('bob', 'alice', msg('x'.repeat(141))));
+    await assertFails(send('bob', 'alice', { kind: 'm', t: 7 }));
+    await assertFails(send('bob', 'alice', { ...ping(), t: 'hi' }));
+    await assertFails(send('bob', 'alice', { ...msg('hi'), name: 'bob' }));
+    await assertFails(send('bob', 'alice', { kind: 'x', e: 'strong' }));
+    // The rules count UTF-16 units, as a JS string's length and an input's maxLength do: an emoji like 💪 is two.
+    await clearRate();
+    await assertFails(send('bob', 'alice', msg('💪'.repeat(71))));
+    await assertSucceeds(send('bob', 'alice', msg('💪'.repeat(70))));
+  });
+  it('never as someone else, never with the phone’s clock, never without the counter in the same write', async () => {
+    await assertFails(send('bob', 'alice', { ...ping(), from: 'carol' }));
+    await assertFails(send('bob', 'alice', { ...ping(), at: Timestamp.now() }));
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/inbox/x1'), { from: 'bob', at: serverTimestamp(), ...ping() }));
+    await assertSucceeds(send('bob', 'alice', ping()));
+  });
+  it('2 s between sends, 30 an hour, and a new hour starts again at 1', async () => {
+    await assertSucceeds(send('bob', 'alice', ping()));
+    const first = (await getDoc(doc(as('bob'), 'users/bob/sendRate/alice'))).data() as Rate;
+    await assertFails(send('bob', 'alice', ping(), { win: first.win, n: 2 })); // inside 2 s
+    await seedRate({ at: ago(5000), win: ago(600_000), n: 29 });
+    const win = ((await getDoc(doc(as('bob'), 'users/bob/sendRate/alice'))).data() as Rate).win;
+    await assertFails(send('bob', 'alice', ping(), { win, n: 29 })); // the count must move
+    await assertSucceeds(send('bob', 'alice', ping(), { win, n: 30 }));
+    await seedRate({ at: ago(5000), win, n: 30 });
+    await assertFails(send('bob', 'alice', ping(), { win, n: 31 })); // the 31st
+    await assertFails(send('bob', 'alice', ping())); // and no starting over inside the hour
+    await seedRate({ at: ago(5000), win: ago(3_601_000), n: 30 });
+    await assertSucceeds(send('bob', 'alice', ping())); // a new hour: n = 1, win = now
+  });
+  it('the counter is yours alone, and goes only once its hour is over', async () => {
+    await assertFails(getDoc(doc(as('alice'), 'users/bob/sendRate/alice')));
+    await assertFails(setDoc(doc(as('alice'), 'users/bob/sendRate/alice'), { at: serverTimestamp(), win: serverTimestamp(), n: 1 }));
+    await seedRate({ at: ago(5000), win: ago(600_000), n: 3 });
+    await assertFails(deleteDoc(doc(as('bob'), 'users/bob/sendRate/alice')));
+    await seedRate({ at: ago(5000), win: ago(3_601_000), n: 3 });
+    await assertSucceeds(deleteDoc(doc(as('bob'), 'users/bob/sendRate/alice')));
+    // With the account: its profile goes in the same write.
+    await seedRate({ at: ago(5000), win: ago(600_000), n: 3 });
+    const bob = as('bob'), b = writeBatch(bob);
+    b.delete(doc(bob, 'users/bob/sendRate/alice'));
+    b.delete(doc(bob, 'users/bob'));
+    await assertSucceeds(b.commit());
+  });
+  it('you read and clear yours; a sender reads back only their own, by asking for them; nobody edits one', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'users/carol'), { username: 'carol', displayName: 'Carol' });
+      await setDoc(doc(db, 'users/alice/friends/carol'), { since: 1 });
+      await setDoc(doc(db, 'users/alice/inbox/b1'), { from: 'bob', kind: 'p', e: 'fire', at: Timestamp.now() });
+      await setDoc(doc(db, 'users/alice/inbox/c1'), { from: 'carol', kind: 'm', t: 'secret', at: Timestamp.now() });
+    });
+    expect((await assertSucceeds(getDocs(collection(as('alice'), 'users/alice/inbox')))).size).toBe(2);
+    const mine = await assertSucceeds(getDocs(query(collection(as('bob'), 'users/alice/inbox'), where('from', '==', 'bob'))));
+    expect(mine.docs.map((d) => d.id)).toEqual(['b1']);
+    await assertSucceeds(getDoc(doc(as('bob'), 'users/alice/inbox/b1')));
+    await assertFails(getDocs(collection(as('bob'), 'users/alice/inbox')));
+    await assertFails(getDoc(doc(as('bob'), 'users/alice/inbox/c1')));
+    await assertFails(getDocs(query(collection(as('eve'), 'users/alice/inbox'), where('from', '==', 'bob'))));
+    await assertFails(updateDoc(doc(as('bob'), 'users/alice/inbox/b1'), { e: 'clap' }));
+    await assertFails(updateDoc(doc(as('alice'), 'users/alice/inbox/b1'), { e: 'clap' }));
+    await assertFails(deleteDoc(doc(as('bob'), 'users/alice/inbox/b1')));
+    await assertSucceeds(deleteDoc(doc(as('alice'), 'users/alice/inbox/b1')));
+  });
+});
+
+describe('your friends list: mute and read, nothing else', () => {
+  it('the owner sets muted and readAt (the server’s time), and nothing else', async () => {
+    await assertSucceeds(updateDoc(doc(as('alice'), 'users/alice/friends/bob'), { muted: true }));
+    await assertSucceeds(updateDoc(doc(as('alice'), 'users/alice/friends/bob'), { readAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(as('alice'), 'users/alice/friends/bob'), { muted: false })); // readAt untouched
+    await assertFails(updateDoc(doc(as('alice'), 'users/alice/friends/bob'), { readAt: Timestamp.now() }));
+    await assertFails(updateDoc(doc(as('alice'), 'users/alice/friends/bob'), { muted: 'yes' }));
+    await assertFails(updateDoc(doc(as('alice'), 'users/alice/friends/bob'), { since: 99 }));
+    await assertFails(updateDoc(doc(as('alice'), 'users/alice/friends/bob'), { via: 'x' }));
+  });
+  it('a friend can’t mute you on your list, nor see it', async () => {
+    await assertFails(updateDoc(doc(as('bob'), 'users/alice/friends/bob'), { muted: true }));
+    await assertFails(updateDoc(doc(as('bob'), 'users/alice/friends/bob'), { readAt: serverTimestamp() }));
+    await assertFails(getDoc(doc(as('bob'), 'users/alice/friends/bob')));
+  });
+});
+
+describe('blocking', () => {
+  beforeEach(() => seed(async (db) => {
+    await setDoc(doc(db, 'users/eve'), { username: 'eve', displayName: 'Eve' });
+    await setDoc(doc(db, 'users/alice/blocked/eve'), { at: Timestamp.now() });
+  }));
+  it('who you blocked is yours alone', async () => {
+    await assertSucceeds(getDocs(collection(as('alice'), 'users/alice/blocked')));
+    await assertFails(getDoc(doc(as('eve'), 'users/alice/blocked/eve')));
+    await assertFails(deleteDoc(doc(as('eve'), 'users/alice/blocked/eve')));
+    await assertFails(setDoc(doc(as('alice'), 'users/alice/blocked/carol'), { at: 1, why: 'x' }));
+    await assertSucceeds(setDoc(doc(as('alice'), 'users/alice/blocked/carol'), { at: serverTimestamp() }));
+    await assertSucceeds(deleteDoc(doc(as('alice'), 'users/alice/blocked/eve')));
+  });
+  it('someone blocked can’t ask again, use an invite, or answer an old request', async () => {
+    await assertFails(setDoc(doc(as('eve'), 'users/alice/requests/eve'), { username: 'eve', sent: 1 }));
+    await seed((db) => setDoc(doc(db, 'users/alice/invites/tok123'), { created: 1, expires: later() }));
+    await assertFails(accept('eve', 'alice', 'tok123'));
+    await seed((db) => setDoc(doc(db, 'users/eve/requests/alice'), { username: 'alice', sent: 1 }));
+    await assertFails(setDoc(doc(as('eve'), 'users/alice/friends/eve'), { since: 1 }));
+    // Unblocked, the same moves work.
+    await seed((db) => deleteDoc(doc(db, 'users/alice/blocked/eve')));
+    await assertSucceeds(setDoc(doc(as('eve'), 'users/alice/friends/eve'), { since: 1 }));
+    await seed((db) => deleteDoc(doc(db, 'users/alice/friends/eve')));
+    await assertSucceeds(accept('eve', 'alice', 'tok123'));
+  });
+  it('blocking a friend, as the app does it: both friend documents and any requests go in one write', async () => {
+    await seed((db) => setDoc(doc(db, 'users/bob/requests/alice'), { username: 'alice', sent: 1 }));
+    const db = as('alice'), b = writeBatch(db);
+    b.delete(doc(db, 'users/alice/friends/bob'));
+    b.delete(doc(db, 'users/bob/friends/alice'));
+    b.delete(doc(db, 'users/alice/requests/bob'));
+    b.delete(doc(db, 'users/bob/requests/alice'));
+    b.set(doc(db, 'users/alice/blocked/bob'), { at: serverTimestamp() });
+    await assertSucceeds(b.commit());
+    await assertFails(getDoc(doc(as('bob'), 'users/alice/months/2026-10')));
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/requests/bob'), { username: 'bob', sent: 1 }));
+    const bob = as('bob');
+    await assertFails(writeBatch(bob).set(doc(bob, 'users/alice/inbox/z'), { from: 'bob', kind: 'p', e: 'fire', at: serverTimestamp() })
+      .set(doc(bob, 'users/bob/sendRate/alice'), { at: serverTimestamp(), win: serverTimestamp(), n: 1 }).commit());
   });
 });
 

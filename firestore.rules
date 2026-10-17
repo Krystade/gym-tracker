@@ -6,6 +6,7 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function me(uid) { return signedIn() && request.auth.uid == uid; }
     function friendOf(uid) { return signedIn() && exists(/databases/$(db)/documents/users/$(uid)/friends/$(request.auth.uid)); }
+    function blocked(uid, them) { return exists(/databases/$(db)/documents/users/$(uid)/blocked/$(them)); }
     function liveInvite(uid, token) {
       return token is string && exists(/databases/$(db)/documents/users/$(uid)/invites/$(token))
         && get(/databases/$(db)/documents/users/$(uid)/invites/$(token)).data.expires > request.time;
@@ -35,11 +36,21 @@ service cloud.firestore {
         allow read: if me(uid);
         allow delete: if me(uid) || me(f);
         // Your own list; or the friend adds themselves, holding your invite (used up in the same write: it works once)
-        // or answering their request you sent.
+        // or answering their request you sent. Never someone you've blocked.
         allow create: if me(uid)
-          || (me(f) && liveInvite(uid, request.resource.data.via)
+          || (me(f) && !blocked(uid, f) && liveInvite(uid, request.resource.data.via)
               && !existsAfter(/databases/$(db)/documents/users/$(uid)/invites/$(request.resource.data.via)))
-          || (me(f) && exists(/databases/$(db)/documents/users/$(f)/requests/$(uid)));
+          || (me(f) && !blocked(uid, f) && exists(/databases/$(db)/documents/users/$(f)/requests/$(uid)));
+        // Only yours, and only these two: muting them (they never see it) and when you last read their messages (no read
+        // receipts: nobody but you reads your list).
+        allow update: if me(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['muted', 'readAt'])
+          && (!('muted' in request.resource.data) || request.resource.data.muted is bool)
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['readAt']) || request.resource.data.readAt == request.time);
+      }
+      // Who you've blocked: yours alone.
+      match /blocked/{them} {
+        allow read, delete: if me(uid);
+        allow create, update: if me(uid) && request.resource.data.keys().hasOnly(['at']);
       }
       match /invites/{t} {
         allow read, write: if me(uid);
@@ -50,7 +61,7 @@ service cloud.firestore {
           && getAfter(/databases/$(db)/documents/users/$(uid)/friends/$(request.auth.uid)).data.via == t;
       }
       match /requests/{from} {
-        allow create: if me(from) && from != uid && exists(/databases/$(db)/documents/users/$(uid))
+        allow create: if me(from) && from != uid && exists(/databases/$(db)/documents/users/$(uid)) && !blocked(uid, from)
           && request.resource.data.keys().hasOnly(['username', 'sent']);
         allow read, delete: if me(uid) || me(from);
       }
@@ -61,6 +72,35 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['from', 'fromName', 'gym', 'sent']);
         allow read, delete: if me(uid);
         allow get: if signedIn() && resource.data.from == request.auth.uid;
+      }
+      // Pings and messages a friend sent you. They write it as themselves, while they're your friend, with the server's
+      // time, a known ping or 1 to 140 characters, and their own send counter moved in the same write (sendRate, below).
+      // You read and clear yours; a sender reads back only their own (the app asks with where from == them). Never edited.
+      match /inbox/{id} {
+        allow create: if friendOf(uid) && request.resource.data.from == request.auth.uid && request.resource.data.at == request.time
+          && ((request.resource.data.kind == 'p' && request.resource.data.keys().hasOnly(['from', 'kind', 'e', 'at'])
+                && request.resource.data.e in ['strong', 'fire', 'clap', 'gym', 'eyes', 'salute'])
+            || (request.resource.data.kind == 'm' && request.resource.data.keys().hasOnly(['from', 'kind', 't', 'at'])
+                && request.resource.data.t is string && request.resource.data.t.size() >= 1 && request.resource.data.t.size() <= 140))
+          && getAfter(/databases/$(db)/documents/users/$(request.auth.uid)/sendRate/$(uid)).data.at == request.time;
+        allow read: if me(uid) || (signedIn() && resource.data.from == request.auth.uid);
+        allow delete: if me(uid);
+        allow update: if false;
+      }
+      // Your own send counter to one friend: 2 s between sends, 30 an hour (a new hour starts the count again). Only
+      // removable once its hour is over, or with the account itself (its profile goes in the same write).
+      match /sendRate/{to} {
+        allow read: if me(uid);
+        allow create: if me(uid) && request.resource.data.keys().hasOnly(['at', 'win', 'n'])
+          && request.resource.data.at == request.time && request.resource.data.win == request.time && request.resource.data.n == 1;
+        allow update: if me(uid) && request.resource.data.keys().hasOnly(['at', 'win', 'n'])
+          && request.resource.data.at == request.time && request.time > resource.data.at + duration.value(2, 's')
+          && ((request.resource.data.win == resource.data.win && request.resource.data.n == resource.data.n + 1
+                && request.resource.data.n <= 30 && request.time < resource.data.win + duration.value(1, 'h'))
+            || (request.resource.data.win == request.time && request.resource.data.n == 1
+                && request.time >= resource.data.win + duration.value(1, 'h')));
+        allow delete: if me(uid) && (request.time >= resource.data.win + duration.value(1, 'h')
+          || !existsAfter(/databases/$(db)/documents/users/$(uid)));
       }
     }
   }

@@ -6,13 +6,19 @@ import type { Activity } from './activity';
 // Nothing here runs unless config.ts names a Worker; until this phone is turned on, nothing calls it.
 
 export interface PushPrefs {
-  /** `activity`: a friend request, a request or invite accepted, a gym sent to you. */
-  kinds: { rest: boolean; remind: boolean; recap: boolean; activity: boolean };
+  /** `activity`: a friend request, a request or invite accepted, a gym sent to you. `friends`: their pings and messages. */
+  kinds: { rest: boolean; remind: boolean; recap: boolean; activity: boolean; friends: boolean };
   /** Days 0 = Sunday … 6 = Saturday, at local "HH:MM". */
   reminder: { days: number[]; at: string };
   recap: { day: number; at: string };
 }
-interface Local { device: string | null; prefs: PushPrefs | null; activity?: string; synced?: number; lost?: boolean }
+interface Local {
+  device: string | null; prefs: PushPrefs | null; activity?: string; synced?: number; lost?: boolean;
+  /** Friends muted on the account (friends docs), sent with the prefs so the Worker holds their pushes back. */
+  muted?: string[];
+  /** The badge count last told to the Worker. */
+  badge?: number;
+}
 
 const KEY = 'gym-tracker:push';
 const load = (): Local => { try { return { device: null, prefs: null, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') }; } catch { return { device: null, prefs: null }; } };
@@ -30,7 +36,7 @@ export function spreadDays(goal: number): number[] {
   return table[Math.min(7, Math.max(1, Math.round(goal)))];
 }
 export const defaultPrefs = (goal: number): PushPrefs => ({
-  kinds: { rest: true, remind: false, recap: true, activity: true },
+  kinds: { rest: true, remind: false, recap: true, activity: true, friends: true },
   reminder: { days: spreadDays(goal), at: '18:00' },
   recap: { day: 0, at: '18:00' },
 });
@@ -62,6 +68,8 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
 
 const key = () => Uint8Array.from(atob(VAPID_PUBLIC_KEY.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+/** The prefs as the Worker takes them: the time zone and muted friends go along. */
+const body = (p: PushPrefs) => ({ tz: tz(), ...p, muted: load().muted ?? [] });
 const register = (sub: PushSubscription) => api<{ id: string }>('POST', '/subscribe', { ...sub.toJSON(), ua: navigator.userAgent.slice(0, 200) });
 
 /**
@@ -72,8 +80,8 @@ export async function enablePush(reg: ServiceWorkerRegistration, goal: number): 
   const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key() });
   const { id } = await register(sub);
   const prefs = withDefaults(load().prefs, goal);
-  save({ device: id, prefs, lost: false, synced: Date.now(), activity: undefined });
-  await api('PUT', '/prefs', { tz: tz(), ...prefs });
+  save({ device: id, prefs, lost: false, synced: Date.now(), activity: undefined, badge: undefined });
+  await api('PUT', '/prefs', body(prefs));
 }
 
 /** Off on this phone: the subscription goes, and the Worker forgets the device. */
@@ -108,7 +116,7 @@ export async function resyncPush(force = false): Promise<void> {
   }
   const { id } = await register(sub);
   save({ device: id, lost: false, synced: Date.now() });
-  if (l.prefs) await api('PUT', '/prefs', { tz: tz(), ...withDefaults(l.prefs, 2) });
+  if (l.prefs) await api('PUT', '/prefs', body(withDefaults(l.prefs, 2)));
 }
 
 let prefsTimer: ReturnType<typeof setTimeout> | undefined;
@@ -116,7 +124,7 @@ let prefsTimer: ReturnType<typeof setTimeout> | undefined;
 export function setPrefs(p: PushPrefs, onError?: (e: unknown) => void): void {
   save({ prefs: p });
   clearTimeout(prefsTimer);
-  prefsTimer = setTimeout(() => { if (load().device) api('PUT', '/prefs', { tz: tz(), ...p }).catch((e) => onError?.(e)); }, 1000);
+  prefsTimer = setTimeout(() => { if (load().device) api('PUT', '/prefs', body(p)).catch((e) => onError?.(e)); }, 1000);
 }
 
 /** Sends the reminder and recap numbers when they've changed. */
@@ -132,9 +140,29 @@ export async function postActivity(a: Activity): Promise<void> {
  * invite, a gym sent. The Worker checks it in Firestore as this person before anything is sent. Whether or not this
  * phone has notifications on, and never failing the write it follows: a friend without them simply hears nothing.
  */
-export function notifyFriend(kind: 'request' | 'accepted' | 'gym', to: string, id?: string): void {
+export function notifyFriend(kind: 'request' | 'accepted' | 'gym' | 'inbox', to: string, id?: string): void {
   if (!WORKER_REACHABLE) return;
   void api('POST', '/notify', { kind, to, ...(id && { id }) }).catch(() => {});
+}
+
+/** The friends muted on the account, as Friends last read them: a change goes to the Worker with the prefs. */
+export function syncMuted(muted: string[]): void {
+  const l = load(), next = [...muted].sort();
+  if (JSON.stringify(l.muted ?? []) === JSON.stringify(next)) return;
+  save({ muted: next });
+  if (WORKER_REACHABLE && l.device && l.prefs) void api('PUT', '/prefs', body(withDefaults(l.prefs, 2))).catch(() => {});
+}
+
+/**
+ * The app icon's count: requests, gyms and unread pings and messages, as Friends counts them. Set on this phone, and told
+ * to the Worker so its next push counts on from the truth rather than from the pushes it sent.
+ */
+export function syncBadge(n: number): void {
+  const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
+  try { void (n > 0 ? nav.setAppBadge?.(n) : nav.clearAppBadge?.())?.catch(() => {}); } catch { /* no badges here */ }
+  const l = load();
+  if (!WORKER_REACHABLE || !l.device || l.badge === n) return;
+  api('POST', '/badge', { n }).then(() => save({ badge: n }), () => {});
 }
 
 export const sendTest = () => api<{ status: number }>('POST', '/test', { sub: load().device });

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cloudError, loadCloud, type Cloud } from '../cloud/firebase';
 import {
-  acceptInvite, acceptRequest, claimUsername, clearSentGym, listSentGyms, declineRequest, listFriends, listRequests, liveInvite, makeInvite, myUsername, peekInvite, removeFriend, revokeInvites, sendRequest,
-  type Friend, type Request, type SentGym,
+  acceptInvite, acceptRequest, claimUsername, clearSentGym, listSentGyms, declineRequest, listBlocked, listFriends, listRequests, liveInvite, makeInvite, myUsername, peekInvite, revokeInvites, sendRequest, unblock,
+  type Friend, type FriendNews, type Request, type SentGym,
 } from '../cloud/friends';
+import { Latest, MessageButton } from './MessageButton';
+import type { ThreadWith } from './ThreadSheet';
 import type { GymsStore } from '../state/useGyms';
 import { copyGym } from '../domain/share';
 import { cleanUsername, inviteUrl, parseInvite, USERNAME, type Invite } from '../domain/invite';
@@ -12,19 +14,21 @@ type Msg = { ok: boolean; text: string } | null;
 const base = () => `${location.origin}${location.pathname}`;
 
 /** Find friends by username or an invite link; tap one to see their log. Only while signed in. */
-export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onRequests, onFriends }: {
-  uid: string; gyms: GymsStore; pending: Invite | null; onPendingDone: () => void; onView: (f: Friend) => void; onRequests: (n: number) => void;
+export function FriendsCard({ uid, gyms, pending, news, newsRev, onPendingDone, onView, onChanged, onMessage, onFriends }: {
+  uid: string; gyms: GymsStore; pending: Invite | null; news?: FriendNews | null; newsRev?: number; onPendingDone: () => void; onView: (f: Friend) => void;
+  /** After anything done here: the More tab's dot and the badge count again. */ onChanged: () => void;
+  /** A friend's thread: pings, messages, mute, remove and block. */ onMessage: (f: ThreadWith) => void;
   /** The list as it stands after each refresh, for Orbit above. */ onFriends?: (f: Friend[]) => void;
 }) {
   const [me, setMe] = useState<string | null | undefined>(undefined);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
   const [sentGyms, setSentGyms] = useState<SentGym[]>([]);
+  const [blocked, setBlocked] = useState<Friend[]>([]);
   const [invite, setInvite] = useState<Invite | null>(null);
   const [name, setName] = useState('');
   const [find, setFind] = useState('');
   const [paste, setPaste] = useState('');
-  const [armed, setArmed] = useState<string | null>(null);
   // An invite opened or pasted: shown with who sent it, and accepted only on a tap.
   const [offer, setOffer] = useState<{ inv: Invite; name: string } | null>(null);
   const offerBox = useRef<HTMLElement>(null);
@@ -34,9 +38,9 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
   const [msg, setMsg] = useState<Msg>(null);
 
   const refresh = useCallback(async (c: Cloud) => {
-    const [f, r, i, s] = await Promise.all([listFriends(c, uid), listRequests(c, uid), liveInvite(c, uid), listSentGyms(c, uid)]);
-    setFriends(f); setRequests(r); setInvite(i); setSentGyms(s); onRequests(r.length + s.length); onFriends?.(f);
-  }, [uid, onRequests, onFriends]);
+    const [f, r, i, s, b] = await Promise.all([listFriends(c, uid), listRequests(c, uid), liveInvite(c, uid), listSentGyms(c, uid), listBlocked(c, uid).catch(() => [])]);
+    setFriends(f); setRequests(r); setInvite(i); setSentGyms(s); setBlocked(b); onFriends?.(f);
+  }, [uid, onFriends]);
   /** One action at a time; its outcome (or the error in plain words) shows under the card's heading. */
   const act = useCallback(async (f: (c: Cloud) => Promise<string | void>) => {
     setBusy(true); setMsg(null);
@@ -44,10 +48,11 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
       const c = await loadCloud();
       const text = await f(c);
       await refresh(c);
+      onChanged();
       if (text) setMsg({ ok: true, text });
     } catch (e) { setMsg({ ok: false, text: cloudError(e) }); }
     finally { setBusy(false); }
-  }, [refresh]);
+  }, [refresh, onChanged]);
 
   useEffect(() => {
     void (async () => {
@@ -55,6 +60,13 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
       catch (e) { setMe(null); setMsg({ ok: false, text: cloudError(e) }); }
     })();
   }, [uid, refresh]);
+  // Something changed elsewhere (a thread's Remove, Block or Add, a push): read the lists again, quietly.
+  const seenRev = useRef(newsRev);
+  useEffect(() => {
+    if (newsRev === seenRev.current) return;
+    seenRev.current = newsRev;
+    void loadCloud().then(refresh).catch(() => {});
+  }, [newsRev, refresh]);
   const open = useCallback((inv: Invite) => act(async (c) => { setOffer(null); setOffer({ inv, name: await peekInvite(c, uid, inv) }); }), [act, uid]);
   // An invite link opened in this app: offered once you have a username, so they see who you are.
   useEffect(() => {
@@ -144,11 +156,10 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
           <ul className="friend-list">
             {friends.map((f) => (
               <li key={f.uid}>
-                <button className="link" onClick={() => onView(f)}>@{f.name}</button>
+                <button className="link" onClick={() => onView(f)}>@{f.name}{f.muted && <span className="muted small" aria-label=" (muted)"> 🔕</span>}</button>
                 <span className="friend-actions">
-                  <button className="mini" disabled={busy} onClick={() => (armed === f.uid
-                    ? void act(async (c) => { setArmed(null); await removeFriend(c, uid, f.uid); return `Removed @${f.name}. Neither of you can see the other’s log now.`; })
-                    : setArmed(f.uid))}>{armed === f.uid ? 'Tap again to remove' : 'Remove'}</button>
+                  <Latest news={news} uid={f.uid} />
+                  <MessageButton name={f.name} unread={news?.unread[f.uid] ?? 0} onClick={() => onMessage({ uid: f.uid, name: f.name })} />
                 </span>
               </li>
             ))}
@@ -183,6 +194,20 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
           <button type="submit" className="wide" disabled={!parseInvite(paste) || busy}>Open invite</button>
         </form>
       </section>
+      {blocked.length > 0 && (
+        <section className="sub" aria-label="Blocked">
+          <h3>Blocked</h3>
+          <p className="muted small">They can’t ask to be friends, use your invite links or message you.</p>
+          <ul className="friend-list">
+            {blocked.map((b) => (
+              <li key={b.uid}>
+                <span>@{b.name}</span>
+                <button className="mini" disabled={busy} onClick={() => void act(async (c) => { await unblock(c, uid, b.uid); return `Unblocked @${b.name}.`; })}>Unblock</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </section>
   );
 }

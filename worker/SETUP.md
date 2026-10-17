@@ -1,7 +1,7 @@
 # Push Worker: owner setup
 
 The Worker that sends Gym Tracker's notifications (rest timer done, workout reminder, weekly recap, and a friend's
-request, acceptance or shared gym). It runs on the
+request, acceptance or shared gym, and a friend's ping or message). It runs on the
 Cloudflare free plan. Until the last step below is pushed, the app shows no notification controls and never calls it.
 
 Everything runs from a terminal in this `worker/` folder. You need Node 20 or later.
@@ -80,7 +80,9 @@ More → Notifications → **Turn on notifications**, allow them, then tap **Sen
 - **What's stored on Cloudflare**: each phone's push subscription, the notification settings, the time zone, the next
   rest label (like "Bench Press · set 4 next"), the last day something was logged, the next program day's name and this
   week's session, set and PR counts. No other part of the log. For friends' pushes: per friend who pushed you, when
-  they last did and how many this hour, and the ids of the last 200 things pushed (so a repeat sends nothing).
+  they last did and how many this hour, the ids of the last 200 things pushed (so a repeat sends nothing), the
+  app icon's unread count, and the ids of friends you muted. Never a message's words: the Worker reads them from
+  Firestore to send the push and keeps nothing of them.
 - **Friends' pushes are checked in Firestore** with the sender's own sign-in, against `firestore.rules`: the Worker
   only reads what the sender could. Deploy the rules (`npx firebase deploy --only firestore:rules`) before the app.
 - **No service-account key** is used or needed: the Worker only checks each caller's own Firebase sign-in.

@@ -17,6 +17,7 @@ const env = Object.fromEntries(Object.entries(process.env).filter((e): e is [str
 export default defineConfig({
   testDir: 'e2e',
   testMatch: '*.push.ts',
+  globalSetup: './e2e/rules.setup.ts', // this worktree's firestore.rules into the running emulator
   reporter: 'list',
   workers: 1,
   use: {

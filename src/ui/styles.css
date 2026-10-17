@@ -515,7 +515,8 @@ p + .sync-form, p + .field { margin-top: 12px; }
 .friend-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; border-top: 1px solid var(--line); }
 .friend-list li:first-child { border-top: 0; }
 .friend-list .link { padding: 0; min-height: 44px; font-size: var(--fs-md); }
-.friend-actions { display: flex; gap: 8px; flex: none; }
+.friend-actions { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
+.friend-list .link { flex: none; }
 /* Air between the card's forms: the invite link's Cancel/Share row isn't the paste field's. */
 .sub > .sync-form + .sync-form, .sub > .sync-form + button { margin-top: 16px; }
 .invite-offer { border: 1px solid var(--accent); border-radius: var(--r-md); padding: 10px 12px; }
@@ -602,3 +603,42 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 }
 .orbit-fab:active:not(:disabled) { transform: translateX(-50%) scale(0.97); }
 .screen:has(.orbit-fab) { padding-bottom: calc(var(--sab) + 84px + 56px); }
+
+/* A friend's thread: a sheet from the bottom over everything (the tab bar included), never a centred modal. */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 7; background: rgb(0 0 0 / 0.55); }
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; max-width: 640px; margin: 0 auto;
+  max-height: calc(100dvh - var(--sat) - 24px); display: flex; flex-direction: column; gap: 8px;
+  padding: 8px calc(16px + var(--sar)) calc(12px + var(--sab)) calc(16px + var(--sal));
+  background: var(--surface); border: 1px solid var(--line-strong); border-bottom: 0; border-radius: var(--r-lg) var(--r-lg) 0 0;
+  box-shadow: 0 -12px 40px rgb(0 0 0 / 0.55);
+}
+.sheet-head { display: flex; align-items: center; gap: 4px; }
+.sheet-head h2 { flex: 1; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini.icon { min-width: 44px; padding: 0; font-size: 18px; }
+.sheet-menu { display: flex; flex-wrap: wrap; gap: 8px; }
+.thread { list-style: none; margin: 0; padding: 4px 0; flex: 1 1 auto; min-height: 96px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 6px; }
+.bubble { max-width: 82%; padding: 8px 12px; border-radius: 16px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; overflow-wrap: anywhere; }
+.bubble.theirs { align-self: flex-start; background: var(--surface-2); border-bottom-left-radius: 4px; }
+.bubble.mine { align-self: flex-end; background: color-mix(in oklab, var(--accent) 22%, var(--surface)); border: 1px solid color-mix(in oklab, var(--accent) 45%, var(--surface)); border-bottom-right-radius: 4px; }
+.bubble.ping .bubble-text { font-size: var(--fs-lg); }
+.bubble time { font-size: var(--fs-xs); margin-left: auto; }
+.bubble-actions { display: flex; gap: 8px; flex-basis: 100%; margin-top: 4px; }
+.thread-empty { align-self: center; margin: auto 0; }
+/* Six 48px pings with 8px between: 328px, inside a 375px phone's 343px. */
+.presets { display: flex; justify-content: space-between; gap: 8px; }
+.preset { width: 48px; height: 48px; min-height: 48px; padding: 0; border-radius: 24px; font-size: 24px; line-height: 1; flex: none; }
+.compose { display: flex; align-items: center; gap: 8px; }
+.compose input { flex: 1; font-size: var(--fs-md); min-height: 44px; }
+.compose .small { flex: none; font-variant-numeric: tabular-nums; }
+.compose .mini { flex: none; }
+/* A friend's row: their newest item and the message button with its unread dot. */
+.msg-latest { display: inline-flex; font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; min-width: 0; }
+.msg-latest .msg-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.msg-latest .msg-ago { flex: none; white-space: pre; }
+.msg-button { position: relative; min-width: 44px; padding: 0; font-size: 18px; flex: none; }
+.unread-dot { position: absolute; top: 6px; right: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface-2); }
+.orbit-head .msg-end { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.viewing-bar .bar-actions { display: flex; gap: 8px; flex: none; }
+.today-news { width: 100%; justify-content: flex-start; gap: 8px; text-align: left; margin: 0 0 12px; border-color: var(--accent); }
+.today-news > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

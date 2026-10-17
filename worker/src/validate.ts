@@ -30,13 +30,18 @@ export function subscription(v: unknown, local: boolean): Subscription {
 
 export interface Prefs {
   tz: string;
-  /** `activity`: a friend's request, acceptance or gym. Missing (an app from before it existed) means on. */
-  kinds: { rest: boolean; remind: boolean; recap: boolean; activity?: boolean };
+  /**
+   * `activity`: a friend's request, acceptance or gym. `friends`: their pings and messages. Missing (an app from before
+   * they existed) means on.
+   */
+  kinds: { rest: boolean; remind: boolean; recap: boolean; activity?: boolean; friends?: boolean };
   /** Days 0 = Sunday … 6 = Saturday, at local "HH:MM". */
   reminder: { days: number[]; at: string };
   recap: { day: number; at: string };
+  /** Friends whose pushes this person has muted (in the app, on that friend). They're never told. */
+  muted?: string[];
 }
-export const DEFAULT_PREFS: Prefs = { tz: 'UTC', kinds: { rest: true, remind: false, recap: false, activity: true }, reminder: { days: [], at: '18:00' }, recap: { day: 0, at: '18:00' } };
+export const DEFAULT_PREFS: Prefs = { tz: 'UTC', kinds: { rest: true, remind: false, recap: false, activity: true, friends: true }, reminder: { days: [], at: '18:00' }, recap: { day: 0, at: '18:00' } };
 /** Whether a kind that came later than the app's first prefs is on: unset is on. */
 export const on = (v: boolean | undefined) => v !== false;
 
@@ -47,9 +52,11 @@ export function prefs(v: unknown): Prefs {
   if (new Set(days).size !== days.length) bad('days');
   return {
     tz: o.tz as string,
-    kinds: { rest: bool(k.rest, 'rest'), remind: bool(k.remind, 'remind'), recap: bool(k.recap, 'recap'), activity: k.activity == null ? true : bool(k.activity, 'activity') },
+    kinds: { rest: bool(k.rest, 'rest'), remind: bool(k.remind, 'remind'), recap: bool(k.recap, 'recap'), activity: k.activity == null ? true : bool(k.activity, 'activity'),
+      friends: k.friends == null ? true : bool(k.friends, 'friends') },
     reminder: { days: days.sort(), at: hhmm(r.at, 'at') },
     recap: { day: int(c.day, 0, 6, 'day'), at: hhmm(c.at, 'at') },
+    muted: o.muted == null ? [] : Array.isArray(o.muted) && o.muted.length <= 500 ? [...new Set(o.muted.map((u) => docId(u, 'muted')))] : bad('muted'),
   };
 }
 
@@ -74,9 +81,12 @@ export const docId = (v: unknown, what: string) => (typeof v === 'string' && /^[
 
 export function claim(v: unknown): Claim {
   const o = obj(v, 'body');
-  if (o.kind !== 'request' && o.kind !== 'accepted' && o.kind !== 'gym') bad('kind');
+  if (o.kind !== 'request' && o.kind !== 'accepted' && o.kind !== 'gym' && o.kind !== 'inbox') bad('kind');
   const kind = o.kind as Claim['kind'];
-  return { kind, to: docId(o.to, 'to'), ...(kind === 'gym' && { id: docId(o.id, 'id') }) };
+  return { kind, to: docId(o.to, 'to'), ...((kind === 'gym' || kind === 'inbox') && { id: docId(o.id, 'id') }) };
 }
+
+/** The app icon's count: the unread friend items the app counted. */
+export const badge = (v: unknown) => int(obj(v, 'body').n, 0, 9999, 'n');
 
 export const deviceId = (v: unknown) => (typeof v === 'string' && /^[0-9a-f]{16}$/.test(v) ? v : bad('sub'));

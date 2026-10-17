@@ -3,7 +3,9 @@
 
 /** Pushes about friends: a request, an accepted request or invite, a gym sent to you. */
 export type ActivityKind = 'request' | 'accepted' | 'gym';
-export type FriendKind = ActivityKind;
+/** A friend's ping (one tap, a preset) or message (up to 140 characters). */
+export type MessageKind = 'ping' | 'message';
+export type FriendKind = ActivityKind | MessageKind;
 export type Kind = 'test' | 'rest' | 'remind' | 'recap' | FriendKind;
 export const ACTIVITY_KINDS: readonly ActivityKind[] = ['request', 'accepted', 'gym'];
 
@@ -35,10 +37,12 @@ export const DELIVERY: Record<Kind, Delivery> = {
   request: { ttl: 86400, urgency: 'normal', topic: 'friend' },
   accepted: { ttl: 86400, urgency: 'normal', topic: 'friend' },
   gym: { ttl: 86400, urgency: 'normal', topic: 'friend' },
+  ping: { ttl: 86400, urgency: 'normal', topic: 'friend' },
+  message: { ttl: 86400, urgency: 'normal', topic: 'friend' },
 };
 
 /** Where each kind lands; a friend's kinds land on that friend (the route passed to buildPayload). */
-const ROUTE: Record<Kind, Route> = { rest: 'rest', remind: 'today', recap: 'recap', test: 'today', request: 'friends', accepted: 'friends', gym: 'friends' };
+const ROUTE: Record<Kind, Route> = { rest: 'rest', remind: 'today', recap: 'recap', test: 'today', request: 'friends', accepted: 'friends', gym: 'friends', ping: 'friends', message: 'friends' };
 
 /**
  * The Topic header for pushes from one sender: 22 base64url characters of SHA-256(uid). A push still waiting at the push
@@ -75,6 +79,36 @@ export const recapNote = (w: { sessions: number; sets: number; prs: number } | n
 export const requestNote = (name: string) => ({ title: 'Friend request', body: `${name} wants to be friends` });
 export const acceptedNote = (name: string) => ({ title: 'New friend', body: `You and ${name} are friends` });
 export const gymNote = (name: string, gym: string) => ({ title: 'Gym shared', body: `${name} sent you a gym: ${cut(gym, MAX_GYM) || 'a gym'}` });
+/**
+ * The pings, stored by key (firestore.rules allows exactly these), so their words can change without touching what's
+ * stored. Adding one means the rules, this table and the app together.
+ */
+export const PRESETS = {
+  strong: { emoji: '💪', copy: 'Strong' },
+  fire: { emoji: '🔥', copy: 'On fire' },
+  clap: { emoji: '👏', copy: 'Nice work' },
+  gym: { emoji: '🏋️', copy: 'Gym today?' },
+  eyes: { emoji: '👀', copy: 'Did you lift?' },
+  salute: { emoji: '🫡', copy: 'On it' },
+} as const;
+export type PresetKey = keyof typeof PRESETS;
+export const PRESET_KEYS = Object.keys(PRESETS) as PresetKey[];
+export const isPreset = (k: unknown): k is PresetKey => typeof k === 'string' && Object.hasOwn(PRESETS, k);
+/** A ping as words: "💪 Strong", or for a key this version doesn't know, "sent you a ping". */
+export const pingText = (key: unknown) => (isPreset(key) ? `${PRESETS[key].emoji} ${PRESETS[key].copy}` : 'sent you a ping');
+/** A message's most characters, as firestore.rules counts them: UTF-16 units, a JS string's length (💪 is two). */
+export const MAX_MESSAGE = 140;
+export const pingNote = (name: string, key: unknown) => ({ title: name, body: pingText(key) });
+/**
+ * A message on the lock screen: line breaks and other control characters become spaces (JSON would spell each in six
+ * bytes), and never more than 140 UTF-16 units, cut between emoji. So the payload stays under 1 KB whatever was stored.
+ */
+export function messageNote(name: string, text: string) {
+  let body = '';
+  for (const g of [...cut(text.replace(/\p{Cc}+/gu, ' '), MAX_MESSAGE)]) { if (body.length + g.length > MAX_MESSAGE) break; body += g; }
+  return { title: name, body: body.trim() || 'sent you a message' };
+}
+
 /** A push that stands for more held back by the one-a-minute limit says so. */
 export const withMore = (note: { title: string; body: string }, more: number) => (more > 0 ? { ...note, body: `${note.body} · +${more} more` } : note);
 

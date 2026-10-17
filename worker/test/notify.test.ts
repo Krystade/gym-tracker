@@ -51,7 +51,7 @@ describe('POST /notify: friend activity', () => {
     const p = net.sent[0];
     expect(Object.fromEntries(p.headers)).toMatchObject({ urgency: 'normal', ttl: '86400', topic: await friendTopic(a) });
     expect(p.headers.get('topic')).toMatch(/^[\w-]{22}$/);
-    expect((await read()).notification).toEqual({ title: 'Friend request', body: 'alice wants to be friends', lang: 'en', navigate: `${APP}#open=friends`, data: { kind: 'request', route: 'friends' } });
+    expect((await read()).notification).toEqual({ title: 'Friend request', body: 'alice wants to be friends', lang: 'en', navigate: `${APP}#open=friends`, app_badge: '1', data: { kind: 'request', route: 'friends' } });
     expect(p.body.length).toBeLessThan(1024 + 103); // under 1 KB of JSON, plus RFC 8291's header and tag
   });
 
@@ -169,7 +169,7 @@ describe('POST /notify: friend activity', () => {
 });
 
 describe('the recipient\'s limits on one sender', () => {
-  const push = (from: string, i: number): FriendPush => ({ kind: 'gym', from, key: `gym:k${i}`, note: { title: 'Gym shared', body: `alice sent you a gym: G${i}` }, route: `friend.${from}` });
+  const push = (from: string, i: number): FriendPush => ({ kind: 'gym', from, key: `gym:k${i}`, note: { title: 'Gym shared', body: `alice sent you a gym: G${i}` }, route: `friend.${from}`, unread: true });
 
   it('one a minute: the ones in between are held, and the next push says how many', async () => {
     const { a, b, net, read } = await pair({ friends: true });

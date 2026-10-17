@@ -4,7 +4,6 @@ import { useDb } from './profileDb';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { deleteCloudData, syncCloud } from '../cloud/sync';
 import { readMeta, writeMeta } from '../cloud/meta';
-import { listRequests } from '../cloud/friends';
 import { syncCycle } from '../cloud/cycle';
 import { cycleChanged, onCycleChange } from './useCycle';
 import type { SetsStore } from './useSets';
@@ -19,7 +18,7 @@ const POLL_MS = 120_000;
  * The account this phone is signed in to. Its log syncs with the person it was linked to at sign-in; while another person
  * on the phone is open, nothing syncs. Firebase loads only once there's an account (or the Account card asks for it).
  */
-export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta: { reload: () => void; rev: unknown[]; onRequests?: (n: number) => void }) {
+export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta: { reload: () => void; rev: unknown[]; /** After each sync: friends' news (requests, gyms, messages) may have come in. */ onSynced?: () => void }) {
   const db = useDb();
   const [link, setLink] = useState<CloudLink | null | undefined>(undefined);
   const [status, setStatus] = useState<CloudStatus>({ kind: 'idle' });
@@ -61,7 +60,7 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
       const at = new Date().toISOString();
       await db.putCloudSeen({ key: 'cloud-seen', uid: l.uid, seen: r.seen, meta: r.metaSeen, at });
       setLastSync(at);
-      void listRequests(c, l.uid).then((x) => latest.current.meta.onRequests?.(x.length), () => {}); // the Friends tab's dot
+      latest.current.meta.onSynced?.(); // the More tab's dot: friends' requests, gyms and messages
       const n = s.entries.length;
       const got = [first && n && `${n} set${n === 1 ? '' : 's'} from this phone saved to your account`, r.pulled && `${r.pulled} set${r.pulled === 1 ? '' : 's'} in`,
         r.removed && `${r.removed} removed`, r.metaPulled && 'program and settings updated'].filter(Boolean).join(', ');
