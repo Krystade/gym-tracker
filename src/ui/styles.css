@@ -458,6 +458,11 @@ p + .sync-form, p + .field { margin-top: 12px; }
 .friend-list .link { padding: 0; min-height: 44px; font-size: var(--fs-md); }
 .friend-actions { display: flex; gap: 8px; flex: none; }
 .invite-link input { font-size: 14px; }
+/* Air between the card's forms: the invite link's Cancel/Share row isn't the paste field's. */
+.sub > .sync-form + .sync-form, .sub > .sync-form + button { margin-top: 16px; }
+.invite-offer { border: 1px solid var(--accent); border-radius: var(--r-md); padding: 10px 12px; }
+.invite-offer > p:first-child { margin-top: 0; }
+.invite-offer .form-actions { margin-top: 10px; }
 fieldset.plain { min-width: 0; }
 fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .viewing-bar {

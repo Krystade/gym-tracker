@@ -32,14 +32,20 @@ service cloud.firestore {
       match /friends/{f} {
         allow read: if me(uid);
         allow delete: if me(uid) || me(f);
-        // Your own list; or the friend adds themselves, holding your invite or answering their request you sent.
+        // Your own list; or the friend adds themselves, holding your invite (used up in the same write: it works once)
+        // or answering their request you sent.
         allow create: if me(uid)
-          || (me(f) && liveInvite(uid, request.resource.data.via))
+          || (me(f) && liveInvite(uid, request.resource.data.via)
+              && !existsAfter(/databases/$(db)/documents/users/$(uid)/invites/$(request.resource.data.via)))
           || (me(f) && exists(/databases/$(db)/documents/users/$(f)/requests/$(uid)));
       }
       match /invites/{t} {
         allow read, write: if me(uid);
         allow get: if signedIn();
+        // Used up by whoever accepts it, in the write that makes them a friend through it (see friends above).
+        allow delete: if signedIn() && resource.data.expires > request.time
+          && !exists(/databases/$(db)/documents/users/$(uid)/friends/$(request.auth.uid))
+          && getAfter(/databases/$(db)/documents/users/$(uid)/friends/$(request.auth.uid)).data.via == t;
       }
       match /requests/{from} {
         allow create: if me(from) && from != uid && exists(/databases/$(db)/documents/users/$(uid))

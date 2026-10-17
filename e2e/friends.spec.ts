@@ -52,7 +52,7 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
 
   await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(`@${a.name.toUpperCase()}`);
   await friends(b.page).getByRole('button', { name: 'Send request' }).click();
-  await expect(note(b.page)).toHaveText(`Request sent to ${a.name}.`);
+  await expect(note(b.page)).toHaveText(`Request sent to @${a.name}.`);
   await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill('nobody_here_123');
   await friends(b.page).getByRole('button', { name: 'Send request' }).click();
   await expect(friends(b.page).getByRole('alert')).toHaveText('No one goes by “nobody_here_123”. Check the spelling.');
@@ -62,7 +62,7 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   const req = friends(a.page).getByRole('region', { name: 'Requests' });
   await expect(req).toContainText(`@${b.name} wants to be friends`);
   await req.getByRole('button', { name: 'Accept' }).click();
-  await expect(note(a.page)).toHaveText(`You and ${b.name} are now friends.`);
+  await expect(note(a.page)).toHaveText(`You and @${b.name} are now friends.`);
   await expect(friends(a.page).getByRole('region', { name: 'Your friends' }).getByRole('button', { name: `@${b.name}` })).toBeVisible();
 
   // b looks at a's log: the same screens, nothing to edit.
@@ -90,42 +90,64 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   await nav(a.page, 'Friends');
   await friends(a.page).getByRole('button', { name: 'Remove' }).click();
   await friends(a.page).getByRole('button', { name: 'Tap again to remove' }).click();
-  await expect(note(a.page)).toHaveText(`Removed ${b.name}. Neither of you can see the other’s log now.`);
+  await expect(note(a.page)).toHaveText(`Removed @${b.name}. Neither of you can see the other’s log now.`);
   await nav(b.page, 'Friends');
   await expect(friends(b.page).getByRole('region', { name: 'Your friends' })).toContainText('None yet');
 });
 
-test('an invite link opened while signed in makes you friends; your own link says so', async ({ browser }) => {
+test('an invite link asks before it befriends, says what each side sees, and works once', async ({ browser }) => {
   const a = await person(browser, { bench: true });
   await friends(a.page).getByRole('button', { name: 'Make an invite link' }).click();
   const link = await friends(a.page).getByRole('textbox', { name: 'Your invite link' }).inputValue();
   expect(link).toMatch(/#invite=\w+\.[a-f0-9]{32}$/);
+  await expect(friends(a.page)).toContainText('Works once, for 7 days.');
   await friends(a.page).getByRole('textbox', { name: /Got an invite link/ }).fill(link);
-  await friends(a.page).getByRole('button', { name: 'Accept invite' }).click();
+  await friends(a.page).getByRole('button', { name: 'Open invite' }).click();
   await expect(friends(a.page).getByRole('alert')).toHaveText('That’s your own invite link. Send it to a friend.');
 
+  // Opening the link only asks; Not now leaves both lists as they were.
   const c = await person(browser);
   await c.page.goto(link);
   await expect(c.page.getByRole('heading', { name: 'Friends', level: 1 })).toBeVisible();
-  await expect(note(c.page)).toHaveText(`You and ${a.name} are now friends.`);
+  const offer = friends(c.page).getByRole('region', { name: 'Invite' });
+  await expect(offer).toContainText(`@${a.name} invited you`);
   expect(c.page.url()).not.toContain('invite=');
+  await expect(offer).toContainText('you each see the other’s log');
+  await offer.getByRole('button', { name: 'Not now' }).click();
+  await expect(offer).toHaveCount(0);
+  await c.page.waitForTimeout(500);
+  await expect(friends(c.page).getByRole('region', { name: 'Your friends' })).toContainText('None yet');
+
+  await c.page.goto(link);
+  await friends(c.page).getByRole('region', { name: 'Invite' }).getByRole('button', { name: 'Accept' }).click();
+  await expect(note(c.page)).toHaveText(`You and @${a.name} are now friends.`);
   await friends(c.page).getByRole('button', { name: `@${a.name}` }).click();
   await nav(c.page, 'History');
   await expect(c.page.getByRole('button', { name: /Bench Press/ })).toContainText('135 × 8');
 
-  // Cancelled, the link stops working for anyone else.
+  // Used once: the next person holding the same link is turned away before anything is asked.
+  const d = await person(browser);
+  await d.page.goto(link);
+  await expect(friends(d.page).getByRole('alert')).toHaveText('That invite has expired, was cancelled or was already used. Ask for a new link.');
+  await expect(friends(d.page).getByRole('region', { name: 'Invite' })).toHaveCount(0);
+
+  // Cancelled, a fresh link stops working too.
+  await a.page.reload();
+  await nav(a.page, 'Friends');
+  await friends(a.page).getByRole('button', { name: 'Make an invite link' }).click();
+  const second = await friends(a.page).getByRole('textbox', { name: 'Your invite link' }).inputValue();
   await friends(a.page).getByRole('button', { name: 'Cancel link' }).click();
   await expect(note(a.page)).toHaveText('Invite link cancelled.');
-  const d = await person(browser);
-  await friends(d.page).getByRole('textbox', { name: /Got an invite link/ }).fill(link);
-  await friends(d.page).getByRole('button', { name: 'Accept invite' }).click();
-  await expect(friends(d.page).getByRole('alert')).toHaveText('That invite has expired or was cancelled. Ask for a new link.');
+  await friends(d.page).getByRole('textbox', { name: /Got an invite link/ }).fill(second);
+  await friends(d.page).getByRole('button', { name: 'Open invite' }).click();
+  await expect(friends(d.page).getByRole('alert')).toHaveText('That invite has expired, was cancelled or was already used. Ask for a new link.');
 });
 
 async function befriend(a: { page: Page }, b: { page: Page; name: string }) {
   await friends(a.page).getByRole('button', { name: 'Make an invite link' }).click();
   const link = await friends(a.page).getByRole('textbox', { name: 'Your invite link' }).inputValue();
   await b.page.goto(link);
+  await friends(b.page).getByRole('region', { name: 'Invite' }).getByRole('button', { name: 'Accept' }).click();
   await expect(note(b.page)).toHaveText(/are now friends/);
 }
 const openGyms = async (page: Page) => {
