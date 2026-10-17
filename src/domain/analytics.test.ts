@@ -57,6 +57,21 @@ describe('summary, streak, calendar', () => {
     expect(weeklySummary([], 3, '2026-09-30').every((x) => x.sessions === 0 && x.tonnage === 0)).toBe(true);
     expect(streak(weeklySummary([], 3, '2026-09-30'), 2)).toEqual({ current: 0, best: 0, thisWeekMet: false });
   });
+  it('counts only days with a working lift set as sessions; cardio-only days show separately', () => {
+    const tread = { seconds: 1200 };
+    const c = [
+      s('2026-09-21', 'Bench Press', 100, 10), // last week: a lift day
+      s('2026-09-23', 'Treadmill', 0, null, { flags: ['cardio'], cardio: tread }), // and a cardio-only day
+      s('2026-09-28', 'Bench Press', 100, 10), s('2026-09-28', 'Treadmill', 0, null, { flags: ['cardio'], cardio: tread }), // lift + cardio: one session
+      s('2026-09-29', 'Treadmill', 0, null, { flags: ['cardio'], cardio: tread }),
+      s('2026-09-30', 'Bike', 0, null, { flags: ['cardio'] }), // flagged cardio without numbers is still cardio
+      s('2026-10-01', 'Bench Press', 45, 10, { flags: ['warmup'] }), // a warmup alone isn't a working set
+    ];
+    const w = weeklySummary(c, 2, '2026-10-01');
+    expect(w.map((x) => [x.week, x.sessions, x.cardioDays, x.sets])).toEqual([['2026-09-21', 1, 1, 1], ['2026-09-28', 1, 2, 1]]);
+    // Goal 2: one lift day plus a cardio day doesn't meet it, last week or this.
+    expect(streak(w, 2)).toEqual({ current: 0, best: 0, thisWeekMet: false });
+  });
   it('builds a calendar of set counts per day', () => {
     const c = calendarDays(e, 7, '2026-09-30');
     expect(c).toHaveLength(7);

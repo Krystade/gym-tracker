@@ -108,7 +108,7 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
       <section className="card">
         <h2>This week</h2>
         <div className="tiles">
-          <div className="tile"><span>Sessions</span><b>{thisWeek.sessions} of {p.weeklyGoal}</b></div>
+          <div className="tile"><span>Sessions</span><b>{thisWeek.sessions} of {p.weeklyGoal}</b>{thisWeek.cardioDays > 0 && <span>+ {plural(thisWeek.cardioDays, 'cardio day')}</span>}</div>
           <div className="tile"><span>Weekly streak</span><b>{plural(st.current, 'week')}</b></div>
           <div className="tile"><span>Sets</span><b>{thisWeek.sets}</b></div>
           <div className="tile"><span>Best streak</span><b>{plural(st.best, 'week')}</b></div>

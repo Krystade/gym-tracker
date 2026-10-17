@@ -211,3 +211,26 @@ test('program: weekly volume shows the target beside each value and never "on pa
   await vol.scrollIntoViewIfNeeded();
   await page.screenshot({ path: 'screenshots/45b-program-volume.png' });
 });
+
+test('stats: cardio-only days count toward neither the sessions goal nor the streak, and show beside the sessions', async ({ page }) => {
+  // Goal 2 (the default). Last week: a Bench day and a treadmill-only day. This week: Bench with a treadmill after it, then
+  // two treadmill-only days. One session a week, so no week meets the goal.
+  const rows = ['date,exercise,set,weight_lb,reps,flags,duration_s',
+    '2026-09-21,Bench Press,1,135,10,,', '2026-09-23,Treadmill,1,0,,cardio,1200',
+    '2026-09-28,Bench Press,1,135,10,,', '2026-09-28,Treadmill,1,0,,cardio,1200',
+    '2026-09-30,Treadmill,1,0,,cardio,1200', '2026-10-01,Treadmill,1,0,,cardio,1200'];
+  await page.clock.install({ time: new Date(`${TODAY}T09:00:00`) });
+  await page.goto('/');
+  await goto(page, 'More');
+  await page.getByLabel('Import CSV').setInputFiles({ name: 'mixed.csv', mimeType: 'text/csv', buffer: Buffer.from(rows.join('\n')) });
+  await expect(page.getByText(/Imported 6 new/)).toBeVisible();
+  await goto(page, 'Stats');
+  const week = card(page, 'This week');
+  const tile = (name: string) => week.locator('.tile').filter({ has: page.getByText(name, { exact: true }) });
+  await expect(tile('Sessions').locator('b')).toHaveText('1 of 2');
+  await expect(tile('Sessions')).toContainText('+ 2 cardio days');
+  await expect(tile('Weekly streak').locator('b')).toHaveText('0 weeks');
+  await expect(tile('Best streak').locator('b')).toHaveText('0 weeks');
+  await week.screenshot({ path: 'screenshots/stats-cardio-days.png' });
+  await expect(card(page, 'Sessions per week').locator('tbody tr').last().locator('td')).toHaveText(['2026-09-28', '1']);
+});

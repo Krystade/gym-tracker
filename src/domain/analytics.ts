@@ -1,3 +1,4 @@
+import { isCardioEntry } from './cardio';
 import { muscleVector, MUSCLES, type Muscle } from './muscles';
 import type { SetEntry } from './types';
 
@@ -26,22 +27,27 @@ export function weeklyMuscleSets(entries: SetEntry[], week: string): { sets: Rec
   return { sets, unmapped: [...unmapped].sort() };
 }
 
-export interface WeekSummary { week: string; sessions: number; sets: number; tonnage: number }
+/**
+ * `sessions`: days with a working lift set, the days the weekly goal and streak count. `cardioDays`: days with cardio and no
+ * working lift set, shown beside the sessions but never toward the goal (round 7's decision). Orbit counts both (domain/orbit).
+ */
+export interface WeekSummary { week: string; sessions: number; cardioDays: number; sets: number; tonnage: number }
 
 export function weeklySummary(entries: SetEntry[], weeks: number, today: string): WeekSummary[] {
   const last = weekStart(today);
-  const out: WeekSummary[] = Array.from({ length: weeks }, (_, i) => ({ week: addDays(last, -7 * (weeks - 1 - i)), sessions: 0, sets: 0, tonnage: 0 }));
+  const out: WeekSummary[] = Array.from({ length: weeks }, (_, i) => ({ week: addDays(last, -7 * (weeks - 1 - i)), sessions: 0, cardioDays: 0, sets: 0, tonnage: 0 }));
   const idx = new Map(out.map((w, i) => [w.week, i]));
-  const days = new Map<string, Set<string>>();
+  const lift = new Set<string>(), cardio = new Set<string>();
   for (const e of entries) {
     const i = idx.get(weekStart(e.date));
     if (i == null) continue;
     const w = out[i];
-    if (!e.flags.includes('warmup') && !e.cardio) w.sets += 1;
+    if (isCardioEntry(e)) cardio.add(e.date);
+    else if (!e.flags.includes('warmup')) { w.sets += 1; lift.add(e.date); }
     if (e.weight > 0 && e.reps != null && !e.flags.includes('hold')) w.tonnage += e.weight * e.reps;
-    (days.get(w.week) ?? days.set(w.week, new Set()).get(w.week)!).add(e.date);
   }
-  for (const w of out) w.sessions = days.get(w.week)?.size ?? 0;
+  for (const d of lift) out[idx.get(weekStart(d))!].sessions += 1;
+  for (const d of cardio) if (!lift.has(d)) out[idx.get(weekStart(d))!].cardioDays += 1;
   return out;
 }
 
