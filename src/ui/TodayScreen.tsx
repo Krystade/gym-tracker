@@ -19,6 +19,7 @@ import { ExercisePicker } from './ExercisePicker';
 import { isHoldLift, swapSuggestions } from '../domain/care';
 import { inPlanOrder, leftToDo, plannedNames, TodayPlan, todayPlanFor } from './TodayPlan';
 import { WeighIn } from './WeighIn';
+import { RestTimer } from './RestTimer';
 import type { BodyStore } from '../state/useBody';
 import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
@@ -124,6 +125,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
       {/* Below the cards, so the card you're logging on never moves down. */}
       <SessionSummary entries={store.entries} date={date} past={date < today} />
       <button className="primary wide" data-tour="add" onClick={() => setPicking(true)}>Add exercise</button>
+      <RestTimer />
     </div></div>
   );
 }
