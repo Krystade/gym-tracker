@@ -48,7 +48,9 @@ export function PasteScreen({ store, today, backLabel = '‹ Back', onBack, onDo
 
   async function add() {
     setBusy(true);
-    const r = await store.importEntries(built.entries);
+    // A pasted set that replaces one already logged is an edit: stamped, so the other phone's older copy doesn't win it back.
+    const had = new Set(store.entries.map((e) => e.id)), now = Date.now();
+    const r = await store.importEntries(built.entries.map((e) => (had.has(e.id) ? { ...e, editedAt: now } : e)));
     if (r) {
       const changed = Object.fromEntries(Object.entries(overrides).filter(([, v]) => v.trim()));
       if (Object.keys(changed).length) {

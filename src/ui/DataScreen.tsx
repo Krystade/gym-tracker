@@ -10,7 +10,7 @@ import { NotificationsCard } from './NotificationsCard';
 import type { CloudStore } from '../state/useCloud';
 import { PeopleCard } from './PeopleCard';
 import type { PeopleStore } from '../state/usePeople';
-import { parseBodyFile, toBodyCsv, type CsvKind } from '../domain/body';
+import { parseBodyFile, stampDay, toBodyCsv, type CsvKind } from '../domain/body';
 import { parseProfileJson } from '../domain/profile';
 import { parseAliasesJson } from '../domain/notes';
 import { useDb } from '../state/profileDb';
@@ -63,7 +63,8 @@ export function DataScreen({ store, profile, body, sync, cloud, people, requests
     if (KIND[b.kind]) {
       const d = body.diff(b.days);
       const replace = d.changed.length > 0 && (await confirmReplace('day', d.changed.length, d.fresh.length));
-      const days = replace ? [...d.fresh, ...d.changed] : d.fresh;
+      // Stamped as entered now, like a weigh-in typed in: another phone's older value for the day doesn't win them back in sync.
+      const days = (replace ? [...d.fresh, ...d.changed] : d.fresh).map((x) => stampDay(x));
       const ok = b.days.length > 0 && (days.length === 0 || (await body.importDays(days)));
       const skipped = b.errors.length ? ` · ${plural(b.errors.length, 'row')} skipped (row ${b.errors.slice(0, 5).map((e) => e.row).join(', ')})` : '';
       const done = days.length === 0 && b.days.length > 0 ? 'nothing new' : plural(days.length, 'day');
@@ -73,7 +74,9 @@ export function DataScreen({ store, profile, body, sync, cloud, people, requests
     const { entries, errors } = parseCsv(text, file.name.replace(/\.csv$/i, ''));
     const d = await store.diff(entries);
     const replace = d.changed.length > 0 && (await confirmReplace('set', d.changed.length, d.fresh.length));
-    const list = replace ? [...d.fresh, ...d.changed] : d.fresh;
+    // A replaced set is an edit: stamped, so the other phone's older copy doesn't win it back in sync.
+    const now = Date.now();
+    const list = replace ? [...d.fresh, ...d.changed.map((s) => ({ ...s, editedAt: now }))] : d.fresh;
     const r = list.length ? await store.importEntries(list) : { added: 0, updated: 0 };
     if (r) setResult({ ...r, same: d.same, kept: !replace && d.changed.length > 0, errors });
   }

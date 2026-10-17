@@ -37,3 +37,19 @@ export async function writeMeta(db: ProfileDb, pull: MetaItems): Promise<void> {
   }
   if (Object.keys(aliases).length) await db.putAliases({ ...(await db.getAliases()), ...aliases });
 }
+
+/** Deletes what another phone deleted (see mergeMeta): a lift's settings, a day plan, a name mapping, or the last gym. */
+export async function removeMeta(db: ProfileDb, keys: string[]): Promise<void> {
+  const aliases: string[] = [];
+  for (const k of keys) {
+    if (k.startsWith('settings:')) await db.deleteSettings(k.slice(9));
+    else if (k.startsWith('day:')) await db.deleteDayPlan(k);
+    else if (k.startsWith('alias:')) aliases.push(k.slice(6));
+    else if (k === 'gyms') await putGyms({ gyms: [] });
+  }
+  if (aliases.length) {
+    const map = { ...(await db.getAliases()) };
+    for (const a of aliases) delete map[a];
+    await db.putAliases(map);
+  }
+}

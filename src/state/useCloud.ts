@@ -3,7 +3,7 @@ import { deleteCloudLink, getCloudLink, putCloudLink, type CloudLink, type Perso
 import { useDb } from './profileDb';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { deleteCloudData, syncCloud } from '../cloud/sync';
-import { readMeta, writeMeta } from '../cloud/meta';
+import { readMeta, removeMeta, writeMeta } from '../cloud/meta';
 import { syncCycle } from '../cloud/cycle';
 import { cycleChanged, onCycleChange } from './useCycle';
 import type { SetsStore } from './useSets';
@@ -48,11 +48,12 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
       // A first sync with this account uploads everything already on the phone, so a log kept before signing in moves over.
       const first = prev?.uid !== l.uid;
       const r = await syncCloud(c, l.uid, {
-        sets: s.entries, body: b.days, tombstones: await db.getTombstones(), seen: prev && !first ? prev.seen : {},
+        sets: s.entries, body: b.days, tombstones: await db.getTombstones(), tombAt: await db.getTombstoneTimes(), seen: prev && !first ? prev.seen : {},
         meta: await readMeta(db), metaSeen: (prev && !first && prev.meta) || { items: {}, at: 0 },
       }, {
         importSets: (x) => s.importEntries(x), importBody: (x) => b.importDays(x), removeSets: (x) => s.removeMany(x),
         importMeta: async (x) => { await writeMeta(db, x); m.reload(); },
+        removeMeta: async (x) => { await removeMeta(db, x); m.reload(); },
       });
       // Cycle phase, to its own private document. Refused until the rules that allow it are deployed: noted, and the rest goes on.
       // Days brought in, or the account's setting taken by a phone that never set it, both change what Today and More show.

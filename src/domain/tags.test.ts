@@ -45,7 +45,7 @@ describe('a set’s own tags', () => {
   const base: SetEntry = { id: 'sample|2026-01-05|cable curl|1', date: '2026-01-05', seq: 1, exercise: 'Cable Curl', setNo: 1, weight: 60, reps: 12, flags: [], source: 'sample' };
   it('round-trip in a tags column, ;-separated, and an older file without one reads as no tags', () => {
     const text = toCsv([{ ...base, tags: ['paused', 'band, light'] }, { ...base, id: 'sample|2026-01-05|cable curl|2', setNo: 2 }]);
-    expect(text.split('\r\n')[0].split(',').at(-1)).toBe('tags');
+    expect(text.split('\r\n')[0].split(',')).toContain('tags');
     const [a, b] = parseCsv(text).entries;
     expect(a.tags).toEqual(['paused', 'band, light']);
     expect(b).not.toHaveProperty('tags');

@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { addSet, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync } from './db';
+import { addSet, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, deleteSyncConfig, getSyncConfig, getTombstones, getTombstoneTimes, deleteSettings, deleteDayPlan, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
 import { buildAppSet } from '../domain/buildSet';
@@ -329,5 +329,36 @@ describe('cycle days', () => {
     expect(cfg.wiped).toBe(true);
     await finishCycleSync('u1', cfg.rev, [], undefined);
     expect((await getCycle()).cfg.wiped).toBe(false);
+  });
+});
+describe('round 10: delete times and edit times', () => {
+  it('a delete made here records when it went; one a sync brings records none (the cloud has its time); Undo drops it', async () => {
+    const [a, b] = parseCsv(CSV).entries;
+    await putSet(a); await putSet(b);
+    const before = Date.now();
+    await deleteSetWithTombstone(a.id);
+    await deleteSetWithTombstone(b.id, null);
+    expect(await getTombstones()).toEqual(new Set([a.id, b.id]));
+    expect(Object.keys(await getTombstoneTimes())).toEqual([a.id]);
+    expect((await getTombstoneTimes())[a.id]).toBeGreaterThanOrEqual(before);
+    await restoreSet(a);
+    expect(await getTombstoneTimes()).toEqual({});
+  });
+  it('renaming a lift times the old ids’ tombstones and stamps the moved sets as edited', async () => {
+    const [a] = parseCsv(CSV).entries;
+    await putSet(a);
+    const before = Date.now();
+    await renameLift('Cable Curl', 'Cable Biceps Curl');
+    expect(Object.values(await getTombstoneTimes())[0]).toBeGreaterThanOrEqual(before);
+    expect((await getAllSets())[0].editedAt).toBeGreaterThanOrEqual(before);
+  });
+  it('deletes one lift’s settings and one day plan', async () => {
+    await putSettings({ key: 'pushdown', repMin: 10, repMax: 15, increment: 5 });
+    await putSettings({ key: 'curl', repMin: 8, repMax: 12, increment: 5 });
+    await putDayPlan({ key: 'day:2026-09-01', date: '2026-09-01', day: 0, skips: [], swaps: {} });
+    await deleteSettings('pushdown');
+    await deleteDayPlan('day:2026-09-01');
+    expect((await getAllSettings()).map((x) => x.key)).toEqual(['curl']);
+    expect(await getDayPlans()).toEqual([]);
   });
 });

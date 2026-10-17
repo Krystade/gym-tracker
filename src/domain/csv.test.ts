@@ -134,3 +134,19 @@ describe('diffSets', () => {
     expect(diffSets([back], parseCsv(toCsv([back]), 'backup').entries).same).toBe(1);
   });
 });
+
+describe('edit times in the CSV (round 10)', () => {
+  it('round-trips edited_at to the millisecond; a set never edited has none, and files without the column still read', () => {
+    const edited = mk(1, { editedAt: Date.parse('2026-10-17T09:30:12.345Z') }), plain = mk(2);
+    const text = toCsv([edited, plain]);
+    expect(text.split('\r\n')[0]).toContain('edited_at');
+    const back = parseCsv(text).entries;
+    expect(back[0].editedAt).toBe(edited.editedAt);
+    expect(back[1]).not.toHaveProperty('editedAt');
+    expect(parseCsv('date,exercise,set,weight_lb,reps\n2026-01-05,Cable Curl,1,60,12\n').entries[0]).not.toHaveProperty('editedAt');
+    expect(parseCsv('date,exercise,set,weight_lb,reps,edited_at\n2026-01-05,Cable Curl,1,60,12,soon\n').errors[0].message).toMatch(/edited_at/);
+  });
+  it('an edited set matches its row in an older backup: the edit time is bookkeeping, not a change', () => {
+    expect(diffSets([mk(1, { editedAt: 5 })], [mk(1)]).same).toBe(1);
+  });
+});

@@ -1,6 +1,7 @@
 import { parseCsv, toCsv } from './csv';
-import { parseBodyFile, toBodyCsv, type BodyDay } from './body';
+import { BODY_FIELDS, mergeBody, parseBodyFile, toBodyCsv, type BodyDay } from './body';
 import type { SetEntry } from './types';
+import { editStamp } from './cloud';
 
 // The spec's one deliberate network exception: sets and body data to the user's own private repo,
 // only when they tap Sync, with a token they pasted in. Photos never come through here.
@@ -127,18 +128,28 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
   if (parsedBody && parsedBody.kind !== 'body') unreadable(BODY_PATH, [{ row: 1, message: 'the header isn’t date,weight_lb,calories,protein_g' }]);
   if (parsedBody?.errors.length) unreadable(BODY_PATH, parsedBody.errors);
 
-  const have = new Set(deps.sets.map((e) => e.id));
+  const have = new Map(deps.sets.map((e) => [e.id, e]));
   const incoming = new Map<string, SetEntry>();
   // history.csv is only read, never written, so rows it can't parse are skipped rather than blocking the sync.
   for (const entries of [history ? parseCsv(history.text, 'backup').entries : [], parsedSets?.entries ?? []]) {
-    for (const e of entries) if (!have.has(e.id) && !deps.deleted.has(e.id)) incoming.set(e.id, e);
+    for (const e of entries) {
+      const mine = have.get(e.id);
+      if (!mine) { if (!deps.deleted.has(e.id)) incoming.set(e.id, e); continue; }
+      // Edited on another device since this phone's last change: theirs, in this phone's place in the day (a CSV row has no seq).
+      if ((e.editedAt ?? 0) > editStamp(mine)) incoming.set(e.id, { ...e, seq: mine.seq, ...(mine.restoredAt != null && { restoredAt: mine.restoredAt }) });
+    }
   }
   const bodyBy = new Map(deps.body.map((d) => [d.date, d]));
   const bodyIn: BodyDay[] = [];
   for (const d of parsedBody?.days ?? []) {
     const mine = bodyBy.get(d.date);
     const fill: BodyDay = { date: d.date };
-    for (const k of ['weight', 'calories', 'protein', 'energy'] as const) if (d[k] != null && mine?.[k] == null) Object.assign(fill, { [k]: d[k] });
+    // Per field: fills what the phone lacks, or replaces what it has when entered more recently elsewhere.
+    for (const k of BODY_FIELDS) {
+      if (d[k] == null || (mine?.[k] != null && (d.at?.[k] ?? 0) <= (mine.at?.[k] ?? 0))) continue;
+      Object.assign(fill, { [k]: d[k] });
+      if (d.at?.[k] != null) fill.at = { ...fill.at, [k]: d.at[k] };
+    }
     if (Object.keys(fill).length > 1) bodyIn.push(fill);
   }
   const saveFailed = () => new SyncError('other', 'Saving the pulled data on this phone failed — nothing was pushed. Try again.');
@@ -146,9 +157,8 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
   if (bodyIn.length && (await deps.importBody(bodyIn)) === false) throw saveFailed();
 
   // Tombstones only stop sets coming back in; anything still on the phone is live, even under a reused id.
-  const sets = [...deps.sets, ...incoming.values()];
-  const body = [...bodyBy.values()].map((d) => ({ ...d }));
-  for (const d of bodyIn) { const cur = body.find((x) => x.date === d.date); if (cur) Object.assign(cur, d); else body.push(d); }
+  const sets = [...deps.sets.filter((e) => !incoming.has(e.id)), ...incoming.values()];
+  const body = mergeBody(deps.body, bodyIn);
   const message = `Backup from phone ${deps.now.toISOString()}`;
   try {
     await client.put(SETS_PATH, toCsv(sets), remoteSets?.sha, message);

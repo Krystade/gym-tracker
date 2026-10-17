@@ -21,6 +21,8 @@ export interface SetEntry {
   enteredAt?: string;
   /** When Undo put this set back after a delete (epoch ms): it beats that delete in sync without moving the set in its day. */
   restoredAt?: number;
+  /** When this set was last changed by hand (epoch ms): between two phones that both changed it, the newer change wins in sync. */
+  editedAt?: number;
   exercise: string;
   asWritten?: string;
   setNo: number;

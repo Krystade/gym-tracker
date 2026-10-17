@@ -53,8 +53,9 @@ test('Undo after a synced delete keeps the set through the next syncs and a relo
   await page.getByRole('status').filter({ hasText: 'Set 1 deleted' }).getByRole('button', { name: 'Undo' }).click();
   await expect(rows(page)).toHaveCount(1);
 
+  // The delete stays beside the set that beat it, so a phone still holding its tombstone takes the set back (round 10).
   await page.clock.runFor(3100);
-  await expect.poll(() => cloudMonth(page)).toEqual({ sets: 1, deleted: [] });
+  await expect.poll(() => cloudMonth(page)).toEqual({ sets: 1, deleted: [expect.any(String)] });
   await syncNow(page);
   await page.reload();
   await syncNow(page);

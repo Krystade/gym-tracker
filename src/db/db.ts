@@ -110,14 +110,27 @@ export async function addSet(make: (stored: SetEntry[]) => SetEntry): Promise<Se
   return e;
 }
 export const deleteSet = async (id: string): Promise<void> => { await (await db()).delete(STORE, id); };
-/** Deletes a set and records its tombstone in one transaction, so a crash can't leave a deleted set that sync brings back. */
-export async function deleteSetWithTombstone(id: string): Promise<void> {
+/**
+ * The tombstones row: deleted set ids, and since round 10 when each delete made on this phone went (`at`, epoch ms), so an edit
+ * on another phone after it can beat it in sync. Ids from before, and deletes a sync brought (the cloud keeps their time), have none.
+ */
+interface Tombstones { key: 'deleted'; ids: string[]; at?: Record<string, number> }
+const withTombstones = (cur: Tombstones | undefined, ids: string[], at: number | null): Tombstones => {
+  const times = { ...cur?.at };
+  for (const id of ids) { if (at == null) delete times[id]; else times[id] = at; }
+  return { key: 'deleted', ids: [...new Set([...(cur?.ids ?? []), ...ids])], at: times };
+};
+
+/**
+ * Deletes a set and records its tombstone in one transaction, so a crash can't leave a deleted set that sync brings back.
+ * `at`: when it was deleted; null for a delete another phone made, which the cloud has the time of.
+ */
+export async function deleteSetWithTombstone(id: string, at: number | null = Date.now()): Promise<void> {
   const tx = (await db()).transaction([STORE, 'config'], 'readwrite');
   try {
     tx.objectStore(STORE).delete(id).catch(() => {}); // tx.done carries the failure
     const cfg = tx.objectStore('config');
-    const cur: { ids: string[] } | undefined = await cfg.get('deleted');
-    await cfg.put({ key: 'deleted', ids: [...new Set(cur?.ids ?? []).add(id)] });
+    await cfg.put(withTombstones(await cfg.get('deleted'), [id], at));
   } catch (e) {
     // Otherwise the delete would still commit without its tombstone. A failed write may have aborted it already.
     try { tx.abort(); } catch { /* already aborted: keep the real error */ }
@@ -131,8 +144,9 @@ export async function deleteSetWithTombstone(id: string): Promise<void> {
 export async function restoreSet(e: SetEntry): Promise<void> {
   const tx = (await db()).transaction([STORE, 'config'], 'readwrite');
   const cfg = tx.objectStore('config');
-  const cur: { ids: string[] } | undefined = await cfg.get('deleted');
-  await Promise.all([tx.objectStore(STORE).put(e), cfg.put({ key: 'deleted', ids: (cur?.ids ?? []).filter((x) => x !== e.id) }), tx.done]);
+  const cur: Tombstones | undefined = await cfg.get('deleted');
+  const { [e.id]: _gone, ...at } = cur?.at ?? {};
+  await Promise.all([tx.objectStore(STORE).put(e), cfg.put({ key: 'deleted', ids: (cur?.ids ?? []).filter((x) => x !== e.id), at }), tx.done]);
 }
 
 /**
@@ -145,9 +159,10 @@ export async function renameLift(from: string, to: string): Promise<number> {
     const sets = tx.objectStore(STORE), cfg = tx.objectStore('config'), st = tx.objectStore('settings'), prog = tx.objectStore('program');
     const { put, remove } = renameSets((await sets.getAll()) as SetEntry[], from, to);
     for (const id of remove) sets.delete(id).catch(() => {}); // tx.done carries the failure
-    for (const e of put) sets.put(e).catch(() => {});
-    const dead: { ids: string[] } | undefined = await cfg.get('deleted');
-    await cfg.put({ key: 'deleted', ids: [...new Set([...(dead?.ids ?? []), ...remove])] });
+    // Stamped as edited: a change of case keeps the id, and the other phone's copy must not win it back.
+    const now = Date.now();
+    for (const e of put) sets.put({ ...e, editedAt: now }).catch(() => {});
+    await cfg.put(withTombstones(await cfg.get('deleted'), remove, now));
     const al: { map: Record<string, string> } | undefined = await cfg.get('aliases');
     await cfg.put({ key: 'aliases', map: renameAliases(al?.map ?? {}, from, to) });
     const [fk, tk] = [settingsKey(from), settingsKey(to)];
@@ -171,6 +186,8 @@ export async function renameLift(from: string, to: string): Promise<number> {
 
 export const getAllSettings = async (): Promise<ExerciseSettings[]> => (await db()).getAll('settings');
 export const putSettings = async (s: ExerciseSettings): Promise<void> => { await (await db()).put('settings', s); };
+/** One lift's settings, by settingsKey: gone when another phone renamed that lift. */
+export const deleteSettings = async (key: string): Promise<void> => { await (await db()).delete('settings', key); };
 /** The tag row: hidden built-ins and their own tags. Absent until first changed. */
 export const getTags = async (): Promise<TagPrefs | undefined> => (await db()).get('config', 'tags');
 export const putTags = async (t: TagPrefs): Promise<void> => { await (await db()).put('config', t); };
@@ -187,6 +204,7 @@ export const putProgram = async (p: Program): Promise<void> => { await (await db
 export const getDayPlans = async (): Promise<DayPlan[]> =>
   (await (await db()).getAll('program', IDBKeyRange.bound('day:', 'day:￿'))) as DayPlan[];
 export const putDayPlan = async (p: DayPlan): Promise<void> => { await (await db()).put('program', p); };
+export const deleteDayPlan = async (key: string): Promise<void> => { if (key.startsWith('day:')) await (await db()).delete('program', key); };
 
 export async function putMany(entries: SetEntry[]): Promise<{ added: number; updated: number }> {
   const tx = (await db()).transaction(STORE, 'readwrite');
@@ -293,14 +311,17 @@ export async function putCloudSeen(c: CloudSeen): Promise<void> { await (await d
 
 /** Ids of sets deleted on this phone, so sync never brings them back. */
 export async function getTombstones(): Promise<Set<string>> {
-  const x: { ids: string[] } | undefined = await (await db()).get('config', 'deleted');
+  const x: Tombstones | undefined = await (await db()).get('config', 'deleted');
   return new Set(x?.ids ?? []);
 }
-export async function addTombstone(id: string): Promise<void> {
+/** When each set deleted on this phone went, where known (see Tombstones). */
+export async function getTombstoneTimes(): Promise<Record<string, number>> {
+  const x: Tombstones | undefined = await (await db()).get('config', 'deleted');
+  return x?.at ?? {};
+}
+export async function addTombstone(id: string, at: number | null = Date.now()): Promise<void> {
   const tx = (await db()).transaction('config', 'readwrite');
-  const cur: { ids: string[] } | undefined = await tx.store.get('deleted');
-  const ids = new Set(cur?.ids ?? []).add(id);
-  await Promise.all([tx.store.put({ key: 'deleted', ids: [...ids] }), tx.done]);
+  await Promise.all([tx.store.put(withTombstones(await tx.store.get('deleted'), [id], at)), tx.done]);
 }
 
 /** Note-name → exercise mappings the user confirmed while pasting notes. On this device only. */
@@ -319,8 +340,8 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 
 // Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
 const PER_PROFILE = {
-  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, putMany, getAllSettings, putSettings, getTags, putTags, getStatus, putStatus, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
-  getBody, putBody, putBodyMany, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
+  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, putMany, getAllSettings, putSettings, deleteSettings, getTags, putTags, getStatus, putStatus, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan, deleteDayPlan,
+  getBody, putBody, putBodyMany, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, getTombstoneTimes, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
 };
 export type ProfileDb = typeof PER_PROFILE;
 const bound = new Map<string, ProfileDb>();

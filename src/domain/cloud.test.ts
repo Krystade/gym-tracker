@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mergeMeta, mergeMonth, metaHash, monthHash, monthOf, monthsToSync, splitByMonth, type CloudMonth } from './cloud';
 import type { SetEntry } from './types';
+import { mergeBody, type BodyDay } from './body';
 
 // Synthetic sets only.
 const set = (date: string, setNo: number, over: Partial<SetEntry> = {}): SetEntry =>
@@ -39,21 +40,33 @@ describe('mergeMonth', () => {
     expect(r.doc.sets.map((s) => s.id)).toEqual([set('2026-10-01', 1).id]);
   });
 
-  it('a set logged again under a deleted id after the delete stays, and its tombstone goes', () => {
+  // The delete stays in the cloud beside the newer set: a phone still holding the old tombstone then reads the set as newer than
+  // the delete it knows, and takes it, instead of deleting it again.
+  it('a set logged again under a deleted id after the delete stays, beside the delete it beat', () => {
     const relogged = set('2026-10-01', 2, { seq: NOW - 10 });
     const r = mergeMonth({ sets: [relogged], body: [], tombstones: new Set([relogged.id]) }, remote({ deleted: { [relogged.id]: NOW - 5000 } }), NOW);
     expect(r.deleteIds).toEqual([]);
     expect(r.doc.sets.map((s) => s.id)).toEqual([relogged.id]);
-    expect(r.doc.deleted).toEqual({});
+    expect(r.doc.deleted).toEqual({ [relogged.id]: NOW - 5000 });
   });
 
-  it('a set put back by Undo after its delete synced stays, and the delete goes from the cloud', () => {
+  it('a set put back by Undo after its delete synced stays, beside the delete it beat', () => {
     const back = set('2026-10-01', 2, { restoredAt: NOW - 10 }); // logged long before the delete; Undo after it
     const r = mergeMonth({ sets: [back], body: [], tombstones: new Set() }, remote({ deleted: { [back.id]: NOW - 5000 } }), NOW);
     expect(r.deleteIds).toEqual([]);
     expect(r.doc.sets.map((s) => s.id)).toEqual([back.id]);
-    expect(r.doc.deleted).toEqual({});
+    expect(r.doc.deleted).toEqual({ [back.id]: NOW - 5000 });
     expect(r.doc.sets[0].seq).toBe(back.seq); // the day keeps its order
+  });
+
+  it('the other phone, holding the tombstone of that delete, takes the set back instead of deleting it again', () => {
+    const back = set('2026-10-01', 2, { restoredAt: NOW - 10 });
+    // A tombstone from before this round carries no time: the cloud's delete stands in for it.
+    const r = mergeMonth({ sets: [], body: [], tombstones: new Set([back.id]) }, remote({ sets: [back], deleted: { [back.id]: NOW - 5000 } }), NOW);
+    expect(r.importSets).toEqual([back]);
+    expect(r.doc.sets).toEqual([back]);
+    expect(r.doc.deleted).toEqual({ [back.id]: NOW - 5000 });
+    expect(r.changed).toBe(false);
   });
 
   it('a delete after an Undo still wins', () => {
@@ -129,5 +142,166 @@ describe('mergeMeta', () => {
     expect(again).toMatchObject({ changed: false, pull: {} });
     expect(mergeMeta({ program }, {}, first.seen).items).toEqual({ program }); // the cloud lost it: the phone puts it back
     expect(metaHash({ a: 1, b: { c: 2, d: 3 } })).toBe(metaHash({ b: { d: 3, c: 2 }, a: 1 }));
+  });
+});
+
+// Round 10: two phones on one account. Each phone is modelled the way cloud/sync applies a merge: the merge goes up when it
+// changed, and the phone takes the sets and body fields it was handed, and drops the deletes (as tombstones without a time).
+interface Phone { sets: SetEntry[]; body: BodyDay[]; tombstones: Set<string>; tombAt: Record<string, number> }
+const phone = (sets: SetEntry[] = [], body: BodyDay[] = []): Phone => ({ sets: [...sets], body: [...body], tombstones: new Set(), tombAt: {} });
+const cloudOf = (doc: CloudMonth | null = null) => ({ doc, writes: 0 });
+function sync(p: Phone, cloud: { doc: CloudMonth | null; writes: number }, now: number) {
+  const r = mergeMonth({ sets: p.sets, body: p.body, tombstones: p.tombstones, tombAt: p.tombAt }, cloud.doc, now);
+  if (r.changed) { cloud.doc = r.doc; cloud.writes++; }
+  const taken = new Set([...r.importSets.map((s) => s.id), ...r.deleteIds]);
+  p.sets = [...p.sets.filter((s) => !taken.has(s.id)), ...r.importSets];
+  for (const id of r.deleteIds) p.tombstones.add(id);
+  p.body = mergeBody(p.body, r.importBody);
+  return r;
+}
+const edit = (p: Phone, id: string, over: Partial<SetEntry>, at: number) => { p.sets = p.sets.map((s) => (s.id === id ? { ...s, ...over, editedAt: at } : s)); };
+const del = (p: Phone, id: string, at: number) => { p.sets = p.sets.filter((s) => s.id !== id); p.tombstones.add(id); p.tombAt[id] = at; };
+const weightOf = (sets: SetEntry[] | undefined, id: string) => sets?.find((s) => s.id === id)?.weight;
+
+describe('two phones editing the same set (round 10)', () => {
+  const x = set('2026-10-01', 1, { weight: 185 });
+  const start = () => ({ a: phone([x]), b: phone([x]), c: cloudOf(remote({ sets: [x] })) });
+
+  it('both edit it: the newest edit wins on both phones and in the cloud, whichever syncs first', () => {
+    for (const order of [['a', 'b'], ['b', 'a']] as const) {
+      const { a, b, c } = start();
+      edit(a, x.id, { weight: 190 }, NOW - 60_000);
+      edit(b, x.id, { weight: 195 }, NOW - 30_000); // later
+      const ps = { a, b };
+      for (let round = 0; round < 3; round++) for (const k of order) sync(ps[k], c, NOW + round);
+      expect([weightOf(a.sets, x.id), weightOf(b.sets, x.id), weightOf(c.doc?.sets, x.id)]).toEqual([195, 195, 195]);
+    }
+  });
+
+  it('an edit on one phone reaches the other, and the cloud stops changing: no write back and forth on every poll', () => {
+    const { a, b, c } = start();
+    edit(a, x.id, { weight: 190 }, NOW - 60_000);
+    for (let poll = 0; poll < 4; poll++) { sync(a, c, NOW + poll * 120_000); sync(b, c, NOW + poll * 120_000 + 1); }
+    expect(c.writes).toBe(1); // A's edit going up; nothing after it
+    expect([weightOf(a.sets, x.id), weightOf(b.sets, x.id), weightOf(c.doc?.sets, x.id)]).toEqual([190, 190, 190]);
+  });
+
+  it('the cloud copy that wins goes onto the phone as an import', () => {
+    const newer = { ...x, weight: 190, editedAt: NOW - 10 };
+    const r = mergeMonth({ sets: [x], body: [], tombstones: new Set() }, remote({ sets: [newer] }), NOW);
+    expect(r.importSets).toEqual([newer]);
+    expect(r.doc.sets).toEqual([newer]);
+    expect(r.changed).toBe(false);
+  });
+
+  it('sets from before this round, with no edit time on either side, keep the old rule: the phone wins', () => {
+    const r = mergeMonth({ sets: [{ ...x, weight: 190 }], body: [], tombstones: new Set() }, remote({ sets: [x] }), NOW);
+    expect(weightOf(r.doc.sets, x.id)).toBe(190);
+    expect(r.importSets).toEqual([]);
+  });
+
+  it('an equal edit time goes to the phone; an unstamped cloud copy never beats an edited one on the phone', () => {
+    const mine = { ...x, weight: 190, editedAt: NOW - 10 };
+    expect(weightOf(mergeMonth({ sets: [mine], body: [], tombstones: new Set() }, remote({ sets: [{ ...x, weight: 200, editedAt: NOW - 10 }] }), NOW).doc.sets, x.id)).toBe(190);
+    expect(weightOf(mergeMonth({ sets: [mine], body: [], tombstones: new Set() }, remote({ sets: [x] }), NOW).doc.sets, x.id)).toBe(190);
+  });
+});
+
+describe('an edit against a delete (round 10)', () => {
+  const x = set('2026-10-01', 1, { weight: 185 });
+  const start = () => ({ a: phone([x]), b: phone([x]), c: cloudOf(remote({ sets: [x] })) });
+
+  it('an edit on the other phone after the delete beats it, and both phones keep the edited set', () => {
+    const { a, b, c } = start();
+    del(a, x.id, NOW - 60_000);
+    sync(a, c, NOW - 50_000);
+    edit(b, x.id, { weight: 190 }, NOW - 40_000); // B hadn't synced: it still has the set, and edits it after A's delete
+    for (let round = 0; round < 3; round++) { sync(b, c, NOW + round); sync(a, c, NOW + round); }
+    expect([weightOf(a.sets, x.id), weightOf(b.sets, x.id), weightOf(c.doc?.sets, x.id)]).toEqual([190, 190, 190]);
+  });
+
+  it('a delete after the other phone’s edit wins on both', () => {
+    const { a, b, c } = start();
+    edit(b, x.id, { weight: 190 }, NOW - 60_000);
+    sync(b, c, NOW - 50_000);
+    del(a, x.id, NOW - 40_000); // A deletes before it has seen B's edit, but after it
+    for (let round = 0; round < 3; round++) { sync(a, c, NOW + round); sync(b, c, NOW + round); }
+    expect([a.sets, b.sets, c.doc?.sets]).toEqual([[], [], []]);
+  });
+
+  it('deleting the set again after the edit brought it back sticks', () => {
+    const { a, b, c } = start();
+    del(a, x.id, NOW - 60_000);
+    sync(a, c, NOW - 50_000);
+    edit(b, x.id, { weight: 190 }, NOW - 40_000);
+    sync(b, c, NOW - 30_000);
+    sync(a, c, NOW - 20_000);
+    expect(weightOf(a.sets, x.id)).toBe(190);
+    del(a, x.id, NOW - 10_000);
+    for (let round = 0; round < 3; round++) { sync(a, c, NOW + round); sync(b, c, NOW + round); }
+    expect([a.sets, b.sets, c.doc?.sets]).toEqual([[], [], []]);
+  });
+
+  it('a delete on this phone carries its own time to the cloud', () => {
+    const r = mergeMonth({ sets: [], body: [], tombstones: new Set([x.id]), tombAt: { [x.id]: NOW - 777 } }, remote({ sets: [x] }), NOW);
+    expect(r.doc.deleted).toEqual({ [x.id]: NOW - 777 });
+    expect(r.doc.sets).toEqual([]);
+  });
+});
+
+describe('two phones editing the same body day (round 10)', () => {
+  const day: BodyDay = { date: '2026-10-01', weight: 180, energy: 3 };
+  it('the newest weigh-in wins; weight changed on one phone and energy on the other both survive', () => {
+    const a = phone([], [day]), b = phone([], [day]), c = cloudOf(remote({ body: [day] }));
+    a.body = mergeBody(a.body, [{ date: day.date, weight: 181, at: { weight: NOW - 60_000 } }]);
+    b.body = mergeBody(b.body, [{ date: day.date, weight: 182, at: { weight: NOW - 30_000 } }]);
+    b.body = mergeBody(b.body, [{ date: day.date, energy: 5, at: { energy: NOW - 20_000 } }]);
+    a.body = mergeBody(a.body, [{ date: day.date, energy: 1, at: { energy: NOW - 90_000 } }]); // older than B's
+    for (let round = 0; round < 3; round++) { sync(a, c, NOW + round); sync(b, c, NOW + round); }
+    const want = { date: day.date, weight: 182, energy: 5, at: { weight: NOW - 30_000, energy: NOW - 20_000 } };
+    for (const d of [a.body[0], b.body[0], c.doc!.body[0]]) expect(d).toEqual(want);
+    expect(c.writes).toBe(2); // A's merge, then B's; then nothing
+  });
+  it('an unstamped field (from before this round) only fills in, as before', () => {
+    const r = mergeMonth({ sets: [], body: [{ date: day.date, weight: 181 }], tombstones: new Set() }, remote({ body: [{ date: day.date, weight: 175, protein: 150 }] }), NOW);
+    expect(r.doc.body).toEqual([{ date: day.date, weight: 181, protein: 150 }]);
+  });
+});
+
+describe('meta deletes (round 10)', () => {
+  const old = { key: 'bench press', repMin: 6, repMax: 10 }, renamed = { key: 'flat bench', repMin: 6, repMax: 10 };
+  it('a lift renamed on one phone: its old settings leave the cloud and the other phone, and never come back', () => {
+    const first = mergeMeta({ 'settings:bench press': old }, null, {});
+    // A renames: the old key goes, the new one comes.
+    const a1 = mergeMeta({ 'settings:flat bench': renamed }, first.items, first.seen);
+    expect(a1.items).toEqual({ 'settings:flat bench': renamed });
+    expect(a1).toMatchObject({ pull: {}, remove: [], changed: true });
+    // B still has the old settings, unchanged since its last sync: they go there too.
+    const b1 = mergeMeta({ 'settings:bench press': old }, a1.items, first.seen);
+    expect(b1).toMatchObject({ items: { 'settings:flat bench': renamed }, pull: { 'settings:flat bench': renamed }, remove: ['settings:bench press'], changed: false });
+    // Further syncs on both phones change nothing.
+    const a2 = mergeMeta({ 'settings:flat bench': renamed }, a1.items, a1.seen), b2 = mergeMeta({ 'settings:flat bench': renamed }, a1.items, b1.seen);
+    for (const r of [a2, b2]) expect(r).toMatchObject({ items: { 'settings:flat bench': renamed }, pull: {}, remove: [], changed: false });
+  });
+  it('an edit on the other phone beats a delete, both ways round', () => {
+    const first = mergeMeta({ 'settings:bench press': old }, null, {});
+    const edited = { ...old, repMax: 12 };
+    // Deleted here, edited in the cloud since: it comes back, edited.
+    expect(mergeMeta({}, { 'settings:bench press': edited }, first.seen))
+      .toMatchObject({ items: { 'settings:bench press': edited }, pull: { 'settings:bench press': edited }, remove: [] });
+    // Edited here, deleted in the cloud since: it goes back up.
+    expect(mergeMeta({ 'settings:bench press': edited }, {}, first.seen))
+      .toMatchObject({ items: { 'settings:bench press': edited }, pull: {}, remove: [], changed: true });
+  });
+  it('a first sync never deletes: it takes the union', () => {
+    expect(mergeMeta({}, { 'settings:bench press': old }, {})).toMatchObject({ pull: { 'settings:bench press': old }, remove: [] });
+    expect(mergeMeta({ 'settings:bench press': old }, {}, {})).toMatchObject({ items: { 'settings:bench press': old }, remove: [] });
+  });
+  it('day plans, name mappings and gyms delete the same way; the program and profile, which have no delete, never do', () => {
+    const items = { 'day:2026-10-01': { key: 'day:2026-10-01', skips: [] }, 'alias:pushdowns': 'Cable Pushdown', gyms: { gyms: [{ id: 'g1' }] }, program: { key: 'program' }, profile: { key: 'profile' } };
+    const first = mergeMeta(items, null, {});
+    const r = mergeMeta(items, {}, first.seen); // all gone from the cloud
+    expect(r.remove.sort()).toEqual(['alias:pushdowns', 'day:2026-10-01', 'gyms']);
+    expect(Object.keys(r.items).sort()).toEqual(['profile', 'program']);
   });
 });

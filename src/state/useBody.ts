@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDb } from './profileDb';
-import { diffBody, mergeBody, type BodyDay } from '../domain/body';
+import { diffBody, mergeBody, stampDay, type BodyDay } from '../domain/body';
 
 export function useBody() {
   const db = useDb();
@@ -12,7 +12,8 @@ export function useBody() {
   useEffect(() => {
     void db.getBody().then(commit).catch((e) => setError(`Could not load body weight: ${String(e)}`));
   }, []);
-  const save = useCallback(async (d: BodyDay): Promise<boolean> => {
+  const save = useCallback(async (entered: BodyDay): Promise<boolean> => {
+    const d = stampDay(entered);
     const merged = mergeBody(current.current, [d]);
     try { await db.putBody(merged.find((x) => x.date === d.date)!); commit(merged); setError(null); return true; }
     catch (e) { setError(`Saving the weigh-in failed: ${String(e)}`); return false; }

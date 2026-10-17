@@ -264,3 +264,34 @@ describe('energy in the backup', () => {
     expect(gh.store.get('app/body.csv')!.text).toContain('2026-09-29,180,,,3');
   });
 });
+
+describe('edits in the backup (round 10)', () => {
+  const run = async (gh: ReturnType<typeof fakeGitHub>, sets: SetEntry[], body: BodyDay[] = []) => {
+    const got = { sets: [] as SetEntry[], body: [] as BodyDay[] };
+    await sync({ client: repoClient(CFG, gh.fetchFn), sets, body, deleted: new Set(),
+      importSets: async (e) => { got.sets.push(...e); return { added: 0, updated: e.length }; }, importBody: async (d) => { got.body.push(...d); return true; },
+      now: new Date('2026-09-30T12:00:00Z') });
+    return got;
+  };
+  it('a set edited on another device since wins over the phone’s older copy, keeping its place in the day', async () => {
+    const mine = { ...set('2026-09-29'), seq: 1_759_000_000_000 };
+    const theirs = { ...mine, weight: 55, editedAt: Date.parse('2026-09-30T08:00:00Z') };
+    const gh = fakeGitHub({ 'app/sets.csv': toCsv([theirs]) });
+    const got = await run(gh, [mine]);
+    expect(got.sets).toEqual([{ ...theirs, seq: mine.seq }]);
+    expect(parseCsv(gh.store.get('app/sets.csv')!.text).entries.map((x) => x.weight)).toEqual([55]);
+  });
+  it('the phone’s newer edit wins over the backup’s older one', async () => {
+    const mine = { ...set('2026-09-29'), weight: 60, editedAt: Date.parse('2026-09-30T09:00:00Z') };
+    const gh = fakeGitHub({ 'app/sets.csv': toCsv([{ ...mine, weight: 55, editedAt: Date.parse('2026-09-30T08:00:00Z') }]) });
+    const got = await run(gh, [mine]);
+    expect(got.sets).toEqual([]);
+    expect(parseCsv(gh.store.get('app/sets.csv')!.text).entries.map((x) => x.weight)).toEqual([60]);
+  });
+  it('a body field entered more recently on another device wins; an unstamped one only fills in', async () => {
+    const gh = fakeGitHub({ 'app/body.csv': toBodyCsv([{ date: '2026-09-29', weight: 181, protein: 140, at: { weight: Date.parse('2026-09-30T08:00:00Z') } }]) });
+    const got = await run(gh, [], [{ date: '2026-09-29', weight: 182, protein: 150, at: { weight: Date.parse('2026-09-30T07:00:00Z') } }]);
+    expect(got.body).toEqual([{ date: '2026-09-29', weight: 181, at: { weight: Date.parse('2026-09-30T08:00:00Z') } }]);
+    expect(parseBodyFile(gh.store.get('app/body.csv')!.text).days).toEqual([{ date: '2026-09-29', weight: 181, protein: 150, at: { weight: Date.parse('2026-09-30T08:00:00Z') } }]);
+  });
+});

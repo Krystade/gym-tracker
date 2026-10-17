@@ -49,7 +49,9 @@ export function useSets() {
     return e;
   }, []);
 
-  const update = useCallback(async (e: SetEntry): Promise<boolean> => {
+  // Stamped, so between two phones that both changed this set the newer change wins in sync.
+  const update = useCallback(async (changed: SetEntry): Promise<boolean> => {
+    const e = { ...changed, editedAt: Date.now() };
     try { await db.putSet(e); } catch (err) { fail('Saving the change', err); return false; }
     setEntries((xs) => xs.map((x) => (x.id === e.id ? e : x)));
     announce();
@@ -65,7 +67,7 @@ export function useSets() {
 
   /** Sets deleted on another phone: gone here too, each with its tombstone. */
   const removeMany = useCallback(async (ids: string[]): Promise<boolean> => {
-    try { for (const id of ids) await db.deleteSetWithTombstone(id); } catch (err) { fail('Removing synced deletes', err); await reload(); return false; }
+    try { for (const id of ids) await db.deleteSetWithTombstone(id, null); } catch (err) { fail('Removing synced deletes', err); await reload(); return false; }
     const gone = new Set(ids);
     setEntries((xs) => xs.filter((x) => !gone.has(x.id)));
     announce();

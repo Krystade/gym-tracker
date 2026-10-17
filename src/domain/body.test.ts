@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { detectCsv, diffBody, mergeBody, parseBodyFile, proteinCheck, rate, rateBand, toBodyCsv, trend, type BodyDay } from './body';
+import { detectCsv, diffBody, mergeBody, parseBodyFile, proteinCheck, rate, rateBand, stampDay, toBodyCsv, trend, type BodyDay } from './body';
 import { CSV_HEADER } from './csv';
 
 const fx = (n: string) => readFileSync(path.join(import.meta.dirname, '..', '..', 'e2e', 'fixtures', n), 'utf8');
@@ -135,5 +135,25 @@ describe('diffBody', () => {
     const d = diffBody(stored, [{ date: '2026-09-02', calories: 2000 }]);
     expect(d.changed).toEqual([]);
     expect(d.fresh).toHaveLength(1);
+  });
+});
+
+describe('edit times on body days (round 10)', () => {
+  it('round-trip through body.csv per field, and old files without them still read', () => {
+    const days: BodyDay[] = [{ date: '2026-10-02', weight: 180, energy: 4, at: { weight: Date.parse('2026-10-02T07:00:00.000Z'), energy: Date.parse('2026-10-02T18:00:00.000Z') } }, { date: '2026-10-03', weight: 181 }];
+    expect(parseBodyFile(toBodyCsv(days)).days).toEqual(days);
+    expect(parseBodyFile('date,weight_lb,edited_at\n2026-10-02,180,weight=nope\n').errors[0].message).toMatch(/edited_at/);
+  });
+  it('mergeBody keeps each field’s edit time, laying the incoming ones over', () => {
+    const merged = mergeBody([{ date: '2026-10-02', weight: 180, energy: 2, at: { weight: 1, energy: 2 } }], [{ date: '2026-10-02', energy: 4, at: { energy: 9 } }]);
+    expect(merged).toEqual([{ date: '2026-10-02', weight: 180, energy: 4, at: { weight: 1, energy: 9 } }]);
+  });
+  it('a weigh-in or an energy tap stamps only the fields it carries', () => {
+    expect(stampDay({ date: '2026-10-02', energy: 4, at: { weight: 1 } }, 99)).toEqual({ date: '2026-10-02', energy: 4, at: { weight: 1, energy: 99 } });
+    expect(stampDay({ date: '2026-10-02' }, 99)).toEqual({ date: '2026-10-02' });
+  });
+  it('an edit time alone is no change to import', () => {
+    expect(diffBody([{ date: '2026-10-02', weight: 180, at: { weight: 5 } }], [{ date: '2026-10-02', weight: 180 }]).same).toBe(1);
+    expect(diffBody([{ date: '2026-10-02', weight: 180, at: { weight: 5 } }], [{ date: '2026-10-02', weight: 180, at: { weight: 5 } }]).same).toBe(1);
   });
 });

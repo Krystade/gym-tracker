@@ -1,10 +1,16 @@
 import { addDays } from './analytics';
 import { parseRows, type CsvError } from './csv';
 
-/** `energy`: how the day's training felt going in, 1 (flat) to 5 (great). */
-export interface BodyDay { date: string; weight?: number; calories?: number; protein?: number; energy?: 1 | 2 | 3 | 4 | 5 }
+export const BODY_FIELDS = ['weight', 'calories', 'protein', 'energy'] as const;
+export type BodyField = (typeof BODY_FIELDS)[number];
+/**
+ * `energy`: how the day's training felt going in, 1 (flat) to 5 (great). `at`: when each field was last entered by hand (epoch ms),
+ * so two phones that both changed one keep the newer; a field from before round 10 has none.
+ */
+export interface BodyDay { date: string; weight?: number; calories?: number; protein?: number; energy?: 1 | 2 | 3 | 4 | 5; at?: Partial<Record<BodyField, number>> }
 export type CsvKind = 'sets' | 'body' | 'mfp-weight' | 'mfp-nutrition' | 'unknown';
-export const BODY_HEADER = ['date', 'weight_lb', 'calories', 'protein_g', 'energy'] as const;
+/** `edited_at`: each field's edit time, as `weight=<ISO time>;energy=<ISO time>`. */
+export const BODY_HEADER = ['date', 'weight_lb', 'calories', 'protein_g', 'energy', 'edited_at'] as const;
 
 const headerOf = (text: string): string[] => (parseRows(text.replace(/^﻿/, ''))[0] ?? []).map((h) => h.trim().toLowerCase());
 
@@ -46,7 +52,7 @@ export function parseBodyFile(text: string): { kind: CsvKind; days: BodyDay[]; e
     : kind === 'mfp-weight' ? { weight: col('weight') }
     : kind === 'mfp-nutrition' ? { calories: col('calories'), protein: col('protein (g)', 'protein') }
     : {};
-  const di = col('date');
+  const di = col('date'), ei = kind === 'body' ? col('edited_at') : -1;
   const errors: CsvError[] = [];
   const by = new Map<string, BodyDay>();
   if (kind === 'unknown' || kind === 'sets') return { kind, days: [], errors };
@@ -66,7 +72,14 @@ export function parseBodyFile(text: string): { kind: CsvKind; days: BodyDay[]; e
       vals[k] = n;
     }
     if (!Object.keys(vals).length) return;
+    const at: BodyDay['at'] = {};
+    for (const part of (ei < 0 ? '' : r[ei] ?? '').split(';').map((x) => x.trim()).filter(Boolean)) {
+      const [k, v] = part.split('='), t = Date.parse(v ?? '');
+      if (!(BODY_FIELDS as readonly string[]).includes(k) || !Number.isFinite(t)) { errors.push({ row, message: `Bad edited_at "${part}"` }); return; }
+      at[k as BodyField] = t;
+    }
     const d = by.get(date) ?? { date };
+    if (Object.keys(at).length) d.at = { ...d.at, ...at };
     // Nutrition comes one row per meal: add them up. Weights and body.csv rows replace.
     if (kind === 'mfp-nutrition') for (const k of ['calories', 'protein'] as const) { if (vals[k] != null) d[k] = round1((d[k] ?? 0) + vals[k]); }
     else Object.assign(d, vals);
@@ -77,14 +90,27 @@ export function parseBodyFile(text: string): { kind: CsvKind; days: BodyDay[]; e
 
 export function toBodyCsv(days: BodyDay[]): string {
   const lines = [...days].sort((a, b) => a.date.localeCompare(b.date))
-    .map((d) => [d.date, d.weight ?? '', d.calories ?? '', d.protein ?? '', d.energy ?? ''].join(','));
+    .map((d) => [d.date, d.weight ?? '', d.calories ?? '', d.protein ?? '', d.energy ?? '',
+      BODY_FIELDS.filter((k) => d.at?.[k] != null).map((k) => `${k}=${new Date(d.at![k]!).toISOString()}`).join(';')].join(','));
   return [BODY_HEADER.join(','), ...lines].join('\r\n') + '\r\n';
+}
+
+/** The day with each field it carries stamped as entered now: between two phones that both entered one, the newer wins in sync. */
+export const stampDay = (d: BodyDay, now = Date.now()): BodyDay => {
+  const at = Object.fromEntries(BODY_FIELDS.filter((k) => d[k] != null).map((k) => [k, now]));
+  return Object.keys(at).length ? { ...d, at: { ...d.at, ...at } } : d;
+};
+
+/** A day with `fill` laid over it: the fields it carries replace, and their edit times merge field by field the same way. */
+export function mergeDay(d: BodyDay | undefined, fill: BodyDay): BodyDay {
+  const at = d?.at || fill.at ? { ...d?.at, ...fill.at } : undefined;
+  return { ...d, ...fill, ...(at && { at }) };
 }
 
 /** Fields present in `incoming` overwrite; the rest of each day is kept. */
 export function mergeBody(existing: BodyDay[], incoming: BodyDay[]): BodyDay[] {
   const by = new Map(existing.map((d) => [d.date, { ...d }]));
-  for (const d of incoming) by.set(d.date, { ...by.get(d.date), ...d });
+  for (const d of incoming) by.set(d.date, mergeDay(by.get(d.date), d));
   return [...by.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -141,7 +167,7 @@ export function diffBody(existing: BodyDay[], incoming: BodyDay[]): { fresh: Bod
   const out = { fresh: [] as BodyDay[], changed: [] as BodyDay[], same: 0 };
   for (const d of incoming) {
     const had = by.get(d.date);
-    const fields = Object.entries(d).filter(([k, v]) => k !== 'date' && v !== undefined) as [keyof BodyDay, unknown][];
+    const fields = Object.entries(d).filter(([k, v]) => k !== 'date' && k !== 'at' && v !== undefined) as [keyof BodyDay, unknown][];
     if (!had) out.fresh.push(d);
     else if (fields.some(([k, v]) => had[k] !== undefined && had[k] !== v)) out.changed.push(d);
     else if (fields.some(([k]) => had[k] === undefined)) out.fresh.push(d);

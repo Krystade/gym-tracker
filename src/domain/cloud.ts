@@ -1,4 +1,4 @@
-import type { BodyDay } from './body';
+import { BODY_FIELDS, mergeDay, type BodyDay } from './body';
 import type { SetEntry } from './types';
 
 /**
@@ -6,7 +6,8 @@ import type { SetEntry } from './types';
  * reaches the others, while a set logged again later under the same id (ids are reused) survives it.
  */
 export interface CloudMonth { sets: SetEntry[]; body: BodyDay[]; deleted: Record<string, number>; updatedAt: number }
-export interface LocalMonth { sets: SetEntry[]; body: BodyDay[]; tombstones: Set<string> }
+/** `tombAt`: when this phone deleted a set (epoch ms); a tombstone from before round 10, or one a sync brought, has none. */
+export interface LocalMonth { sets: SetEntry[]; body: BodyDay[]; tombstones: Set<string>; tombAt?: Record<string, number> }
 export interface Merged { doc: CloudMonth; importSets: SetEntry[]; deleteIds: string[]; importBody: BodyDay[]; changed: boolean }
 
 export const monthOf = (date: string) => date.slice(0, 7);
@@ -15,34 +16,55 @@ const monthOfId = (id: string) => /\|(\d{4}-\d{2})-\d{2}\|/.exec(id)?.[1] ?? nul
 /** Firestore rejects undefined fields. */
 const clean = <T,>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 const byTime = (a: SetEntry, b: SetEntry) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.seq - b.seq);
-const BODY_KEYS = ['weight', 'calories', 'protein', 'energy'] as const;
+/** When a set was last changed by hand: edited, or put back by Undo. 0 for a set never touched since it was logged. */
+export const editStamp = (s: SetEntry) => Math.max(s.editedAt ?? 0, s.restoredAt ?? 0);
+/** The newest thing that happened to a set: logged (a live set's seq is its time), edited or put back. A delete must be newer. */
+export const lifeStamp = (s: SetEntry) => Math.max(s.seq, editStamp(s));
 
-/** Merges one month: the union of sets by id, the phone winning where both have one; deletes either way; body days filled in. */
+/**
+ * Merges one month. Sets: the union by id; where both sides have a set, the newer edit wins (a tie, or two copies from before
+ * edit times, goes to the phone). Deletes: a delete beats a set only if it's newer than everything done to that set, so an edit
+ * made after a delete brings the set back. A delete stays in `deleted` even when a newer set beat it, so a phone still holding
+ * its tombstone sees the set is newer and takes it rather than deleting it again. Body days: per field, the newer edit wins;
+ * a field with no edit time on either side only fills in.
+ */
 export function mergeMonth(local: LocalMonth, remote: CloudMonth | null, now: number): Merged {
-  const live = new Map(local.sets.map((s) => [s.id, s]));
+  const mine = new Map(local.sets.map((s) => [s.id, s]));
+  const theirs = new Map((remote?.sets ?? []).map((s) => [s.id, s]));
   const deleted: Record<string, number> = { ...remote?.deleted };
-  // A tombstone under a set that's on the phone is an old delete of a reused id: the set is live.
-  for (const id of local.tombstones) if (!live.has(id) && !(id in deleted)) deleted[id] = now;
-  const deleteIds: string[] = [];
-  for (const [id, at] of Object.entries(deleted)) {
-    const s = live.get(id);
-    if (!s) continue;
-    if (Math.max(s.seq, s.restoredAt ?? 0) > at) delete deleted[id]; // logged again, or put back by Undo, after the delete
-    else { deleteIds.push(id); live.delete(id); }
+  // A tombstone under a set that's on the phone is an old delete of a reused id: the set is live. Otherwise it's a delete made
+  // here, at its own time; one without a time is either the cloud's delete (that time) or one never synced (now, as before).
+  for (const id of local.tombstones) {
+    if (mine.has(id)) continue;
+    const at = local.tombAt?.[id] ?? deleted[id] ?? now;
+    deleted[id] = Math.max(deleted[id] ?? 0, at);
   }
-  const importSets = (remote?.sets ?? []).filter((s) => !live.has(s.id) && !(s.id in deleted) && !local.tombstones.has(s.id));
+  const live: SetEntry[] = [], importSets: SetEntry[] = [], deleteIds: string[] = [];
+  for (const id of new Set([...mine.keys(), ...theirs.keys()])) {
+    const l = mine.get(id), r = theirs.get(id);
+    const win = !l ? r! : !r ? l : editStamp(r) > editStamp(l) ? r : l;
+    if (id in deleted && lifeStamp(win) <= deleted[id]) { if (l) deleteIds.push(id); continue; }
+    live.push(win);
+    if (win !== l) importSets.push(win);
+  }
 
-  const mine = new Map(local.body.map((d) => [d.date, d]));
+  const have = new Map(local.body.map((d) => [d.date, d]));
   const body = new Map(local.body.map((d) => [d.date, { ...d }]));
   const importBody: BodyDay[] = [];
   for (const d of remote?.body ?? []) {
-    const have = mine.get(d.date), fill: BodyDay = { date: d.date };
-    for (const k of BODY_KEYS) if (d[k] != null && have?.[k] == null) Object.assign(fill, { [k]: d[k] });
-    if (Object.keys(fill).length > 1) { importBody.push(fill); body.set(d.date, { ...body.get(d.date), ...fill }); }
+    const h = have.get(d.date), fill: BodyDay = { date: d.date };
+    for (const k of BODY_FIELDS) {
+      if (d[k] == null) continue;
+      if (h?.[k] == null || (d.at?.[k] ?? 0) > (h.at?.[k] ?? 0)) {
+        Object.assign(fill, { [k]: d[k] });
+        if (d.at?.[k] != null) fill.at = { ...fill.at, [k]: d.at[k] };
+      }
+    }
+    if (Object.keys(fill).length > 1) { importBody.push(fill); body.set(d.date, mergeDay(body.get(d.date), fill)); }
   }
 
   const doc = clean<CloudMonth>({
-    sets: [...live.values(), ...importSets].sort(byTime),
+    sets: live.sort(byTime),
     body: [...body.values()].sort((a, b) => (a.date < b.date ? -1 : 1)),
     deleted, updatedAt: now,
   });
@@ -50,14 +72,15 @@ export function mergeMonth(local: LocalMonth, remote: CloudMonth | null, now: nu
   return { doc, importSets: clean(importSets), deleteIds, importBody, changed };
 }
 
+// Sorted keys at every level: a body day's edit times, or a set's target, read back from Firestore in another order are no change.
 const contentKey = (m: Pick<CloudMonth, 'sets' | 'body' | 'deleted'>) =>
-  JSON.stringify([[...m.sets].sort(byTime).map(stable), [...m.body].sort((a, b) => (a.date < b.date ? -1 : 1)).map(stable), stable(m.deleted)]);
+  JSON.stringify(deep([[...m.sets].sort(byTime), [...m.body].sort((a, b) => (a.date < b.date ? -1 : 1)), m.deleted]));
 const stable = (o: object) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined).sort(([a], [b]) => (a < b ? -1 : 1)));
 
 /** The phone's log, grouped by month (tombstones by the date in their id). */
-export function splitByMonth(sets: SetEntry[], body: BodyDay[], tombstones: Set<string>): Map<string, LocalMonth> {
+export function splitByMonth(sets: SetEntry[], body: BodyDay[], tombstones: Set<string>, tombAt: Record<string, number> = {}): Map<string, LocalMonth> {
   const out = new Map<string, LocalMonth>();
-  const at = (m: string) => { let x = out.get(m); if (!x) out.set(m, (x = { sets: [], body: [], tombstones: new Set() })); return x; };
+  const at = (m: string) => { let x = out.get(m); if (!x) out.set(m, (x = { sets: [], body: [], tombstones: new Set(), tombAt })); return x; };
   for (const s of sets) at(monthOf(s.date)).sets.push(s);
   for (const d of body) at(monthOf(d.date)).body.push(d);
   for (const id of tombstones) { const m = monthOfId(id); if (m) at(m).tombstones.add(id); }
@@ -92,19 +115,31 @@ export function monthsToSync(local: Map<string, LocalMonth>, remoteIndex: Record
  * `gyms`, `tags`), so two phones merge as a union. `seen` holds each item's fingerprint as the last sync left it.
  */
 export type MetaItems = Record<string, unknown>;
-export interface MergedMeta { items: MetaItems; pull: MetaItems; changed: boolean; seen: Record<string, string> }
+/** `remove`: items deleted on another phone, to delete on this one too. */
+export interface MergedMeta { items: MetaItems; pull: MetaItems; remove: string[]; changed: boolean; seen: Record<string, string> }
+
+/** Items the app can delete (a renamed lift's settings, a day plan, a name mapping, the last gym); the rest are only ever changed. */
+export const metaDeletable = (k: string) => /^(settings|day|alias):/.test(k) || k === 'gyms';
 
 const deep = (x: unknown): unknown => Array.isArray(x) ? x.map(deep)
   : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).filter(([, v]) => v !== undefined).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => [k, deep(v)])) : x;
 /** A fingerprint that ignores key order and undefined fields. */
 export const metaHash = (x: unknown): string => hash(JSON.stringify(deep(x)));
 
-/** Per item: one the phone changed since the last sync wins (so a first sync keeps the phone's own); otherwise the cloud's. */
+/**
+ * Per item: one the phone changed since the last sync wins (so a first sync keeps the phone's own); otherwise the cloud's.
+ * A deletable item that the last sync saw, now gone from one side while the other still has it exactly as that sync left it,
+ * was deleted on that side: it goes from the other too. Changed since, it was edited after the delete, and the edit wins.
+ */
 export function mergeMeta(local: MetaItems, remote: MetaItems | null, seen: Record<string, string>): MergedMeta {
-  const items: MetaItems = {}, pull: MetaItems = {}, next: Record<string, string> = {};
+  const items: MetaItems = {}, pull: MetaItems = {}, next: Record<string, string> = {}, remove: string[] = [];
   for (const k of new Set([...Object.keys(local), ...Object.keys(remote ?? {})])) {
     const l = local[k], r = remote?.[k];
     const lh = l === undefined ? '' : metaHash(l);
+    if (k in seen && metaDeletable(k)) {
+      if (l === undefined && metaHash(r) === seen[k]) continue; // deleted here: it leaves the cloud
+      if (r === undefined && lh === seen[k]) { remove.push(k); continue; } // deleted on another phone: it goes here too
+    }
     const v = l !== undefined && (lh !== seen[k] || r === undefined) ? l : r;
     if (v === undefined) continue;
     items[k] = v;
@@ -112,5 +147,5 @@ export function mergeMeta(local: MetaItems, remote: MetaItems | null, seen: Reco
     if (next[k] !== lh) pull[k] = v;
   }
   const changed = metaHash(items) !== metaHash(remote ?? {});
-  return { items: clean(items), pull: clean(pull), changed, seen: next };
+  return { items: clean(items), pull: clean(pull), remove, changed, seen: next };
 }

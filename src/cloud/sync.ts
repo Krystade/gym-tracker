@@ -5,10 +5,13 @@ import type { Cloud } from './firebase';
 
 /** What the last sync left your settings as: each item's fingerprint, and the cloud copy's time. */
 export interface MetaSeen { items: Record<string, string>; at: number }
-export interface SyncInput { sets: SetEntry[]; body: BodyDay[]; tombstones: Set<string>; seen: Seen; meta: MetaItems; metaSeen: MetaSeen }
+/** `tombAt`: when each set deleted on this phone went (see db getTombstoneTimes). */
+export interface SyncInput { sets: SetEntry[]; body: BodyDay[]; tombstones: Set<string>; tombAt?: Record<string, number>; seen: Seen; meta: MetaItems; metaSeen: MetaSeen }
 export interface SyncApply {
   importSets: (s: SetEntry[]) => Promise<unknown>; importBody: (d: BodyDay[]) => Promise<boolean>; removeSets: (ids: string[]) => Promise<boolean>;
   importMeta: (m: MetaItems) => Promise<void>;
+  /** Settings deleted on another phone (a renamed lift's, say): deleted here too. */
+  removeMeta: (keys: string[]) => Promise<void>;
 }
 export interface SyncOutcome { seen: Seen; metaSeen: MetaSeen; pulled: number; pushed: number; removed: number; metaPulled: number }
 
@@ -20,7 +23,7 @@ export async function syncCloud({ F, db }: Cloud, uid: string, input: SyncInput,
   const indexRef = F.doc(db, `users/${uid}/meta/index`);
   const indexDoc = (await F.getDoc(indexRef)).data();
   const index = (indexDoc?.months ?? {}) as Record<string, number>;
-  const local = splitByMonth(input.sets, input.body, input.tombstones);
+  const local = splitByMonth(input.sets, input.body, input.tombstones, input.tombAt);
   const seen: Seen = { ...input.seen };
   const out = { pulled: 0, pushed: 0, removed: 0 };
   for (const m of monthsToSync(local, index, input.seen).sort()) {
@@ -68,7 +71,8 @@ async function syncMeta({ F, db }: Pick<Cloud, 'F' | 'db'>, uid: string, input: 
     return { merged, at: merged.changed ? now : raw?.updatedAt ?? 0 };
   });
   if (Object.keys(merged.pull).length) await apply.importMeta(merged.pull);
-  return { metaSeen: { items: merged.seen, at }, metaPulled: Object.keys(merged.pull).length };
+  if (merged.remove.length) await apply.removeMeta(merged.remove);
+  return { metaSeen: { items: merged.seen, at }, metaPulled: Object.keys(merged.pull).length + merged.remove.length };
 }
 
 /**
