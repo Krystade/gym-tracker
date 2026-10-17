@@ -545,3 +545,57 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .notify-sub.when { grid-template-columns: 1fr 1fr; }
 .notify select { min-height: 44px; font-size: var(--fs-md); width: 100%; min-width: 0; }
 .notify-diag > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--muted); }
+
+/* Orbit (top of Friends): a line per person across the days, coloured by what they trained. Its own block. */
+:root {
+  /* The app is dark only, so these are the dark values. Checked as a set with the dataviz validator: every pair (any two kinds can sit
+     side by side) apart by OKLab ΔE ≥ 11.8 under colour-blindness and ≥ 19.5 in full colour; each ≥ 3:1 on --bg and on --surface.
+     Colour is never the only signal: the table under the lines names each day's kind. */
+  --orbit-legs: #439fd3; --orbit-push: #c33d83; --orbit-pull: #4ead00; --orbit-core: #8a6814; --orbit-cardio: #7d54e1;
+  --orbit-other: #8a94a3; --orbit-rest: #2c3442;
+}
+.orbit { position: relative; margin-bottom: 16px; }
+.orbit-top { display: flex; align-items: center; gap: 8px; }
+.orbit-top h2 { flex: 1; margin: 0; }
+.orbit-today { min-height: 44px; }
+.orbit-pull { text-align: center; margin: 0 0 4px; }
+.orbit-key > summary { min-height: 44px; display: flex; align-items: center; color: var(--muted); font-size: 14px; cursor: pointer; }
+.orbit-key ul { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: var(--fs-sm); color: var(--muted); }
+.orbit-key li { display: inline-flex; align-items: center; gap: 6px; }
+.orbit-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.orbit-dot.rest { height: 2px; border-radius: 1px; background: var(--orbit-rest); width: 14px; border: 0; outline: 1px solid var(--line-strong); }
+.orbit-rows { position: relative; overflow: hidden; user-select: none; -webkit-user-select: none; border-radius: var(--r-sm); }
+.orbit-rows:focus-visible { outline-offset: 2px; }
+.orbit-days { display: block; }
+.orbit-days text { font-size: 11px; fill: var(--muted); }
+.orbit-days text.date { font-size: 12px; font-variant-numeric: tabular-nums; }
+.orbit-days .today text { fill: var(--text); font-weight: 700; }
+.orbit-days .today circle { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+.orbit-list { list-style: none; margin: 0; padding: 0; }
+.orbit-row { padding: 8px 0 6px; border-top: 1px solid var(--line); }
+.orbit-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 44px; }
+.orbit-name { font-size: var(--fs-md); min-height: 44px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.orbit-bubble {
+  display: inline-flex; align-items: center; min-height: 28px; max-width: 100%; padding: 2px 10px; border-radius: 14px; font-size: var(--fs-sm); font-weight: 600;
+  background: color-mix(in oklab, var(--k) 22%, var(--bg)); border: 1px solid color-mix(in oklab, var(--k) 70%, var(--bg)); color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Your own bubble is a button: a 44px target around the 28px pill. */
+.orbit-tap { min-height: 44px; padding: 0; background: none; border: 0; max-width: 100%; }
+.orbit-bubble.add { background: none; border: 1px dashed var(--line-strong); color: var(--muted); }
+.orbit-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; }
+.orbit-status input { flex: 1 1 100%; font-size: 16px; min-height: 44px; }
+.orbit-status .mini { flex: 1; }
+.orbit-line { display: block; cursor: pointer; overflow: visible; }
+.orbit-rest { stroke: var(--orbit-rest); stroke-width: 2; }
+.orbit-now { fill: var(--text); stroke: var(--bg); stroke-width: 1.5; }
+.orbit-row.quiet .orbit-line { opacity: 0.5; }
+.orbit-week { margin: 2px 0 0; }
+.orbit .chart-table { margin-top: 4px; }
+/* Above the tab bar while you have fewer than three friends; the room under the page keeps it off the last row. */
+.orbit-fab {
+  position: fixed; z-index: 3; left: 50%; transform: translateX(-50%); bottom: calc(57px + 12px + var(--sab));
+  border-radius: 22px; padding: 0 20px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+.orbit-fab:active:not(:disabled) { transform: translateX(-50%) scale(0.97); }
+.screen:has(.orbit-fab) { padding-bottom: calc(var(--sab) + 84px + 56px); }

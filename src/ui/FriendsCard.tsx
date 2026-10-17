@@ -12,8 +12,9 @@ type Msg = { ok: boolean; text: string } | null;
 const base = () => `${location.origin}${location.pathname}`;
 
 /** Find friends by username or an invite link; tap one to see their log. Only while signed in. */
-export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onRequests }: {
+export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onRequests, onFriends }: {
   uid: string; gyms: GymsStore; pending: Invite | null; onPendingDone: () => void; onView: (f: Friend) => void; onRequests: (n: number) => void;
+  /** The list as it stands after each refresh, for Orbit above. */ onFriends?: (f: Friend[]) => void;
 }) {
   const [me, setMe] = useState<string | null | undefined>(undefined);
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -34,8 +35,8 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
 
   const refresh = useCallback(async (c: Cloud) => {
     const [f, r, i, s] = await Promise.all([listFriends(c, uid), listRequests(c, uid), liveInvite(c, uid), listSentGyms(c, uid)]);
-    setFriends(f); setRequests(r); setInvite(i); setSentGyms(s); onRequests(r.length + s.length);
-  }, [uid, onRequests]);
+    setFriends(f); setRequests(r); setInvite(i); setSentGyms(s); onRequests(r.length + s.length); onFriends?.(f);
+  }, [uid, onRequests, onFriends]);
   /** One action at a time; its outcome (or the error in plain words) shows under the card's heading. */
   const act = useCallback(async (f: (c: Cloud) => Promise<string | void>) => {
     setBusy(true); setMsg(null);
@@ -154,7 +155,7 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
           </ul>
         )}
       </section>
-      <section className="sub" aria-label="Add a friend">
+      <section className="sub" id="add-friend" aria-label="Add a friend">
         <h3>Add a friend</h3>
         <form className="sync-form" onSubmit={(e) => {
           e.preventDefault();
