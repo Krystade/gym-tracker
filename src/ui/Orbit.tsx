@@ -195,10 +195,9 @@ export function Orbit({ uid, friends, entries, today, status, news, onOpenFriend
         </ul>
       </div>
       {friends && !friends.length && <p className="muted small">No friends here yet. Invite one and their line shows up under yours.</p>}
+      {/* In the page, under the lines, while you have fewer than three friends: floating, it covered what scrolled under it. */}
+      {friends && friends.length < 3 && <button className="primary orbit-invite" onClick={onInvite}>Invite a friend</button>}
       <ChartTable caption={`What each person trained, ${dayName(first)} to ${dayName(lastShown)}`} head={['Who', 'Days trained']} rows={table} />
-      {friends && friends.length < 3 && (<>
-        <button className="primary orbit-fab" onClick={onInvite}>Invite a friend</button>
-      </>)}
     </section>
   );
 }

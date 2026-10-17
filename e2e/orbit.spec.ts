@@ -130,8 +130,9 @@ test('Orbit shows a friend’s week as kinds, their status and numbers, at 375×
   await expect(orbit(a.page).locator('.orbit-row').first()).toHaveAttribute('data-testid', 'orbit-me');
   await expect(orbit(a.page)).not.toContainText(c.name);
   await expect(orbit(a.page)).not.toContainText('stranger danger');
-  // Fewer than three friends: Invite floats above the tab bar, clear of it.
-  const fab = a.page.getByRole('button', { name: 'Invite a friend' });
+  // Fewer than three friends: an Invite button in the page, under the lines (not floating: devices.spec checks what's under it).
+  const fab = orbit(a.page).getByRole('button', { name: 'Invite a friend' });
+  await fab.scrollIntoViewIfNeeded();
   const [fb, tabs] = [await fab.boundingBox(), await a.page.getByRole('navigation', { name: 'Sections' }).boundingBox()];
   expect(fb!.y + fb!.height).toBeLessThanOrEqual(tabs!.y);
   expect(await noSideScroll(a.page)).toBe(true);

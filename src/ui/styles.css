@@ -597,13 +597,6 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .orbit-row.quiet .orbit-line { opacity: 0.5; }
 .orbit-week { margin: 2px 0 0; }
 .orbit .chart-table { margin-top: 4px; }
-/* Above the tab bar while you have fewer than three friends; the room under the page keeps it off the last row. */
-.orbit-fab {
-  position: fixed; z-index: 3; left: 50%; transform: translateX(-50%); bottom: calc(57px + 12px + var(--sab));
-  border-radius: 22px; padding: 0 20px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
-}
-.orbit-fab:active:not(:disabled) { transform: translateX(-50%) scale(0.97); }
-.screen:has(.orbit-fab) { padding-bottom: calc(var(--sab) + 84px + 56px); }
 
 /* A friend's thread: a sheet from the bottom over everything (the tab bar included), never a centred modal. */
 .sheet-backdrop { position: fixed; inset: 0; z-index: 7; background: rgb(0 0 0 / 0.55); }
@@ -658,3 +651,5 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 /* A ping is its emoji alone, shown large; no words go with it. */
 .bubble.ping { align-items: center; padding: 4px 12px; }
 .bubble.ping .bubble-text { font-size: 32px; line-height: 1.15; }
+/* Invite sits in the page under the Orbit lines (it floated over the page and covered "Add a friend"). */
+.orbit-invite { margin: 10px 0 4px; border-radius: 22px; padding: 0 20px; }

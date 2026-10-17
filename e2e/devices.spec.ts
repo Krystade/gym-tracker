@@ -98,6 +98,33 @@ function problems({ top, bottom }: { top: number; bottom: number }) {
 
 const frames = (page: Page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
+/**
+ * What sits under (or over) the element at any point of the page's scroll: a button floating over the page covers
+ * whatever scrolls beneath it, which a check at the top and the bottom alone never sees. Fixed chrome (the tab bar, the
+ * status backdrop) is left out: the page scrolls under that by design, with room at the bottom to clear it.
+ */
+function coveredAtAnyScroll(sel: string) {
+  const el = document.querySelector(sel);
+  if (!el) return [`${sel} not found`];
+  const fixed = (x: Element) => { for (let p: Element | null = x; p; p = p.parentElement) if (getComputedStyle(p).position === 'fixed') return true; return false; };
+  const LABELLED = 'button, a[href], input:not([type=hidden]), select, textarea, summary, label, h1, h2, h3, [aria-label], [role=button]';
+  const out = new Set<string>();
+  const was = scrollY;
+  for (let y = 0; y <= document.documentElement.scrollHeight - innerHeight + 24; y += 24) {
+    scrollTo(0, y);
+    const r = el.getBoundingClientRect();
+    for (const o of document.querySelectorAll(LABELLED)) {
+      if (o === el || o.contains(el) || el.contains(o) || (fixed(o) && !fixed(el))) continue;
+      const q = o.getBoundingClientRect();
+      if (q.width && q.height && q.left < r.right - 0.5 && q.right > r.left + 0.5 && q.top < r.bottom - 0.5 && q.bottom > r.top + 0.5) {
+        out.add(`${o.tagName.toLowerCase()} "${(o.getAttribute('aria-label') ?? o.textContent ?? '').trim().slice(0, 30)}"`);
+      }
+    }
+  }
+  scrollTo(0, was);
+  return [...out];
+}
+
 /** The screen at every size: no problems, and a screenshot of each to look at. */
 async function check(page: Page, name: string, app = true) {
   await page.locator(app ? 'main.screen:visible' : 'h1:visible').first().waitFor();
@@ -303,6 +330,14 @@ test('Friends and a friend’s view fit each phone', async ({ browser }) => {
   await b.friends.getByRole('region', { name: 'Invite' }).getByRole('button', { name: 'Accept' }).click();
   await expect(b.friends.getByRole('status')).toHaveText(/are now friends/);
   await check(b.page, 'friends');
+  // With fewer than three friends there's an Invite button: nothing you can read or tap is ever under it.
+  await expect(b.page.getByRole('button', { name: 'Invite a friend' })).toBeVisible();
+  for (const [width, height] of SIZES) {
+    await b.page.setViewportSize({ width, height });
+    await frames(b.page);
+    expect(await b.page.evaluate(coveredAtAnyScroll, '.orbit-invite, .orbit-fab'), `under Invite at ${width}×${height}`).toEqual([]);
+  }
+  await b.page.setViewportSize({ width: 375, height: 812 });
   await b.friends.getByRole('button', { name: `@${a.name}`, exact: true }).click();
   await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toBeVisible();
   await check(b.page, 'friend-stats');
