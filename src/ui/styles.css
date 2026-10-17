@@ -643,3 +643,30 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .viewing-bar .bar-actions { display: flex; gap: 8px; flex: none; }
 .today-news { width: 100%; justify-content: flex-start; gap: 8px; text-align: left; margin: 0 0 12px; border-color: var(--accent); }
 .today-news > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Records (a lift's screen) ── self-contained, so a restyle touches only this block. */
+.records .rec-list, .records .rec-grid { list-style: none; margin: 0; padding: 0; }
+.records .rec-list li + li { border-top: 1px solid var(--line); }
+.records .rec {
+  width: 100%; min-height: 52px; padding: 8px 0; border: 0; border-radius: 0; background: none; color: var(--text);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'name val' 'meta val'; align-items: center;
+  gap: 2px 12px; text-align: left; font-weight: 400;
+}
+.records button.rec { grid-template-columns: minmax(0, 1fr) auto 10px; grid-template-areas: 'name val go' 'meta val go'; }
+.records button.rec::after { content: '›'; grid-area: go; color: var(--muted); font-size: var(--fs-lg); }
+.records .rec-name { grid-area: name; font-weight: 600; }
+.records .rec-val { grid-area: val; font-size: var(--fs-lg); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.records .rec-meta { grid-area: meta; font-size: var(--fs-sm); color: var(--muted); }
+.records .rec-sub { margin: 12px 0 8px; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+.records .rec-sub span { font-weight: 400; text-transform: none; letter-spacing: 0; }
+.records .rec-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.records .rec-cell {
+  width: 100%; height: 100%; min-height: 68px; padding: 8px 10px; border: 1px solid transparent; border-radius: var(--r-md);
+  background: var(--surface-2); color: var(--text); display: flex; flex-direction: column; align-items: flex-start;
+  justify-content: flex-start; gap: 1px; text-align: left; font-weight: 400;
+}
+.records .rec-cell .rec-name, .records .rec-cell .rec-meta { font-size: var(--fs-xs); font-weight: 400; color: var(--muted); }
+.records .rec-cell .rec-val { font-size: var(--fs-md); }
+.records .rec-cell.empty .rec-val { color: var(--muted); }
+/* A record tapped opens its day in History, scrolled clear of the status bar. */
+details.day { scroll-margin-top: calc(var(--sat) + 12px); }

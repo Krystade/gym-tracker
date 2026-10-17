@@ -1,6 +1,6 @@
 import { addDays, weekStart, weeklySummary } from '../domain/analytics';
 import { nextDay, type DayPlan, type Program } from '../domain/program';
-import { prIds } from '../domain/summary';
+import { prIds } from '../domain/records';
 import type { SetEntry } from '../domain/types';
 
 /** What the Worker's reminder and recap need, and nothing more: no lift names, weights or notes leave the phone this way. */

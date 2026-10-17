@@ -1,5 +1,5 @@
 import { normalizeName } from './ids';
-import { e1rm, estimateWeightForReps, sameExercise, sessionsFor } from './stats';
+import { e1rm, estimateWeightForReps, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 import { isHold, isHoldLift } from './care';
 
@@ -130,19 +130,4 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
   const step = unit ? 5 : 1;
   const reps = top === 0 && !unit ? minReps + step : Math.min(minReps + step, st.repMax);
   return { kind: 'reps', weight: top, reps, last: last.sets, text: `${lb(top)} × ${reps}${unit}+ on every set` };
-}
-
-export interface PrResult { e1rm: boolean; reps: boolean }
-
-export function prCheck(entries: SetEntry[], set: SetEntry): PrResult {
-  if (set.flags.includes('hold')) return { e1rm: false, reps: false };
-  // Every other set of the lift, whatever its date: a late set on an old day isn't a PR if it has since been beaten.
-  const others = entries.filter((x) => x.id !== set.id && sameExercise(x.exercise, set.exercise));
-  const v = e1rm(set);
-  const best = Math.max(-Infinity, ...others.map(e1rm).filter((n): n is number => n != null));
-  const repsBest = Math.max(-Infinity, ...others.filter((x) => x.weight >= set.weight && x.reps != null && !x.flags.includes('warmup')).map((x) => x.reps as number));
-  return {
-    e1rm: v != null && Number.isFinite(best) && v > best,
-    reps: set.reps != null && Number.isFinite(repsBest) && !set.flags.includes('warmup') && set.reps > repsBest,
-  };
 }

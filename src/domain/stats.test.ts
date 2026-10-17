@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { bestSet, canonicalName, currentE1rm, e1rm, e1rmSeries, estimateWeightForReps, dayOrder, exerciseNames, lastSession, sessionsByDate, sessionsFor } from './stats';
+import { canonicalName, currentE1rm, e1rm, e1rmSeries, estimateWeightForReps, dayOrder, exerciseNames, lastSession, sessionsByDate, sessionsFor } from './stats';
+import { records } from './records';
 import { buildAppSet, derivedFlags } from './buildSet';
 import { fmtSet, fmtWeight } from './format';
 
@@ -41,8 +42,8 @@ describe('sessions', () => {
     expect(lastSession(data, 'Curl', '2026-01-08')?.date).toBe('2026-01-01');
     expect(lastSession(data, 'Curl', '2026-01-01')).toBeNull();
   });
-  it('picks the best set by e1RM, ignoring partials', () => {
-    expect(bestSet(data, 'Curl')?.set).toMatchObject({ date: '2026-01-08', weight: 30, reps: 10 });
+  it('picks the best set by e1RM, ignoring partials (Records holds it)', () => {
+    expect(records(data, 'Curl').get('e1rm')?.set).toMatchObject({ date: '2026-01-08', weight: 30, reps: 10 });
   });
   it('builds a series with PR markers and skips e1RM-less days', () => {
     const series = e1rmSeries(data, 'Curl');

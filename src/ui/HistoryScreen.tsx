@@ -4,9 +4,9 @@ import { byOrderDone, sessionsByDate, sameExercise } from '../domain/stats';
 import { fmtDay, fmtSet, plural } from '../domain/format';
 import { localDate } from '../domain/ids';
 import type { SetEntry } from '../domain/types';
-import { Fragment, useMemo } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { paces, sessionMinutes } from '../domain/timing';
-import { prIds } from '../domain/summary';
+import { prIds } from '../domain/records';
 
 function byExercise(sets: SetEntry[]): [string, SetEntry[]][] {
   const out: [string, SetEntry[]][] = [];
@@ -17,12 +17,20 @@ function byExercise(sets: SetEntry[]): [string, SetEntry[]][] {
   return out.map(([n, xs]) => [n, xs.sort(byOrderDone)]);
 }
 
-/** Without onAddTo (a friend's log) it's read-only. */
-export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; onOpen: (name: string) => void; onAddTo?: (date: string) => void }) {
+/** Without onAddTo (a friend's log) it's read-only. `focus`: a day to open and scroll to (a record tapped on a lift's screen). */
+export function HistoryScreen({ store, onOpen, onAddTo, focus = null, onFocused }: {
+  store: SetsStore; onOpen: (name: string) => void; onAddTo?: (date: string) => void; focus?: string | null; onFocused?: () => void;
+}) {
   const sessions = sessionsByDate(store.entries);
   const today = localDate(new Date());
   const pace = useMemo(() => paces(store.entries), [store.entries]);
   const prs = useMemo(() => prIds(store.entries), [store.entries]);
+  // Kept from the first render: the caller clears its copy once it's used, and the day stays open.
+  const [at] = useState(focus);
+  useEffect(() => {
+    if (at) document.querySelector(`details.day[data-date="${at}"]`)?.scrollIntoView({ block: 'start' });
+    onFocused?.();
+  }, []); // once, on arrival
   if (!sessions.length) return (<><h1>History</h1><p className="muted">No history yet — import it under More.</p></>);
   // By month, newest first. This month and last start open (and the newest month, if both are empty); older ones fold.
   const months: { key: string; days: typeof sessions }[] = [];
@@ -37,7 +45,7 @@ export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; on
     <>
       <h1>History</h1>
       {months.map((mo, mi) => (
-      <details className="month" key={mo.key} open={mi === 0 || mo.key >= lastMonth}>
+      <details className="month" key={mo.key} open={mi === 0 || mo.key >= lastMonth || mo.key === at?.slice(0, 7)}>
         <summary><span>{monthName(mo.key)} · {plural(mo.days.length, 'session')}</span></summary>
       {mo.days.map((s) => {
         const i = sessions.indexOf(s);
@@ -47,7 +55,7 @@ export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; on
         const bouts = s.sets.filter((x) => x.cardio), lifts = s.sets.length - bouts.length;
         const cardio = Math.round(bouts.reduce((a, x) => a + x.cardio!.seconds, 0) / 60);
         return (
-          <details className="day" key={s.date} open={i === 0}>
+          <details className="day" key={s.date} data-date={s.date} open={i === 0 || s.date === at}>
             <summary>
               <span className="day-date">{fmtDay(s.date, today)}</span>
               <span className="muted small">{plural(groups.length, 'exercise')}{(lifts > 0 || !bouts.length) && ` · ${plural(lifts, 'set')}`}{bouts.length > 0 && ` · ${cardio} min cardio`}{mins != null && ` · ${mins} min`}{s.sets.some((x) => prs.has(x.id)) && <>{' '}<span className="tag pr-tag">PR</span></>}</span>

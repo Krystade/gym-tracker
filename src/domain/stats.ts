@@ -41,16 +41,6 @@ export const sessionsByDate = (entries: SetEntry[]): Session[] =>
 export const lastSession = (entries: SetEntry[], exercise: string, beforeDate: string): Session | null =>
   sessionsFor(entries, exercise).find((x) => x.date < beforeDate) ?? null;
 
-export function bestSet(entries: SetEntry[], exercise: string): { set: SetEntry; e1rm: number } | null {
-  let best: { set: SetEntry; e1rm: number } | null = null;
-  for (const e of entries) {
-    if (!sameExercise(e.exercise, exercise)) continue;
-    const v = e1rm(e);
-    if (v != null && (!best || v > best.e1rm)) best = { set: e, e1rm: v };
-  }
-  return best;
-}
-
 export interface SeriesPoint { date: string; e1rm: number; pr: boolean }
 
 export function e1rmSeries(entries: SetEntry[], exercise: string): SeriesPoint[] {

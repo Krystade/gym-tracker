@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { defaultSettings, estimateRir, isWorking, nextTarget, prCheck, priorE1rm, rirOffset, settingsKey } from './progression';
+import { defaultSettings, estimateRir, isWorking, nextTarget, priorE1rm, rirOffset, settingsKey } from './progression';
+import { prKinds } from './records';
 
 let seq = 0;
 const s = (date: string, setNo: number, weight: number, reps: number | null, over: Partial<SetEntry> = {}): SetEntry => ({
@@ -146,29 +147,26 @@ describe('zero-rep sets', () => {
   });
 });
 
-describe('priorE1rm and prCheck', () => {
+describe('priorE1rm, and PRs at a weight', () => {
   const e = [s('2026-01-01', 1, 30, 10), s('2026-01-08', 1, 35, 8), s('2026-01-15', 1, 30, 12)];
+  const kinds = (all: SetEntry[], set: SetEntry) => [...(prKinds(all).get(set.id) ?? [])].sort();
   it('takes the best of the last three sessions before the date', () => {
     expect(priorE1rm(e, 'Curl', '2026-01-15')).toBeCloseTo(35 * (1 + 8 / 30), 5);
     expect(priorE1rm(e, 'Curl', '2026-01-01')).toBeNull();
   });
-  it('flags e1RM PRs and rep PRs at a weight', () => {
+  it('flags e1RM PRs and rep PRs at a weight (the shared rule in domain/records)', () => {
     const pr = s('2026-01-22', 1, 35, 10);
-    expect(prCheck([...e, pr], pr)).toEqual({ e1rm: true, reps: true });
-    const repOnly = s('2026-01-22', 2, 30, 13);
-    expect(prCheck([...e, repOnly], repOnly)).toEqual({ e1rm: false, reps: true });
+    expect(kinds([...e, pr], pr)).toEqual(['e1rm', 'reps', 'rm10']);
+    const more = s('2026-01-22', 2, 30, 13);
+    expect(kinds([...e, more], more)).toEqual(['reps', 'sessionVolume', 'setVolume']);
     const none = s('2026-01-22', 3, 30, 9);
-    expect(prCheck([...e, none], none)).toEqual({ e1rm: false, reps: false });
-  });
-  it('a late set on an old day is not a PR when a later day beat it', () => {
-    const old = s('2026-03-01', 1, 35, 8), later = s('2026-03-15', 1, 40, 10), late = s('2026-03-02', 1, 35, 10);
-    expect(prCheck([old, later, late], late)).toEqual({ e1rm: false, reps: false });
+    expect(kinds([...e, none], none)).toEqual([]);
   });
   it('does not call the first working set after warm-ups or partials a PR', () => {
     const wu = s('2026-02-01', 1, 20, 15, { flags: ['warmup'], exercise: 'Row' }), first = s('2026-02-01', 2, 60, 10, { exercise: 'Row' });
-    expect(prCheck([wu, first], first)).toEqual({ e1rm: false, reps: false });
+    expect(kinds([wu, first], first)).toEqual([]);
     const part = s('2026-02-02', 1, 40, null, { flags: ['partial'], exercise: 'Press' }), next = s('2026-02-02', 2, 40, 8, { exercise: 'Press' });
-    expect(prCheck([part, next], next)).toEqual({ e1rm: false, reps: false });
+    expect(kinds([part, next], next)).toEqual([]);
   });
 });
 
