@@ -299,13 +299,13 @@ test('pings and messages: a friend’s ping rings with their name and the badge,
   expect(ping.headers).toMatchObject({ urgency: 'normal', ttl: '86400', 'content-encoding': 'aes128gcm' });
   expect(String(ping.headers.topic)).toMatch(/^[\w-]{22}$/);
   const n = (await b.keys.read(ping)).notification as { title: string; body: string; navigate: string; app_badge?: string; data: { kind: string; route: string } };
-  expect(n).toMatchObject({ title: a.name, body: '💪 Strong', app_badge: '2', data: { kind: 'ping' } });
+  expect(n).toMatchObject({ title: a.name, body: '💪', app_badge: '2', data: { kind: 'ping' } }); // the emoji alone
   expect(n.data.route).toMatch(/^friend\.[\w-]+$/);
   // C's never comes: its message was counted (the 2) before A's ping went, so it was held back, not late.
   expect(b.keys.pushes()).toHaveLength(1);
 
   // The tap: the app opens on A's thread, with the ping in it.
   await b.page.goto(n.navigate);
-  await expect(thread(b.page, a.name).getByRole('list', { name: 'Messages' })).toContainText('💪 Strong');
+  await expect(thread(b.page, a.name).getByRole('list', { name: 'Messages' }).locator('.bubble-text')).toHaveText(['💪']);
   await Promise.all([a.close(), b.close(), c.close()]);
 });

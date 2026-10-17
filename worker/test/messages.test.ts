@@ -48,16 +48,16 @@ async function friends() {
 }
 
 describe('POST /notify: pings and messages', () => {
-  it('a ping rings with the preset\'s words, on the sender\'s topic, landing on the sender, with the badge counting', async () => {
+  it('a ping rings with the preset\'s emoji alone, on the sender\'s topic, landing on the sender, with the badge counting', async () => {
     const { a, net, send, note } = await friends();
     expect((await send(a, { kind: 'p', e: 'strong' })).json).toEqual({ ok: true });
     expect(net.sent).toHaveLength(1);
     expect(Object.fromEntries(net.sent[0].headers)).toMatchObject({ urgency: 'normal', ttl: '86400', topic: await friendTopic(a) });
-    expect(await note()).toEqual({ title: 'alice', body: '💪 Strong', lang: 'en', navigate: `${APP}#open=friend.${a}`, app_badge: '1', data: { kind: 'ping', route: `friend.${a}` } });
+    expect(await note()).toEqual({ title: 'alice', body: '💪', lang: 'en', navigate: `${APP}#open=friend.${a}`, app_badge: '1', data: { kind: 'ping', route: `friend.${a}` } });
   });
 
-  it('every preset has its words; one this Worker doesn\'t know says "sent you a ping"', async () => {
-    const want: Record<string, string> = { strong: '💪 Strong', fire: '🔥 On fire', clap: '👏 Nice work', gym: '🏋️ Gym today?', eyes: '👀 Did you lift?', salute: '🫡 On it', kiss: 'sent you a ping' };
+  it('every preset rings as its emoji, with no words; one this Worker doesn\'t know says "sent you a ping"', async () => {
+    const want: Record<string, string> = { strong: '💪', fire: '🔥', clap: '👏', gym: '🏋️', eyes: '👀', salute: '🫡', kiss: 'sent you a ping' };
     for (const [e, body] of Object.entries(want)) {
       const { a, send, note, net } = await friends();
       await send(a, { kind: 'p', e });
@@ -155,7 +155,7 @@ describe('POST /notify: pings and messages', () => {
     expect((await call(b, 'POST', '/badge', { n: 0 })).status).toBe(200);
     expect((await call(b, 'POST', '/badge', { n: -1 })).status).toBe(400);
     await send(a, { kind: 'p', e: 'eyes' });
-    expect(await note()).toMatchObject({ body: '👀 Did you lift?', app_badge: '1' });
+    expect(await note()).toMatchObject({ body: '👀', app_badge: '1' });
   });
 
   it('refuses a muted list that isn\'t uids', async () => {

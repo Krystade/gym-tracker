@@ -96,7 +96,9 @@ test('a ping from an Orbit row and a message from the friend view land in the ot
 
   await sheet.getByRole('button', { name: 'Send 💪 Strong' }).click();
   await expect(sheet.getByRole('status')).toHaveText('Sent 💪');
-  await expect(sheet.getByRole('list', { name: 'Messages' }).locator('.bubble.mine')).toHaveText([/💪 Strong/]);
+  // A ping is its emoji alone, larger than a message's words; no label goes with it.
+  await expect(sheet.getByRole('list', { name: 'Messages' }).locator('.bubble.mine .bubble-text')).toHaveText(['💪']);
+  expect(await fontPx(sheet.locator('.bubble.ping .bubble-text'))).toBeGreaterThanOrEqual(28);
   // 140 characters at most, counted as it's typed; an empty one can't be sent.
   await expect(sheet.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
   await field.fill('x'.repeat(150));
@@ -107,7 +109,7 @@ test('a ping from an Orbit row and a message from the friend view land in the ot
   await sheet.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(sheet.getByRole('status')).toHaveText('Sent');
   await expect(field).toHaveValue('');
-  await expect(sheet.getByRole('list', { name: 'Messages' }).locator('.bubble.mine')).toHaveText([/💪 Strong/, /See you at 6\?/]);
+  await expect(sheet.getByRole('list', { name: 'Messages' }).locator('.bubble.mine .bubble-text')).toHaveText(['💪', LONG]);
   await a.page.screenshot({ path: `${SHOTS}/thread-sent.png` });
   await sheet.getByRole('button', { name: 'Close' }).click();
   await expect(sheet).toHaveCount(0);
@@ -115,13 +117,13 @@ test('a ping from an Orbit row and a message from the friend view land in the ot
   await expect(row.getByRole('button', { name: `Message @${b.name}`, exact: true })).toBeVisible();
   await expect(row.locator('.unread-dot')).toHaveCount(0);
 
-  // B opens the app: Today has the newest in one line, and More its dot.
+  // B opens the app: Today has the newest in one line, and the Friends tab its dot.
   await b.page.reload();
   const news = b.page.getByRole('button', { name: new RegExp(`^@${a.name} See you at 6\\?`) });
   await expect(news).toBeVisible();
   await expect(news).toContainText('tap to reply');
   expect(await noSideScroll(b.page)).toBe(true);
-  await expect(b.page.getByRole('navigation', { name: 'Sections' }).locator('.tab-dot')).toHaveCount(1);
+  await expect(b.page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Friends', exact: true }).locator('.tab-dot')).toHaveCount(1);
   await b.page.screenshot({ path: `${SHOTS}/today-news.png` });
   await info.attach('today-news', { path: `${SHOTS}/today-news.png`, contentType: 'image/png' });
   // On Friends, A's row has the dot and says how many.
@@ -140,7 +142,7 @@ test('a ping from an Orbit row and a message from the friend view land in the ot
   // Opening the thread reads them: both of A's, oldest first; the dots go.
   await aRow.getByRole('button', { name: `Message @${a.name}, 2 unread` }).click();
   const bSheet = sheetOf(b.page, a.name);
-  await expect(bSheet.getByRole('list', { name: 'Messages' }).locator('.bubble.theirs')).toHaveText([/💪 Strong/, /See you at 6\?/]);
+  await expect(bSheet.getByRole('list', { name: 'Messages' }).locator('.bubble.theirs .bubble-text')).toHaveText(['💪', LONG]);
   await bSheet.getByRole('button', { name: 'Close' }).click();
   await expect(aRow.getByRole('button', { name: `Message @${a.name}`, exact: true })).toBeVisible();
   await expect(aRow.locator('.unread-dot')).toHaveCount(0);
@@ -162,7 +164,7 @@ test('a ping from an Orbit row and a message from the friend view land in the ot
   // A: B's 👏 on Today, and a tap there opens B's thread.
   await a.page.reload();
   await a.page.getByRole('button', { name: new RegExp(`^@${b.name} 👏`) }).click();
-  await expect(sheetOf(a.page, b.name).getByRole('list', { name: 'Messages' }).locator('.bubble')).toHaveText([/💪 Strong/, /See you at 6\?/, /👏 Nice work/]);
+  await expect(sheetOf(a.page, b.name).getByRole('list', { name: 'Messages' }).locator('.bubble .bubble-text')).toHaveText(['💪', LONG, '👏']);
 });
 
 test('mute is quiet and private; block stops the sender and lists them to unblock', async ({ browser }) => {
@@ -225,4 +227,91 @@ test('mute is quiet and private; block stops the sender and lists them to unbloc
   await expect(friends(b.page).getByRole('region', { name: 'Blocked' })).toHaveCount(0);
   await friends(a.page).getByRole('button', { name: 'Send request' }).click();
   await expect(friends(a.page).getByRole('status')).toContainText(b.name);
+});
+
+// ---- The sheet on a notched phone, with a thread long enough to reach its full height ----
+
+const EMU = 'http://127.0.0.1:8080/v1/projects/demo-gym-tracker/databases/(default)/documents';
+/** The signed-in account's uid, as this phone keeps it. */
+const uidOf = (page: Page) => page.evaluate(async () => {
+  const db: IDBDatabase = await new Promise((ok, no) => { const r = indexedDB.open('gym-tracker-shared'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+  const link: { uid: string } = await new Promise((ok, no) => { const r = db.transaction('kv').objectStore('kv').get('cloud'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+  db.close();
+  return link.uid;
+});
+/** `n` long messages from `from` in `to`'s inbox, written as an admin (the rules' 2 s gap would make this a minute). */
+async function seedThread(page: Page, from: string, to: string, n: number) {
+  for (let i = 0; i < n; i++) {
+    const res = await page.request.post(`${EMU}/users/${to}/inbox`, {
+      headers: { Authorization: 'Bearer owner' },
+      data: { fields: { from: { stringValue: from }, kind: { stringValue: 'm' }, t: { stringValue: `${i + 1}. ${LONG}` }, at: { timestampValue: new Date(Date.now() - (n - i) * 60_000).toISOString() } } },
+    });
+    expect(res.ok()).toBe(true);
+  }
+}
+
+test('a full thread sheet starts below the status bar, and stays on the visible screen when iOS leaves the viewport offset', async ({ browser }) => {
+  const [a, b] = await Promise.all([person(browser), person(browser)]);
+  await befriend(b, a, b.name);
+  await seedThread(a.page, await uidOf(b.page), await uidOf(a.page), 10);
+  await orbit(a.page).getByTestId(`orbit-${b.name}`).getByRole('button', { name: new RegExp(`^Message @${b.name}`) }).click();
+  const sheet = sheetOf(a.page, b.name);
+  await expect(sheet.getByRole('list', { name: 'Messages' }).locator('.bubble.theirs')).toHaveCount(10);
+  const head = sheet.locator('.sheet-head');
+  // Ten long messages fill it to its full height: its top is up by the status bar, where the bug was.
+  expect((await sheet.boundingBox())!.y).toBeLessThan(TOP + 60);
+  expect((await head.boundingBox())!.y).toBeGreaterThanOrEqual(TOP);
+  await a.page.screenshot({ path: `${SHOTS}/thread-full.png` });
+  // iOS 26 can leave the visual viewport 40px down the page after the keyboard closes (src/ui/viewportPin.ts sets
+  // these): the header still clears the status bar on the screen you see, and the sheet's foot stays on it.
+  await a.page.evaluate(() => { const s = document.documentElement.style; s.setProperty('--vv-top', '40px'); s.setProperty('--vv-bottom', '30px'); });
+  await expect.poll(async () => (await head.boundingBox())!.y).toBeGreaterThanOrEqual(TOP + 40);
+  const box = (await sheet.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(812 - 30 + 0.5);
+});
+
+test('the message box wraps a long message onto lines it grows to fit; Enter is a new line, Send sends; the count shows near the limit', async ({ browser }) => {
+  const [a, b] = await Promise.all([person(browser), person(browser)]);
+  await befriend(b, a, b.name);
+  await orbit(a.page).getByTestId(`orbit-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
+  const sheet = sheetOf(a.page, b.name);
+  await expect(sheet.getByRole('button', { name: 'Send 💪 Strong' })).toBeEnabled(); // read: the box is live
+  const field = sheet.getByRole('textbox', { name: `Message @${b.name}` });
+  expect(await fontPx(field)).toBeGreaterThanOrEqual(16);
+  const one = (await field.boundingBox())!.height;
+  expect(one).toBeGreaterThanOrEqual(44);
+  // Short: one line, and no count.
+  await field.fill('On my way');
+  await expect(sheet.getByText(/^\d+\/140$/)).toHaveCount(0);
+
+  // 130 characters: all of it in view, none of it scrolled sideways or up out of sight, the box taller, the count shown.
+  const text = `${LONG} and then curls, a few sets of dips, and a long walk home`.slice(0, 130);
+  expect(text).toHaveLength(130);
+  await field.fill(text);
+  await expect(sheet.getByText('130/140', { exact: true })).toBeVisible();
+  const m = await field.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth, sh: el.scrollHeight, ch: el.clientHeight }));
+  expect(m.sw, 'nothing scrolled sideways').toBeLessThanOrEqual(m.cw);
+  expect(m.sh, 'nothing scrolled out of the top').toBeLessThanOrEqual(m.ch + 1);
+  const grown = (await field.boundingBox())!;
+  expect(grown.height).toBeGreaterThan(one + 20);
+  expect(grown.x).toBeGreaterThanOrEqual(0);
+  expect(grown.x + grown.width).toBeLessThanOrEqual(375);
+  expect(grown.y + grown.height).toBeLessThanOrEqual(812 - BOTTOM);
+  expect((await sheet.locator('.sheet-head').boundingBox())!.y).toBeGreaterThanOrEqual(TOP);
+  expect(await noSideScroll(a.page)).toBe(true);
+  await a.page.screenshot({ path: `${SHOTS}/thread-long-message.png` });
+
+  // Enter starts a new line and sends nothing; Send sends both lines, and the bubble keeps the break. The box shrinks back.
+  await field.fill('Line one');
+  await field.press('Enter');
+  await field.pressSequentially('line two');
+  await expect(field).toHaveValue('Line one\nline two');
+  await expect(sheet.locator('.bubble.mine')).toHaveCount(0);
+  await sheet.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(sheet.getByRole('status')).toHaveText('Sent');
+  const bubble = sheet.locator('.bubble.mine .bubble-text');
+  await expect(bubble).toHaveCount(1);
+  expect(await bubble.innerText()).toBe('Line one\nline two');
+  await expect(field).toHaveValue('');
+  expect((await field.boundingBox())!.height).toBeLessThanOrEqual(one + 1);
 });

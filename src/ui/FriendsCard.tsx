@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cloudError, loadCloud, type Cloud } from '../cloud/firebase';
 import {
-  acceptInvite, acceptRequest, claimUsername, clearSentGym, listSentGyms, declineRequest, listBlocked, listFriends, listRequests, liveInvite, makeInvite, myUsername, peekInvite, revokeInvites, sendRequest, unblock,
-  type Friend, type FriendNews, type Request, type SentGym,
+  acceptInvite, acceptRequest, claimUsername, clearSentGym, declineRequest, makeInvite, peekInvite, revokeInvites, sendRequest, unblock,
+  type Friend, type FriendNews,
 } from '../cloud/friends';
+import { hydrateFriendCache, patchFriendCache, refreshLists, useFriendCache } from '../state/friendCache';
 import { Latest, MessageButton } from './MessageButton';
 import type { ThreadWith } from './ThreadSheet';
 import type { GymsStore } from '../state/useGyms';
@@ -13,19 +14,22 @@ import { cleanUsername, inviteUrl, parseInvite, USERNAME, type Invite } from '..
 type Msg = { ok: boolean; text: string } | null;
 const base = () => `${location.origin}${location.pathname}`;
 
-/** Find friends by username or an invite link; tap one to see their log. Only while signed in. */
-export function FriendsCard({ uid, gyms, pending, news, newsRev, onPendingDone, onView, onChanged, onMessage, onFriends }: {
+/**
+ * Find friends by username or an invite link; tap one to see their log. Only while signed in. The lists show from what the
+ * phone kept (state/friendCache) and are read again on opening, after anything done here, and when news comes in.
+ */
+export function FriendsCard({ uid, gyms, pending, news, newsRev, onPendingDone, onView, onChanged, onMessage }: {
   uid: string; gyms: GymsStore; pending: Invite | null; news?: FriendNews | null; newsRev?: number; onPendingDone: () => void; onView: (f: Friend) => void;
-  /** After anything done here: the More tab's dot and the badge count again. */ onChanged: () => void;
+  /** After anything done here: the Friends tab's dot and the badge count again. */ onChanged: () => void;
   /** A friend's thread: pings, messages, mute, remove and block. */ onMessage: (f: ThreadWith) => void;
-  /** The list as it stands after each refresh, for Orbit above. */ onFriends?: (f: Friend[]) => void;
 }) {
-  const [me, setMe] = useState<string | null | undefined>(undefined);
-  const [friends, setFriends] = useState<Friend[]>([]);
-  const [requests, setRequests] = useState<Request[]>([]);
-  const [sentGyms, setSentGyms] = useState<SentGym[]>([]);
-  const [blocked, setBlocked] = useState<Friend[]>([]);
-  const [invite, setInvite] = useState<Invite | null>(null);
+  const cache = useFriendCache(uid);
+  const lists = cache?.lists;
+  // Nothing kept and the first read failed: the username form, with the error, as before.
+  const [failed, setFailed] = useState(false);
+  const me = lists ? lists.me : failed ? null : undefined;
+  const { friends = [], requests = [], sentGyms = [], blocked = [], invite = null } = lists ?? {};
+  const setMe = (n: string) => void patchFriendCache(uid, (c) => (c.lists ? { ...c, lists: { ...c.lists, me: n } } : c));
   const [name, setName] = useState('');
   const [find, setFind] = useState('');
   const [paste, setPaste] = useState('');
@@ -37,10 +41,7 @@ export function FriendsCard({ uid, gyms, pending, news, newsRev, onPendingDone, 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
 
-  const refresh = useCallback(async (c: Cloud) => {
-    const [f, r, i, s, b] = await Promise.all([listFriends(c, uid), listRequests(c, uid), liveInvite(c, uid), listSentGyms(c, uid), listBlocked(c, uid).catch(() => [])]);
-    setFriends(f); setRequests(r); setInvite(i); setSentGyms(s); setBlocked(b); onFriends?.(f);
-  }, [uid, onFriends]);
+  const refresh = useCallback(async (c: Cloud) => { await refreshLists(c, uid); }, [uid]);
   /** One action at a time; its outcome (or the error in plain words) shows under the card's heading. */
   const act = useCallback(async (f: (c: Cloud) => Promise<string | void>) => {
     setBusy(true); setMsg(null);
@@ -54,10 +55,12 @@ export function FriendsCard({ uid, gyms, pending, news, newsRev, onPendingDone, 
     finally { setBusy(false); }
   }, [refresh, onChanged]);
 
+  // Opening Friends reads the lists again, quietly over what was kept; with nothing kept a failure says so.
   useEffect(() => {
     void (async () => {
-      try { const c = await loadCloud(); setMe(await myUsername(c, uid)); await refresh(c); }
-      catch (e) { setMe(null); setMsg({ ok: false, text: cloudError(e) }); }
+      const kept = (await hydrateFriendCache(uid)).lists;
+      try { await refresh(await loadCloud()); }
+      catch (e) { if (!kept) { setFailed(true); setMsg({ ok: false, text: cloudError(e) }); } }
     })();
   }, [uid, refresh]);
   // Something changed elsewhere (a thread's Remove, Block or Add, a push): read the lists again, quietly.
@@ -76,6 +79,7 @@ export function FriendsCard({ uid, gyms, pending, news, newsRev, onPendingDone, 
   }, [pending, me, open, onPendingDone]);
 
   const message = msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? 'muted small' : 'warn'}>{msg.text}</p>;
+  if (!cache) return null; // the phone's copy, a few ms away: no flash of Loading
   if (me === undefined) return <section className="card" aria-label="Friends"><p className="muted">Loading…</p>{message}</section>;
   if (!me) {
     const n = cleanUsername(name), ok = USERNAME.test(n);

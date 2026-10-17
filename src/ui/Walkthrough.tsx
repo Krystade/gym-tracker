@@ -8,9 +8,9 @@ const EDGE = 8; // the least room between the ring and the screen's edge
 const CARDS: { title: string; body: string; at: string[] }[] = [
   { title: 'Today', body: 'Today is where you train. The arrows step to other days, to log one you missed.', at: ['day'] },
   { title: 'Log a set', body: 'Add exercise opens a lift. Type the weight and reps and tap Add set; the next set starts from the last one.', at: ['add'] },
-  { title: 'The plan', body: 'Program builds a plan from your priorities, using only what your gym has (list it on Gym). Today then lists what’s left; Skip or Swap any lift from its row.', at: ['program'] },
+  { title: 'The plan', body: 'Program builds a plan from your priorities, using only what your gym has (list it under More, in Gym). Today then lists what’s left; Skip or Swap any lift from its row.', at: ['program'] },
   { title: 'History, Lifts and Stats', body: 'History lists every session, Lifts shows your last and best sets, and Stats counts weekly sets per muscle against targets that fit your week.', at: ['history', 'lifts', 'stats'] },
-  { title: 'Your data', body: 'Everything stays on this phone. Export a backup under More now and then; Friends, Photos and this walkthrough are there too.', at: ['more'] },
+  { title: 'Your data', body: 'Everything stays on this phone. Export a backup under More now and then; Gym, Photos and this walkthrough are there too.', at: ['more'] },
 ];
 
 /** Whether the walkthrough still has to be shown. Storage that can't be read counts as seen, so it never nags. */

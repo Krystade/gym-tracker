@@ -10,6 +10,7 @@ import type { SetsStore } from './useSets';
 import type { BodyStore } from './useBody';
 import { keepReplaced, replacedChanged } from './useReplaced';
 import { KEEP_MS } from '../domain/replaced';
+import { forgetFriendCaches } from './friendCache';
 
 export type CloudStatus = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'done'; text: string } | { kind: 'error'; text: string };
 const QUIET_MS = 3000; // after the last change, so a run of sets syncs once
@@ -116,6 +117,7 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
   const signOut = useCallback(async () => {
     try { const { auth, A } = await loadCloud(); await A.signOut(auth); } catch { /* signed out locally either way */ }
     await deleteCloudLink();
+    await forgetFriendCaches(); // friends' lines and threads kept for Friends: not on the phone once signed out
     setLink(null);
     setStatus({ kind: 'idle' });
   }, []);
@@ -142,6 +144,7 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
       await deleteCloudData(c, user.uid);
       await c.A.deleteUser(user);
       await deleteCloudLink();
+      await forgetFriendCaches();
       setLink(null);
       setStatus({ kind: 'done', text: 'Account deleted. Your log is still on this phone.' });
       return true;

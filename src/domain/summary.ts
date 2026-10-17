@@ -1,34 +1,20 @@
 import { muscleVector, type Muscle } from './muscles';
 import { isWorking } from './progression';
-import { byOrderDone, e1rm, lastSession, sameExercise } from './stats';
+import { byOrderDone, lastSession, sameExercise } from './stats';
+import { prIds } from './records';
 import { normalizeName } from './ids';
 import type { SetEntry } from './types';
 
 const key = (s: string) => normalizeName(s).toLowerCase();
-const chrono = (a: SetEntry, b: SetEntry) => (a.date < b.date ? -1 : a.date > b.date ? 1 : byOrderDone(a, b));
 
-/** Every set that beat all earlier sets of its lift (by e1RM) when it was done. A lift's first set ever isn't one. One pass per lift. */
-export function prIds(entries: SetEntry[]): Set<string> {
-  const byLift = new Map<string, SetEntry[]>();
-  for (const e of entries) (byLift.get(key(e.exercise)) ?? byLift.set(key(e.exercise), []).get(key(e.exercise))!).push(e);
-  const out = new Set<string>();
-  for (const sets of byLift.values()) {
-    let top = -Infinity;
-    for (const e of sets.sort(chrono)) {
-      const v = e1rm(e);
-      if (v == null) continue;
-      if (Number.isFinite(top) && v > top) out.add(e.id);
-      top = Math.max(top, v);
-    }
-  }
-  return out;
+/** The PR sets done on `date`, by the one rule (domain/records): only the lifts done that day are read. */
+export function prSetIds(entries: SetEntry[], date: string): Set<string> {
+  const day = entries.filter((e) => e.date === date);
+  const done = new Set(day.map((e) => key(e.exercise)));
+  const lifts = entries.filter((e) => done.has(key(e.exercise)));
+  const ids = new Set(day.map((e) => e.id));
+  return new Set([...prIds(lifts)].filter((id) => ids.has(id)));
 }
-
-/** The PR sets done on `date`. */
-export const prSetIds = (entries: SetEntry[], date: string): Set<string> => {
-  const day = new Set(entries.filter((e) => e.date === date).map((e) => e.id));
-  return new Set([...prIds(entries)].filter((id) => day.has(id)));
-};
 
 /** The heaviest working set, more reps breaking a tie. */
 export const topSet = (sets: SetEntry[]) => sets.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && (b.reps ?? 0) > (a.reps ?? 0)) ? b : a));
@@ -50,7 +36,9 @@ export function daySummary(entries: SetEntry[], date: string): DaySummary {
     const prev = lastSession(entries, exercise, date)?.sets.filter(isWorking) ?? [];
     const top = topSet(sets);
     const times = sets.filter((e) => e.weight === top.weight && e.reps === top.reps).length;
-    return { exercise, top, times, last: prev.length ? topSet(prev) : null, pr: sets.some((e) => prs.has(e.id)) };
+    // A partial set can be the PR (heaviest weight) without being a working set.
+    const pr = entries.some((e) => e.date === date && prs.has(e.id) && sameExercise(e.exercise, exercise));
+    return { exercise, top, times, last: prev.length ? topSet(prev) : null, pr };
   });
   const per = new Map<Muscle, number>();
   for (const e of today) for (const [m, f] of Object.entries(muscleVector(e.exercise) ?? {}) as [Muscle, number][]) per.set(m, (per.get(m) ?? 0) + f);

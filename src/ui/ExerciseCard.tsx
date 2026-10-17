@@ -1,8 +1,9 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
-import { bestSet, byOrderDone, e1rm, lastSession, sameExercise } from '../domain/stats';
-import { estimateRir, isWorking, nextTarget, prCheck, priorE1rm, rirOffset } from '../domain/progression';
+import { byOrderDone, lastSession, sameExercise } from '../domain/stats';
+import { estimateRir, isWorking, nextTarget, priorE1rm, rirOffset } from '../domain/progression';
+import { prToast, records } from '../domain/records';
 import { fmtDay, fmtSet, fmtWeight } from '../domain/format';
 import type { Flag, SetEntry } from '../domain/types';
 import { SetForm, type SetFormValue } from './SetForm';
@@ -60,7 +61,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   // With several sets and cards below, Save sits off-screen; 'nearest' moves nothing when it is already in view.
   useEffect(() => { if (editing) editBox.current?.scrollIntoView({ block: 'nearest' }); }, [editing?.id]);
   const last = lastSession(store.entries, exercise, date);
-  const best = bestSet(store.entries, exercise);
+  const best = useMemo(() => records(store.entries, exercise).get('e1rm'), [store.entries, exercise]);
   // The heaviest working set ever: a weight far above it is more likely a typo than a jump.
   // A lift swapped in with no history of its own is checked against the one it replaces.
   const heaviest = useMemo(() => {
@@ -100,9 +101,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     if (!e) return false;
     // A set done just now starts the rest; one entered for an earlier time or day doesn't.
     if (at === undefined && date === realToday) startRest(restSeconds(pace, exercise), exercise.toLowerCase(), `${exercise} · set ${working.length + (isWorking(e) ? 1 : 0) + 1} next`);
-    const r = prCheck([...store.entries, e], e);
-    if (r.e1rm) setPr(`PR! New best e1RM ${Math.round(e1rm(e)!)} lb`);
-    else if (r.reps) setPr(`Rep PR at ${fmtWeight(e.weight)} lb`);
+    // The same rule as the PR badge; a set that broke several records names the best one.
+    setPr(prToast(store.entries, e));
     return true;
   }
 
@@ -135,7 +135,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
         <button className="fold-line" aria-expanded="false" aria-label={`Show ${exercise}`} onClick={() => setOpened(true)}>
           <b>{exercise}</b>
           <span className="ok">{working.length}/{plannedSets} sets ✓</span>
-          {working.some((x) => prs.has(x.id)) && <span className="tag pr-tag">PR</span>}
+          {today.some((x) => prs.has(x.id)) && <span className="tag pr-tag">PR</span>}
           <span className="muted nw">{fmtSet(top)}</span>
         </button>
         {pr && <p role="status" className="pr">{pr}</p>}
@@ -154,7 +154,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       <header className="card-head">
         <button className="link" onClick={() => onOpen(exercise)}>{exercise}</button>
         {complete && <button className="mini" aria-expanded="true" onClick={() => setOpened(false)}>Fold</button>}
-        {best && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.e1rm))} lb</span>}
+        {best?.set && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.value))} lb</span>}
       </header>
       {last && <p className="muted card-last">Last ({fmtDay(last.date, realToday)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
       {swappedFrom && <p className="muted card-last">For {swappedFrom}{from && <> · last {from.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</>}</p>}

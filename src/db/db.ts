@@ -307,6 +307,23 @@ export interface CloudLink { key: 'cloud'; uid: string; email: string; person: s
 export const getCloudLink = async (): Promise<CloudLink | undefined> => (await shared()).get('kv', 'cloud');
 export const putCloudLink = async (c: CloudLink): Promise<void> => { await (await shared()).put('kv', c); };
 export const deleteCloudLink = async (): Promise<void> => { await (await shared()).delete('kv', 'cloud'); };
+/**
+ * Friends as last read for one account (src/state/friendCache.ts): their lists, Orbit lines, news and threads, so Friends opens
+ * from the phone and refreshes quietly. Only what the account may read anyway; forgotten on sign-out.
+ */
+export const getFriendCache = async <T>(uid: string): Promise<T | undefined> => {
+  const x: (T & { key?: string }) | undefined = await (await shared()).get('kv', `friends:${uid}`);
+  if (!x) return undefined;
+  const { key: _key, ...rest } = x;
+  return rest as T;
+};
+export const putFriendCache = async (uid: string, v: object): Promise<void> => { await (await shared()).put('kv', { ...v, key: `friends:${uid}` }); };
+export async function deleteFriendCaches(): Promise<void> {
+  const d = await shared();
+  const keys = await d.getAllKeys('kv', IDBKeyRange.bound('friends:', 'friends;', false, true)); // ';' follows ':'
+  const tx = d.transaction('kv', 'readwrite');
+  await Promise.all([...keys.map((k) => tx.store.delete(k)), tx.done]);
+}
 /** What this person's last cloud sync left each month as (see domain/cloud monthsToSync), for one account. */
 export interface CloudSeen { key: 'cloud-seen'; uid: string; seen: Seen; at?: string; /** Settings, program and the rest: see cloud/sync MetaSeen. */ meta?: { items: Record<string, string>; at: number } }
 export async function getCloudSeen(): Promise<CloudSeen | undefined> { return (await db()).get('config', 'cloud-seen'); }

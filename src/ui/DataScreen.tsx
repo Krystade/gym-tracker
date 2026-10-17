@@ -25,9 +25,9 @@ import { fmtDay, plural } from '../domain/format';
 const KIND: Partial<Record<CsvKind, string>> = { body: 'Body data', 'mfp-weight': 'MyFitnessPal weight', 'mfp-nutrition': 'MyFitnessPal nutrition' };
 
 /** The More tab: the screens that aren't tabs on top, then backup, account, sync and help. */
-export function DataScreen({ store, profile, body, sync, cloud, people, requests = 0, onOpenPaste, onShowWalkthrough, onOpenCharacters, onOpenFriends, onOpenProgram, onOpenPhotos }: {
-  store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; cloud: CloudStore; people: PeopleStore; requests?: number;
-  onOpenPaste: () => void; onShowWalkthrough: () => void; onOpenCharacters: () => void; onOpenFriends: () => void; onOpenProgram: () => void; onOpenPhotos: () => void;
+export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPaste, onShowWalkthrough, onOpenCharacters, onOpenGym, onOpenProgram, onOpenPhotos }: {
+  store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; cloud: CloudStore; people: PeopleStore;
+  onOpenPaste: () => void; onShowWalkthrough: () => void; onOpenCharacters: () => void; onOpenGym: () => void; onOpenProgram: () => void; onOpenPhotos: () => void;
 }) {
   const db = useDb();
   const [bodyMsgs, setBodyMsgs] = useState<{ ok: boolean; text: string }[]>([]);
@@ -111,7 +111,7 @@ export function DataScreen({ store, profile, body, sync, cloud, people, requests
     <>
       <h1>More</h1>
       <ul className="card more-list" aria-label="More screens">
-        {([['Characters', onOpenCharacters, null], ['Friends', onOpenFriends, requests ? plural(requests, 'request') : null], ['Program', onOpenProgram, null], ['Photos', onOpenPhotos, null]] as const).map(([name, go, note]) => (
+        {([['Characters', onOpenCharacters, null], ['Gym', onOpenGym, null], ['Program', onOpenProgram, null], ['Photos', onOpenPhotos, null]] as const).map(([name, go, note]) => (
           <li key={name}><button className="more-row" onClick={go}><span>{name}</span>{note && <span className="more-note">{note}</span>}<span className="muted" aria-hidden="true">›</span></button></li>
         ))}
       </ul>
