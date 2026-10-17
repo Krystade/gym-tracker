@@ -607,20 +607,20 @@ Each part ships on its own: tests first, deploy, then the full suite from a sepa
 - https://support.apple.com/guide/watch/apd68a69f5c7 (fetched 2026-10-16)
 
 **Repo files read:**
-- `C:\Users\jackp\projects\gym-tracker-wt\vite.config.ts`
-- `C:\Users\jackp\projects\gym-tracker-wt\src\main.tsx`
-- `C:\Users\jackp\projects\gym-tracker-wt\src\cloud\friends.ts`
-- `C:\Users\jackp\projects\gym-tracker-wt\src\cloud\firebase.ts`
-- `C:\Users\jackp\projects\gym-tracker-wt\src\state\useCloud.ts`
-- `C:\Users\jackp\projects\gym-tracker-wt\src\ui\App.tsx`
-- `C:\Users\jackp\projects\gym-tracker-wt\src\domain\profile.ts`
-- `C:\Users\jackp\projects\gym-tracker-wt\src\domain\program.ts`
-- `C:\Users\jackp\projects\gym-tracker-wt\firestore.rules`
-- `C:\Users\jackp\projects\gym-tracker-wt\rules\firestore.rules.test.ts`
-- `C:\Users\jackp\projects\gym-tracker-wt\firebase.json`
-- `C:\Users\jackp\projects\gym-tracker-wt\playwright.config.ts`
-- `C:\Users\jackp\projects\gym-tracker-wt\.gitignore`
-- `C:\Users\jackp\projects\gym-tracker-wt\.github\workflows\deploy.yml`
-- `C:\Users\jackp\projects\gym-tracker-wt\docs\superpowers\plans\2026-10-16-round-7.md`
-- `C:\Users\jackp\projects\gym-tracker-wt\docs\superpowers\plans\2026-10-16-cardio.md`
-- `C:\Users\jackp\projects\gym-tracker-wt\docs\superpowers\plans\2026-10-07-accounts-friends.md`
+- `vite.config.ts`
+- `src/main.tsx`
+- `src/cloud/friends.ts`
+- `src/cloud/firebase.ts`
+- `src/state/useCloud.ts`
+- `src/ui/App.tsx`
+- `src/domain/profile.ts`
+- `src/domain/program.ts`
+- `firestore.rules`
+- `rules/firestore.rules.test.ts`
+- `firebase.json`
+- `playwright.config.ts`
+- `.gitignore`
+- `.github/workflows/deploy.yml`
+- `docs/superpowers/plans/2026-10-16-round-7.md`
+- `docs/superpowers/plans/2026-10-16-cardio.md`
+- `docs/superpowers/plans/2026-10-07-accounts-friends.md`
