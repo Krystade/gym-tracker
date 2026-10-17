@@ -3,6 +3,7 @@ import type { SetsStore } from '../state/useSets';
 import { useDb } from '../state/profileDb';
 import { CATALOG } from '../domain/catalog';
 import { isHold } from '../domain/care';
+import { fmtCardio } from '../domain/cardio';
 import { fmtDate, fmtWeight, plural } from '../domain/format';
 import { matchExercise, nameKey, parseNotes, toEntries, type NoteLine, type NoteSet } from '../domain/notes';
 import { exerciseNames } from '../domain/stats';
@@ -17,7 +18,8 @@ Plank: 45s 40s
 Lat pulldown
 100x12 100x10`;
 
-const chip = (s: NoteSet): string =>
+// Cardio reads as History shows it: "20:00 · 1.2 mi · 5%".
+const chip = (s: NoteSet): string => s.cardio ? fmtCardio(s.cardio) :
   s.flags.includes('hold') ? `${s.weight ? `${fmtWeight(s.weight)} lb · ` : ''}${s.reps ?? '—'} s` : `${s.weight === 0 ? 'BW' : fmtWeight(s.weight)}×${s.reps ?? '—'}`;
 const BADGE: Partial<Record<string, string>> = { warmup: 'warm-up', pain: 'pain', unsure: '?', partial: 'partial', double_pulley: '2×pulley' };
 
@@ -123,7 +125,9 @@ export function PasteScreen({ store, today, onBack, onDone }: { store: SetsStore
       <li key={l.index} className={`paste-line${skipped ? ' dim' : ''}`}>
         <input className="paste-name" list="known-exercises" aria-label={`Exercise on line ${l.index + 1}`} value={ex}
           onChange={(e) => setOverrides((o) => ({ ...o, [key]: e.target.value }))} />
-        {ex !== l.name && <span className="muted small">as written: {l.name}</span>}
+        {/* A cardio line's numbers were read out of free text: show it as written, to check against. */}
+        {l.sets!.some((s) => s.cardio) ? <span className="muted small">as written: {l.raw.trim()}</span>
+          : ex !== l.name && <span className="muted small">as written: {l.name}</span>}
         {!(key in overrides) && m.how === 'fuzzy' && <span className="tag">matched — check the name</span>}
         {!(key in overrides) && m.how === 'new' && <span className="tag">new exercise</span>}
         <span className="paste-sets">

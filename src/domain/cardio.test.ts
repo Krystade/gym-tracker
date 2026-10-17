@@ -1,7 +1,7 @@
 process.env.TZ = 'America/New_York';
 import { describe, expect, it } from 'vitest';
 import type { CardioData, SetEntry } from './types';
-import { cardioSlots, cardioTarget, fmtCardio, machineFor, pickMachine, readCardio, weeklyCardioMinutes } from './cardio';
+import { cardioSlots, cardioTarget, carrySeconds, fmtCardio, machineFor, pickMachine, readCardio, weeklyCardioMinutes } from './cardio';
 import { parseCsv, toCsv } from './csv';
 import { defaultProfile } from './profile';
 import { adherence, buildProgram, nextDay, quickDay, type DayPlan } from './program';
@@ -26,17 +26,24 @@ describe('fmtCardio', () => {
 
 describe('cardioTarget', () => {
   it('starts easy with no history, at least 10 minutes', () => {
-    expect(cardioTarget([], 'Treadmill', null, '2026-10-16')).toMatchObject({ minutes: 10, aim: null, incline: 0, text: 'Easy start · 10 min' });
+    expect(cardioTarget([], 'Treadmill', null, '2026-10-16')).toMatchObject({ minutes: 10, aim: null, text: 'Easy start · 10 min' });
     expect(cardioTarget([], 'StairMaster', 20, '2026-10-16')).toMatchObject({ minutes: 20, level: 4, text: 'Easy start · 20 min' });
   });
-  it('scales the last pace to the planned minutes and adds 2% after a met aim', () => {
-    // 1.0 mi in 10 min, no aim then: 0.1 mi/min × 20 min × 1.02 = 2.04
-    const t = cardioTarget([bout('2026-10-10', 'Treadmill', { seconds: 600, miles: 1, incline: 4 })], 'Treadmill', 20, '2026-10-16');
-    expect(t).toMatchObject({ minutes: 20, aim: 2.04, unit: 'mi', incline: 4, text: '20 min · aim 2.04 mi' });
+  it('leaves incline empty unless the last session had one', () => {
+    expect(cardioTarget([], 'Treadmill', 20, '2026-10-16').incline).toBeUndefined();
+    expect(cardioTarget([], 'Elliptical', 20, '2026-10-16').incline).toBeUndefined();
+    expect(cardioTarget([bout('2026-10-10', 'Treadmill', { seconds: 600, incline: 3 })], 'Treadmill', 20, '2026-10-16')).toMatchObject({ aim: null, incline: 3 });
   });
-  it('repeats the aim after a missed one', () => {
-    const t = cardioTarget([bout('2026-10-10', 'Treadmill', { seconds: 1200, miles: 1.9, aim: 2 })], 'Treadmill', 20, '2026-10-16');
-    expect(t.aim).toBe(1.9);
+  it('scales the last pace to the planned minutes and adds 2% after a met aim, up to the next 0.1 mi', () => {
+    // 1.0 mi in 10 min, no aim then: 0.1 mi/min × 20 min × 1.02 = 2.04, aimed at 2.1
+    const t = cardioTarget([bout('2026-10-10', 'Treadmill', { seconds: 600, miles: 1, incline: 4 })], 'Treadmill', 20, '2026-10-16');
+    expect(t).toMatchObject({ minutes: 20, aim: 2.1, unit: 'mi', incline: 4, text: '20 min · aim 2.1 mi' });
+  });
+  it('repeats the aim after a missed one, without float noise rounding it up', () => {
+    for (const miles of [1.9, 1.3, 1.1, 2.3]) {
+      const t = cardioTarget([bout('2026-10-10', 'Treadmill', { seconds: 1200, miles, aim: miles + 0.1 })], 'Treadmill', 20, '2026-10-16');
+      expect(t.aim).toBe(miles);
+    }
   });
   it('uses floors on the StairMaster', () => {
     const t = cardioTarget([bout('2026-10-10', 'StairMaster', { seconds: 900, floors: 50, level: 8 })], 'StairMaster', 15, '2026-10-16');
@@ -44,6 +51,23 @@ describe('cardioTarget', () => {
   });
   it('ignores the day being logged', () => {
     expect(cardioTarget([bout('2026-10-16', 'Treadmill', { seconds: 600, miles: 1 })], 'Treadmill', 10, '2026-10-16').aim).toBeNull();
+  });
+});
+
+describe('carrySeconds', () => {
+  it('carries past 59 into minutes and borrows below 0', () => {
+    expect(carrySeconds('10', '60')).toEqual(['11', '0']);
+    expect(carrySeconds('10', '75')).toEqual(['11', '15']);
+    expect(carrySeconds('', '60')).toEqual(['1', '0']);
+    expect(carrySeconds('10', '-15')).toEqual(['9', '45']);
+    expect(carrySeconds('10', '-5')).toEqual(['9', '55']);
+  });
+  it('has nothing to borrow at 0 minutes', () => {
+    expect(carrySeconds('0', '-15')).toEqual(['0', '0']);
+    expect(carrySeconds('', '-15')).toEqual(['', '0']);
+  });
+  it('leaves typing alone', () => {
+    for (const sec of ['', '4', '45', '59', '4.', '-', 'x']) expect(carrySeconds('10', sec)).toEqual(['10', sec]);
   });
 });
 

@@ -1,4 +1,4 @@
-import { cardioTarget, fmtClock, fmtCardio, isCardio, machine } from '../domain/cardio';
+import { cardioTarget, fmtClock, fmtCardio, fmtMiles, isCardio, machine } from '../domain/cardio';
 import type { SetEntry } from '../domain/types';
 import { useState } from 'react';
 import { normalizeName } from '../domain/ids';
@@ -19,12 +19,12 @@ import { SetRowContent } from './SetRow';
 import { SwapSuggestions } from './SwapSuggestions';
 import { isHoldLift, swapSuggestions } from '../domain/care';
 import type { ProgramStore } from '../state/useProgram';
-import { nextTime, plannedSets } from '../domain/suggest';
+import { nextTime, plannedMinutes, plannedSets } from '../domain/suggest';
 import { todayPlanFor } from './TodayPlan';
 import { SuggestionCard } from './SuggestionCard';
 
 /** A cardio machine: distance (or floors) per session over time, and each session's numbers with its pace. */
-function CardioScreen({ name, store, date, onLog, onBack, readOnly }: { name: string; store: SetsStore; date: string; onLog: () => void; onBack: () => void; readOnly?: boolean }) {
+function CardioScreen({ name, store, programs, date, onLog, onBack, readOnly }: { name: string; store: SetsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void; readOnly?: boolean }) {
   const today = localDate(new Date());
   const m = machine(name)!;
   const byFloors = !m.fields.includes('miles');
@@ -37,7 +37,8 @@ function CardioScreen({ name, store, date, onLog, onBack, readOnly }: { name: st
     if (v <= 0) continue;
     series.push({ date: s.date, e1rm: v, pr: v > top }); top = Math.max(top, v);
   }
-  const target = cardioTarget(store.entries, name, null, date);
+  // The same aim as Today's card: over the day's planned minutes, when the plan has this machine.
+  const target = cardioTarget(store.entries, name, plannedMinutes(programs.program, todayPlanFor(programs, store.entries, date), name), date);
   const loggedToday = sessions.some((s) => s.date === date);
   const unit = byFloors ? 'floors' : 'mi';
   const pace = (e: SetEntry) => (!byFloors && e.cardio!.miles ? ` · ${fmtClock(e.cardio!.seconds / e.cardio!.miles)} /mi` : '');
@@ -47,11 +48,11 @@ function CardioScreen({ name, store, date, onLog, onBack, readOnly }: { name: st
       <h1>{name}</h1>
       {!readOnly && <section className="card"><p className="target">{target.text}</p>{!loggedToday && <button className="wide primary" onClick={onLog}>Log it today</button>}</section>}
       <div className="tiles">
-        <div className="tile"><span>Best {byFloors ? 'floors' : 'distance'}</span><b>{series.length ? `${Math.round(Math.max(...series.map((p) => p.e1rm)) * 100) / 100} ${unit}` : '—'}</b></div>
+        <div className="tile"><span>Best {byFloors ? 'floors' : 'distance'}</span><b>{series.length ? `${byFloors ? Math.max(...series.map((p) => p.e1rm)) : fmtMiles(Math.max(...series.map((p) => p.e1rm)))} ${unit}` : '—'}</b></div>
         <div className="tile"><span>Sessions</span><b>{sessions.length}</b></div>
       </div>
       <section className="card">
-        <LineChart points={series} today={today} label={byFloors ? 'Floors over time' : 'Distance over time'} unit={unit} noun="" column={byFloors ? 'Floors' : 'Distance (mi)'} />
+        <LineChart points={series} today={today} label={byFloors ? 'Floors over time' : 'Distance over time'} unit={unit} noun="" column={byFloors ? 'Floors' : 'Distance (mi)'} what="this" tenths={!byFloors} />
         {series.length > 1 && <p className="muted small">Best per session · records filled</p>}
       </section>
       {sessions.length > 0 && <h2>History</h2>}
@@ -160,7 +161,7 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
   name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void;
   onRenamed: (to: string) => void; readOnly?: boolean;
 }) {
-  if (isCardio(name)) return <CardioScreen name={name} store={store} date={date} onLog={onLog} onBack={onBack} readOnly={readOnly} />;
+  if (isCardio(name)) return <CardioScreen name={name} store={store} programs={programs} date={date} onLog={onLog} onBack={onBack} readOnly={readOnly} />;
   return <LiftScreen {...{ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, readOnly }} />;
 }
 
