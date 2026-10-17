@@ -27,6 +27,8 @@ test('a rest timer starts on Add set, clear of the form, and starts over on the 
   await expect(timer).toHaveCount(0); // nothing before a set
   await card.getByRole('textbox', { name: 'Weight' }).fill('50');
   await card.getByRole('textbox', { name: 'Reps' }).fill('10');
+  // From here the clock moves only when the test moves it, so a loaded machine can't eat into the 2:00.
+  await page.clock.pauseAt(new Date('2026-10-16T18:30:00'));
   await card.getByRole('button', { name: /^Add set/ }).click();
   // No history for this lift: 2:00.
   await expect(timer).toContainText('2:00');
@@ -62,6 +64,7 @@ test('the rest timer runs out to “Rest done”, then goes', async ({ page }) =
   await page.goto('/');
   const card = await openCurl(page);
   await card.getByRole('textbox', { name: 'Weight' }).fill('50');
+  await page.clock.pauseAt(new Date('2026-10-16T18:30:00'));
   await card.getByRole('button', { name: /^Add set/ }).click();
   const timer = page.getByRole('timer', { name: 'Rest' });
   await expect(timer).toContainText('2:00');
