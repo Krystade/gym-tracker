@@ -119,7 +119,7 @@ test('turning on Pain brings its fields into view, and the row shows how bad', a
   await importFixture(page);
   await addCard(page, 'Cable Curl');
   const card = page.locator('[data-card="cable curl"]');
-  await card.getByRole('button', { name: 'More' }).click();
+  await card.getByRole('button', { name: 'Details' }).click();
   await card.getByRole('button', { name: 'Pain', exact: true }).click();
   // In view means above the fixed tab bar, not merely inside the window.
   const bar = (await page.getByRole('navigation', { name: 'Sections' }).boundingBox())!.y;

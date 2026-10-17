@@ -102,6 +102,10 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
     return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(id); };
   }, []);
   const open = (name: string) => { setExercise(name); window.scrollTo(0, 0); };
+  // The tab you're on. A screen opened over a tab (Program, Photos, Paste, Characters) keeps More lit when More opened it,
+  // since its Back goes there; from Today or Stats it lights nothing. An exercise lights nothing.
+  const overlay = programOpen || photosOpen || pasteOpen || charsOpen;
+  const current = (t: Tab) => !exercise && (overlay ? t === 'more' && tab === 'more' : tab === t || (t === 'more' && tab === 'friends'));
   const nav = { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, open,
     // The walkthrough points at Today, so it opens there.
     pending, waiting, setWaiting, clearPending: () => { launchInvite = null; setPending(null); },
@@ -123,7 +127,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
       {tour && <Walkthrough onClose={() => setTour(false)} />}
       <nav className="tabs" aria-label="Sections">
         {(viewing ? FRIEND_TABS : TABS).map(([t, label]) => (
-          <button key={t} data-tour={t} aria-current={(tab === t || (t === 'more' && tab === 'friends')) && !exercise && !programOpen && !photosOpen && !pasteOpen && !charsOpen ? 'page' : undefined} onClick={() => { setTab(t); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); }}>
+          <button key={t} data-tour={t} aria-current={current(t) ? 'page' : undefined} onClick={() => { setTab(t); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); }}>
             {label}{t === 'more' && waiting > 0 && <span className="tab-dot" aria-hidden="true" />}
           </button>
         ))}

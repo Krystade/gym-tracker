@@ -34,10 +34,22 @@ describe('cycle sync', () => {
   });
   it('brings the account’s days and setting to a new phone', async () => {
     const { cloud } = fakeCloud({ [P]: { days: { '2026-01-02': 'luteal' }, tracking: true, updatedAt: 1 } satisfies CloudCycle });
-    expect(await syncCycle(cloud, 'u1', db())).toBe(1);
+    expect(await syncCycle(cloud, 'u1', db())).toEqual({ pulled: 1, trackingAdopted: true });
     const { days, cfg } = await db().getCycle();
     expect(days).toEqual([{ date: '2026-01-02', phase: 'luteal' }]);
     expect(cfg.tracking).toBe(true);
+  });
+  it('a phone that never set it takes the account’s setting with no days, and says so once', async () => {
+    const { cloud } = fakeCloud({ [P]: { days: {}, tracking: true, updatedAt: 1 } satisfies CloudCycle });
+    expect(await syncCycle(cloud, 'u1', db())).toEqual({ pulled: 0, trackingAdopted: true });
+    expect((await db().getCycle()).cfg.tracking).toBe(true);
+    expect(await syncCycle(cloud, 'u1', db())).toEqual({ pulled: 0, trackingAdopted: false });
+  });
+  it('a phone that set it keeps its own and adopts nothing', async () => {
+    await db().putCycleTracking(false);
+    const { cloud } = fakeCloud({ [P]: { days: {}, tracking: true, updatedAt: 1 } satisfies CloudCycle });
+    expect(await syncCycle(cloud, 'u1', db())).toEqual({ pulled: 0, trackingAdopted: false });
+    expect((await db().getCycle()).cfg.tracking).toBe(false);
   });
   it('a day cleared on the phone is cleared in the account', async () => {
     const { cloud, docs } = fakeCloud({ [P]: { days: { '2026-01-02': 'luteal' }, tracking: true, updatedAt: 1 } });

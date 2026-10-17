@@ -16,18 +16,18 @@ const logBench = async (page: Page, weight: string, reps: string, tap: string[] 
   await page.getByRole('textbox', { name: 'Weight' }).fill(weight);
   await page.getByRole('textbox', { name: 'Reps' }).fill(reps);
   if (tap.length) {
-    const more = page.getByRole('main').getByRole('button', { name: /^More/ });
+    const more = page.getByRole('button', { name: /^Details/ });
     if ((await more.getAttribute('aria-expanded')) === 'false') await more.click();
     for (const t of tap) await flags(page).getByRole('button', { name: t, exact: true }).click();
   }
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(rows(page)).toHaveCount(before + 1);
   // The set lands before the form has finished resetting, and the reset folds More away.
-  await expect(page.getByRole('main').getByRole('button', { name: /^More/ })).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('button', { name: /^Details/ })).toHaveAttribute('aria-expanded', 'false');
 };
 /** Opens the editor: adds his own tags and hides the built-ins named. */
 const editTags = async (page: Page, add: string[], hide: string[] = []) => {
-  const more = page.getByRole('main').getByRole('button', { name: /^More/ });
+  const more = page.getByRole('button', { name: /^Details/ });
   if ((await more.getAttribute('aria-expanded')) === 'false') await more.click();
   await flags(page).getByRole('button', { name: 'Edit tags' }).click();
   for (const t of add) {
@@ -42,7 +42,7 @@ test('his own tags join the row, hidden built-ins leave it, and a tagged set sho
   await page.clock.install({ time: T });
   await page.goto('/');
   await addBench(page);
-  await page.getByRole('main').getByRole('button', { name: 'More' }).click();
+  await page.getByRole('button', { name: 'Details' }).click();
   await flags(page).getByRole('button', { name: 'Edit tags' }).click();
   // Enter adds the tag; it doesn't log a set.
   await page.getByRole('textbox', { name: 'Weight' }).fill('135');
@@ -64,18 +64,18 @@ test('his own tags join the row, hidden built-ins leave it, and a tagged set sho
   await expect(editor(page)).toHaveCount(0);
 
   await flags(page).getByRole('button', { name: 'Paused' }).click();
-  await expect(page.getByRole('main').getByRole('button', { name: /^More/ })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('button', { name: /^Details/ })).toHaveAttribute('aria-expanded', 'true');
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(rows(page)).toHaveCount(1);
   await expect(rows(page).first()).toContainText('Paused');
   // The tag goes with the set: the next one starts without it.
-  await page.getByRole('main').getByRole('button', { name: 'More' }).click();
+  await page.getByRole('button', { name: 'Details' }).click();
   await expect(flags(page).getByRole('button', { name: 'Paused' })).toHaveAttribute('aria-pressed', 'false');
   await page.screenshot({ path: 'screenshots/r7-tagged-row.png', fullPage: true });
 
   // Kept per profile: the row is the same after a reload.
   await page.reload();
-  await page.getByRole('main').getByRole('button', { name: 'More' }).click();
+  await page.getByRole('button', { name: 'Details' }).click();
   await expect(flags(page).getByRole('button')).toHaveText(['Pain', 'Unsure', 'Warm-up', '2× pulley', 'Paused', 'Edit tags']);
 
   await goto(page, 'History');
@@ -108,7 +108,7 @@ test('a removed tag on a set can still be turned off in its editor', async ({ pa
   await addBench(page);
   await editTags(page, ['Slow']);
   await logBench(page, '135', '8', ['Slow']);
-  await page.getByRole('main').getByRole('button', { name: 'More' }).click();
+  await page.getByRole('button', { name: 'Details' }).click();
   await flags(page).getByRole('button', { name: 'Edit tags' }).click();
   await editor(page).getByRole('button', { name: 'Remove Slow' }).click();
   await editor(page).getByRole('button', { name: 'Done' }).click();
@@ -153,6 +153,6 @@ test('the tag row and a set’s tags reach another phone on the same account', a
   await goto(b, 'Today');
   await expect(rows(b)).toHaveCount(1);
   await expect(rows(b).first()).toContainText('Paused');
-  await b.getByRole('main').getByRole('button', { name: 'More' }).click();
+  await b.getByRole('button', { name: 'Details' }).click();
   await expect(flags(b).getByRole('button')).toHaveText(['Pain', 'Unsure', 'Warm-up', '2× pulley', 'Paused', 'Edit tags']);
 });

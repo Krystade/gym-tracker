@@ -55,6 +55,19 @@ test('Today names the gym only with two or more, and the line opens the Gym tab'
   await expect(page.getByLabel('Gym name')).toHaveValue('Downtown');
 });
 
+test('+ Add gym beside a gym opens a draft: leaving it adds no second gym', async ({ page }) => {
+  await page.goto('/');
+  await goto(page, 'Gym');
+  await page.getByRole('button', { name: 'Add gym', exact: true }).click();
+  await page.getByLabel('Gym name').fill('Garage');
+  await page.getByRole('button', { name: '+ Add gym' }).click();
+  await expect(page.getByLabel('Gym name')).toHaveValue('Gym 2');
+  await goto(page, 'Today');
+  await expect(page.getByRole('button', { name: /^at / })).toHaveCount(0);
+  await goto(page, 'Gym');
+  await expect(page.getByRole('group', { name: 'Active gym' }).getByRole('button')).toHaveText(['Garage', '+ Add gym', '+ From text']);
+});
+
 test('Program shows the gym above the days, outside the folded rebuild', async ({ page }) => {
   await page.goto('/');
   await goto(page, 'Gym');
@@ -83,14 +96,18 @@ test('More lists Characters, Friends, Program and Photos; each opens with ‹ Mo
   for (const [row, heading] of [['Characters', 'Characters'], ['Friends', 'Friends'], ['Program', 'Program'], ['Photos', 'Progress photos']]) {
     await rows.filter({ hasText: new RegExp(`^${row}`) }).click();
     await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
-    // Friends is shown as the More tab.
-    if (row === 'Friends') await expect(tabButton(page, 'More')).toHaveAttribute('aria-current', 'page');
+    // Opened from More, each is shown as the More tab.
+    await expect(tabButton(page, 'More')).toHaveAttribute('aria-current', 'page');
     await page.getByRole('button', { name: '‹ More' }).click();
     await expect(page.getByRole('heading', { name: 'More', level: 1 })).toBeVisible();
   }
-  // Opened from Today, Program still goes back to Today.
+  await page.getByRole('button', { name: 'Paste from notes' }).click();
+  await expect(tabButton(page, 'More')).toHaveAttribute('aria-current', 'page');
+  await page.getByRole('button', { name: '‹ More' }).click();
+  // Opened from Today, Program still goes back to Today, and More isn't lit.
   await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await expect(tabButton(page, 'More')).not.toHaveAttribute('aria-current', 'page');
   await page.getByRole('button', { name: '‹ Back' }).click();
   await expect(page.getByRole('button', { name: 'Add exercise' })).toBeVisible();
 });

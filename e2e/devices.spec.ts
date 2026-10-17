@@ -59,6 +59,8 @@ function problems({ top, bottom }: { top: number; bottom: number }) {
   scrollTo(0, 0);
   const h1 = [...document.querySelectorAll('h1')].find(shown);
   if (h1 && h1.getBoundingClientRect().top < top) out.push(`heading under the status bar: ${label(h1)} at ${Math.round(h1.getBoundingClientRect().top)}`);
+  // A heading is read whole: an ellipsis on it (Today's date, "Fri, O…") hides what the screen is.
+  for (const h of document.querySelectorAll('h1')) if (shown(h) && h.scrollWidth > h.clientWidth + 0.5) out.push(`heading cut off: ${label(h)} ${h.scrollWidth} > ${h.clientWidth}`);
   for (const el of taps) {
     const r = el.getBoundingClientRect();
     if (r.bottom > 0 && r.top < top - 0.5) out.push(`tappable under the status bar: ${label(el)} at ${Math.round(r.top)}`);
@@ -127,6 +129,19 @@ test('Today on a new phone fits each phone', async ({ page }) => {
   await check(page, 'today-empty');
 });
 
+test('Today’s date heading fits each phone, on a long date and on a past year’s', async ({ page }) => {
+  await notched(page);
+  await page.clock.install({ time: new Date('2026-09-30T12:00:00') }); // Wed, Sep 30: wide letters, two-digit day
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Wed, Sep 30', level: 1 })).toBeVisible();
+  await check(page, 'today-long-date');
+  await page.clock.setSystemTime(new Date('2026-01-01T12:00:00'));
+  await page.reload();
+  await page.getByRole('button', { name: 'Previous day' }).click();
+  await expect(page.getByRole('heading', { name: 'Dec 31, 2025', level: 1 })).toBeVisible();
+  await check(page, 'today-past-year');
+});
+
 test('More and every screen it opens fit each phone', async ({ page }) => {
   await start(page);
   await check(page, 'more');
@@ -191,7 +206,7 @@ test('Today with a plan, its forms and editors, History, Lifts and Stats fit eac
   await page.getByRole('textbox', { name: 'Weight' }).first().fill('135');
   await page.getByRole('textbox', { name: 'Reps' }).first().fill('8');
   await check(page, 'today-form');
-  await page.getByRole('main').getByRole('button', { name: 'More' }).first().click();
+  await page.getByRole('button', { name: 'Details' }).first().click();
   await check(page, 'today-form-more');
   await page.getByRole('button', { name: 'Add set' }).first().click();
   await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(1);

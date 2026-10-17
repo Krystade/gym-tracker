@@ -14,7 +14,8 @@ export function useCycle() {
   const [days, setDays] = useState<Record<string, CyclePhase>>({});
   const [tracking, setTracking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const load = useCallback(() => db.getCycle().then(({ days: d, cfg }) => { setDays(cycleMap(d)); setTracking(!!cfg.tracking); }).catch((e) => setError(`Could not load cycle data: ${String(e)}`)), [db]);
+  const [loaded, setLoaded] = useState(false); // the switch waits for this, so it never shows off and then flips on
+  const load = useCallback(() => db.getCycle().then(({ days: d, cfg }) => { setDays(cycleMap(d)); setTracking(!!cfg.tracking); setLoaded(true); }).catch((e) => setError(`Could not load cycle data: ${String(e)}`)), [db]);
   useEffect(() => { void load(); return onCycleChange((c) => { if (c === 'pulled') void load(); }); }, [load]);
   // Shown once saved, like Energy, so what's on screen is what a reload finds.
   const write = useCallback(async (f: () => Promise<void>, what: string, then: () => void) => {
@@ -25,6 +26,6 @@ export function useCycle() {
     () => setDays((d) => { const n = { ...d }; if (phase) n[date] = phase; else delete n[date]; return n; })), [db, write]);
   const setOn = useCallback((on: boolean) => write(() => db.putCycleTracking(on), 'Saving the setting', () => setTracking(on)), [db, write]);
   const wipe = useCallback(() => write(() => db.clearCycle(), 'Deleting cycle data', () => setDays({})), [db, write]);
-  return { days, tracking, error, setPhase, setOn, wipe };
+  return { days, tracking, loaded, error, setPhase, setOn, wipe };
 }
 export type CycleStore = ReturnType<typeof useCycle>;

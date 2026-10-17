@@ -24,22 +24,25 @@ export function CycleRow({ date }: { date: string }) {
   );
 }
 
-/** The setting, on the Data screen. Off hides the row on Today and keeps what's logged; Delete clears it here and in the account. */
-export function CycleCard() {
+/**
+ * The setting, on More, for the profile that's open: each profile has its own (in its own database), off until that profile
+ * turns it on. Off hides the row on Today and keeps what's logged; Delete clears it here and in the account.
+ */
+export function CycleCard({ name }: { name: string }) {
   const c = useCycle();
   const [asking, setAsking] = useState(false);
   const any = Object.keys(c.days).length > 0;
   return (
     <section className="card" aria-labelledby="cycle-h">
       <div className="cycle-setting">
-        <h2 id="cycle-h">Track cycle phase</h2>
-        <button type="button" role="switch" className="switch" aria-checked={c.tracking} aria-label="Track cycle phase" onClick={() => void c.setOn(!c.tracking)} />
+        <h2 id="cycle-h">Track cycle phase <span className="cycle-who">for <span className="pname">{name}</span></span></h2>
+        <button type="button" role="switch" className="switch" disabled={!c.loaded} aria-checked={c.tracking} aria-label={`Track cycle phase for ${name}`} onClick={() => void c.setOn(!c.tracking)} />
       </div>
-      <p className="muted small">One tap on Today, under Energy. Only you see it: never your friends, never a shared page. Off hides it and keeps what you logged.</p>
+      <p className="muted small">Off until turned on, and only for {name}: every profile has its own setting. One tap on Today, under Energy. Only you see it: never your friends, never a shared page. Off hides it and keeps what you logged.</p>
       {any && !asking && <button className="wide danger" onClick={() => setAsking(true)}>Delete cycle data</button>}
       {asking && (
         <div className="confirm-delete">
-          <p className="warn">Deletes every cycle day on this phone and in your account.</p>
+          <p className="warn">Deletes every cycle day on this phone and in your account (other phones put back what they still have).</p>
           <div className="form-actions">
             <button onClick={() => setAsking(false)}>Cancel</button>
             <button className="danger" onClick={() => { void c.wipe(); setAsking(false); }}>Delete cycle data</button>

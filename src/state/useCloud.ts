@@ -56,7 +56,8 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
         importMeta: async (x) => { await writeMeta(db, x); m.reload(); },
       });
       // Cycle phase, to its own private document. Refused until the rules that allow it are deployed: noted, and the rest goes on.
-      await syncCycle(c, l.uid, db).then((n) => { if (n) cycleChanged('pulled'); }, (e) => console.warn('Cycle sync skipped:', e));
+      // Days brought in, or the account's setting taken by a phone that never set it, both change what Today and More show.
+      await syncCycle(c, l.uid, db).then((r) => { if (r.pulled || r.trackingAdopted) cycleChanged('pulled'); }, (e) => console.warn('Cycle sync skipped:', e));
       const at = new Date().toISOString();
       await db.putCloudSeen({ key: 'cloud-seen', uid: l.uid, seen: r.seen, meta: r.metaSeen, at });
       setLastSync(at);

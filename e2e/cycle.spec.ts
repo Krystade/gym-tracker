@@ -1,15 +1,15 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { goto as tab } from './nav';
 
-// Cycle phase: opt-in, one tap under Energy, private. Synthetic data only.
-// The Data tab becomes More in round 8; either name finds it.
-const tab = (page: Page, t: string | RegExp) => page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: t, exact: typeof t === 'string' }).click();
-const DATA = /^(Data|More)$/;
+// Cycle phase: opt-in per profile, one tap under Energy, private. Synthetic data only.
+const DATA = 'More';
 const cycle = (page: Page) => page.getByRole('group', { name: 'Cycle' });
 const PHASES = ['Period', 'Follicular', 'Ovulation', 'Luteal'];
 
-async function turnOn(page: Page) {
+async function turnOn(page: Page, who = 'Me') {
   await tab(page, DATA);
-  const sw = page.getByRole('switch', { name: 'Track cycle phase' });
+  const sw = page.getByRole('switch', { name: `Track cycle phase for ${who}` });
+  await expect(sw).toBeEnabled(); // loaded: what it shows now is what's saved
   await expect(sw).toHaveAttribute('aria-checked', 'false');
   await sw.click();
   await expect(sw).toHaveAttribute('aria-checked', 'true');
@@ -47,11 +47,11 @@ test('off by default: no Cycle row; turned on, one tap saves and survives a relo
   expect(csv).not.toMatch(/luteal|cycle|phase/i);
 
   // Off hides the row and keeps the day; on again, it's still there.
-  await page.getByRole('switch', { name: 'Track cycle phase' }).click();
+  await page.getByRole('switch', { name: 'Track cycle phase for Me' }).click();
   await tab(page, 'Today');
   await expect(cycle(page)).toHaveCount(0);
   await tab(page, DATA);
-  await page.getByRole('switch', { name: 'Track cycle phase' }).click();
+  await page.getByRole('switch', { name: 'Track cycle phase for Me' }).click();
   await tab(page, 'Today');
   await expect(cycle(page).getByRole('button', { name: 'Luteal' })).toHaveAttribute('aria-pressed', 'true');
 
@@ -59,6 +59,53 @@ test('off by default: no Cycle row; turned on, one tap saves and survives a relo
   await expect(cycle(page).getByRole('button', { name: 'Luteal' })).toHaveAttribute('aria-pressed', 'false');
   await page.reload();
   await expect(cycle(page).getByRole('button', { name: 'Luteal' })).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('opt-in per profile: on for one, the other stays off with no Cycle row, and switching back finds it on', async ({ page }) => {
+  await page.goto('/');
+  await tab(page, 'More');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
+  await page.getByRole('button', { name: 'Add Sam' }).click();
+  const bar = page.getByRole('group', { name: 'Who’s training' });
+  await expect(bar.getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('heading', { name: 'Track cycle phase for Sam' })).toBeVisible();
+  await turnOn(page, 'Sam');
+  await expect(cycle(page)).toBeVisible();
+
+  await bar.getByRole('button', { name: /Me/ }).click();
+  await expect(page.getByRole('group', { name: 'Energy' })).toBeVisible();
+  await expect(cycle(page)).toHaveCount(0);
+  await tab(page, 'More');
+  const me = page.getByRole('switch', { name: 'Track cycle phase for Me' });
+  await expect(me).toBeEnabled(); // loaded, so off here is Me's own setting, not the state before it loads
+  await expect(me).toHaveAttribute('aria-checked', 'false');
+  await page.locator('section[aria-labelledby="cycle-h"]').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'screenshots/cycle-setting-me.png' });
+  await tab(page, 'Today');
+  await expect(page.getByRole('group', { name: 'Energy' })).toBeVisible();
+  await expect(cycle(page)).toHaveCount(0);
+
+  await bar.getByRole('button', { name: /Sam/ }).click();
+  await expect(cycle(page)).toBeVisible();
+  await tab(page, 'More');
+  await expect(page.getByRole('switch', { name: 'Track cycle phase for Sam' })).toHaveAttribute('aria-checked', 'true');
+  await tab(page, 'Today');
+  await expect(cycle(page)).toBeVisible();
+  await page.screenshot({ path: 'screenshots/cycle-today.png' });
+});
+
+test('Delete cycle data says other phones put back what they still have, and clears the day', async ({ page }) => {
+  await page.goto('/');
+  await turnOn(page);
+  await cycle(page).getByRole('button', { name: 'Period' }).click();
+  await expect(cycle(page).getByRole('button', { name: 'Period' })).toHaveAttribute('aria-pressed', 'true');
+  await tab(page, 'More');
+  await page.getByRole('button', { name: 'Delete cycle data' }).click();
+  await expect(page.getByText('Deletes every cycle day on this phone and in your account (other phones put back what they still have)')).toBeVisible();
+  await page.screenshot({ path: 'screenshots/cycle-delete.png', fullPage: true });
+  await page.locator('.confirm-delete').getByRole('button', { name: 'Delete cycle data' }).click();
+  await tab(page, 'Today');
+  await expect(cycle(page).getByRole('button', { name: 'Period' })).toHaveAttribute('aria-pressed', 'false');
 });
 
 /** Three synthetic periods 28 days apart (two cycle lengths), straight into the cycle store, with the setting on. */
@@ -155,11 +202,36 @@ test('a friend’s view shows no cycle data and never asks for it', async ({ bro
   await tab(b.page, 'Friends');
   await friends(b.page).getByRole('button', { name: `@${a.name}` }).click();
   await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing @${a.name}`);
-  for (const t of ['Stats', 'History', 'Lifts']) {
+  for (const t of ['Stats', 'History', 'Lifts'] as const) {
     await tab(b.page, t);
     await expect(b.page.getByRole('heading', { name: t, level: 1 })).toBeVisible();
     await expect(b.page.locator('body')).not.toContainText(/period|follicular|ovulation|luteal|cycle/i);
   }
   expect(asked.some((x) => x.includes(`users/${a.uid}/`))).toBe(true); // the view did read a's log
   expect(asked.filter((x) => x.includes(`users/${a.uid}/private`))).toEqual([]);
+});
+
+test('a new phone that takes the account’s setting turns it on where it stands, with no days to bring', async ({ browser }) => {
+  // The shared emulator may run rules without /private, so the account's copy is answered here: setting on, no days.
+  // No service worker, or the app's requests would go round the route.
+  const ctx = await browser.newContext({ serviceWorkers: 'block', storageState: { cookies: [], origins: [{ origin: `http://127.0.0.1:${process.env.E2E_PORT ?? 4173}`, localStorage: [{ name: 'gym-tracker:walkthrough', value: 'done' }] }] } });
+  const page = await ctx.newPage();
+  await page.route(/:batchGet/, async (route) => {
+    const m = (route.request().postData() ?? '').match(/"(projects\/[^"]*\/private\/cycle)"/);
+    if (!m) return route.continue();
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ found: { name: m[1], fields: { days: { mapValue: {} }, tracking: { booleanValue: true }, updatedAt: { integerValue: '1' } }, createTime: '2026-01-01T00:00:00Z', updateTime: '2026-01-01T00:00:00Z' }, readTime: '2026-01-01T00:00:00Z' }]) });
+  });
+  await page.goto('/');
+  await tab(page, 'Friends');
+  await page.getByRole('button', { name: 'Sign in or create an account' }).click();
+  const sw = page.getByRole('switch', { name: 'Track cycle phase for Me' });
+  await expect(sw).toBeEnabled();
+  await expect(sw).toHaveAttribute('aria-checked', 'false');
+  const account = page.getByRole('region', { name: 'Account' });
+  await account.getByRole('textbox', { name: 'Email' }).fill(`u${rand()}@test.local`);
+  await account.getByLabel('Password').fill(PASSWORD);
+  await account.getByRole('button', { name: 'Create account' }).click();
+  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  await expect(sw).toHaveAttribute('aria-checked', 'true'); // no reload, no leaving More
+  await ctx.close();
 });

@@ -240,9 +240,10 @@ export const putCycleTracking = (on: boolean): Promise<void> => cycleChange(() =
 export const clearCycle = (): Promise<void> => cycleChange((s) => s.clear(), { wiped: true });
 /**
  * After a cycle sync: saves the account's days this phone lacked and its setting if this phone has none. Only when nothing
- * changed here since `rev` was read does it drop the cleared-day marks and count the cloud as up to date.
+ * changed here since `rev` was read does it drop the cleared-day marks and count the cloud as up to date. Returns whether it
+ * took the account's setting.
  */
-export async function finishCycleSync(uid: string, rev: number, pull: CycleDay[], tracking: boolean | undefined): Promise<void> {
+export async function finishCycleSync(uid: string, rev: number, pull: CycleDay[], tracking: boolean | undefined): Promise<boolean> {
   const tx = (await db()).transaction(['cycle', 'config'], 'readwrite');
   const days = tx.objectStore('cycle'), cf = tx.objectStore('config');
   const cfg: CycleConfig = (await cf.get('cycle')) ?? NO_CYCLE;
@@ -251,6 +252,7 @@ export async function finishCycleSync(uid: string, rev: number, pull: CycleDay[]
   if (same) for (const d of (await days.getAll()) as CycleDay[]) if (d.phase == null) await days.delete(d.date);
   const next: CycleConfig = { ...cfg, tracking: cfg.tracking ?? tracking, ...(same ? { synced: { uid, rev }, wiped: false } : {}) };
   await Promise.all([cf.put(next), tx.done]);
+  return cfg.tracking == null && tracking != null;
 }
 
 export const getPhotoMetas = async (): Promise<PhotoMeta[]> => (await db()).getAll('photos');

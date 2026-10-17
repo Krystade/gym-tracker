@@ -6,7 +6,7 @@ const logBench = async (page: Page, weight: string, reps: string, warmup = false
   await page.getByRole('textbox', { name: 'Weight' }).fill(weight);
   await page.getByRole('textbox', { name: 'Reps' }).fill(reps);
   if (warmup) {
-    await page.getByRole('main').getByRole('button', { name: 'More' }).click();
+    await page.getByRole('button', { name: 'Details' }).click();
     await page.getByRole('group', { name: 'Flags' }).getByRole('button', { name: 'Warm-up' }).click();
   }
   await page.getByRole('button', { name: 'Add set' }).click();

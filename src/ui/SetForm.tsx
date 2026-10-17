@@ -153,7 +153,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
         {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
         <button type="submit" className="primary" disabled={!valid}>{submitLabel}</button>
       </div>
-      <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>{moreOpen || !moreHint ? 'More' : `More · ${moreHint}`}</button>
+      <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>{moreOpen || !moreHint ? 'Details' : `Details · ${moreHint}`}</button>
       {moreOpen && (
         <>
           <div className="chips" role="group" aria-label="Flags">

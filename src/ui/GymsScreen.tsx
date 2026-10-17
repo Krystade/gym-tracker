@@ -89,7 +89,6 @@ export function GymsScreen({ gyms, logged, fresh, uid, onBack }: { gyms: GymsSto
     if (draft) { const n = fn(draft); setDraft(null); void gyms.save([...gyms.gyms, n], n.id); return; }
     void gyms.save(gyms.gyms.map((x) => (x.id === g.id ? fn(x) : x)), g.id);
   };
-  const add = () => { const n = newGym(gyms.gyms.length); void gyms.save([...gyms.gyms, n], n.id); };
 
   const back = onBack && <button className="back" onClick={onBack}>‹ Back</button>;
   if (!g) return (
@@ -114,7 +113,8 @@ export function GymsScreen({ gyms, logged, fresh, uid, onBack }: { gyms: GymsSto
       <h1>Gyms</h1>
       {!draft && <div className="chips gym-chips" role="group" aria-label="Active gym">
         {gyms.gyms.map((x) => <button key={x.id} className={`chip${x.id === g.id ? ' primary' : ''}`} aria-pressed={x.id === g.id} onClick={() => void gyms.save(gyms.gyms, x.id)}><span className="pname">{x.name}</span></button>)}
-        <button className="chip" onClick={add}>+ Add gym</button>
+        {/* A draft too: leaving before naming it or ticking gear leaves no second gym behind. */}
+        <button className="chip" onClick={() => setDraft(newGym(gyms.gyms.length))}>+ Add gym</button>
         <button className="chip" onClick={() => setPasting(true)}>+ From text</button>
       </div>}
       {pasting && <AddFromText gyms={gyms} onDone={() => setPasting(false)} />}

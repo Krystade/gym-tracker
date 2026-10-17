@@ -73,7 +73,7 @@ test('the When hint sits under the time field, which keeps to the form width', a
   await page.getByRole('textbox', { name: 'Weight' }).fill('135');
   await page.getByRole('button', { name: 'Add set' }).click();
   await page.clock.setFixedTime(new Date('2026-10-02T18:20:00'));
-  await page.getByRole('main').getByRole('button', { name: 'More' }).click();
+  await page.getByRole('button', { name: 'Details' }).click();
   await page.getByRole('button', { name: 'Did this earlier?' }).click();
   const form = page.locator('.set-form').first();
   const when = form.getByRole('textbox', { name: 'When' });
@@ -88,7 +88,7 @@ test('the cardio When hint sits under its time field too', async ({ page }) => {
   await page.clock.install({ time: T });
   await page.goto('/');
   await addLift(page, 'Treadmill');
-  await page.getByRole('main').getByRole('button', { name: 'More' }).click();
+  await page.getByRole('button', { name: 'Details' }).click();
   await page.getByRole('button', { name: 'Did this earlier?' }).click();
   const form = page.locator('.cardio-form');
   const when = form.getByRole('textbox', { name: 'When' });

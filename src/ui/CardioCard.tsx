@@ -78,7 +78,7 @@ function CardioForm({ name, initial, submitLabel, onSubmit, onCancel, onDelete, 
         {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
         <button type="submit" className="primary" disabled={!!problem}>{submitLabel}</button>
       </div>
-      <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>More</button>
+      <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>Details</button>
       {moreOpen && (<>
         {!whenOpen && <button type="button" className="chip" onClick={() => setWhenOpen(true)}>Did this earlier?</button>}
         <input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => touch(setNote)(e.target.value)} />

@@ -157,7 +157,7 @@ export function DataScreen({ store, profile, body, sync, cloud, people, requests
           ? <p className="muted" role="status">{bodyFallback}</p>
           : <textarea className="csv" aria-label="Body CSV export" readOnly value={bodyFallback} onFocus={(e) => e.currentTarget.select()} />)}
       </section>
-      <CycleCard />
+      <CycleCard name={people.active?.name ?? 'Me'} />
       <AccountCard cloud={cloud} people={people.people} />
       <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} />
       <PeopleCard people={people} />

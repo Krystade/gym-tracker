@@ -189,7 +189,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .chip.predicted:not([aria-pressed='true']) { border-style: dashed; border-color: var(--accent); }
 .chips.cycle .chip { padding: 0 8px; } /* four phases on one line at 375px */
 .cycle-setting { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.cycle-setting h2 { margin: 0; }
+.cycle-setting h2 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.cycle-who { display: block; font-size: var(--fs-sm); font-weight: 400; color: var(--muted); }
 .tag-editor { display: grid; gap: 8px; padding: 4px 12px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); }
 .tag-list { list-style: none; margin: 0; padding: 0; }
 .tag-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
@@ -319,7 +320,9 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 .test-due span { align-self: stretch; }
 
 /* Program */
-.today-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+/* The date is read whole: where it and Program don't fit on one line (a 320px phone), Program wraps under, to the right. */
+.today-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; margin-bottom: 12px; }
+.today-head > button { margin-left: auto; padding: 0 10px; } /* a little narrower, so a long date and Program share a 375px line */
 .today-head h1 { margin: 4px 0; }
 /* "at Garage ›" under the day: quiet, a full-width 44px tap target pulled up into the head's gap. */
 .gym-line { width: 100%; justify-content: flex-start; margin: -12px 0 4px; padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }

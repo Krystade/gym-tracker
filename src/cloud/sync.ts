@@ -78,9 +78,11 @@ export async function deleteCloudData({ F, db }: Cloud, uid: string): Promise<vo
   // Off your friends' lists too (the rules let you delete yourself from them), so nobody keeps a link to a gone account.
   for (const d of (await F.getDocs(F.collection(db, `users/${uid}/friends`))).docs) refs.push(F.doc(db, `users/${d.id}/friends/${uid}`));
   for (const sub of ['meta', 'friends', 'invites', 'requests', 'private']) {
-    // Before the rules for private are deployed, listing it is refused; there's nothing in it to delete then.
+    // Before the rules for private are deployed, listing it is refused; there's nothing in it to delete then. Any other
+    // failure (offline, a timeout) stops the delete, so an account is never deleted with its cycle days left behind.
     const list = F.getDocs(F.collection(db, `users/${uid}/${sub}`));
-    for (const d of (await (sub === 'private' ? list.catch(() => ({ docs: [] })) : list)).docs) refs.push(d.ref);
+    const refused = (e: unknown) => { if ((e as { code?: string }).code === 'permission-denied') return { docs: [] }; throw e; };
+    for (const d of (await (sub === 'private' ? list.catch(refused) : list)).docs) refs.push(d.ref);
   }
   const profile = await F.getDoc(F.doc(db, `users/${uid}`));
   const username = profile.data()?.username as string | undefined;

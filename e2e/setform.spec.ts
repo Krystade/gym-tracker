@@ -14,7 +14,7 @@ const openBench = async (page: Page) => {
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
   await page.getByRole('button', { name: /^Bench Press( · logged)?$/ }).click();
 };
-const more = (page: Page) => page.getByRole('main').getByRole('button', { name: 'More' });
+const more = (page: Page) => page.getByRole('button', { name: 'Details' });
 
 // 4 sets: with 3 the button still fits before the change on a fresh day (no cards above the exercise)
 test('Add set sits in view after a few sets', async ({ page }) => {
@@ -33,7 +33,7 @@ test('Add set sits in view after a few sets', async ({ page }) => {
   await page.screenshot({ path: 'screenshots/33-setform-more.png', fullPage: true });
 });
 
-test('More reopens for a drafted note, and folds after the set is saved', async ({ page }) => {
+test('Details reopens for a drafted note, and folds after the set is saved', async ({ page }) => {
   await page.goto('/');
   await openBench(page);
   await expect(more(page)).toHaveAttribute('aria-expanded', 'false');

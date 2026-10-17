@@ -13,7 +13,7 @@ const logSet = async (page: Page, lift: string, weight: string, reps: string, fl
   await card.getByRole('textbox', { name: 'Weight' }).fill(weight);
   await card.getByRole('textbox', { name: 'Reps' }).fill(reps);
   if (flag) {
-    await card.getByRole('button', { name: 'More' }).click();
+    await card.getByRole('button', { name: 'Details' }).click();
     await card.getByRole('button', { name: flag, exact: true }).click();
     if (flag === 'Pain') {
       await card.getByRole('group', { name: 'Pain region' }).getByRole('button', { name: 'Elbow' }).click();
