@@ -55,6 +55,15 @@ function problems({ top, bottom }: { top: number; bottom: number }) {
     if (!clipped) out.push(`off the side: ${label(el)} ${Math.round(r.left)}–${Math.round(r.right)}`);
   }
 
+  // iOS zooms the page into a field under 16px when it's focused, and stays zoomed after: the fixed tab bar and status
+  // backdrop then sit wherever the zoom left them. Every field you type in or pick from is 16px or more (a checkbox,
+  // radio or slider takes no focus zoom).
+  for (const el of document.querySelectorAll('input:not([type=hidden], [type=checkbox], [type=radio], [type=range]), select, textarea')) {
+    if (!shown(el)) continue;
+    const size = parseFloat(getComputedStyle(el).fontSize);
+    if (size < 16) out.push(`field under 16px (iOS zooms on focus): ${label(el)} ${size}px`);
+  }
+
   // At the top: the heading, Back and everything else tappable clear the status bar.
   scrollTo(0, 0);
   const h1 = [...document.querySelectorAll('h1')].find(shown);
@@ -284,6 +293,7 @@ test('Friends and a friend’s view fit each phone', async ({ browser }) => {
   const b = await person(browser);
   await a.friends.getByRole('button', { name: 'Make an invite link' }).click();
   const link = await a.friends.getByRole('textbox', { name: 'Your invite link' }).inputValue();
+  await check(a.page, 'friends-invite-link');
   await b.page.goto(link);
   await check(b.page, 'friends-invite');
   await b.friends.getByRole('region', { name: 'Invite' }).getByRole('button', { name: 'Accept' }).click();

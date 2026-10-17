@@ -61,7 +61,7 @@ button.b.sq { width: 40px; padding: 0 }
 .ctl { display: grid; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px }
 .field { display: grid; grid-template-columns: 40px minmax(0, 1fr) 76px; gap: 10px; align-items: center; font-size: 13px; color: var(--muted) }
 .field input[type=range] { width: 100%; accent-color: var(--accent); height: 32px }
-.field input[type=number] { font: 15px var(--mono); font-variant-numeric: tabular-nums; width: 100%; min-height: 40px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink) }
+.field input[type=number] { font: 16px var(--mono); font-variant-numeric: tabular-nums; width: 100%; min-height: 40px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink) }
 .nudge { display: grid; grid-template-columns: repeat(3, 40px); gap: 4px; justify-content: start }
 .strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px }
 .fr { flex: none; background: var(--stage); border: 2px solid transparent; border-radius: 8px; padding: 4px; cursor: pointer; display: grid; gap: 2px; justify-items: center; color: #c9cfdb; font: 11px var(--mono) }
@@ -118,7 +118,7 @@ button.b.sq { width: 40px; padding: 0 }
     <details class="ctl" id="backup">
       <summary>Send my marks to Claude</summary>
       <p class="help">Marks save in this browser. Copy them and paste them into the chat so they can go into the app. To restore marks, paste them here and press Load.</p>
-      <textarea id="bk" rows="4" style="width:100%;font:12px var(--mono);background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px" aria-label="Marks as text"></textarea>
+      <textarea id="bk" rows="4" style="width:100%;font:16px var(--mono);background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px" aria-label="Marks as text"></textarea>
       <div class="bar"><button class="b primary" id="copy">Copy my marks</button><button class="b" id="load">Load</button><span class="small muted" id="bkmsg" role="status"></span></div>
     </details>
     <p class="help">Pick a body slot, then drag its item into place in the first frame (the beanie onto the head, the shorts onto the hips, the dumbbell into the front hand) and set its size and tilt with the sliders or by typing a number. The tool then guesses the other frames by following that spot through the animation. Step through them: press <b>Looks right</b> when a guess is fine, or drag it to fix it. Your fixes become the starting point for the frames after them. A green dot marks frames you've set, an amber ring marks guesses. Your work saves as you go.</p>
