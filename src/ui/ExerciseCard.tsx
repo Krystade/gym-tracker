@@ -79,8 +79,11 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     prior: priorE1rm(store.entries, exercise, date), offset: rirOffset(store.entries, exercise),
   }), [store.entries, exercise, date]);
   // The last set actually done here, not a pasted one that sorts after it.
-  const seed = today.findLast((s) => s.loggedAt) ?? today.at(-1);
-  const pulley: Flag[] = (seed ?? last?.sets.find(isWorking))?.flags.includes('double_pulley') ? ['double_pulley'] : [];
+  const latest = (xs: SetEntry[]) => xs.findLast((s) => s.loggedAt) ?? xs.at(-1);
+  const working = today.filter(isWorking);
+  // The numbers come from a working set: after a warm-up the form goes back to the target.
+  const seed = latest(working);
+  const pulley: Flag[] = (latest(today) ?? last?.sets.find(isWorking))?.flags.includes('double_pulley') ? ['double_pulley'] : [];
   // With nothing to go on, a lift that needs gear starts empty: a prefilled 0 would log a weighted lift as bodyweight.
   const initial: Omit<SetFormValue, 'weight'> & { weight: number | null } = seed ? { weight: seed.weight, reps: seed.reps ?? st.repMin, flags: pulley }
     : target ? { weight: target.weight, reps: target.reps, flags: pulley }
@@ -99,7 +102,6 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     return true;
   }
 
-  const working = today.filter(isWorking);
   const complete = plannedSets != null && plannedSets > 0 && working.length >= plannedSets;
   // The plan sent you here: open a folded card, but a card that isn't finished has nothing to open, so don't pin it open.
   if (openReq && complete && !opened) setOpened(true);
