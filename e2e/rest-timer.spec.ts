@@ -33,7 +33,7 @@ test('a rest timer starts on Add set, clear of the form, and starts over on the 
   // No history for this lift: 2:00.
   await expect(timer).toContainText('2:00');
   expect(await page.evaluate(() => (window as unknown as { locks: string[] }).locks)).toEqual(['on']);
-  await page.clock.runFor(30_000);
+  await page.clock.fastForward(30_000);
   await expect(timer).toContainText('1:30');
 
   // It doesn't cover the form: not its steppers, Add set or More.
@@ -48,7 +48,7 @@ test('a rest timer starts on Add set, clear of the form, and starts over on the 
   await expect(timer).toContainText('2:00');
 
   // The next set ends this rest and starts the next one.
-  await page.clock.runFor(45_000);
+  await page.clock.fastForward(45_000);
   await expect(timer).toContainText('1:15');
   await card.getByRole('button', { name: /^Add set/ }).click();
   await expect(timer).toContainText('2:00');
@@ -66,12 +66,13 @@ test('the rest timer runs out to “Rest done”, then goes', async ({ page }) =
   await card.getByRole('textbox', { name: 'Weight' }).fill('50');
   await page.clock.pauseAt(new Date('2026-10-16T18:30:00'));
   await card.getByRole('button', { name: /^Add set/ }).click();
+  // fastForward jumps, firing the 250 ms tick once rather than ~600 renders' worth of runFor.
   const timer = page.getByRole('timer', { name: 'Rest' });
   await expect(timer).toContainText('2:00');
-  await page.clock.runFor(121_000);
+  await page.clock.fastForward(121_000);
   await expect(timer).toContainText('Rest done');
   await page.screenshot({ path: 'screenshots/r7-rest-done.png' });
-  await page.clock.runFor(31_000);
+  await page.clock.fastForward(31_000);
   await expect(timer).toHaveCount(0);
 });
 
