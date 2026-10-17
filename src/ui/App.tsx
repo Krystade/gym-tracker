@@ -43,6 +43,8 @@ import { FriendView, type FriendTab } from './FriendView';
 import { CharactersScreen } from './CharactersScreen';
 import type { Friend } from '../cloud/friends';
 import { parseInvite, type Invite } from '../domain/invite';
+import { useOpenRoute, usePushSync } from '../push/usePush';
+import { tabOf } from '../push/routes';
 
 // An invite link opened in the app: kept until Friends can accept it, and gone from the address bar so a reload doesn't repeat it.
 let launchInvite: Invite | null = typeof location !== 'undefined' ? parseInvite(location.hash) : null;
@@ -82,6 +84,11 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
     return () => window.removeEventListener('hashchange', on);
   }, []);
   const [exercise, setExercise] = useState<string | null>(null);
+  // A notification tap: its screen, with nothing on top.
+  useOpenRoute((r) => {
+    setViewing(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false);
+    setTab(tabOf(r)); window.scrollTo(0, 0);
+  });
   const [date, setDate] = useState(() => localDate(new Date()));
   const [, setMinute] = useState(() => Math.floor(Date.now() / 60_000));
   // The day Today logs to, when it isn't today (a forgotten set); cleared on any profile switch, so a past day never resurfaces.
@@ -152,6 +159,8 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
     rev: [rawProfile.profile, programs.program, programs.plans, settings.get, settings.tags, gyms.gyms],
   });
   const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, open, showTour } = nav;
+  // Push: the reminder and recap numbers, for the person whose account this is (signed out: this phone's subscription goes).
+  usePushSync(store.entries, programs.program, programs.plans, date, cloud.link === null ? false : cloud.mine ? true : null);
   // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.
   const [carryOff, setCarryOff] = useState<string | null>(null);
   const day = carryOff === date ? date : sessionDay(store.entries, date, new Date());

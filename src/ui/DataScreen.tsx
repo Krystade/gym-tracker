@@ -5,6 +5,7 @@ import type { BodyStore } from '../state/useBody';
 import type { SyncStore } from '../state/useSync';
 import { SyncCard } from './SyncCard';
 import { AccountCard } from './AccountCard';
+import { NotificationsCard } from './NotificationsCard';
 import type { CloudStore } from '../state/useCloud';
 import { PeopleCard } from './PeopleCard';
 import type { PeopleStore } from '../state/usePeople';
@@ -147,6 +148,7 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
           : <textarea className="csv" aria-label="Body CSV export" readOnly value={bodyFallback} onFocus={(e) => e.currentTarget.select()} />)}
       </section>
       <AccountCard cloud={cloud} people={people.people} />
+      <NotificationsCard signedIn={cloud.mine} goal={profile.profile.weeklyGoal} />
       <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} />
       <PeopleCard people={people} />
       <section className="card"><button className="wide" onClick={onShowWalkthrough}>Show walkthrough</button><button className="wide" onClick={onOpenCharacters}>Characters (preview)</button><button className="wide" onClick={() => location.assign(`${import.meta.env.BASE_URL}tools/accessory-placer.html`)}>Accessory placer</button></section>

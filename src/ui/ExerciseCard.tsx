@@ -99,7 +99,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     const e = await store.add({ date, exercise, ...rest, gym, ...(at !== undefined && { at: at ? new Date(`${date}T${at}:00`) : null }), target: { weight: sug.weight, reps: sug.reps, sets: sug.sets } });
     if (!e) return false;
     // A set done just now starts the rest; one entered for an earlier time or day doesn't.
-    if (at === undefined && date === realToday) startRest(restSeconds(pace, exercise), exercise.toLowerCase());
+    if (at === undefined && date === realToday) startRest(restSeconds(pace, exercise), exercise.toLowerCase(), `${exercise} · set ${working.length + (isWorking(e) ? 1 : 0) + 1} next`);
     const r = prCheck([...store.entries, e], e);
     if (r.e1rm) setPr(`PR! New best e1RM ${Math.round(e1rm(e)!)} lb`);
     else if (r.reps) setPr(`Rep PR at ${fmtWeight(e.weight)} lb`);
