@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { blockFriend, clearSentGym, friendState, listThread, markRead, removeFriend, sendMessage, sendPing, setMuted, type SentGym } from '../cloud/friends';
 import { MAX_MESSAGE, messageOk, PRESET_KEYS, PRESETS, shortAgo, type PresetKey, type ThreadItem } from '../domain/messages';
@@ -9,6 +9,7 @@ import type { GymsStore } from '../state/useGyms';
 export interface ThreadWith { uid: string; name?: string }
 
 const GAP_MS = 2000; // the rules want 2 s between sends to one friend
+const COUNT_FROM = 100; // the count shows only once a message nears the limit
 
 /**
  * Pings and messages with one friend, in a sheet from the bottom (never a centred modal: the board stays visible above
@@ -28,6 +29,16 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   const [menu, setMenu] = useState(false);
   const [armed, setArmed] = useState<'remove' | 'block' | null>(null);
   const list = useRef<HTMLOListElement>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
+  // The box grows a line at a time to fit what's typed, up to its CSS max-height; past that it scrolls.
+  useLayoutEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const border = el.offsetHeight - el.clientHeight, want = el.scrollHeight + border;
+    el.style.height = `${want}px`;
+    el.style.overflowY = want > parseFloat(getComputedStyle(el).maxHeight) ? 'auto' : 'hidden';
+  }, [text]);
   const changed = useRef(onChanged);
   changed.current = onChanged;
 
@@ -135,11 +146,14 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
               <button key={k} className="preset" disabled={busy || !state} aria-label={`Send ${PRESETS[k].emoji} ${PRESETS[k].copy}`} title={PRESETS[k].copy} onClick={() => ping(k)}>{PRESETS[k].emoji}</button>
             ))}
           </div>
+          {/* Enter is a new line (a message can have several); Send sends, and so does Cmd or Ctrl+Enter on a keyboard. */}
           <form className="compose" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-            <input aria-label={`Message ${who}`} value={text} maxLength={MAX_MESSAGE} enterKeyHint="send" placeholder="Message" autoComplete="off"
-              onChange={(e) => setText(e.target.value)} />
-            <span className={`small ${n >= MAX_MESSAGE ? 'warn' : 'muted'}`} aria-live="polite" aria-label={`${n} of ${MAX_MESSAGE} characters`}>{n}/{MAX_MESSAGE}</span>
-            <button type="submit" className="mini primary" disabled={busy || !state || !messageOk(text)}>Send</button>
+            <textarea ref={field} aria-label={`Message ${who}`} value={text} maxLength={MAX_MESSAGE} rows={1} enterKeyHint="enter" placeholder="Message" autoComplete="off"
+              onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} />
+            <span className="compose-side">
+              <span className={`small ${n >= MAX_MESSAGE ? 'warn' : 'muted'}`} aria-live="polite">{n > COUNT_FROM ? `${n}/${MAX_MESSAGE}` : ''}</span>
+              <button type="submit" className="mini primary" disabled={busy || !state || !messageOk(text)}>Send</button>
+            </span>
           </form>
         </>) : state && <p className="muted small">You’re not friends with {who} now, so you can’t message them.</p>}
         {msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? 'ok small' : 'warn small'}>{msg.text}</p>}

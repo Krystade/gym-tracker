@@ -267,3 +267,49 @@ test('a full thread sheet starts below the status bar, and stays on the visible 
   const box = (await sheet.boundingBox())!;
   expect(box.y + box.height).toBeLessThanOrEqual(812 - 30 + 0.5);
 });
+
+test('the message box wraps a long message onto lines it grows to fit; Enter is a new line, Send sends; the count shows near the limit', async ({ browser }) => {
+  const [a, b] = await Promise.all([person(browser), person(browser)]);
+  await befriend(b, a, b.name);
+  await orbit(a.page).getByTestId(`orbit-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
+  const sheet = sheetOf(a.page, b.name);
+  await expect(sheet.getByRole('button', { name: 'Send 💪 Strong' })).toBeEnabled(); // read: the box is live
+  const field = sheet.getByRole('textbox', { name: `Message @${b.name}` });
+  expect(await fontPx(field)).toBeGreaterThanOrEqual(16);
+  const one = (await field.boundingBox())!.height;
+  expect(one).toBeGreaterThanOrEqual(44);
+  // Short: one line, and no count.
+  await field.fill('On my way');
+  await expect(sheet.getByText(/^\d+\/140$/)).toHaveCount(0);
+
+  // 130 characters: all of it in view, none of it scrolled sideways or up out of sight, the box taller, the count shown.
+  const text = `${LONG} and then curls, a few sets of dips, and a long walk home`.slice(0, 130);
+  expect(text).toHaveLength(130);
+  await field.fill(text);
+  await expect(sheet.getByText('130/140', { exact: true })).toBeVisible();
+  const m = await field.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth, sh: el.scrollHeight, ch: el.clientHeight }));
+  expect(m.sw, 'nothing scrolled sideways').toBeLessThanOrEqual(m.cw);
+  expect(m.sh, 'nothing scrolled out of the top').toBeLessThanOrEqual(m.ch + 1);
+  const grown = (await field.boundingBox())!;
+  expect(grown.height).toBeGreaterThan(one + 20);
+  expect(grown.x).toBeGreaterThanOrEqual(0);
+  expect(grown.x + grown.width).toBeLessThanOrEqual(375);
+  expect(grown.y + grown.height).toBeLessThanOrEqual(812 - BOTTOM);
+  expect((await sheet.locator('.sheet-head').boundingBox())!.y).toBeGreaterThanOrEqual(TOP);
+  expect(await noSideScroll(a.page)).toBe(true);
+  await a.page.screenshot({ path: `${SHOTS}/thread-long-message.png` });
+
+  // Enter starts a new line and sends nothing; Send sends both lines, and the bubble keeps the break. The box shrinks back.
+  await field.fill('Line one');
+  await field.press('Enter');
+  await field.pressSequentially('line two');
+  await expect(field).toHaveValue('Line one\nline two');
+  await expect(sheet.locator('.bubble.mine')).toHaveCount(0);
+  await sheet.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(sheet.getByRole('status')).toHaveText('Sent');
+  const bubble = sheet.locator('.bubble.mine .bubble-text');
+  await expect(bubble).toHaveCount(1);
+  expect(await bubble.innerText()).toBe('Line one\nline two');
+  await expect(field).toHaveValue('');
+  expect((await field.boundingBox())!.height).toBeLessThanOrEqual(one + 1);
+});
