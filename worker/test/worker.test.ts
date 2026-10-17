@@ -177,7 +177,7 @@ describe('reminder and recap', () => {
   const TUE_NOON = Date.parse('2026-10-20T16:00:00Z');
   const TUE_6PM = Date.parse('2026-10-20T22:00:00Z');
 
-  async function planned(lastLogged: string, week = { start: '2026-10-19', sessions: 2, sets: 31, prs: 1 }) {
+  async function planned(lastLogged: string, week: Record<string, unknown> = { start: '2026-10-19', sessions: 2, sets: 31, prs: 1 }) {
     const e = await enrolled(undefined, TUE_NOON);
     await call(e.uid, 'PUT', '/prefs', PREFS);
     await call(e.uid, 'POST', '/activity', { date: lastLogged, next: 'Day B', week });
@@ -212,6 +212,15 @@ describe('reminder and recap', () => {
     expect(pushes(net)).toHaveLength(1);
     expect((await phone.read(pushes(net)[0].body)).notification).toMatchObject({ title: 'Your week', body: 'This week: 4 sessions · 61 sets · 2 PRs', data: { route: 'recap' } });
     expect(Object.fromEntries(pushes(net)[0].headers)).toMatchObject({ urgency: 'low', topic: 'recap' });
+  });
+
+  it('the recap names cardio-only days apart from sessions; an app that sends none still works', async () => {
+    const { uid, net, phone } = await planned('2026-10-20', { start: '2026-10-19', sessions: 2, sets: 30, prs: 1, cardio: 1 });
+    await runInDurableObject(box(uid), async (_o, st) => { const p = await st.storage.get<{ remindAt: number }>('plan'); await st.storage.put('plan', { ...p, remindAt: null }); });
+    await setClock(uid, Date.parse('2026-10-25T23:00:00Z'));
+    await runDurableObjectAlarm(box(uid));
+    expect((await phone.read(pushes(net)[0].body)).notification.body).toBe('This week: 2 sessions + 1 cardio day · 30 sets · 1 PR');
+    expect((await call(uid, 'POST', '/activity', { date: '2026-10-20', next: null, week: { start: '2026-10-19', sessions: 2, sets: 30, prs: 1, cardio: 8 } })).status).toBe(400);
   });
 
   it('a recap with counts from an earlier week says nothing was logged', async () => {

@@ -66,13 +66,15 @@ export function timer(v: unknown): Timer {
   return { sub: deviceId(o.sub), seconds: int(o.seconds, 5, 3600, 'seconds'), label: o.label == null ? '' : text(o.label, 200, 'label').slice(0, MAX_LABEL) };
 }
 
-export interface Activity { date: string; next: string | null; week: { start: string; sessions: number; sets: number; prs: number } }
+/** `week.cardio`: cardio-only days, apart from sessions; an app from before it sends none, read as 0. */
+export interface Activity { date: string; next: string | null; week: { start: string; sessions: number; sets: number; prs: number; cardio: number } }
 export function activity(v: unknown): Activity {
   const o = obj(v, 'body'), w = obj(o.week, 'week');
   return {
     date: date(o.date, 'date'),
     next: o.next == null ? null : text(o.next, 40, 'next'),
-    week: { start: date(w.start, 'start'), sessions: int(w.sessions, 0, 7, 'sessions'), sets: int(w.sets, 0, 10_000, 'sets'), prs: int(w.prs, 0, 10_000, 'prs') },
+    week: { start: date(w.start, 'start'), sessions: int(w.sessions, 0, 7, 'sessions'), sets: int(w.sets, 0, 10_000, 'sets'), prs: int(w.prs, 0, 10_000, 'prs'),
+      cardio: w.cardio == null ? 0 : int(w.cardio, 0, 7, 'cardio') },
   };
 }
 

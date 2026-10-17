@@ -23,7 +23,13 @@ describe('activityOf', () => {
       s('2026-10-13', 'Squat', 185, 5),
     ];
     const a = activityOf(entries, program, [plan('2026-10-12', 0), plan('2026-10-13', 1)], TODAY);
-    expect(a).toEqual({ date: '2026-10-13', next: 'Day A', week: { start: '2026-10-12', sessions: 2, sets: 3, prs: 1 } });
+    expect(a).toEqual({ date: '2026-10-13', next: 'Day A', week: { start: '2026-10-12', sessions: 2, sets: 3, prs: 1, cardio: 0 } });
+  });
+
+  it('cardio-only days are not sessions; they go separately', () => {
+    const tread = (date: string): SetEntry => ({ ...s(date, 'Treadmill', 0, 0, ['cardio']), reps: null, cardio: { seconds: 1200 } });
+    const entries = [s('2026-10-12', 'Bench Press', 140, 8), tread('2026-10-12'), tread('2026-10-13'), tread(TODAY)];
+    expect(activityOf(entries, null, [], TODAY).week).toEqual({ start: '2026-10-12', sessions: 1, sets: 1, prs: 0, cardio: 2 });
   });
 
   it('after a session today the next day moves on; with no program there is none', () => {
@@ -31,6 +37,6 @@ describe('activityOf', () => {
     expect(activityOf(entries, program, [plan('2026-10-12', 0), plan(TODAY, 1)], TODAY).next).toBe('Day A');
     expect(activityOf(entries, program, [plan('2026-10-12', 0)], TODAY)).toMatchObject({ date: TODAY, next: 'Day B' });
     expect(activityOf(entries, null, [], TODAY).next).toBeNull();
-    expect(activityOf([], null, [], TODAY)).toEqual({ date: '0000-00-00', next: null, week: { start: '2026-10-12', sessions: 0, sets: 0, prs: 0 } });
+    expect(activityOf([], null, [], TODAY)).toEqual({ date: '0000-00-00', next: null, week: { start: '2026-10-12', sessions: 0, sets: 0, prs: 0, cardio: 0 } });
   });
 });

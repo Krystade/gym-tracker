@@ -70,10 +70,15 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 export const testNote = () => ({ title: 'Test notification', body: 'Notifications work on this phone.' });
 export const restNote = (label?: string | null) => ({ title: 'Rest done', body: label?.trim().slice(0, MAX_LABEL) || 'Time for your next set' });
 export const remindNote = (next?: string | null) => ({ title: 'Time to train', body: next ? `${next} is up · nothing logged yet` : 'Nothing logged yet today' });
-export const recapNote = (w: { sessions: number; sets: number; prs: number } | null) => ({
-  title: 'Your week',
-  body: w && w.sessions > 0 ? `This week: ${plural(w.sessions, 'session')} · ${plural(w.sets, 'set')} · ${plural(w.prs, 'PR')}` : 'This week: no sessions logged',
-});
+/** Sessions are lift days; cardio-only days go beside them, never toward the goal. An app before them sends no `cardio`. */
+export const recapNote = (w: { sessions: number; sets: number; prs: number; cardio?: number } | null) => {
+  const cardio = w?.cardio ? plural(w.cardio, 'cardio day') : '';
+  return {
+    title: 'Your week',
+    body: w && w.sessions > 0 ? `This week: ${plural(w.sessions, 'session')}${cardio && ` + ${cardio}`} · ${plural(w.sets, 'set')} · ${plural(w.prs, 'PR')}`
+      : cardio ? `This week: no sessions · ${cardio}` : 'This week: no sessions logged',
+  };
+};
 
 // Friend activity. `name` is the sender's username, read by the Worker from their profile, never from the request.
 export const requestNote = (name: string) => ({ title: 'Friend request', body: `${name} wants to be friends` });
