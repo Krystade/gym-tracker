@@ -18,6 +18,9 @@ import type { BodyStore } from '../state/useBody';
 import type { PhotosStore } from '../state/usePhotos';
 import { PhotosCard } from './PhotosScreen';
 import { LastWeekCard } from './WeekDigest';
+import { GoalSuggestion, PrioritySuggestion } from './TargetSuggestions';
+import type { SetEntry } from '../domain/types';
+import { activeProfileDb } from '../db/db';
 
 const tons = (n: number) => (n >= 1000 ? `${fmtWeight(Math.round(n / 100) / 10)}k` : fmtWeight(Math.round(n)));
 const fmt = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
@@ -47,9 +50,11 @@ function TierTarget({ t, profile }: { t: Tier; profile: FittedProfileStore }) {
   );
 }
 
-function Priorities({ profile, readOnly, cardioMinutes }: { profile: FittedProfileStore; readOnly?: boolean; cardioMinutes: number }) {
+/** `entries` and `today`: what the suggested goal and priorities are read from (your own Stats only). */
+function Priorities({ profile, readOnly, cardioMinutes, entries, today }: { profile: FittedProfileStore; readOnly?: boolean; cardioMinutes: number; entries: SetEntry[]; today: string }) {
   const p = profile.profile;
   const [goal, setGoal] = useState(String(p.weeklyGoal));
+  const [owner] = useState(activeProfileDb);
   return (
     <fieldset className="card plain" id="priorities" disabled={readOnly}>
       <h2>Priorities</h2>
@@ -61,10 +66,12 @@ function Priorities({ profile, readOnly, cardioMinutes }: { profile: FittedProfi
             if (Number.isInteger(n) && n >= 1 && n <= 7) void profile.save({ ...p, weeklyGoal: n });
           }} />
       </label>
+      {!readOnly && <GoalSuggestion owner={owner} entries={entries} profile={p} today={today} onAccept={(n) => { setGoal(String(n)); void profile.save({ ...p, weeklyGoal: n }); }} />}
       <section className="sub" role="group" aria-label="Weekly sets">
         <p className="muted small">Weekly sets per muscle, fitted to {profile.budget.sessions} sessions × {profile.budget.perSession} sets. 1 gets the most, 4 the least.</p>
         <ol className="tier-targets">{([1, 2, 3, 4] as Tier[]).map((t) => <TierTarget key={t} t={t} profile={profile} />)}</ol>
       </section>
+      {!readOnly && <PrioritySuggestion owner={owner} entries={entries} profile={p} today={today} onApply={(tiers) => void profile.save({ ...p, tiers })} />}
       <div className="prio-grid">
         {MUSCLES.map((m) => (
           <label key={m}>{m}
@@ -94,7 +101,7 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
 }) {
   const p = profile.profile;
   // A new user sets priorities before the first workout, so they're here with an empty log too.
-  if (!store.entries.length) return (<><h1>Stats</h1><p className="muted">No sessions yet — log a workout or import your history under More.</p><BodyCard body={body} today={today} />{photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}<Priorities profile={profile} readOnly={readOnly} cardioMinutes={0} /></>);
+  if (!store.entries.length) return (<><h1>Stats</h1><p className="muted">No sessions yet — log a workout or import your history under More.</p><BodyCard body={body} today={today} />{photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}<Priorities profile={profile} readOnly={readOnly} cardioMinutes={0} entries={store.entries} today={today} /></>);
   const weeks = weeklySummary(store.entries, 12, today);
   const st = streak(weeklySummary(store.entries, 104, today), p.weeklyGoal);
   const thisWeek = weeks.at(-1)!;
@@ -143,7 +150,7 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
       <BodyCard body={body} today={today} />
       {photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}
       <CareCard entries={store.entries} today={today} />
-      <Priorities profile={profile} readOnly={readOnly} cardioMinutes={thisWeekCardio(store.entries, today)} />
+      <Priorities profile={profile} readOnly={readOnly} cardioMinutes={thisWeekCardio(store.entries, today)} entries={store.entries} today={today} />
     </>
   );
 }

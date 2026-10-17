@@ -732,3 +732,12 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 .suggested .suggested-name b { overflow-wrap: anywhere; font-weight: 600; }
 .suggested .suggested-name .muted { font-weight: 400; }
 .suggested li.done .suggested-count { color: var(--ok); }
+
+/* Suggested targets (Stats → Priorities): self-contained, for the coming redesign. */
+.target-suggest { margin: 8px 0 12px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface-2); }
+.target-suggest p { margin: 0 0 8px; }
+.target-suggest-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.target-suggest-actions button { flex: 1 1 auto; }
+.target-suggest-changes { list-style: none; margin: 0 0 10px; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 16px; }
+.target-suggest-changes li { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); padding: 3px 0; border-bottom: 1px solid var(--line); }
+.target-suggest-changes li span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
