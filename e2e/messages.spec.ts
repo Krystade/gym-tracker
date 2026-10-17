@@ -226,3 +226,44 @@ test('mute is quiet and private; block stops the sender and lists them to unbloc
   await friends(a.page).getByRole('button', { name: 'Send request' }).click();
   await expect(friends(a.page).getByRole('status')).toContainText(b.name);
 });
+
+// ---- The sheet on a notched phone, with a thread long enough to reach its full height ----
+
+const EMU = 'http://127.0.0.1:8080/v1/projects/demo-gym-tracker/databases/(default)/documents';
+/** The signed-in account's uid, as this phone keeps it. */
+const uidOf = (page: Page) => page.evaluate(async () => {
+  const db: IDBDatabase = await new Promise((ok, no) => { const r = indexedDB.open('gym-tracker-shared'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+  const link: { uid: string } = await new Promise((ok, no) => { const r = db.transaction('kv').objectStore('kv').get('cloud'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+  db.close();
+  return link.uid;
+});
+/** `n` long messages from `from` in `to`'s inbox, written as an admin (the rules' 2 s gap would make this a minute). */
+async function seedThread(page: Page, from: string, to: string, n: number) {
+  for (let i = 0; i < n; i++) {
+    const res = await page.request.post(`${EMU}/users/${to}/inbox`, {
+      headers: { Authorization: 'Bearer owner' },
+      data: { fields: { from: { stringValue: from }, kind: { stringValue: 'm' }, t: { stringValue: `${i + 1}. ${LONG}` }, at: { timestampValue: new Date(Date.now() - (n - i) * 60_000).toISOString() } } },
+    });
+    expect(res.ok()).toBe(true);
+  }
+}
+
+test('a full thread sheet starts below the status bar, and stays on the visible screen when iOS leaves the viewport offset', async ({ browser }) => {
+  const [a, b] = await Promise.all([person(browser), person(browser)]);
+  await befriend(b, a, b.name);
+  await seedThread(a.page, await uidOf(b.page), await uidOf(a.page), 10);
+  await orbit(a.page).getByTestId(`orbit-${b.name}`).getByRole('button', { name: new RegExp(`^Message @${b.name}`) }).click();
+  const sheet = sheetOf(a.page, b.name);
+  await expect(sheet.getByRole('list', { name: 'Messages' }).locator('.bubble.theirs')).toHaveCount(10);
+  const head = sheet.locator('.sheet-head');
+  // Ten long messages fill it to its full height: its top is up by the status bar, where the bug was.
+  expect((await sheet.boundingBox())!.y).toBeLessThan(TOP + 60);
+  expect((await head.boundingBox())!.y).toBeGreaterThanOrEqual(TOP);
+  await a.page.screenshot({ path: `${SHOTS}/thread-full.png` });
+  // iOS 26 can leave the visual viewport 40px down the page after the keyboard closes (src/ui/viewportPin.ts sets
+  // these): the header still clears the status bar on the screen you see, and the sheet's foot stays on it.
+  await a.page.evaluate(() => { const s = document.documentElement.style; s.setProperty('--vv-top', '40px'); s.setProperty('--vv-bottom', '30px'); });
+  await expect.poll(async () => (await head.boundingBox())!.y).toBeGreaterThanOrEqual(TOP + 40);
+  const box = (await sheet.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(812 - 30 + 0.5);
+});

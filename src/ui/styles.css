@@ -643,3 +643,8 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .viewing-bar .bar-actions { display: flex; gap: 8px; flex: none; }
 .today-news { width: 100%; justify-content: flex-start; gap: 8px; text-align: left; margin: 0 0 12px; border-color: var(--accent); }
 .today-news > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- Round 10: Friends on the tab bar, the thread sheet and its message box. Self-contained; the redesign replaces it. ---- */
+/* The sheet stays on the screen you see: its foot on the bottom edge and its top below the status bar, both moved by the gap
+   iOS 26 can leave between the two viewports (src/ui/viewportPin.ts), as the tab bar is. 100% is the viewport it's fixed to. */
+.sheet { translate: 0 calc(-1 * var(--vv-bottom, 0px)); max-height: calc(100% - var(--sat) - 24px - var(--vv-top, 0px) - var(--vv-bottom, 0px)); }
