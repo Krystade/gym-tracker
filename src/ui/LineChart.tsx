@@ -44,7 +44,9 @@ export function LineChart({ points, today, label = 'Estimated 1RM over time', un
   };
   const at = tap != null && tap < points.length ? tap : points.length - 1;
   const sel = points[at];
-  const val = (v: number) => `${fmt(v)} ${unit}`;
+  // The axis may round to whole steps; a point's own value keeps its tenths.
+  const one = (v: number) => (tenths && v < 10 ? (Math.round(v * 10) / 10).toFixed(1) : fmt(v));
+  const val = (v: number) => `${one(v)} ${unit}`;
   return (
     <>
       <p className="readout" aria-live="polite">{fmtDay(sel.date, today)} · {val(sel.e1rm)}{noun ? ` ${noun}` : ''}{sel.pr ? ' · PR' : ''}</p>
@@ -59,7 +61,7 @@ export function LineChart({ points, today, label = 'Estimated 1RM over time', un
         <polyline className="line" fill="none" points={points.map((p) => `${X(t(p.date))},${Y(p.e1rm)}`).join(' ')} />
         {points.map((p, i) => <circle key={p.date} cx={X(t(p.date))} cy={Y(p.e1rm)} r={i === at ? 6 : p.pr ? 5 : 4} className={`pt${p.pr ? ' pr' : ''}${i === at ? ' sel' : ''}`} />)}
       </svg>
-      <ChartTable caption={label} head={['Date', column]} rows={[...points].reverse().map((p) => [fmtDay(p.date, today), fmt(p.e1rm)])} />
+      <ChartTable caption={label} head={['Date', column]} rows={[...points].reverse().map((p) => [fmtDay(p.date, today), one(p.e1rm)])} />
     </>
   );
 }

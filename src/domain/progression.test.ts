@@ -66,6 +66,9 @@ describe('nextTarget', () => {
     expect(nextTarget(day(12, 10, 10), 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 30, reps: 11 }); // 32
     // Enough in total, but a set below the bottom of the range: stay.
     expect(nextTarget(day(15, 15, 7), 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 30, reps: 8 });
+    // One heavier top set gets no slack: 35 × 10 after two at 30 isn't the top of the range.
+    const top = [s('2026-01-01', 1, 30, 12), s('2026-01-01', 2, 30, 12), s('2026-01-01', 3, 35, 10)];
+    expect(nextTarget(top, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 35, reps: 11 });
   });
 });
 

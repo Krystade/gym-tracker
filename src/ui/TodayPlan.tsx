@@ -118,7 +118,7 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
                 <b>{target}</b>
                 {target !== slot.exercise && <span className="muted small">for {slot.exercise}</span>}
                 {/* The count rides under the name, so the name gets the width it needs. */}
-                <span className="muted small"><span className="plan-count">{skipped ? 'Skipped' : `${Math.min(done, slot.sets)}/${slot.sets}`}</span> · {slot.minutes != null
+                <span className="muted small"><span className="plan-count">{skipped ? 'Skipped' : `${done}/${slot.sets}`}</span> · {slot.minutes != null
                   ? cardioTarget(entries, target, slot.minutes, plan.date).text
                   : <>{range(slot, target)}{!skipped && loadFor && fmtLoad(loadFor(target, slot.sets))}</>}</span>
               </button>

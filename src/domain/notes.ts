@@ -252,6 +252,9 @@ export function parseNotes(text: string, today: string, isHold: (name: string) =
   return out;
 }
 
+// Words that make a different movement of the same lift, so a bare name never fuzzy-matches them.
+const MOVEMENT = new Set(['romanian', 'stiff', 'sumo', 'deficit', 'front', 'hack', 'split', 'bulgarian', 'single']);
+
 // Short names people write, mapped only to a lift that exists. Not initials: Romanian Deadlift would be "RD".
 const ABBR: Record<string, string> = { rdl: 'Romanian Deadlift' };
 
@@ -262,8 +265,14 @@ export function matchExercise(name: string, known: string[], aliases: Record<str
   if (aliases[key]) return { exercise: aliases[key], how: 'alias', suggestions };
   const exact = known.find((k) => nameKey(k) === key) ?? (ABBR[key] && known.find((k) => nameKey(k) === nameKey(ABBR[key])));
   if (exact) return { exercise: exact, how: 'exact', suggestions };
-  // A bare name is not its more specific variant: "Deadlift" is not "Romanian Deadlift" (still offered as a suggestion).
-  const variant = (k: string) => { const w = nameKey(k); return w !== key && ` ${w} `.includes(` ${key} `); };
+  // A bare name is not a variant that moves differently: "Deadlift" is not "Romanian Deadlift" (still offered as a suggestion),
+  // but "Bench" is still Bench Press and "Lateral raise" DB Lateral Raise.
+  const variant = (k: string) => {
+    const w = nameKey(k);
+    if (w === key || !` ${w} `.includes(` ${key} `)) return false;
+    const have = new Set(key.split(' '));
+    return w.split(' ').some((x) => !have.has(x) && MOVEMENT.has(x));
+  };
   const close = ranked.find(([k, s]) => s >= 0.5 && !variant(k));
   if (close) return { exercise: close[0], how: 'fuzzy', suggestions };
   return { exercise: normalizeName(name), how: 'new', suggestions };

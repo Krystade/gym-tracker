@@ -80,8 +80,8 @@ function Priorities({ profile, readOnly, cardioMinutes }: { profile: FittedProfi
             {([1, 2, 3, 4] as Tier[]).map((t) => <option key={t} value={t}>{t} · {CARDIO_TARGETS[t][0]}–{CARDIO_TARGETS[t][1]} min</option>)}
           </select>
         </label>
-        {/* No priority set: no range to fall short of, just the minutes. */}
-        <p className="muted small" aria-label="Cardio this week">This week: {p.cardioTier == null ? cardioMinutes : `${cardioMinutes} of ${CARDIO_TARGETS[p.cardioTier][0]}–${CARDIO_TARGETS[p.cardioTier][1]}`} min</p>
+        {/* Priority 4 (or none): no range to fall short of, just the minutes. */}
+        <p className="muted small" aria-label="Cardio this week">This week: {cardioTierOf(p) === 4 ? cardioMinutes : `${cardioMinutes} of ${CARDIO_TARGETS[cardioTierOf(p)][0]}–${CARDIO_TARGETS[cardioTierOf(p)][1]}`} min</p>
       </div>
     </fieldset>
   );

@@ -117,14 +117,14 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
   const minReps = Math.min(...atTop.map((x) => x.reps as number));
   // Up once the sets at the top weight total within 2 reps of all at the top of the range (12/12/10 at 3 × 8–12), none below its bottom.
   const total = atTop.reduce((a, x) => a + (x.reps as number), 0);
-  const topped = total >= atTop.length * st.repMax - 2 && minReps >= st.repMin;
+  const topped = total >= atTop.length * st.repMax - Math.min(2, atTop.length - 1) && minReps >= st.repMin; // one heavier top set gets no slack
   if (top > 0 && topped) {
     const w = top + st.increment;
     return { kind: 'increase', weight: w, reps: st.repMin, last: last.sets, text: `Go up: ${lb(w)} × ${st.repMin}${unit}+`, done: { total, sets: atTop.length } };
   }
   // A bodyweight hold at the top of its range has nowhere to go in time: add weight or a harder variation.
   if (unit && top === 0 && topped) {
-    return { kind: 'maxed', weight: 0, reps: st.repMax, last: last.sets, text: `BW × ${st.repMax}s on every set: add weight or try a harder variation` };
+    return { kind: 'maxed', weight: 0, reps: st.repMax, last: last.sets, text: `BW × ${st.repMax}s held: add weight or try a harder variation` };
   }
   // Bodyweight reps have no weight to add, so their target is not capped by the range. Holds step in 5 s, like the stepper.
   const step = unit ? 5 : 1;

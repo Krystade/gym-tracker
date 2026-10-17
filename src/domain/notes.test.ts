@@ -269,7 +269,10 @@ describe('UX round 3: notes as written', () => {
   it('never reads a bare name as a more specific variant of it', () => {
     expect(matchExercise('Deadlift', ['Romanian Deadlift', 'Lat Pulldown'], {})).toMatchObject({ exercise: 'Deadlift', how: 'new', suggestions: ['Romanian Deadlift'] });
     expect(matchExercise('Deadlifts', ['Romanian Deadlift', 'Deadlift'], {})).toMatchObject({ exercise: 'Deadlift', how: 'exact' });
-    expect(matchExercise('Pushdown', ['Cable Pushdown'], {})).toMatchObject({ how: 'new' });
+    expect(matchExercise('Pushdown', ['Cable Pushdown'], {})).toMatchObject({ exercise: 'Cable Pushdown', how: 'fuzzy' });
+    expect(matchExercise('Bench', ['Bench Press', 'Romanian Deadlift'], {})).toMatchObject({ exercise: 'Bench Press', how: 'fuzzy' });
+    expect(matchExercise('Lateral raise', ['DB Lateral Raise'], {})).toMatchObject({ exercise: 'DB Lateral Raise', how: 'fuzzy' });
+    expect(matchExercise('Deadlift', ['Romanian Deadlift'], {})).toMatchObject({ how: 'new' });
     // Not a variant of the name as written: a word in between is still a close match.
     expect(matchExercise('Incline curl', ['Incline DB Curl'], {})).toMatchObject({ exercise: 'Incline DB Curl', how: 'fuzzy' });
   });

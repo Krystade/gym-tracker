@@ -66,7 +66,7 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
     reason: `No history yet: pick a weight you can do about ${st.repMax} times, and log every set.` };
   const reason = t.kind === 'increase' ? `${t.done!.total}${unit || ' reps'} last time, within 2 of ${t.done!.sets} × ${st.repMax}${unit}, so +${st.increment} lb.`
     : t.kind === 'repeat' ? 'Last time had no complete sets: repeat the weight and log every rep.'
-    : t.kind === 'maxed' ? `You held ${st.repMax}${unit} on every set: add weight, or move to a harder variation.`
+    : t.kind === 'maxed' ? `You held about ${st.repMax}${unit} a set: add weight, or move to a harder variation.`
     : t.kind === 'test' ? `Your test set puts ${st.repMax} reps at about ${t.weight} lb, so that’s the working weight now.`
     : `Same weight; beat last time with ${t.reps}${unit}+ on every set.`;
   return { unit, weight: t.weight, reps: t.reps, repMax: st.repMax, sets: clamped, setsFrom, kind: t.kind, reason, warmups: warmAlready(entries, exercise, date) ? [] : warmups(t.weight, exercise) };

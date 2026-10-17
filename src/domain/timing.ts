@@ -38,8 +38,13 @@ export function paces(entries: SetEntry[]): Paces {
 export const perSetSeconds = (p: Paces, exercise: string): number =>
   p.perSet.get(settingsKey(exercise)) ?? (defaultSettings(exercise).repMin >= 10 ? DEFAULT_PACE.isolation : DEFAULT_PACE.compound);
 
-/** The rest timer's length: the lift's learned set-to-set time, else 2:00. */
-export const restSeconds = (p: Paces, exercise: string): number => Math.round(p.perSet.get(settingsKey(exercise)) ?? 120);
+/** About how long a set itself takes; the learned set-to-set time includes it. */
+const SET_WORK = 40;
+/** The rest timer's length: the lift's learned set-to-set time less the set itself (at least 30 s), else 2:00. */
+export const restSeconds = (p: Paces, exercise: string): number => {
+  const gap = p.perSet.get(settingsKey(exercise));
+  return gap == null ? 120 : Math.max(30, Math.round(gap - SET_WORK));
+};
 
 /** A list of lifts and sets, in seconds: every set, a switch between lifts, and the warm-up of the first lift that has one (`warmups(ex)` sets). */
 export function estimateSeconds(slots: { exercise: string; sets: number; minutes?: number }[], p: Paces, warmups: (ex: string) => number = () => 0): number {
