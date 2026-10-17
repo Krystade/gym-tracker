@@ -175,6 +175,28 @@ test('stats: tiles say each thing once, hide the program tile without a program,
   await expect(week.locator('.tile')).toHaveCount(5);
 });
 
+test('stats: the goal label stays inside the sessions chart when the goal is its top', async ({ page }) => {
+  await page.goto('/');
+  // One session against the default goal of 2: the goal line is the chart's top.
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
+  await page.getByRole('textbox', { name: 'Weight' }).fill('50');
+  await page.getByRole('button', { name: 'Add set' }).click();
+  await expect(page.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Stats' }).click();
+  const sessions = page.getByRole('img', { name: /Sessions per week/ });
+  const box = await sessions.evaluate((svg: SVGSVGElement) => {
+    const goal = [...svg.querySelectorAll('text')].find((t) => t.textContent === 'goal')!.getBBox();
+    const line = svg.querySelector('line.goal')!.getBBox();
+    return { top: goal.y, bottom: goal.y + goal.height, line: line.y, height: svg.viewBox.baseVal.height };
+  });
+  expect(box.top).toBeGreaterThanOrEqual(0);
+  expect(box.bottom).toBeLessThanOrEqual(box.height);
+  expect(box.bottom <= box.line || box.top >= box.line).toBe(true); // beside the line, not struck through
+  await sessions.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'screenshots/r7-goal-label.png' });
+});
+
 test('program: weekly volume shows the target beside each value and never "on pace"', async ({ page }) => {
   await seed(page, false);
   await page.getByRole('button', { name: 'Today', exact: true }).click();

@@ -38,7 +38,8 @@ export function BarChart({ label, points, format, tick = String, unit, goal }: {
         })}
         {/* After the bars, so a week that meets the goal can't hide it. */}
         {goal != null && <line x1={L} x2={W - R} y1={Y(goal)} y2={Y(goal)} className="goal" />}
-        {goal != null && <text x={W - R} y={Y(goal) - 6} className="lbl goal-lbl" textAnchor="end">goal</text>}
+        {/* Above the line, or below it when the goal is the chart's top and the label would be cut off. */}
+        {goal != null && <text x={W - R} y={Y(goal) >= T + 16 ? Y(goal) - 6 : Y(goal) + 14} className="lbl goal-lbl" textAnchor="end">goal</text>}
         <text x={L} y={H - 6} className="lbl">{md(points[0].x)}</text>
         <text x={W - R} y={H - 6} className="lbl" textAnchor="end">{md(points.at(-1)!.x)}</text>
       </svg>
