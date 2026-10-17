@@ -6,6 +6,7 @@ import type { SyncStore } from '../state/useSync';
 import { SyncCard } from './SyncCard';
 import { AccountCard } from './AccountCard';
 import { CycleCard } from './Cycle';
+import { NotificationsCard } from './NotificationsCard';
 import type { CloudStore } from '../state/useCloud';
 import { PeopleCard } from './PeopleCard';
 import type { PeopleStore } from '../state/usePeople';
@@ -159,6 +160,7 @@ export function DataScreen({ store, profile, body, sync, cloud, people, requests
       </section>
       <CycleCard name={people.active?.name ?? 'Me'} />
       <AccountCard cloud={cloud} people={people.people} />
+      <NotificationsCard signedIn={cloud.mine} goal={profile.profile.weeklyGoal} />
       <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} />
       <PeopleCard people={people} />
       <h2>Help</h2>

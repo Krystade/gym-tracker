@@ -2,6 +2,7 @@
 node_modules
 dist
 dist-ssr
+dist-push
 *.local
 .DS_Store
 .vite
@@ -69,3 +70,8 @@ journal*.txt
 # --- Firebase emulator output ---
 *-debug.log
 .firebase/
+
+# --- Cloudflare Worker (worker/) ---
+# Local secrets for wrangler dev, and its local state.
+.dev.vars*
+.wrangler/

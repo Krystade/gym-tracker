@@ -11,6 +11,9 @@ export default defineConfig({
   define: {
     __BUILD_ID__: JSON.stringify(BUILD_ID),
     __BUILT_AT__: JSON.stringify(BUILT_AT),
+    // The local push e2e points a build at wrangler dev with a throwaway key; every other build leaves these empty.
+    __PUSH_TEST_WORKER_URL__: JSON.stringify(process.env.PUSH_TEST_WORKER_URL ?? ''),
+    __PUSH_TEST_VAPID_KEY__: JSON.stringify(process.env.PUSH_TEST_VAPID_KEY ?? ''),
   },
   plugins: [
     react(),
@@ -34,11 +37,11 @@ export default defineConfig({
           { src: 'maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png}'],
-        clientsClaim: true,
-        skipWaiting: true,
-      },
+      // src/sw.ts reproduces what generateSW did (precache, index.html for navigations, skipWaiting + clientsClaim) and adds push.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectManifest: { globPatterns: ['**/*.{js,css,html,svg,png}'] },
     }),
   ],
   server: { host: true, port: 5190 },

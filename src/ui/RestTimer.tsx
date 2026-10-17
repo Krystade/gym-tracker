@@ -1,14 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { restAlertState, restPush, subscribeRestAlert } from '../push/client';
+import { PUSH_ON } from '../push/config';
 
 // One rest at a time, kept outside the screens so leaving Today and coming back doesn't lose it. `card`: the lift's card.
-interface Rest { until: number; card: string }
+// `label`: what the lock-screen alert says ("Bench Press · set 4 next"), where push notifications are on.
+interface Rest { until: number; card: string; label?: string }
 let rest: Rest | null = null;
 const subs = new Set<() => void>();
 const set = (r: Rest | null) => { rest = r; for (const f of subs) f(); };
 const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f); }; };
+/** A rest that changes when it ends also changes when the lock-screen alert goes out (or that it doesn't). */
+const setRest = (r: Rest | null) => { set(r); restPush(r ? r.until : null, r?.label); };
 
 /** Starts (or starts over) the rest after a set. */
-export const startRest = (seconds: number, card: string) => set({ until: Date.now() + seconds * 1000, card });
+export const startRest = (seconds: number, card: string, label?: string) => setRest({ until: Date.now() + seconds * 1000, card, label });
 
 /** How long "Rest done" stays up before the bar goes. */
 const DONE_FOR = 30_000;
@@ -20,6 +25,7 @@ const mss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '
  */
 export function RestTimer() {
   const r = useSyncExternalStore(subscribe, () => rest);
+  const alert = useSyncExternalStore(subscribeRestAlert, restAlertState);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (!r) return;
@@ -67,11 +73,11 @@ export function RestTimer() {
   if (gone) return null;
   return (
     <div ref={bar} className={left > 0 ? 'rest-timer' : 'rest-timer done'} role="timer" aria-label="Rest">
-      <button type="button" className="rest-main" aria-label="Dismiss rest timer" onClick={() => set(null)}>
+      <button type="button" className="rest-main" aria-label="Dismiss rest timer" onClick={() => setRest(null)}>
         {left > 0 ? <><span>Rest</span><b>{mss(left)}</b></> : <b>Rest done</b>}
-        <span className="muted small">Tap to close</span>
+        <span className="muted small">{PUSH_ON && left > 0 && alert === 'failed' ? 'No lock-screen alert' : 'Tap to close'}</span>
       </button>
-      <button type="button" className="mini" onClick={() => set({ ...r!, until: Math.max(r!.until, Date.now()) + 30_000 })}>+30 s</button>
+      <button type="button" className="mini" onClick={() => setRest({ ...r!, until: Math.max(r!.until, Date.now()) + 30_000 })}>+30 s</button>
     </div>
   );
 }

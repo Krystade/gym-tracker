@@ -537,3 +537,11 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .char b { font-size: var(--fs-sm); line-height: 1.2; }
 .char-rarity { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--r); }
 .credits { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+
+/* Notifications card (Data screen); shown only in a build with a push Worker configured. */
+.notify .check { align-items: flex-start; padding: 6px 0; }
+.notify .check input { margin-top: 2px; }
+.notify-sub { display: grid; gap: 8px; margin: 0 0 8px; }
+.notify-sub.when { grid-template-columns: 1fr 1fr; }
+.notify select { min-height: 44px; font-size: var(--fs-md); width: 100%; min-width: 0; }
+.notify-diag > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--muted); }

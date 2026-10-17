@@ -1,0 +1,40 @@
+name: Deploy push Worker
+# Tests the Worker on every change to it, and deploys it to Cloudflare once the repo has the two Cloudflare secrets
+# (worker/SETUP.md). Without them the deploy steps skip and the run still passes.
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**', 'src/push/payload.ts', '.github/workflows/worker.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: worker
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      HAS_CLOUDFLARE: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Cloudflare secrets not set yet
+        if: env.HAS_CLOUDFLARE != 'true'
+        run: echo "::notice::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID aren't set, so the Worker wasn't deployed (worker/SETUP.md)."
+      - name: Deploy
+        if: env.HAS_CLOUDFLARE == 'true'
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
