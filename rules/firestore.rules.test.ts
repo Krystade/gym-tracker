@@ -167,3 +167,25 @@ describe('gyms sent to a friend', () => {
     await assertFails(setDoc(doc(as('bob'), 'users/alice/gymInbox/g2'), { ...sent('bob'), sent: 2 })); // no rewriting one already there
   });
 });
+
+describe('private (cycle phase)', () => {
+  const cycle = { days: { '2026-10-01': 'period' }, tracking: true, updatedAt: 1 };
+  it('the owner can read and write it', async () => {
+    await assertSucceeds(setDoc(doc(as('alice'), 'users/alice/private/cycle'), cycle));
+    await assertSucceeds(getDoc(doc(as('alice'), 'users/alice/private/cycle')));
+    await assertSucceeds(deleteDoc(doc(as('alice'), 'users/alice/private/cycle')));
+  });
+  it('a friend cannot read it, list it, or write it', async () => {
+    await seed((db) => setDoc(doc(db, 'users/alice/private/cycle'), cycle));
+    await assertFails(getDoc(doc(as('bob'), 'users/alice/private/cycle')));
+    await assertFails(getDocs(collection(as('bob'), 'users/alice/private')));
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/private/cycle'), cycle));
+    await assertFails(deleteDoc(doc(as('bob'), 'users/alice/private/cycle')));
+  });
+  it('a stranger, or someone signed out, cannot read it', async () => {
+    await seed((db) => setDoc(doc(db, 'users/alice/private/cycle'), cycle));
+    await assertFails(getDoc(doc(as('eve'), 'users/alice/private/cycle')));
+    await assertFails(getDoc(doc(as(null), 'users/alice/private/cycle')));
+    await assertFails(setDoc(doc(as('eve'), 'users/alice/private/cycle'), cycle));
+  });
+});

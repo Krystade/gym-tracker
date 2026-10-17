@@ -5,6 +5,8 @@ import { cloudError, loadCloud } from '../cloud/firebase';
 import { deleteCloudData, syncCloud } from '../cloud/sync';
 import { readMeta, writeMeta } from '../cloud/meta';
 import { listRequests } from '../cloud/friends';
+import { syncCycle } from '../cloud/cycle';
+import { cycleChanged, onCycleChange } from './useCycle';
 import type { SetsStore } from './useSets';
 import type { BodyStore } from './useBody';
 
@@ -53,6 +55,8 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
         importSets: (x) => s.importEntries(x), importBody: (x) => b.importDays(x), removeSets: (x) => s.removeMany(x),
         importMeta: async (x) => { await writeMeta(db, x); m.reload(); },
       });
+      // Cycle phase, to its own private document. Refused until the rules that allow it are deployed: noted, and the rest goes on.
+      await syncCycle(c, l.uid, db).then((n) => { if (n) cycleChanged('pulled'); }, (e) => console.warn('Cycle sync skipped:', e));
       const at = new Date().toISOString();
       await db.putCloudSeen({ key: 'cloud-seen', uid: l.uid, seen: r.seen, meta: r.metaSeen, at });
       setLastSync(at);
@@ -71,12 +75,14 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
     }
   }, [db, person.id]);
 
-  // Sync a few seconds after the log changes, and whenever the app comes back to the front.
+  // Sync a few seconds after the log changes (cycle days included), and whenever the app comes back to the front.
+  const [cycleRev, setCycleRev] = useState(0);
+  useEffect(() => onCycleChange((c) => { if (c === 'local') setCycleRev((n) => n + 1); }), []);
   useEffect(() => {
     if (!mine || store.loading) return;
     const t = setTimeout(() => void run(), QUIET_MS);
     return () => clearTimeout(t);
-  }, [mine, store.entries, body.days, store.loading, run, ...meta.rev]);
+  }, [mine, store.entries, body.days, store.loading, run, cycleRev, ...meta.rev]);
   useEffect(() => {
     if (!mine) return;
     const on = () => { if (document.visibilityState === 'visible') void run(); };

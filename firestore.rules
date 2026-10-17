@@ -28,6 +28,8 @@ service cloud.firestore {
 
       match /months/{m} { allow read: if me(uid) || friendOf(uid); allow write: if me(uid); }
       match /meta/{d}   { allow read: if me(uid) || friendOf(uid); allow write: if me(uid); }
+      // Yours alone, never a friend's to read: cycle phase (domain/cycle).
+      match /private/{d} { allow read, write: if me(uid); }
 
       match /friends/{f} {
         allow read: if me(uid);

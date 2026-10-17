@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { addSet, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests } from './db';
+import { addSet, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, deleteSyncConfig, getSyncConfig, getTombstones, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
 import { buildAppSet } from '../domain/buildSet';
@@ -288,5 +288,46 @@ describe('gyms', () => {
     const g = { id: 'a', name: 'Home', equipment: ['dumbbells' as const], exclude: [], include: ['Zercher Squat'] };
     await putGyms({ gyms: [g], active: 'a' });
     expect(await getGyms()).toEqual({ gyms: [g], active: 'a' });
+  });
+});
+
+describe('cycle days', () => {
+  it('live in their own store, never with body days, and each change is marked for sync', async () => {
+    await putCycleTracking(true);
+    await putCycleDay({ date: '2026-01-02', phase: 'period' });
+    expect(await getBody()).toEqual([]);
+    const { days, cfg } = await getCycle();
+    expect(days).toEqual([{ date: '2026-01-02', phase: 'period' }]);
+    expect(cfg).toMatchObject({ tracking: true, rev: 2 });
+  });
+  it('a finished sync drops cleared-day marks, keeps the phone’s days, and adds the cloud’s', async () => {
+    await putCycleDay({ date: '2026-01-02', phase: 'period' });
+    await putCycleDay({ date: '2026-01-03', phase: null });
+    await finishCycleSync('u1', 2, [{ date: '2026-01-02', phase: 'luteal' }, { date: '2026-01-04', phase: 'period' }], true);
+    const { days, cfg } = await getCycle();
+    expect(days).toEqual([{ date: '2026-01-02', phase: 'period' }, { date: '2026-01-04', phase: 'period' }]);
+    expect(cfg).toMatchObject({ tracking: true, synced: { uid: 'u1', rev: 2 } });
+  });
+  it('a change made while a sync ran stays marked, so the next sync takes it', async () => {
+    await putCycleDay({ date: '2026-01-02', phase: 'period' }); // rev 1, read by the sync
+    await putCycleDay({ date: '2026-01-02', phase: null }); // rev 2, cleared mid-sync
+    await finishCycleSync('u1', 1, [], undefined);
+    const { days, cfg } = await getCycle();
+    expect(days).toEqual([{ date: '2026-01-02', phase: null }]);
+    expect(cfg.synced).toBeUndefined();
+  });
+  it('the setting chosen on this phone beats the account’s', async () => {
+    await putCycleTracking(false);
+    await finishCycleSync('u1', 1, [], true);
+    expect((await getCycle()).cfg.tracking).toBe(false);
+  });
+  it('delete clears the days and marks the cloud copy for deleting', async () => {
+    await putCycleDay({ date: '2026-01-02', phase: 'period' });
+    await clearCycle();
+    const { days, cfg } = await getCycle();
+    expect(days).toEqual([]);
+    expect(cfg.wiped).toBe(true);
+    await finishCycleSync('u1', cfg.rev, [], undefined);
+    expect((await getCycle()).cfg.wiped).toBe(false);
   });
 });
