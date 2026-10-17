@@ -126,3 +126,27 @@ test('a time field scrolled up under the status bar is covered by the backdrop, 
   expect(await topmost(page, x, 320)).toBe('backdrop');
   await page.screenshot({ path: 'test-results/viewport-backdrop.png' });
 });
+
+test('a sticky header stays at the top of the screen when the screen is stuck below the layout', async ({ page }) => {
+  await notched(page);
+  await fakeViewport(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  const search = page.getByRole('searchbox', { name: 'Search exercises' });
+  await expect(search).toBeFocused();
+  // Scrolled down the list, the picker's head is stuck to the top of the layout.
+  await page.evaluate(() => scrollTo(0, 600));
+  expect(await page.evaluate(() => scrollY), 'the list scrolls far enough for the head to stick').toBe(600);
+  expect((await box(page, '.picker-head')).top).toBe(0);
+
+  // The keyboard goes and leaves the screen 300px down the layout: the head follows the screen, as the backdrop does.
+  await vv(page, { height: 520 });
+  await vv(page, { offsetTop: 300, height: 812 - 24 }, false);
+  await search.blur();
+  await expect.poll(() => box(page, '.status-backdrop').then((b) => b.top)).toBe(300);
+  expect((await box(page, '.picker-head')).top).toBe(300);
+  await page.screenshot({ path: 'test-results/viewport-sticky.png' });
+
+  await vv(page, { offsetTop: 0, height: null });
+  await expect.poll(() => box(page, '.picker-head').then((b) => b.top)).toBe(0);
+});
