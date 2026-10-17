@@ -35,6 +35,26 @@ test('a PR stays marked on its row, in the day summary and in History', async ({
   await expect(page.locator('details.day').first().locator('summary')).toContainText('PR');
 });
 
+test('Today so far counts a top set done more than once', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Cable Curl');
+  await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
+  const card = page.locator('[data-card="cable curl"]');
+  for (let i = 0; i < 2; i++) {
+    await card.getByRole('textbox', { name: 'Weight' }).fill('50');
+    await card.getByRole('textbox', { name: 'Reps' }).fill('10');
+    await card.getByRole('button', { name: /^Add set/ }).click();
+  }
+  const sum = page.getByRole('region', { name: 'Today so far' });
+  await expect(sum.locator('li', { hasText: 'Cable Curl' })).toContainText('50 × 10 ×2');
+  await card.getByRole('textbox', { name: 'Reps' }).fill('8');
+  await card.getByRole('button', { name: /^Add set/ }).click(); // fewer reps: the top set is still the pair
+  await expect(sum.locator('li', { hasText: 'Cable Curl' })).toContainText('50 × 10 ×2');
+  await sum.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'screenshots/r7-summary-repeats.png' });
+});
+
 test('a Lifts row says what you lifted last time', async ({ page }) => {
   await page.goto('/');
   await nav(page, 'Data');

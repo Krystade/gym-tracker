@@ -51,6 +51,9 @@ describe('daySummary', () => {
     expect([bench.top.weight, bench.top.reps]).toEqual([140, 8]);
     expect([bench.last?.weight, bench.last?.reps]).toEqual([135, 8]);
     expect(bench.pr).toBe(true);
+    expect(bench.times).toBe(1);
+    expect(d.lifts[1].times).toBe(1);
+    expect(daySummary([...entries, s(TODAY, 'Bench Press', 140, 8)], TODAY).lifts[0].times).toBe(2); // the top set, twice
     expect(d.lifts[1].last).toBeNull();
     // Warm-ups don't count; whole sets on the prime movers.
     expect(d.muscles.find(([m]) => m === 'Chest')?.[1]).toBe(2);
