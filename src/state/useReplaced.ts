@@ -4,15 +4,9 @@ import { combine, expired, type Replaced } from '../domain/replaced';
 import type { SetsStore } from './useSets';
 import type { BodyStore } from './useBody';
 
-// A sync keeps this phone's replaced values in the database and says so here; the list on More reads them again.
+// A sync keeps this phone's replaced values in the database (db applySynced) and says so here; the list on More reads them again.
 const listeners = new Set<() => void>();
 export const replacedChanged = () => { for (const f of listeners) f(); };
-/** Saves this phone's values a sync is about to replace, for the list on More; false if they couldn't be saved. */
-export async function keepReplaced(db: { putReplaced: (x: Replaced[]) => Promise<void> }, x: Replaced[]): Promise<boolean> {
-  try { await db.putReplaced(x); } catch { return false; }
-  replacedChanged();
-  return true;
-}
 
 /** This person's copies a sync replaced, newest first, and putting one back (or combining it with the synced copy). */
 export function useReplaced(store: SetsStore, body: BodyStore) {

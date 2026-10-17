@@ -24,8 +24,10 @@ export function useBody() {
     try { await db.putBodyMany(merged.filter((d) => dates.has(d.date))); commit(merged); setError(null); return true; }
     catch (e) { setError(`Importing body data failed: ${String(e)}`); return false; }
   }, []);
+  /** A sync saved days straight to the database (db applySynced): re-read. */
+  const reload = useCallback(async () => { try { commit(await db.getBody()); } catch (e) { setError(`Could not load body weight: ${String(e)}`); } }, []);
   // Against the days as of the last commit, not the last render: back-to-back files in one pick must see each other.
   const diff = useCallback((incoming: BodyDay[]) => diffBody(current.current, incoming), []);
-  return { days, error, save, importDays, diff };
+  return { days, error, save, importDays, reload, diff };
 }
 export type BodyStore = ReturnType<typeof useBody>;

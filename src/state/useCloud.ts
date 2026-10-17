@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { deleteCloudLink, getCloudLink, putCloudLink, type CloudLink, type Person } from '../db/db';
 import { useDb } from './profileDb';
 import { cloudError, loadCloud } from '../cloud/firebase';
-import { deleteCloudData, syncCloud } from '../cloud/sync';
-import { readMeta, removeMeta, writeMeta } from '../cloud/meta';
+import { deleteCloudData, phoneApply, syncCloud } from '../cloud/sync';
+import { readMeta } from '../cloud/meta';
 import { syncCycle } from '../cloud/cycle';
 import { cycleChanged, onCycleChange } from './useCycle';
 import type { SetsStore } from './useSets';
 import type { BodyStore } from './useBody';
-import { keepReplaced, replacedChanged } from './useReplaced';
+import { replacedChanged } from './useReplaced';
 import { KEEP_MS } from '../domain/replaced';
 import { forgetFriendCaches } from './friendCache';
 
@@ -34,7 +34,7 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
   useEffect(() => { void db.pruneReplaced(Date.now() - KEEP_MS).then((n) => { if (n) replacedChanged(); }, () => {}); }, [db]);
 
   // One sync at a time; a request during one runs once more after it.
-  const running = useRef(false), again = useRef(false);
+  const running = useRef(false), again = useRef(false), followUp = useRef(false);
   const news = useRef<{ text: string; at: number } | null>(null);
   const latest = useRef({ store, body, link, meta });
   latest.current = { store, body, link, meta };
@@ -49,18 +49,20 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
       if (c.auth.currentUser?.uid !== l.uid) { await c.auth.authStateReady(); }
       if (c.auth.currentUser?.uid !== l.uid) throw Object.assign(new Error('signed out'), { code: 'auth/requires-recent-login' });
       const prev = await db.getCloudSeen();
-      const { store: s, body: b, meta: m } = latest.current;
       // A first sync with this account uploads everything already on the phone, so a log kept before signing in moves over.
       const first = prev?.uid !== l.uid;
+      // The log as the database has it, not as the screens last showed it: a change saved a moment ago goes up too.
+      const log = await db.getSyncSnapshot();
       const r = await syncCloud(c, l.uid, {
-        sets: s.entries, body: b.days, tombstones: await db.getTombstones(), tombAt: await db.getTombstoneTimes(), seen: prev && !first ? prev.seen : {},
-        meta: await readMeta(db), metaSeen: (prev && !first && prev.meta) || { items: {}, at: 0 },
-      }, {
-        importSets: (x) => s.importEntries(x), importBody: (x) => b.importDays(x), removeSets: (x) => s.removeMany(x),
-        importMeta: async (x) => { await writeMeta(db, x); m.reload(); },
-        removeMeta: async (x) => { await removeMeta(db, x); m.reload(); },
-        recordReplaced: (x) => keepReplaced(db, x),
-      });
+        ...log, seen: prev && !first ? prev.seen : {}, meta: await readMeta(db), metaSeen: (prev && !first && prev.meta) || { items: {}, at: 0 },
+      }, phoneApply(db, {
+        log: async () => { await latest.current.store.synced(); await latest.current.body.reload(); },
+        meta: () => latest.current.meta.reload(), replaced: replacedChanged,
+      }));
+      // Changed here while the sync was out, so left as it is: one more sync straight after sends it up (or merges it). Only one,
+      // so something that never settles can't keep the phone syncing; the edit's own sync, or the next poll, comes anyway.
+      if (r.skipped && !followUp.current) again.current = followUp.current = true;
+      else followUp.current = false;
       // Cycle phase, to its own private document. Refused until the rules that allow it are deployed: noted, and the rest goes on.
       // Days brought in, or the account's setting taken by a phone that never set it, both change what Today and More show.
       await syncCycle(c, l.uid, db).then((r) => { if (r.pulled || r.trackingAdopted) cycleChanged('pulled'); }, (e) => console.warn('Cycle sync skipped:', e));
@@ -68,7 +70,7 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
       await db.putCloudSeen({ key: 'cloud-seen', uid: l.uid, seen: r.seen, meta: r.metaSeen, at });
       setLastSync(at);
       latest.current.meta.onSynced?.(); // the More tab's dot: friends' requests, gyms and messages
-      const n = s.entries.length;
+      const n = log.sets.length;
       const up = n - r.replacedSets; // the account's copy won the rest
       const got = [first && up > 0 && `${up} set${up === 1 ? '' : 's'} from this phone saved to your account`, r.pulled && `${r.pulled} set${r.pulled === 1 ? '' : 's'} in`,
         r.removed && `${r.removed} removed`, r.metaPulled && 'program and settings updated', r.replaced && `${r.replaced} replaced on this phone`].filter(Boolean).join(', ');

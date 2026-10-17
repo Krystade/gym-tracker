@@ -4,7 +4,7 @@ import { parseCsv, toCsv } from './csv';
 import { parseBodyFile, toBodyCsv, type BodyDay } from './body';
 import type { SetEntry } from './types';
 import { setId } from './ids';
-import type { Replaced } from './replaced';
+import { replacements, type Replaced, type Taken } from './replaced';
 
 const CFG: SyncConfig = { key: 'sync', repo: 'someone/private-data', token: 'test-token-123', branch: 'main' };
 
@@ -34,6 +34,14 @@ function fakeGitHub(files: Record<string, string> = {}, fail: Partial<Record<str
   };
   return { fetchFn, calls, store };
 }
+
+/** The phone's side when nothing changed on it during the pull: takes it all, handing each part to `on`; `fail` throws as a full disk would. */
+const taking = (on: { sets?: (e: SetEntry[]) => void; body?: (d: BodyDay[]) => void; fail?: boolean } = {}) =>
+  async (_base: unknown, taken: Taken) => {
+    if (on.fail) throw new Error('disk full');
+    on.sets?.(taken.importSets); on.body?.(taken.importBody);
+    return { taken, replaced: [] as Replaced[], skipped: 0 };
+  };
 
 let seq = 0;
 // Ids follow the CSV's own rule (source, date, exercise, set), so they survive the round trip through a file.
@@ -116,8 +124,7 @@ describe('sync', () => {
     const got = { sets: [] as SetEntry[], body: [] as BodyDay[] };
     const r = await sync({
       client: repoClient(CFG, gh.fetchFn), sets: local, body, deleted,
-      importSets: async (e) => { got.sets.push(...e); return { added: e.length, updated: 0 }; }, importBody: async (d) => { got.body.push(...d); return true; },
-      now: new Date('2026-09-30T12:00:00Z'),
+      apply: taking({ sets: (e) => got.sets.push(...e), body: (d) => got.body.push(...d) }), now: new Date('2026-09-30T12:00:00Z'),
     });
     return { r, got };
   };
@@ -169,7 +176,7 @@ describe('sync', () => {
 describe('Phase 8 review fixes', () => {
   const deps = (gh: ReturnType<typeof fakeGitHub>, sets: SetEntry[], over: Partial<Parameters<typeof sync>[0]> = {}) => ({
     client: repoClient(CFG, gh.fetchFn), sets, body: [] as BodyDay[], deleted: new Set<string>(),
-    importSets: async () => ({ added: 0, updated: 0 }), importBody: async () => true, now: new Date('2026-09-30T12:00:00Z'), ...over,
+    apply: taking(), now: new Date('2026-09-30T12:00:00Z'), ...over,
   });
 
   it('never answers from the browser cache, so a second sync sees the sha the first one wrote', async () => {
@@ -203,15 +210,14 @@ describe('Phase 8 review fixes', () => {
       store.set('app/sets.csv', { text: toCsv([theirs]), sha: `${cur.sha}-other` });
     });
     const imported: SetEntry[] = [];
-    await sync(deps(gh, [mine], { importSets: async (e) => { imported.push(...e); return { added: e.length, updated: 0 }; } }));
+    await sync(deps(gh, [mine], { apply: taking({ sets: (e) => imported.push(...e) }) }));
     expect(ids(parseCsv(gh.store.get('app/sets.csv')!.text).entries)).toEqual(ids([theirs, mine]));
     expect(ids(imported)).toEqual([theirs.id]);
   });
 
   it('stops before pushing when the phone couldn’t save what was pulled', async () => {
     const gh = fakeGitHub({ 'app/sets.csv': toCsv([set('2026-09-01')]), 'app/body.csv': toBodyCsv([{ date: '2026-09-01', weight: 180 }]) });
-    await expect(sync(deps(gh, [], { importSets: async () => null }))).rejects.toThrow(/saving/i);
-    await expect(sync(deps(gh, [], { importBody: async () => false }))).rejects.toThrow(/saving/i);
+    await expect(sync(deps(gh, [], { apply: taking({ fail: true }) }))).rejects.toThrow(/saving/i);
     expect(gh.calls.some((x) => x.method === 'PUT')).toBe(false);
   });
 });
@@ -233,8 +239,7 @@ describe('sync per profile', () => {
     const got: SetEntry[] = [];
     const r = await sync({
       client: repoClient(CFG, gh.fetchFn), sets: [set('2026-09-29')], body: [{ date: '2026-09-29', weight: 120 }], deleted: new Set(),
-      importSets: async (e) => { got.push(...e); return { added: e.length, updated: 0 }; }, importBody: async () => true,
-      now: new Date('2026-09-30T12:00:00Z'), paths: pathsFor('sam'),
+      apply: taking({ sets: (e) => got.push(...e) }), now: new Date('2026-09-30T12:00:00Z'), paths: pathsFor('sam'),
     });
     expect(got).toEqual([]);
     expect(r).toMatchObject({ pulledSets: 0, pushedSets: 1, pushedBody: 1 });
@@ -260,7 +265,7 @@ describe('energy in the backup', () => {
     const gh = fakeGitHub({ 'app/body.csv': 'date,weight_lb,calories,protein_g,energy\r\n2026-09-29,,,,3\r\n' });
     const got: BodyDay[] = [];
     await sync({ client: repoClient(CFG, gh.fetchFn), sets: [], body: [{ date: '2026-09-29', weight: 180 }], deleted: new Set(),
-      importSets: async () => ({ added: 0, updated: 0 }), importBody: async (d) => { got.push(...d); return true; }, now: new Date('2026-09-30T12:00:00Z') });
+      apply: taking({ body: (d) => got.push(...d) }), now: new Date('2026-09-30T12:00:00Z') });
     expect(got).toEqual([{ date: '2026-09-29', energy: 3 }]);
     expect(gh.store.get('app/body.csv')!.text).toContain('2026-09-29,180,,,3');
   });
@@ -270,8 +275,7 @@ describe('edits in the backup (round 10)', () => {
   const run = async (gh: ReturnType<typeof fakeGitHub>, sets: SetEntry[], body: BodyDay[] = []) => {
     const got = { sets: [] as SetEntry[], body: [] as BodyDay[] };
     await sync({ client: repoClient(CFG, gh.fetchFn), sets, body, deleted: new Set(),
-      importSets: async (e) => { got.sets.push(...e); return { added: 0, updated: e.length }; }, importBody: async (d) => { got.body.push(...d); return true; },
-      now: new Date('2026-09-30T12:00:00Z') });
+      apply: taking({ sets: (e) => got.sets.push(...e), body: (d) => got.body.push(...d) }), now: new Date('2026-09-30T12:00:00Z') });
     return got;
   };
   it('a set edited on another device since wins over the phone’s older copy, keeping its place in the day', async () => {
@@ -298,18 +302,17 @@ describe('edits in the backup (round 10)', () => {
 });
 
 describe('the backup’s copies replacing this phone’s (round 10)', () => {
-  it('keeps this phone’s set and body field before taking the newer ones; nothing for the same values', async () => {
+  it('hands over the phone as it read it with what it takes, so this phone’s set and body field are kept; nothing for the same values', async () => {
     const mine = { ...set('2026-09-29'), seq: 1_759_000_000_000 }, same = { ...set('2026-09-28'), seq: 1_758_000_000_000 };
     const theirs = { ...mine, weight: 55, editedAt: Date.parse('2026-09-30T08:00:00Z') };
     const gh = fakeGitHub({
       'app/sets.csv': toCsv([theirs, { ...same, editedAt: Date.parse('2026-09-30T08:00:00Z') }]),
       'app/body.csv': toBodyCsv([{ date: '2026-09-29', weight: 181, at: { weight: Date.parse('2026-09-30T08:00:00Z') } }]),
     });
-    const log: string[] = [], kept: Replaced[] = [];
-    await sync({ client: repoClient(CFG, gh.fetchFn), sets: [mine, same], body: [{ date: '2026-09-29', weight: 182 }], deleted: new Set(),
-      importSets: async (e) => { log.push('import sets'); return { added: 0, updated: e.length }; }, importBody: async () => { log.push('import body'); return true; },
-      recordReplaced: async (xs) => { log.push('keep'); kept.push(...xs); return true; }, now: new Date('2026-09-30T12:00:00Z') });
-    expect(log).toEqual(['keep', 'import sets', 'import body']);
+    const kept: Replaced[] = [];
+    await sync({ client: repoClient(CFG, gh.fetchFn), sets: [mine, same], body: [{ date: '2026-09-29', weight: 182 }], deleted: new Set(), now: new Date('2026-09-30T12:00:00Z'),
+      // As db applySynced does it, with nothing changed on the phone meanwhile.
+      apply: async (base, taken, now) => { const replaced = replacements(base, taken, now); kept.push(...replaced); return { taken, replaced, skipped: 0 }; } });
     expect(kept.map((r) => [r.kind, r.mine])).toEqual([['set', mine], ['body', { weight: 182 }]]);
   });
 });

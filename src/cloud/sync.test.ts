@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { deleteCloudData, syncCloud } from './sync';
+import { deleteCloudData, syncCloud, type SyncApply } from './sync';
 import type { SetEntry } from '../domain/types';
-import type { Replaced } from '../domain/replaced';
+import { replacements, type Replaced } from '../domain/replaced';
 import type { Cloud } from './firebase';
 
 /** A stand-in for Firestore: documents by path, collections listed by prefix, and every deleted path. */
@@ -58,23 +58,25 @@ describe('syncCloud: this phone’s copies a sync replaces (round 10)', () => {
       runTransaction: async (_db: unknown, fn: (tx: unknown) => Promise<unknown>) => fn({ get: async (r: { path: string }) => snap(r.path), set }) };
     return { F, db: {} } as unknown as Cloud;
   }
-  const run = (cloud: Cloud, recordReplaced: (xs: Replaced[]) => Promise<boolean>, log: string[]) => syncCloud(cloud, 'u1',
-    { sets: [mine], body: [], tombstones: new Set(), seen: {}, meta: {}, metaSeen: { items: {}, at: 0 } }, {
-      recordReplaced, importSets: async (xs) => { log.push(`import ${xs.length}`); return {}; }, importBody: async () => true, removeSets: async () => true,
-      importMeta: async () => {}, removeMeta: async () => {},
-    }, NOW);
+  const run = (cloud: Cloud, applyMonth: SyncApply['applyMonth']) => syncCloud(cloud, 'u1',
+    { sets: [mine], body: [], tombstones: new Set(), seen: {}, meta: {}, metaSeen: { items: {}, at: 0 } },
+    { applyMonth, applyMeta: async () => ({ pulled: 0, removed: 0, skipped: 0 }) }, NOW);
   const withCloudCopy = () => fakeStore({ 'users/u1/meta/index': { months: { '2026-10': 5 } }, 'users/u1/months/2026-10': { sets: [{ ...mine, reps: 10 }], body: [], deleted: {}, updatedAt: 5 } });
 
-  it('hands this phone’s copy over to be kept before it takes the cloud’s, and counts it', async () => {
-    const log: string[] = [], kept: Replaced[] = [];
-    const r = await run(withCloudCopy(), async (xs) => { log.push(`keep ${xs.length}`); kept.push(...xs); return true; }, log);
-    expect(log).toEqual(['keep 1', 'import 1']);
-    expect(kept[0]).toMatchObject({ kind: 'set', mine, theirs: { ...mine, reps: 10 } });
-    expect(r).toMatchObject({ replaced: 1, replacedSets: 1, pulled: 1 });
+  it('hands the phone’s side the month as it read it and what it takes, and counts what that kept', async () => {
+    const calls: [unknown, unknown][] = [];
+    const r = await run(withCloudCopy(), async (base, taken, now) => {
+      calls.push([base.sets, taken.importSets]);
+      return { taken, replaced: replacements(base, taken, now), skipped: 0 };
+    });
+    expect(calls).toEqual([[[mine], [{ ...mine, reps: 10 }]]]);
+    expect(r).toMatchObject({ replaced: 1, replacedSets: 1, pulled: 1, skipped: 0 });
   });
-  it('takes nothing when this phone’s copy couldn’t be kept', async () => {
-    const log: string[] = [];
-    await expect(run(withCloudCopy(), async () => false, log)).rejects.toThrow(/replaced/);
-    expect(log).toEqual([]);
+  it('counts only what the phone’s side took, and what it left for the next sync', async () => {
+    const r = await run(withCloudCopy(), async (_base, taken) => ({ taken: { ...taken, importSets: [] }, replaced: [] as Replaced[], skipped: 1 }));
+    expect(r).toMatchObject({ replaced: 0, pulled: 0, skipped: 1 });
+  });
+  it('stops when the phone couldn’t save', async () => {
+    await expect(run(withCloudCopy(), async () => { throw new Error('disk full'); })).rejects.toThrow(/Saving the synced log on this phone failed: disk full/);
   });
 });

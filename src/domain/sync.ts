@@ -2,7 +2,7 @@ import { parseCsv, toCsv } from './csv';
 import { BODY_FIELDS, mergeBody, parseBodyFile, toBodyCsv, type BodyDay } from './body';
 import type { SetEntry } from './types';
 import { editStamp } from './cloud';
-import { replacements, type Replaced } from './replaced';
+import type { Replaced, Taken } from './replaced';
 
 // The spec's one deliberate network exception: sets and body data to the user's own private repo,
 // only when they tap Sync, with a token they pasted in. Photos never come through here.
@@ -100,10 +100,12 @@ function unreadable(path: string, errors: { row: number; message: string }[]): n
 
 type SyncDeps = {
   client: ReturnType<typeof repoClient>; sets: SetEntry[]; body: BodyDay[]; deleted: Set<string>;
-  importSets: (e: SetEntry[]) => Promise<{ added: number; updated: number } | null>; importBody: (d: BodyDay[]) => Promise<boolean>; now: Date;
-  paths?: SyncPaths;
-  /** Keeps this phone's values the pull is about to replace (domain/replaced); false when they couldn't be saved. */
-  recordReplaced?: (r: Replaced[]) => Promise<boolean>;
+  now: Date; paths?: SyncPaths;
+  /**
+   * Saves what the pull takes onto this phone, keeping first this phone's values it replaces (domain/replaced): only what's still
+   * as `base` had it, so an edit made here while the pull was out stays for the next sync (db applySynced). Throws if it couldn't.
+   */
+  apply: (base: { sets: SetEntry[]; body: BodyDay[] }, taken: Taken, now: number) => Promise<{ taken: Taken; replaced: Replaced[]; skipped: number }>;
 };
 type SyncResult = { pulledSets: number; pulledBody: number; pushedSets: number; pushedBody: number };
 
@@ -156,11 +158,12 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
     if (Object.keys(fill).length > 1) bodyIn.push(fill);
   }
   const saveFailed = () => new SyncError('other', 'Saving the pulled data on this phone failed — nothing was pushed. Try again.');
-  // What the pull replaces of the phone's is kept first, so nothing is overwritten without a copy.
-  const replaced = replacements({ sets: deps.sets, body: deps.body }, { importSets: [...incoming.values()], deleteIds: [], importBody: bodyIn }, deps.now.getTime());
-  if (replaced.length && deps.recordReplaced && !(await deps.recordReplaced(replaced))) throw saveFailed();
-  if (incoming.size && (await deps.importSets([...incoming.values()])) == null) throw saveFailed();
-  if (bodyIn.length && (await deps.importBody(bodyIn)) === false) throw saveFailed();
+  // What the pull replaces of the phone's is kept first, so nothing is overwritten without a copy. A row the push below sends up
+  // that the phone changed meanwhile goes up as the backup already had it; the phone's newer copy wins at the next sync.
+  const none = { importSets: [], deleteIds: [], importBody: [] };
+  const { taken } = incoming.size || bodyIn.length
+    ? await deps.apply({ sets: deps.sets, body: deps.body }, { importSets: [...incoming.values()], deleteIds: [], importBody: bodyIn }, deps.now.getTime()).catch(() => { throw saveFailed(); })
+    : { taken: none as Taken };
 
   // Tombstones only stop sets coming back in; anything still on the phone is live, even under a reused id.
   const sets = [...deps.sets.filter((e) => !incoming.has(e.id)), ...incoming.values()];
@@ -171,10 +174,10 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
     await client.put(BODY_PATH, toBodyCsv(body), remoteBody?.sha, message);
   } catch (e) {
     // What was pulled is already on the phone; the retry starts from there.
-    if (e instanceof SyncError && e.kind === 'conflict') e.pulled = { sets, body, counts: [incoming.size, bodyIn.length] };
+    if (e instanceof SyncError && e.kind === 'conflict') e.pulled = { sets, body, counts: [taken.importSets.length, taken.importBody.length] };
     throw e;
   }
-  return { pulledSets: incoming.size, pulledBody: bodyIn.length, pushedSets: sets.length, pushedBody: body.length };
+  return { pulledSets: taken.importSets.length, pulledBody: taken.importBody.length, pushedSets: sets.length, pushedBody: body.length };
 }
 
 /** GitHub's new-token form, pre-filled (template URL). The repository still has to be picked there: GitHub doesn't take it as a parameter. */

@@ -49,6 +49,31 @@ export function replacements(local: { sets: SetEntry[]; body: BodyDay[] }, taken
   return out;
 }
 
+/**
+ * Of what a sync is about to take onto this phone, what still applies. The sync worked it out from the phone as it was when it
+ * read it (`base`), and it lands seconds later: a set changed here since (edited, deleted, put back by Undo, or logged under the
+ * same id) and a body field entered since are left as they are now (`now`: those sets and days, absent where there's none), for
+ * the next sync to merge. `skipped`: how many sets and body fields were left.
+ */
+export function stillTaken(base: { sets: SetEntry[]; body: BodyDay[] }, now: { sets: Map<string, SetEntry | undefined>; body: Map<string, BodyDay | undefined> }, taken: Taken): { taken: Taken; skipped: number } {
+  const sets = new Map(base.sets.map((s) => [s.id, s])), days = new Map(base.body.map((d) => [d.date, d]));
+  const asWas = (id: string) => { const b = sets.get(id), c = now.sets.get(id); return b && c ? metaHash(b) === metaHash(c) : !b && !c; };
+  const importSets = taken.importSets.filter((s) => asWas(s.id)), deleteIds = taken.deleteIds.filter(asWas);
+  let skipped = taken.importSets.length - importSets.length + taken.deleteIds.length - deleteIds.length;
+  const importBody: BodyDay[] = [];
+  for (const d of taken.importBody) {
+    const b = days.get(d.date), c = now.body.get(d.date), fill: BodyDay = { date: d.date };
+    for (const k of BODY_FIELDS) {
+      if (d[k] == null) continue;
+      if (b?.[k] !== c?.[k] || b?.at?.[k] !== c?.at?.[k]) { skipped++; continue; }
+      Object.assign(fill, { [k]: d[k] });
+      if (d.at?.[k] != null) fill.at = { ...fill.at, [k]: d.at[k] };
+    }
+    if (Object.keys(fill).length > 1) importBody.push(fill);
+  }
+  return { taken: { importSets, deleteIds, importBody }, skipped };
+}
+
 export const expired = (r: Replaced, now: number): boolean => r.at < now - KEEP_MS;
 
 /** Flags that only add a note to a set; the others (partial, hold, bodyweight, cardio) change what its numbers mean. */

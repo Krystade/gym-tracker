@@ -65,14 +65,8 @@ export function useSets() {
     return true;
   }, []);
 
-  /** Sets deleted on another phone: gone here too, each with its tombstone. */
-  const removeMany = useCallback(async (ids: string[]): Promise<boolean> => {
-    try { for (const id of ids) await db.deleteSetWithTombstone(id, null); } catch (err) { fail('Removing synced deletes', err); await reload(); return false; }
-    const gone = new Set(ids);
-    setEntries((xs) => xs.filter((x) => !gone.has(x.id)));
-    announce();
-    return true;
-  }, [reload]);
+  /** A sync saved sets straight to the database (db applySynced): re-read, and tell the other open copies. */
+  const synced = useCallback(async () => { await reload(); announce(); }, [reload]);
 
   const restore = useCallback(async (gone: SetEntry): Promise<boolean> => {
     // Stamped, so the delete it undoes can't win again in the next sync if that delete already went up.
@@ -113,6 +107,6 @@ export function useSets() {
   // Reads the database, not state: back-to-back files in one pick must see each other's rows.
   const diff = useCallback(async (list: SetEntry[]) => diffSets(await db.getAllSets(), list), [db]);
 
-  return { entries, loading, error, add, update, remove, removeMany, restore, reapply, rename, importEntries, diff };
+  return { entries, loading, error, add, update, remove, synced, restore, reapply, rename, importEntries, diff };
 }
 export type SetsStore = ReturnType<typeof useSets>;

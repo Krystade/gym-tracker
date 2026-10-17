@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mergeMonth, type CloudMonth } from './cloud';
-import { combine, expired, KEEP_MS, replacements, sameSet, sides, type Replaced } from './replaced';
+import { combine, expired, KEEP_MS, replacements, sameSet, sides, stillTaken, type Replaced } from './replaced';
 import type { SetEntry } from './types';
 
 // Synthetic sets only.
@@ -127,5 +127,37 @@ describe('expired', () => {
     expect(KEEP_MS).toBe(30 * 24 * 3600 * 1000);
     expect(expired(r(NOW - KEEP_MS + 1), NOW)).toBe(false);
     expect(expired(r(NOW - KEEP_MS - 1), NOW)).toBe(true);
+  });
+});
+
+describe('stillTaken: a sync lands only on what the phone hasn’t changed since it read it', () => {
+  const y = { ...x, id: 'app|2026-10-01|bench press|2', setNo: 2 }, z = { ...x, id: 'app|2026-10-01|bench press|3', setNo: 3 };
+  const day = { date: '2026-10-01', weight: 180, protein: 140, at: { weight: 50, protein: 50 } };
+  const taken = { importSets: [{ ...x, reps: 10, editedAt: 100 }, { ...z, weight: 95 }], deleteIds: [y.id], importBody: [{ date: '2026-10-01', weight: 181, protein: 150, at: { weight: 100, protein: 100 } }] };
+  const base = { sets: [x, y], body: [day] };
+  const now = (sets: (SetEntry | undefined)[], d: typeof day | undefined) => ({ sets: new Map([[x.id, sets[0]], [y.id, sets[1]], [z.id, sets[2]]]), body: new Map([[day.date, d]]) });
+
+  it('takes it all when nothing changed', () => {
+    expect(stillTaken(base, now([x, y, undefined], day), taken)).toEqual({ taken, skipped: 0 });
+  });
+  it('leaves a set edited, one deleted, one logged under the same id, and one put back by Undo', () => {
+    const r = stillTaken(base, now([undefined, { ...y, editedAt: 200 }, { ...z, weight: 100 }], day), taken);
+    expect(r).toEqual({ taken: { importSets: [], deleteIds: [], importBody: taken.importBody }, skipped: 3 });
+    const undone = stillTaken({ sets: [], body: [] }, { sets: new Map([[x.id, { ...x, restoredAt: 200 }]]), body: new Map() }, { importSets: [{ ...x, reps: 10, editedAt: 100 }], deleteIds: [], importBody: [] });
+    expect(undone).toEqual({ taken: { importSets: [], deleteIds: [], importBody: [] }, skipped: 1 });
+  });
+  it('leaves a set changed in any way, even only its edit time', () => {
+    expect(stillTaken(base, now([{ ...x, editedAt: 1 }, y, undefined], day), taken).taken.importSets.map((s) => s.id)).toEqual([z.id]);
+  });
+  it('leaves a body field entered meanwhile, the same value entered again included, and takes the day’s others', () => {
+    for (const d of [{ ...day, weight: 182, at: { ...day.at, weight: 200 } }, { ...day, at: { ...day.at, weight: 200 } }]) {
+      expect(stillTaken(base, now([x, y, undefined], d), taken)).toEqual({
+        taken: { ...taken, importBody: [{ date: '2026-10-01', protein: 150, at: { protein: 100 } }] }, skipped: 1 });
+    }
+  });
+  it('leaves a field the phone first entered meanwhile, and drops a day left with nothing', () => {
+    const r = stillTaken({ sets: [], body: [] }, { sets: new Map(), body: new Map([[day.date, { date: day.date, weight: 179, at: { weight: 200 } }]]) },
+      { importSets: [], deleteIds: [], importBody: [{ date: day.date, weight: 181, at: { weight: 100 } }] });
+    expect(r).toEqual({ taken: { importSets: [], deleteIds: [], importBody: [] }, skipped: 1 });
   });
 });

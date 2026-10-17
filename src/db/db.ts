@@ -3,16 +3,17 @@ import type { SetEntry } from '../domain/types';
 import type { ExerciseSettings } from '../domain/progression';
 import type { Profile } from '../domain/profile';
 import type { DayPlan, Program } from '../domain/program';
-import type { BodyDay } from '../domain/body';
+import { mergeDay, type BodyDay } from '../domain/body';
 import type { PhotoMeta } from '../domain/photos';
 import type { SyncConfig } from '../domain/sync';
-import type { Seen } from '../domain/cloud';
+import { metaHash, type MetaItems, type Seen } from '../domain/cloud';
 import type { Gym } from '../domain/equipment';
 import { renameAliases, renameInPlan, renameInProgram, renameSets } from '../domain/rename';
 import { settingsKey } from '../domain/progression';
 import type { TagPrefs } from '../domain/tags';
 import type { CycleDay } from '../domain/cycle';
-import type { Replaced } from '../domain/replaced';
+import { replacements, stillTaken, type Replaced, type Taken } from '../domain/replaced';
+import { cleanStatus } from '../domain/orbit';
 
 const STORE = 'sets';
 /** The first profile: it keeps the original database, so existing data needs no migration. */
@@ -344,6 +345,99 @@ export async function addTombstone(id: string, at: number | null = Date.now()): 
   await Promise.all([tx.store.put(withTombstones(await tx.store.get('deleted'), [id], at)), tx.done]);
 }
 
+/** The log as a sync reads it: sets, body days and tombstones in one read, so a change can't land between them. */
+export async function getSyncSnapshot(): Promise<{ sets: SetEntry[]; body: BodyDay[]; tombstones: Set<string>; tombAt: Record<string, number> }> {
+  const tx = (await db()).transaction([STORE, 'body', 'config']);
+  const [sets, body, t] = await Promise.all([tx.objectStore(STORE).getAll() as Promise<SetEntry[]>, tx.objectStore('body').getAll() as Promise<BodyDay[]>,
+    tx.objectStore('config').get('deleted') as Promise<Tombstones | undefined>, tx.done]);
+  return { sets, body, tombstones: new Set(t?.ids ?? []), tombAt: t?.at ?? {} };
+}
+
+/**
+ * Saves what a sync takes onto this phone, and keeps this phone's values it replaces (domain/replaced), in one transaction: only
+ * what's still as the sync read it (`base`), so an edit made here while the sync was out is never overwritten, deleted, or kept
+ * as a copy it isn't; the next sync merges it. Sets another phone deleted go with their tombstone (no time: the cloud has it).
+ */
+export async function applySynced(base: { sets: SetEntry[]; body: BodyDay[] }, taken: Taken, now: number): Promise<{ taken: Taken; replaced: Replaced[]; skipped: number }> {
+  const tx = (await db()).transaction([STORE, 'body', 'config', 'replaced'], 'readwrite');
+  try {
+    const sets = tx.objectStore(STORE), days = tx.objectStore('body'), cfg = tx.objectStore('config');
+    const ids = [...new Set([...taken.importSets.map((s) => s.id), ...taken.deleteIds])];
+    const cur = {
+      sets: new Map(await Promise.all(ids.map(async (id) => [id, (await sets.get(id)) as SetEntry | undefined] as const))),
+      body: new Map(await Promise.all(taken.importBody.map(async (d) => [d.date, (await days.get(d.date)) as BodyDay | undefined] as const))),
+    };
+    const { taken: t, skipped } = stillTaken(base, cur, taken);
+    const replaced = replacements(base, t, now);
+    const writes: Promise<unknown>[] = [
+      ...replaced.map((r) => tx.objectStore('replaced').put(r)), ...t.importSets.map((s) => sets.put(s)), ...t.deleteIds.map((id) => sets.delete(id)),
+      ...t.importBody.map((d) => days.put(mergeDay(cur.body.get(d.date), d))),
+    ];
+    if (t.deleteIds.length) writes.push(cfg.put(withTombstones(await cfg.get('deleted'), t.deleteIds, null)));
+    await Promise.all([...writes, tx.done]);
+    return { taken: t, replaced, skipped };
+  } catch (e) {
+    try { tx.abort(); } catch { /* already aborted: keep the real error */ }
+    await tx.done.catch(() => {});
+    throw e;
+  }
+}
+
+/** Where one synced settings item (cloud/meta readMeta) lives in a profile's database; null for gyms (shared) or a key this build doesn't know. */
+type Row = any; // a stored row, whichever store it's in
+function metaRow(k: string): { store: string; key: string; get: (r: Row) => unknown; put: (v: unknown, r: Row) => Row; del: (r: Row) => Row | null } | null {
+  const whole = { get: (r: Row) => r, put: (v: unknown) => v, del: () => null };
+  if (k === 'profile') return { store: 'profile', key: k, ...whole };
+  if (k === 'program' || k.startsWith('day:')) return { store: 'program', key: k, ...whole };
+  if (k.startsWith('settings:')) return { store: 'settings', key: k.slice(9), ...whole };
+  if (k === 'tags') return { store: 'config', key: k, ...whole };
+  if (k === 'status') return { store: 'config', key: k, get: (r) => r?.text, put: (v) => ({ key: 'status', text: cleanStatus(v) }), del: () => null };
+  if (k.startsWith('alias:')) {
+    const name = k.slice(6);
+    return { store: 'config', key: 'aliases', get: (r) => r?.map?.[name], put: (v, r) => ({ key: 'aliases', map: { ...r?.map, [name]: v } }),
+      del: (r) => { const { [name]: _gone, ...map } = r?.map ?? {}; return { key: 'aliases', map }; } };
+  }
+  return null;
+}
+const itemHash = (v: unknown) => (v === undefined ? '' : metaHash(v));
+const gymsItem = (r: Row) => (r?.gyms?.length ? { gyms: r.gyms, active: r.active } : undefined); // as readMeta has it
+
+/**
+ * Saves the settings a sync takes onto this phone (`pull`) and deletes those another phone deleted (`remove`), each only if it's
+ * still as the sync read it (`base`, from readMeta): one changed here while the sync was out stays, and the next sync sends it up.
+ */
+export async function applySyncedMeta(base: MetaItems, pull: MetaItems, remove: string[]): Promise<{ pulled: number; removed: number; skipped: number }> {
+  const out = { pulled: 0, removed: 0, skipped: 0 };
+  const ops = [...Object.entries(pull).map(([k, v]) => ({ k, v, gone: false })), ...remove.map((k) => ({ k, v: undefined as unknown, gone: true }))];
+  const count = (o: { gone: boolean }) => { if (o.gone) out.removed++; else out.pulled++; };
+  const tx = (await db()).transaction(['profile', 'program', 'settings', 'config'], 'readwrite');
+  try {
+    for (const o of ops) {
+      const at = metaRow(o.k);
+      if (!at) continue;
+      const s = tx.objectStore(at.store), row = await s.get(at.key);
+      if (itemHash(at.get(row)) !== itemHash(base[o.k])) { out.skipped++; continue; }
+      const next = o.gone ? at.del(row) : at.put(o.v, row);
+      if (next) await s.put(next); else await s.delete(at.key);
+      count(o);
+    }
+    await tx.done;
+  } catch (e) {
+    try { tx.abort(); } catch { /* already aborted: keep the real error */ }
+    await tx.done.catch(() => {});
+    throw e;
+  }
+  const gyms = ops.find((o) => o.k === 'gyms');
+  if (gyms) {
+    const g = (await shared()).transaction('kv', 'readwrite');
+    const row = await g.store.get('gyms');
+    if (itemHash(gymsItem(row)) !== itemHash(base.gyms)) out.skipped++;
+    else { await g.store.put(gyms.gone ? { key: 'gyms', gyms: [] } : { key: 'gyms', ...(gyms.v as object) }); count(gyms); }
+    await g.done;
+  }
+  return out;
+}
+
 /** This phone's copies that a sync replaced (domain/replaced). */
 export const getReplaced = async (): Promise<Replaced[]> => (await db()).getAll('replaced');
 /** Saved before the sync takes the other copy; the same key again (a sync redone) replaces the record. */
@@ -379,7 +473,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 const PER_PROFILE = {
   getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, putMany, getAllSettings, putSettings, deleteSettings, getTags, putTags, getStatus, putStatus, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan, deleteDayPlan,
   getBody, putBody, putBodyMany, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, getTombstoneTimes, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
-  getReplaced, putReplaced, deleteReplaced, pruneReplaced,
+  getReplaced, putReplaced, deleteReplaced, pruneReplaced, getSyncSnapshot, applySynced, applySyncedMeta,
 };
 export type ProfileDb = typeof PER_PROFILE;
 const bound = new Map<string, ProfileDb>();
