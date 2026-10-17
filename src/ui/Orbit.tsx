@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { cloudError, loadCloud } from '../cloud/firebase';
-import { readFriendWindow, type Friend, type FriendNews, type FriendWindow } from '../cloud/friends';
+import type { Friend, FriendNews } from '../cloud/friends';
 import { addDays, weekStart } from '../domain/analytics';
+import { ORBIT_SPAN, orbitRange, peekFriendCache, refreshWindow, staleWindow, useFriendCache } from '../state/friendCache';
 import { fmtWeek, KIND_LABEL, KINDS, lastTraining, orbitDays, statusLength, STATUS_MAX, weekNumbers, type Day, type Kind } from '../domain/orbit';
 import type { SetEntry } from '../domain/types';
 import type { StatusStore } from '../state/useStatus';
@@ -11,64 +12,60 @@ import { Latest, MessageButton } from './MessageButton';
 // Every friend on one screen: a line each across the days, coloured by what they trained. Cycle data never comes here:
 // friends' rows read only their months and status phrase, and your own row only your log.
 
-const SPAN = 56; // eight weeks back, today included
+const SPAN = ORBIT_SPAN; // eight weeks back, today included
 const SHOWN = 14; // days across a phone
 const MAX_OFF = SPAN - SHOWN;
-const STALE_MS = 5 * 60_000;
 const LINE_H = 20;
 const colour = (k: Kind | undefined) => (k ? `var(--orbit-${k})` : 'var(--orbit-other)');
 const KEY_SEEN = 'gym-tracker:orbit-key';
 
-/** Friends' windows for this session: read again on a pull-down, or when Orbit opens more than 5 minutes later. */
-const cache = new Map<string, { at: number; win: FriendWindow }>();
-
-type Load = { win?: FriendWindow; error?: string };
 interface Row { id: string; name: string; label: string; status: string; days: Day[]; sets: SetEntry[]; me: boolean; friend?: Friend; error?: string; loading?: boolean }
 
-export function Orbit({ uid, friends, entries, today, status, news, onOpenFriend, onOpenMine, onInvite, onMessage }: {
+export function Orbit({ uid, friends, entries, today, status, news, pulled = 0, onOpenFriend, onOpenMine, onInvite, onMessage }: {
   uid: string; friends: Friend[] | null; entries: SetEntry[]; today: string; status: StatusStore; news?: FriendNews | null;
+  /** Moves on each pull-down or Refresh: every line is read again. */ pulled?: number;
   onOpenFriend: (f: Friend) => void; onOpenMine: () => void; onInvite: () => void; /** A friend's thread: pings and messages. */ onMessage?: (f: Friend) => void;
 }) {
-  const from = addDays(today, -(SPAN - 1));
-  const [loads, setLoads] = useState<Record<string, Load>>({});
-  const [busy, setBusy] = useState(false);
+  const { from } = orbitRange(today);
+  // Each friend's line as the phone kept it (state/friendCache), read again quietly when 5 minutes old or for a new day.
+  // A failed read shows only where nothing was kept; a kept line stays as it was.
+  const windows = useFriendCache(uid)?.windows;
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const load = useCallback(async (force: boolean) => {
     if (!friends?.length) return;
-    const now = Date.now(), key = (f: Friend) => `${uid}|${f.uid}|${from}|${today}`;
-    const need = friends.filter((f) => { const c = cache.get(key(f)); return force || !c || now - c.at > STALE_MS; });
-    setLoads(Object.fromEntries(friends.flatMap((f) => { const c = cache.get(key(f)); return c ? [[f.uid, { win: c.win }]] : []; })));
+    const now = Date.now(), kept = peekFriendCache(uid)?.windows ?? {};
+    const need = friends.filter((f) => force || staleWindow(kept[f.uid], from, today, now));
     if (!need.length) return;
-    setBusy(true);
+    const fail = (f: Friend, e: unknown) => {
+      if (peekFriendCache(uid)?.windows[f.uid]) return;
+      setErrors((x) => ({ ...x, [f.uid]: (e as { code?: string }).code === 'permission-denied' ? 'You can’t see their log any more.' : cloudError(e) }));
+    };
     try {
       const c = await loadCloud();
       await Promise.all(need.map(async (f) => {
         try {
-          const win = await readFriendWindow(c, f.uid, from, today);
-          cache.set(key(f), { at: Date.now(), win });
-          setLoads((l) => ({ ...l, [f.uid]: { win } }));
-        } catch (e) {
-          setLoads((l) => ({ ...l, [f.uid]: { error: (e as { code?: string }).code === 'permission-denied' ? 'You can’t see their log any more.' : cloudError(e) } }));
-        }
+          await refreshWindow(c, uid, f.uid, from, today);
+          setErrors(({ [f.uid]: _ok, ...x }) => x);
+        } catch (e) { fail(f, e); }
       }));
-    } catch (e) {
-      const error = cloudError(e);
-      setLoads((l) => ({ ...l, ...Object.fromEntries(need.map((f) => [f.uid, { error }])) }));
-    } finally { setBusy(false); }
+    } catch (e) { need.forEach((f) => fail(f, e)); }
   }, [friends, uid, from, today]);
   useEffect(() => { void load(false); }, [load]);
+  const seenPull = useRef(pulled);
+  useEffect(() => { if (pulled !== seenPull.current) { seenPull.current = pulled; void load(true); } }, [pulled, load]);
 
   const rows = useMemo((): Row[] => {
     const mine = entries.filter((e) => e.date >= from && e.date <= today);
     const me: Row = { id: 'me', name: 'You', label: 'You', status: status.status, days: orbitDays(mine, from, today), sets: mine, me: true };
     const theirs = (friends ?? []).map((f): Row => {
-      const l = loads[f.uid], sets = l?.win?.sets ?? [];
-      return { id: f.uid, name: `@${f.name}`, label: `@${f.name}`, status: l?.win?.status ?? '', days: orbitDays(sets, from, today), sets, me: false, friend: f, error: l?.error, loading: !l };
+      const w = windows?.[f.uid], sets = (w?.win.sets ?? []).filter((x) => x.date >= from && x.date <= today), error = w ? undefined : errors[f.uid];
+      return { id: f.uid, name: `@${f.name}`, label: `@${f.name}`, status: w?.win.status ?? '', days: orbitDays(sets, from, today), sets, me: false, friend: f, error, loading: !w && !error };
     });
     const last = (r: Row) => lastTraining(r.days)?.date ?? '';
     theirs.sort((a, b) => (last(b) > last(a) ? 1 : last(b) < last(a) ? -1 : a.name.localeCompare(b.name)));
     return [me, ...theirs];
-  }, [entries, friends, loads, status.status, from, today]);
+  }, [entries, friends, windows, errors, status.status, from, today]);
 
   // Sideways: `off` is how many days back the window sits (0: today at the right edge). Fractional while dragging.
   const [off, setOff] = useState(0);
@@ -90,10 +87,6 @@ export function Orbit({ uid, friends, entries, today, status, news, onOpenFriend
   const shown = Math.round(off);
   const visible = (days: Day[]) => days.slice(SPAN - SHOWN - shown, SPAN - shown);
 
-  // Pull down at the top of the page to read friends again.
-  const [pull, setPull] = useState(0);
-  const pullStart = useRef<number | null>(null);
-
   const week = weekStart(today);
   const recent = addDays(today, -(SHOWN - 1));
   const table = rows.map((r): [string, string] => {
@@ -103,15 +96,10 @@ export function Orbit({ uid, friends, entries, today, status, news, onOpenFriend
   const first = visible(rows[0].days)[0]?.date ?? from, lastShown = visible(rows[0].days).at(-1)?.date ?? today;
 
   return (
-    <section className="orbit" aria-label="Orbit"
-      onTouchStart={(e) => { pullStart.current = window.scrollY <= 0 ? e.touches[0].clientY : null; }}
-      onTouchMove={(e) => { if (pullStart.current != null && !drag.current?.on) setPull(Math.max(0, e.touches[0].clientY - pullStart.current)); }}
-      onTouchEnd={() => { if (pull > 70) void load(true); pullStart.current = null; setPull(0); }}>
-      {pull > 0 && <p className="orbit-pull muted small" aria-hidden="true">{pull > 70 ? 'Release to refresh' : 'Pull to refresh'}</p>}
+    <section className="orbit" aria-label="Orbit">
       <div className="orbit-top">
         <h2>Orbit</h2>
         {shown > 0 && <button className="chip orbit-today" onClick={() => setOff(0)}>Today</button>}
-        <button className="mini" disabled={busy || !friends?.length} onClick={() => void load(true)}>{busy ? 'Loading…' : 'Refresh'}</button>
       </div>
       <OrbitKey />
       <div ref={box} className="orbit-rows" style={{ touchAction: 'pan-y' }} tabIndex={0} aria-label={`Days ${first} to ${lastShown}. Arrow keys move a week.`}

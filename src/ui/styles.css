@@ -653,3 +653,9 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .bubble.ping .bubble-text { font-size: 32px; line-height: 1.15; }
 /* Invite sits in the page under the Orbit lines (it floated over the page and covered "Add a friend"). */
 .orbit-invite { margin: 10px 0 4px; border-radius: 22px; padding: 0 20px; }
+/* Friends reads again on a pull down at the top; the note under the heading says so (empty, it takes no room). The Refresh a
+   screen reader or keyboard reaches shows only while it has focus, over the heading's row so nothing moves when it shows. */
+.friends-page { position: relative; }
+.friends-pull { margin: 0 0 4px; text-align: center; }
+.friends-pull:empty { margin: 0; }
+.sr-only.focus-show:focus { top: 0; right: 0; width: auto; height: auto; margin: 0; padding: 0 12px; overflow: visible; clip-path: none; border: 1px solid var(--line-strong); }

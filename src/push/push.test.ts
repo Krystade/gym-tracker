@@ -164,7 +164,15 @@ describe('service worker push', () => {
     expect(f.d.registration.showNotification).toHaveBeenCalledTimes(1);
     expect(f.d.setBadge).toHaveBeenCalledWith(3);
     expect(f.d.record).toHaveBeenCalledWith('lastPush', expect.objectContaining({ kind: 'test' }));
-    expect(win.postMessage).toHaveBeenCalledWith({ type: 'push', kind: 'test' });
+    expect(win.postMessage).toHaveBeenCalledWith({ type: 'push', kind: 'test', route: null });
+  });
+
+  it('tells open windows which friend a push is about, so the app reads that thread again', async () => {
+    const win = { focus: vi.fn(async () => {}), postMessage: vi.fn() };
+    const f = fakes([win]);
+    onPush({ data: { json: () => buildPayload('ping', pingNote('jake', 'fire'), APP, { route: 'friend.u1' }), text: () => '' }, waitUntil: f.waitUntil }, f.d);
+    await f.waits[0];
+    expect(win.postMessage).toHaveBeenCalledWith({ type: 'push', kind: 'ping', route: 'friend.u1' });
   });
 
   it('a tap with a window open focuses it and tells it where to go', async () => {

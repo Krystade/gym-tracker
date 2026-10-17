@@ -43,8 +43,9 @@ import { FriendsScreen } from './FriendsScreen';
 import { FriendView, type FriendTab } from './FriendView';
 import { CharactersScreen } from './CharactersScreen';
 import { GymsScreen } from './GymsScreen';
-import { friendNews, type Friend, type FriendNews } from '../cloud/friends';
+import type { Friend, FriendNews } from '../cloud/friends';
 import { loadCloud } from '../cloud/firebase';
+import { prefetchSoon, readAfterPush, refreshChangedThreads, refreshNews, useFriendCache } from '../state/friendCache';
 import { syncBadge, syncMuted } from '../push/client';
 import { ThreadSheet, type ThreadWith } from './ThreadSheet';
 import { parseInvite, type Invite } from '../domain/invite';
@@ -78,16 +79,26 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const [tab, setTab] = useState<Tab>(launchInvite ? 'friends' : 'today');
   const [pending, setPending] = useState(launchInvite);
   const [viewing, setViewing] = useState<Friend | null>(null);
-  // Friends' news (requests, gyms, unread pings and messages): read after a sync, a push, or anything done in Friends.
-  const [news, setNews] = useState<FriendNews | null>(null);
-  const [newsRev, setNewsRev] = useState(0);
-  const bumpNews = useCallback(() => setNewsRev((n) => n + 1), []);
-  const waiting = news?.total ?? 0;
   // The signed-in account's uid (set by the person whose account it is), and the thread open over everything.
   const [me, setMe] = useState<string | null>(null);
   const [thread, setThread] = useState<ThreadWith | null>(null);
+  // Friends' news (requests, gyms, unread pings and messages), as kept on the phone (state/friendCache): shown at once,
+  // read again after a sync, a push, or anything done in Friends.
+  const friendCache = useFriendCache(me);
+  const news: FriendNews | null = (me && friendCache?.news) || null;
+  const [newsRev, setNewsRev] = useState(0);
+  const bumpNews = useCallback(() => setNewsRev((n) => n + 1), []);
+  const waiting = news?.total ?? 0;
+  const meNow = useRef(me);
+  meNow.current = me;
   useEffect(() => {
-    const onMsg = (e: MessageEvent) => { if ((e.data as { type?: string })?.type === 'push') bumpNews(); };
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { type?: string; kind?: string | null; route?: string | null } | null;
+      if (d?.type !== 'push') return;
+      bumpNews();
+      // The friend it's about: their thread is read again now, so it's there when you open it.
+      if (meNow.current) void readAfterPush(meNow.current, d.kind, d.route).catch(() => {});
+    };
     navigator.serviceWorker?.addEventListener('message', onMsg);
     return () => navigator.serviceWorker?.removeEventListener('message', onMsg);
   }, [bumpNews]);
@@ -134,7 +145,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const current = (t: Tab) => !exercise && (overlay ? t === 'more' && tab === 'more' : tab === t);
   const nav = { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, gymOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, setGymOpen, open,
     // The walkthrough points at Today, so it opens there.
-    pending, waiting, news, newsRev, setNews, bumpNews, setMe, openThread: (f: ThreadWith) => setThread(f), clearPending: () => { launchInvite = null; setPending(null); },
+    pending, waiting, news, newsRev, bumpNews, setMe, openThread: (f: ThreadWith) => setThread(f), clearPending: () => { launchInvite = null; setPending(null); },
     view: (f: Friend) => { setViewing(f); setTab('stats'); setExercise(null); window.scrollTo(0, 0); },
     showTour: () => { setViewing(null); setTab('today'); setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); window.scrollTo(0, 0); setTour(true); } };
 
@@ -170,7 +181,7 @@ interface Nav {
   setTab: (t: Tab) => void; setExercise: (x: string | null) => void; setProgramOpen: (b: boolean) => void; setPhotosOpen: (b: boolean) => void; setPasteOpen: (b: boolean) => void; setCharsOpen: (b: boolean) => void; setGymOpen: (b: boolean) => void;
   open: (name: string) => void; showTour: () => void;
   pending: Invite | null; clearPending: () => void; waiting: number; view: (f: Friend) => void;
-  news: FriendNews | null; newsRev: number; setNews: (n: FriendNews | null) => void; bumpNews: () => void; setMe: (uid: string | null) => void; openThread: (f: ThreadWith) => void;
+  news: FriendNews | null; newsRev: number; bumpNews: () => void; setMe: (uid: string | null) => void; openThread: (f: ThreadWith) => void;
 }
 
 function PersonScreens({ person, people, gyms, nav }: { person: Person; people: PeopleStore; gyms: GymsStore; nav: Nav }) {
@@ -184,10 +195,16 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const sync = useSync(store, body, person);
   // Settings pulled from the account are saved on the phone, then every screen reads them again.
   // Friends' news after a sync, at most once a minute (a workout syncs after every set); anything done in Friends reads it at once.
+  // And everything Friends shows, read in the background when the phone is idle after a sync, at most every 5 minutes.
   const newsAt = useRef(0);
+  const account = useRef<{ uid: string | null; date: string }>({ uid: null, date: nav.date });
   const cloud = useCloud(store, body, person, {
     reload: () => { void rawProfile.reload(); void programs.reload(); void settings.reload(); void gyms.reload(); void status.reload(); },
-    onSynced: () => { if (Date.now() - newsAt.current > 60_000) nav.bumpNews(); },
+    onSynced: () => {
+      if (Date.now() - newsAt.current > 60_000) nav.bumpNews();
+      const { uid: u, date: d } = account.current;
+      if (u) prefetchSoon(u, d);
+    },
     rev: [rawProfile.profile, programs.program, programs.plans, settings.get, settings.tags, gyms.gyms, status.status],
   });
   const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, gymOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, setGymOpen, open, showTour } = nav;
@@ -195,18 +212,22 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const back = tab === 'more' ? '‹ More' : '‹ Back';
   const top = (fn: () => void) => () => { fn(); window.scrollTo(0, 0); };
   const uid = cloud.mine ? cloud.link?.uid : null;
-  const { setMe, setNews, newsRev } = nav;
-  useEffect(() => { setMe(uid ?? null); if (!uid) setNews(null); }, [uid, setMe, setNews]);
+  account.current = { uid: uid ?? null, date };
+  const { setMe, newsRev } = nav;
+  useEffect(() => { setMe(uid ?? null); }, [uid, setMe]);
   useEffect(() => {
     if (!uid) return;
     let live = true;
     newsAt.current = Date.now();
-    void loadCloud().then((c) => friendNews(c, uid)).then((n) => {
+    void loadCloud().then(async (c) => {
+      const n = await refreshNews(c, uid);
       if (!live) return;
-      setNews(n); syncBadge(n.total); syncMuted(n.muted);
-    }, () => {});
+      syncBadge(n.total); syncMuted(n.muted);
+      // A friend sent something since their thread was read (a push while the app was away): read it now.
+      await refreshChangedThreads(c, uid);
+    }).catch(() => {});
     return () => { live = false; };
-  }, [uid, newsRev, setNews]);
+  }, [uid, newsRev]);
   // Push: the reminder and recap numbers, for the person whose account this is (signed out: this phone's subscription goes).
   usePushSync(store.entries, programs.program, programs.plans, date, cloud.link === null ? false : cloud.mine ? true : null);
   // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.

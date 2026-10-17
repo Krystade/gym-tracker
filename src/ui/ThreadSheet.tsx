@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cloudError, loadCloud } from '../cloud/firebase';
-import { blockFriend, clearSentGym, friendState, listThread, markRead, removeFriend, sendMessage, sendPing, setMuted, type SentGym } from '../cloud/friends';
-import { MAX_MESSAGE, messageOk, PRESET_KEYS, PRESETS, shortAgo, type PresetKey, type ThreadItem } from '../domain/messages';
+import { blockFriend, clearSentGym, friendState, markRead, removeFriend, sendMessage, sendPing, setMuted } from '../cloud/friends';
+import { MAX_MESSAGE, messageOk, PRESET_KEYS, PRESETS, shortAgo, type PresetKey } from '../domain/messages';
+import { patchFriendCache, peekFriendCache, readLocally, refreshThread, useFriendCache } from '../state/friendCache';
 import { copyGym } from '../domain/share';
 import type { GymsStore } from '../state/useGyms';
 
@@ -14,15 +15,24 @@ const COUNT_FROM = 100; // the count shows only once a message nears the limit
 /**
  * Pings and messages with one friend, in a sheet from the bottom (never a centred modal: the board stays visible above
  * it). Top to bottom: who, mute and more; the last 20 items; the six pings above the field, so the keyboard can't hide
- * them; a 140-character field. Read once on opening, again when a push arrives or the app comes back, and after a send.
+ * them; a 140-character field. Shows at once what the phone kept of the thread (state/friendCache); read again on opening,
+ * when a push arrives or the app comes back, and after a send.
  */
 export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }: {
   me: string; friend: ThreadWith; gyms: GymsStore; onClose: () => void; onViewLog: (f: { uid: string; name: string }) => void; onChanged: () => void;
 }) {
-  const [name, setName] = useState(friend.name ?? '');
-  const [state, setState] = useState<{ friend: boolean; muted: boolean } | null>(null);
-  const [items, setItems] = useState<ThreadItem[] | null>(null);
-  const [sentGyms, setSentGyms] = useState<SentGym[]>([]);
+  const cache = useFriendCache(me);
+  // A friend on the kept list is known at once (name, mute), so the pings work before anything is read.
+  const known = cache?.lists?.friends.find((f) => f.uid === friend.uid);
+  const [fetchedName, setName] = useState(friend.name ?? '');
+  const name = fetchedName || known?.name || '';
+  const [fetched, setState] = useState<{ friend: boolean; muted: boolean } | null>(null);
+  const state = fetched ?? (known ? { friend: true, muted: !!known.muted } : null);
+  // Nothing kept and the read failed, or blocked just now: an empty thread rather than Loading.
+  const [empty, setEmpty] = useState(false);
+  const kept = cache?.threads[friend.uid];
+  const items = kept?.items ?? (empty ? [] : null);
+  const sentGyms = kept?.gyms ?? [];
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -45,13 +55,15 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   const load = useCallback(async (first = false) => {
     try {
       const c = await loadCloud();
-      const [s, t] = await Promise.all([first ? friendState(c, me, friend.uid) : Promise.resolve(null), listThread(c, me, friend.uid)]);
+      const [s] = await Promise.all([first ? friendState(c, me, friend.uid) : Promise.resolve(null), refreshThread(c, me, friend.uid)]);
       if (s) { setName(s.name); setState({ friend: s.friend, muted: s.muted }); }
-      setItems(t.items); setSentGyms(t.gyms);
-      // Everything they sent is read now; the dots and the badge follow.
-      if (!s || s.friend) await markRead(c, me, friend.uid).catch(() => {});
+      // Everything they sent is read now; the dots go at once, and the badge follows the news read again.
+      if (!s || s.friend) await markRead(c, me, friend.uid).then(() => patchFriendCache(me, (x) => readLocally(x, friend.uid))).catch(() => {});
       changed.current();
-    } catch (e) { setMsg({ ok: false, text: cloudError(e) }); setItems((x) => x ?? []); }
+    } catch (e) {
+      // With the thread kept, it stays as it was, quietly; with nothing kept, say why it's empty.
+      if (!peekFriendCache(me)?.threads[friend.uid]) { setMsg({ ok: false, text: cloudError(e) }); setEmpty(true); }
+    }
   }, [me, friend.uid]);
   useEffect(() => { void load(true); }, [load]);
   useEffect(() => {
@@ -113,7 +125,9 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
                 : setArmed('remove'))}>{armed === 'remove' ? 'Tap again to remove' : 'Remove'}</button>
             )}
             <button className="mini danger" disabled={busy} onClick={() => (armed === 'block'
-              ? void act(async () => blockFriend(await loadCloud(), me, friend.uid), () => { setState({ friend: false, muted: false }); setItems([]); setMenu(false); setMsg({ ok: true, text: `Blocked ${who}. They can’t ask to be friends or message you. Unblock under Friends.` }); })
+              ? void act(async () => blockFriend(await loadCloud(), me, friend.uid), () => {
+                setState({ friend: false, muted: false }); setEmpty(true); setMenu(false);
+                void patchFriendCache(me, (x) => { const { [friend.uid]: _gone, ...threads } = x.threads; return { ...x, threads }; }); setMsg({ ok: true, text: `Blocked ${who}. They can’t ask to be friends or message you. Unblock under Friends.` }); })
               : setArmed('block'))}>{armed === 'block' ? 'Tap again to block' : 'Block'}</button>
           </div>
         )}
