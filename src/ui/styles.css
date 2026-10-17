@@ -720,3 +720,15 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 .digest .digest-pr { color: var(--accent); font-weight: 600; }
 .digest .digest-hide { margin: 12px 0 0; }
 .digest .digest-toggle .muted { font-weight: 400; }
+
+/* Suggested today (no program): self-contained, for the coming redesign. */
+.suggested .suggested-toggle { width: 100%; padding: 0; border: 0; background: none; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left; font-size: inherit; }
+.suggested .suggested-toggle .muted { font-weight: 400; }
+.suggested h2:last-child { margin-bottom: 0; }
+.suggested .suggested-minutes { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; }
+.suggested .suggested-minutes input { width: 72px; }
+.suggested .suggested-slots { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.suggested .suggested-name { width: 100%; min-height: 44px; padding: 6px 10px; display: grid; gap: 1px; justify-items: start; justify-content: stretch; text-align: left; line-height: 1.25; }
+.suggested .suggested-name b { overflow-wrap: anywhere; font-weight: 600; }
+.suggested .suggested-name .muted { font-weight: 400; }
+.suggested li.done .suggested-count { color: var(--ok); }

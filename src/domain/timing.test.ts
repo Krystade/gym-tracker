@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PACE, estimateSeconds, paces, perSessionForMinutes, perSetSeconds, restSeconds, sessionDay, sessionMinutes, suggestTime } from './timing';
+import { DEFAULT_PACE, estimateSeconds, paces, perSessionForMinutes, perSetSeconds, restSeconds, sessionDay, sessionMinutes, suggestTime, usualMinutes } from './timing';
 import type { SetEntry } from './types';
 import type { Program } from './program';
 
@@ -94,5 +94,24 @@ describe('warm-ups in a time estimate', () => {
     const one = estimateSeconds([{ exercise: 'Bench Press', sets: 1 }], p, () => 1);
     const two = estimateSeconds([{ exercise: 'Bench Press', sets: 1 }, { exercise: 'Leg Press', sets: 1 }], p, () => 1);
     expect(two - one).toBe(perSetSeconds(p, 'Leg Press'));
+  });
+});
+
+describe('usualMinutes', () => {
+  // A day of sets from `start`, one every 3 minutes: n sets last (n - 1) × 3 min plus one set.
+  const day = (date: string, n: number) => Array.from({ length: n }, (_, i) => at(date, `18:${String(i * 3).padStart(2, '0')}`));
+  const TODAY = '2026-10-17';
+  it('is the median of the last 8 weeks’ timed sessions, today and older days left out', () => {
+    const log = [...day('2026-10-01', 11), ...day('2026-10-05', 16), ...day('2026-10-09', 6), ...day('2026-10-17', 20), ...day('2026-07-01', 20)];
+    const p = paces(log);
+    const mins = ['2026-10-01', '2026-10-05', '2026-10-09'].map((d) => sessionMinutes(log, d, p)!).sort((a, b) => a - b);
+    expect(usualMinutes(log, TODAY, p)).toBe(mins[1]);
+    expect(mins[1]).not.toBe(sessionMinutes(log, '2026-10-17', p));
+  });
+  it('is 45 with fewer than 3 timed sessions, and keeps to 15–120', () => {
+    const two = [...day('2026-10-01', 11), ...day('2026-10-05', 16)];
+    expect(usualMinutes(two, TODAY, paces(two))).toBe(45);
+    const short = ['2026-10-01', '2026-10-03', '2026-10-05'].flatMap((d) => day(d, 2));
+    expect(usualMinutes(short, TODAY, paces(short))).toBe(15);
   });
 });

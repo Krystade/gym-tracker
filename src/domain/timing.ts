@@ -90,3 +90,11 @@ export function perSessionForMinutes(minutes: number, build: (per: number) => Pr
   for (let per = 20; per > 8; per--) if (Math.max(...build(per).days.map(est)) <= minutes) return per;
   return 8;
 }
+
+/** How long your sessions usually run: the median over the last 8 weeks (today left out) with 3 or more timed, else 45; 15–120. */
+export function usualMinutes(entries: SetEntry[], today: string, p: Paces): number {
+  const from = addDays(today, -56);
+  const dates = [...new Set(entries.filter((e) => e.date >= from && e.date < today && e.loggedAt).map((e) => e.date))];
+  const mins = dates.map((d) => sessionMinutes(entries, d, p)).filter((m): m is number => m != null);
+  return mins.length < 3 ? 45 : Math.min(120, Math.max(15, Math.round(median(mins))));
+}

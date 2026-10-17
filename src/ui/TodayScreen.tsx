@@ -28,6 +28,7 @@ import { CATALOG } from '../domain/catalog';
 import { addDays } from '../domain/analytics';
 import type { ThreadWith } from './ThreadSheet';
 import { TodayDigest } from './WeekDigest';
+import { SuggestedToday } from './SuggestedToday';
 
 export function TodayScreen({ who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews }: {
   /** Whose sets these are, named only when several people share the phone. */
@@ -132,6 +133,10 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
         <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today} open={open} onToggle={() => setPlanOpen(!open)}
           buildQuick={(fits) => quickDay(profile, store.entries, date, fits, available ? { available, include: gyms.active!.include } : {})}
           onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} loadFor={loadFor} rangeFor={settings.get} />
+      )}
+      {/* No program: a quick session from what the week is behind on, once there's a history to go by. Never on a past day. */}
+      {!programs.program && date === today && store.entries.some((e) => e.date < date) && (
+        <SuggestedToday profile={profile} entries={store.entries} date={date} gym={gyms.active} loadFor={loadFor} onOpen={goTo} />
       )}
       {cards.length === 0 && <p className="muted">{date < today ? 'Nothing logged that day.' : 'Nothing logged yet today.'}</p>}
       {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} today={today} store={store} settings={settings} onOpen={onOpen}
