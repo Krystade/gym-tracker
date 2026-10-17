@@ -1,11 +1,12 @@
 import { TOKEN_URL } from '../domain/sync';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { SyncStore } from '../state/useSync';
 import { fmtDate } from '../domain/format';
 
 const DEFAULT_REPO = 'Krystade/gym-data';
 
-export function SyncCard({ sync, newestSet }: { sync: SyncStore; newestSet: string | null }) {
+/** `replaced`: what syncs replaced on this phone, shown here when this person isn't signed in to an account. */
+export function SyncCard({ sync, newestSet, replaced }: { sync: SyncStore; newestSet: string | null; replaced?: ReactNode }) {
   const c = sync.config;
   const [repo, setRepo] = useState(c?.repo ?? DEFAULT_REPO);
   const [token, setToken] = useState('');
@@ -54,6 +55,7 @@ export function SyncCard({ sync, newestSet }: { sync: SyncStore; newestSet: stri
       {(sync.status.kind === 'done' || sync.status.kind === 'error') && (
         <p role="status" className={sync.status.kind === 'error' ? 'warn' : ''}>{sync.status.text}</p>
       )}
+      {replaced}
     </section>
   );
 }

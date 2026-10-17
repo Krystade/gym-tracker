@@ -37,7 +37,7 @@ export function onPush(e: PushEventLike, d: SwDeps): void {
   const extras = Promise.allSettled([
     n.badge != null ? d.setBadge(n.badge) : Promise.resolve(),
     d.record('lastPush', { at: Date.now(), kind: n.data.kind ?? null }),
-    d.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((ws) => { for (const w of ws) w.postMessage({ type: 'push', kind: n.data.kind ?? null }); }),
+    d.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((ws) => { for (const w of ws) w.postMessage({ type: 'push', kind: n.data.kind ?? null, route: n.data.route ?? null }); }),
   ]);
   e.waitUntil(Promise.all([shown, extras]));
 }

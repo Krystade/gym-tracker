@@ -1,6 +1,7 @@
 import type { BodyDay } from '../domain/body';
 import { mergeMeta, mergeMonth, metaHash, monthHash, monthsToSync, splitByMonth, type CloudMonth, type MetaItems, type Seen } from '../domain/cloud';
 import type { SetEntry } from '../domain/types';
+import { replacements, type Replaced } from '../domain/replaced';
 import type { Cloud } from './firebase';
 
 /** What the last sync left your settings as: each item's fingerprint, and the cloud copy's time. */
@@ -12,8 +13,11 @@ export interface SyncApply {
   importMeta: (m: MetaItems) => Promise<void>;
   /** Settings deleted on another phone (a renamed lift's, say): deleted here too. */
   removeMeta: (keys: string[]) => Promise<void>;
+  /** Keeps this phone's values the merge is about to replace (domain/replaced); false when they couldn't be saved. */
+  recordReplaced: (r: Replaced[]) => Promise<boolean>;
 }
-export interface SyncOutcome { seen: Seen; metaSeen: MetaSeen; pulled: number; pushed: number; removed: number; metaPulled: number }
+/** `replaced`: this phone's values kept aside because the sync replaced them; `replacedSets`, how many of them were sets. */
+export interface SyncOutcome { seen: Seen; metaSeen: MetaSeen; pulled: number; pushed: number; removed: number; metaPulled: number; replaced: number; replacedSets: number }
 
 /**
  * Syncs the months that changed on either side since the last sync. Each month is one transaction (read, merge, write),
@@ -25,7 +29,7 @@ export async function syncCloud({ F, db }: Cloud, uid: string, input: SyncInput,
   const index = (indexDoc?.months ?? {}) as Record<string, number>;
   const local = splitByMonth(input.sets, input.body, input.tombstones, input.tombAt);
   const seen: Seen = { ...input.seen };
-  const out = { pulled: 0, pushed: 0, removed: 0 };
+  const out = { pulled: 0, pushed: 0, removed: 0, replaced: 0, replacedSets: 0 };
   for (const m of monthsToSync(local, index, input.seen).sort()) {
     const here = local.get(m) ?? { sets: [], body: [], tombstones: new Set<string>() };
     const ref = F.doc(db, `users/${uid}/months/${m}`);
@@ -40,6 +44,9 @@ export async function syncCloud({ F, db }: Cloud, uid: string, input: SyncInput,
       return { merged, at: merged.changed ? merged.doc.updatedAt : remote?.updatedAt ?? 0 };
     });
     // The cloud has the merge; now the phone takes what it lacked. A failed save stops here, so the next sync redoes this month.
+    // What it replaces of the phone's is kept first, so nothing is overwritten without a copy.
+    const replaced = replacements(here, merged, now);
+    if (replaced.length && !(await apply.recordReplaced(replaced))) throw new Error('Keeping this phone’s copies of what the sync replaced failed.');
     if (merged.importSets.length && (await apply.importSets(merged.importSets)) == null) throw new Error('Saving the synced sets on this phone failed.');
     if (merged.importBody.length && !(await apply.importBody(merged.importBody))) throw new Error('Saving the synced body days on this phone failed.');
     if (merged.deleteIds.length && !(await apply.removeSets(merged.deleteIds))) throw new Error('Removing sets deleted on another phone failed.');
@@ -47,6 +54,8 @@ export async function syncCloud({ F, db }: Cloud, uid: string, input: SyncInput,
     seen[m] = { hash: monthHash({ sets: merged.doc.sets, body: merged.doc.body, tombstones }), at };
     out.pulled += merged.importSets.length;
     out.removed += merged.deleteIds.length;
+    out.replaced += replaced.length;
+    out.replacedSets += replaced.filter((r) => r.kind === 'set').length;
     if (merged.changed) out.pushed++;
   }
   const meta = await syncMeta({ F, db }, uid, input, apply, (indexDoc?.meta ?? 0) as number, now);

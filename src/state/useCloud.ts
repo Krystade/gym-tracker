@@ -8,6 +8,9 @@ import { syncCycle } from '../cloud/cycle';
 import { cycleChanged, onCycleChange } from './useCycle';
 import type { SetsStore } from './useSets';
 import type { BodyStore } from './useBody';
+import { keepReplaced, replacedChanged } from './useReplaced';
+import { KEEP_MS } from '../domain/replaced';
+import { forgetFriendCaches } from './friendCache';
 
 export type CloudStatus = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'done'; text: string } | { kind: 'error'; text: string };
 const QUIET_MS = 3000; // after the last change, so a run of sets syncs once
@@ -27,6 +30,8 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
 
   useEffect(() => { void getCloudLink().then((l) => setLink(l ?? null)).catch(() => setLink(null)); }, []);
   useEffect(() => { void db.getCloudSeen().then((s) => setLastSync(s && link && s.uid === link.uid ? s.at ?? null : null)); }, [db, link]);
+  // At startup: copies a sync replaced more than 30 days ago go.
+  useEffect(() => { void db.pruneReplaced(Date.now() - KEEP_MS).then((n) => { if (n) replacedChanged(); }, () => {}); }, [db]);
 
   // One sync at a time; a request during one runs once more after it.
   const running = useRef(false), again = useRef(false);
@@ -54,6 +59,7 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
         importSets: (x) => s.importEntries(x), importBody: (x) => b.importDays(x), removeSets: (x) => s.removeMany(x),
         importMeta: async (x) => { await writeMeta(db, x); m.reload(); },
         removeMeta: async (x) => { await removeMeta(db, x); m.reload(); },
+        recordReplaced: (x) => keepReplaced(db, x),
       });
       // Cycle phase, to its own private document. Refused until the rules that allow it are deployed: noted, and the rest goes on.
       // Days brought in, or the account's setting taken by a phone that never set it, both change what Today and More show.
@@ -63,8 +69,9 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
       setLastSync(at);
       latest.current.meta.onSynced?.(); // the More tab's dot: friends' requests, gyms and messages
       const n = s.entries.length;
-      const got = [first && n && `${n} set${n === 1 ? '' : 's'} from this phone saved to your account`, r.pulled && `${r.pulled} set${r.pulled === 1 ? '' : 's'} in`,
-        r.removed && `${r.removed} removed`, r.metaPulled && 'program and settings updated'].filter(Boolean).join(', ');
+      const up = n - r.replacedSets; // the account's copy won the rest
+      const got = [first && up > 0 && `${up} set${up === 1 ? '' : 's'} from this phone saved to your account`, r.pulled && `${r.pulled} set${r.pulled === 1 ? '' : 's'} in`,
+        r.removed && `${r.removed} removed`, r.metaPulled && 'program and settings updated', r.replaced && `${r.replaced} replaced on this phone`].filter(Boolean).join(', ');
       // The follow-up sync a few seconds later (the import changed the log) has nothing to say; keep what this one said.
       if (got) news.current = { text: `Synced: ${got}`, at: Date.now() };
       setStatus({ kind: 'done', text: got ? `Synced: ${got}` : news.current && Date.now() - news.current.at < NEWS_MS ? news.current.text : 'Synced' });
@@ -110,6 +117,7 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
   const signOut = useCallback(async () => {
     try { const { auth, A } = await loadCloud(); await A.signOut(auth); } catch { /* signed out locally either way */ }
     await deleteCloudLink();
+    await forgetFriendCaches(); // friends' lines and threads kept for Friends: not on the phone once signed out
     setLink(null);
     setStatus({ kind: 'idle' });
   }, []);
@@ -136,6 +144,7 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
       await deleteCloudData(c, user.uid);
       await c.A.deleteUser(user);
       await deleteCloudLink();
+      await forgetFriendCaches();
       setLink(null);
       setStatus({ kind: 'done', text: 'Account deleted. Your log is still on this phone.' });
       return true;

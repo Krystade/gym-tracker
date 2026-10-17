@@ -54,9 +54,9 @@ describe('payload', () => {
     expect(buildPayload('request', requestNote('jake'), APP).notification.navigate).toBe(`${APP}#open=friends`);
   });
 
-  it('words pings and messages with the friend as the title, and lands them on the friend with the badge', () => {
-    expect(pingNote('jake', 'strong')).toEqual({ title: 'jake', body: '💪 Strong' });
-    expect(PRESET_KEYS.map((k) => pingNote('j', k).body)).toEqual(['💪 Strong', '🔥 On fire', '👏 Nice work', '🏋️ Gym today?', '👀 Did you lift?', '🫡 On it']);
+  it('words pings (the emoji alone) and messages with the friend as the title, and lands them on the friend with the badge', () => {
+    expect(pingNote('jake', 'strong')).toEqual({ title: 'jake', body: '💪' });
+    expect(PRESET_KEYS.map((k) => pingNote('j', k).body)).toEqual(['💪', '🔥', '👏', '🏋️', '👀', '🫡']);
     expect(pingNote('jake', 'kiss').body).toBe('sent you a ping'); // a ping this version doesn't know
     expect(pingNote('jake', undefined).body).toBe('sent you a ping');
     expect(messageNote('jake', '  see you at 6  ')).toEqual({ title: 'jake', body: 'see you at 6' });
@@ -65,7 +65,7 @@ describe('payload', () => {
     expect(messageNote('jake', '💪'.repeat(80)).body).toBe('💪'.repeat(70)); // 140 UTF-16 units, as the rules count
     expect(messageNote('jake', 'x'.repeat(139) + '💪').body).toBe('x'.repeat(139)); // never half an emoji
     const p = buildPayload('ping', pingNote('jake', 'fire'), APP, { route: 'friend.u1', badge: 3 });
-    expect(p.notification).toMatchObject({ title: 'jake', body: '🔥 On fire', navigate: `${APP}#open=friend.u1`, app_badge: '3', data: { kind: 'ping', route: 'friend.u1' } });
+    expect(p.notification).toMatchObject({ title: 'jake', body: '🔥', navigate: `${APP}#open=friend.u1`, app_badge: '3', data: { kind: 'ping', route: 'friend.u1' } });
     expect(buildPayload('message', messageNote('a', 'hi'), APP, { badge: 0 }).notification.app_badge).toBe('0');
   });
 
@@ -164,7 +164,15 @@ describe('service worker push', () => {
     expect(f.d.registration.showNotification).toHaveBeenCalledTimes(1);
     expect(f.d.setBadge).toHaveBeenCalledWith(3);
     expect(f.d.record).toHaveBeenCalledWith('lastPush', expect.objectContaining({ kind: 'test' }));
-    expect(win.postMessage).toHaveBeenCalledWith({ type: 'push', kind: 'test' });
+    expect(win.postMessage).toHaveBeenCalledWith({ type: 'push', kind: 'test', route: null });
+  });
+
+  it('tells open windows which friend a push is about, so the app reads that thread again', async () => {
+    const win = { focus: vi.fn(async () => {}), postMessage: vi.fn() };
+    const f = fakes([win]);
+    onPush({ data: { json: () => buildPayload('ping', pingNote('jake', 'fire'), APP, { route: 'friend.u1' }), text: () => '' }, waitUntil: f.waitUntil }, f.d);
+    await f.waits[0];
+    expect(win.postMessage).toHaveBeenCalledWith({ type: 'push', kind: 'ping', route: 'friend.u1' });
   });
 
   it('a tap with a window open focuses it and tells it where to go', async () => {

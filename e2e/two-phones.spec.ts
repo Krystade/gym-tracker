@@ -153,3 +153,48 @@ test('a lift renamed on one phone: the other drops its old settings, and they st
   }
   expect(await cloudMetaKeys(b)).not.toContain('settings:bench press');
 });
+
+// Round 10, owner answer 12: where nothing tells two copies apart, the cloud's wins, and the phone keeps what it lost.
+const replacedList = (page: Page) => account(page).getByRole('list', { name: 'Replaced by sync' });
+
+test('two phones with different copies of a set from before edit times: both take the cloud’s, the replaced one waits under More, and “Keep this phone’s” wins on both', async ({ browser }) => {
+  const mail = email();
+  const [a, b] = await Promise.all([phone(browser), phone(browser)]);
+  // The same set (day, lift, set number) logged on each phone before either had the account: no edit time on either copy.
+  await Promise.all([logBench(a, '135', '8'), logBench(b, '140', '8')]);
+  await enter(a, mail, 'Create account');
+  await enter(b, mail, 'Sign in');
+  for (let i = 0; i < 2; i++) { await syncNow(a); await syncNow(b); }
+  await expect.poll(() => cloudWeights(a)).toEqual([135]);
+  for (const p of [a, b]) { await goto(p, 'Today'); await expect(rows(p)).toHaveCount(1); await expect(rows(p).first()).toContainText('135 × 8'); }
+
+  // B's own copy waits under More beside the one that replaced it. A lost nothing, so A shows nothing.
+  await goto(b, 'More');
+  await expect(account(b).getByRole('heading', { name: 'Replaced by sync (1)' })).toBeVisible();
+  const item = replacedList(b).getByRole('listitem');
+  await expect(item).toHaveCount(1);
+  await expect(item.getByText('Bench Press')).toBeVisible();
+  await expect(item.locator('.replaced-pair p')).toHaveText(['This phone had 140 × 8', 'Synced copy 135 × 8']);
+  await goto(a, 'More');
+  await expect(replacedList(a)).toHaveCount(0);
+
+  await item.getByRole('button', { name: /^Keep this phone/ }).click();
+  await expect(replacedList(b)).toHaveCount(0); // nothing left: the section goes
+  await expect(account(b).getByRole('heading', { name: /^Replaced by sync/ })).toHaveCount(0);
+  for (let i = 0; i < 2; i++) { await syncNow(b); await syncNow(a); }
+  await expect.poll(() => cloudWeights(a)).toEqual([140]);
+  for (const p of [a, b]) {
+    await p.reload();
+    await syncNow(p);
+    await goto(p, 'Today');
+    await expect(rows(p)).toHaveCount(1);
+    await expect(rows(p).first()).toContainText('140 × 8');
+  }
+  await expect.poll(() => cloudWeights(b)).toEqual([140]);
+
+  // A's copy was replaced in its turn, and waits under A's More through the reload; B's list stays empty.
+  await goto(a, 'More');
+  await expect(replacedList(a).getByRole('listitem').locator('.replaced-pair p')).toHaveText(['This phone had 135 × 8', 'Synced copy 140 × 8']);
+  await goto(b, 'More');
+  await expect(account(b).getByRole('heading', { name: /^Replaced by sync/ })).toHaveCount(0);
+});

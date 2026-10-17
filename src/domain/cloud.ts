@@ -22,11 +22,12 @@ export const editStamp = (s: SetEntry) => Math.max(s.editedAt ?? 0, s.restoredAt
 export const lifeStamp = (s: SetEntry) => Math.max(s.seq, editStamp(s));
 
 /**
- * Merges one month. Sets: the union by id; where both sides have a set, the newer edit wins (a tie, or two copies from before
- * edit times, goes to the phone). Deletes: a delete beats a set only if it's newer than everything done to that set, so an edit
- * made after a delete brings the set back. A delete stays in `deleted` even when a newer set beat it, so a phone still holding
- * its tombstone sees the set is newer and takes it rather than deleting it again. Body days: per field, the newer edit wins;
- * a field with no edit time on either side only fills in.
+ * Merges one month. Sets: the union by id; where both sides have a set, the newer edit wins. With nothing to tell two different
+ * copies apart (equal edit times, or none from before edit times) the cloud's wins, so two phones settle on one copy instead of
+ * writing theirs back on every poll; the phone's copy is kept aside (domain/replaced). Deletes: a delete beats a set only if
+ * it's newer than everything done to that set, so an edit made after a delete brings the set back. A delete stays in `deleted`
+ * even when a newer set beat it, so a phone still holding its tombstone sees the set is newer and takes it rather than deleting
+ * it again. Body days: per field the same, the newer edit winning and the cloud's winning a tie; a field only one side has fills in.
  */
 export function mergeMonth(local: LocalMonth, remote: CloudMonth | null, now: number): Merged {
   const mine = new Map(local.sets.map((s) => [s.id, s]));
@@ -42,7 +43,7 @@ export function mergeMonth(local: LocalMonth, remote: CloudMonth | null, now: nu
   const live: SetEntry[] = [], importSets: SetEntry[] = [], deleteIds: string[] = [];
   for (const id of new Set([...mine.keys(), ...theirs.keys()])) {
     const l = mine.get(id), r = theirs.get(id);
-    const win = !l ? r! : !r ? l : editStamp(r) > editStamp(l) ? r : l;
+    const win = !l ? r! : !r ? l : cloudWins(editStamp(l), editStamp(r), metaHash(l) !== metaHash(r)) ? r : l;
     if (id in deleted && lifeStamp(win) <= deleted[id]) { if (l) deleteIds.push(id); continue; }
     live.push(win);
     if (win !== l) importSets.push(win);
@@ -55,7 +56,7 @@ export function mergeMonth(local: LocalMonth, remote: CloudMonth | null, now: nu
     const h = have.get(d.date), fill: BodyDay = { date: d.date };
     for (const k of BODY_FIELDS) {
       if (d[k] == null) continue;
-      if (h?.[k] == null || (d.at?.[k] ?? 0) > (h.at?.[k] ?? 0)) {
+      if (h?.[k] == null || cloudWins(h.at?.[k] ?? 0, d.at?.[k] ?? 0, d[k] !== h[k])) {
         Object.assign(fill, { [k]: d[k] });
         if (d.at?.[k] != null) fill.at = { ...fill.at, [k]: d.at[k] };
       }
@@ -71,6 +72,9 @@ export function mergeMonth(local: LocalMonth, remote: CloudMonth | null, now: nu
   const changed = !remote || contentKey(doc) !== contentKey(clean(remote));
   return { doc, importSets: clean(importSets), deleteIds, importBody, changed };
 }
+
+/** The cloud's copy wins with the newer edit, or with an equal one (none at all, before edit times) when the two differ. */
+const cloudWins = (mine: number, theirs: number, differ: boolean) => theirs > mine || (theirs === mine && differ);
 
 // Sorted keys at every level: a body day's edit times, or a set's target, read back from Firestore in another order are no change.
 const contentKey = (m: Pick<CloudMonth, 'sets' | 'body' | 'deleted'>) =>

@@ -7,9 +7,9 @@ const tab = (page: Page, name: string) => page.getByRole('navigation', { name: '
 
 /** Goes to a place the way a person would, so a spec says where it's going rather than which buttons get there. */
 export async function goto(page: Page, to: Place) {
-  if (to === 'Friends') {
+  if (to === 'Gym') {
     await tab(page, 'More').click();
-    return page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: /^Friends/ }).click();
+    return page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: /^Gym/ }).click();
   }
   return tab(page, to).click();
 }

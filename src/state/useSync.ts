@@ -4,6 +4,7 @@ import { useDb } from './profileDb';
 import { pathsFor, repoClient, sync, SyncError, type SyncConfig } from '../domain/sync';
 import type { SetsStore } from './useSets';
 import type { BodyStore } from './useBody';
+import { keepReplaced } from './useReplaced';
 
 export type SyncStatus = { kind: 'idle' } | { kind: 'running' } | { kind: 'done'; text: string } | { kind: 'error'; text: string };
 
@@ -28,6 +29,7 @@ export function useSync(store: SetsStore, body: BodyStore, person: Person) {
         client: repoClient(config, (u, i) => fetch(u, i)), sets: store.entries, body: body.days, deleted: await db.getTombstones(),
         importSets: (e) => store.importEntries(e), importBody: (d) => body.importDays(d), now: new Date(),
         paths: pathsFor(person.id === MAIN ? null : person.slug),
+        recordReplaced: (x) => keepReplaced(db, x),
       });
       const next = { ...config, lastSync: new Date().toISOString() };
       await putSyncConfig(next); setConfig(next);

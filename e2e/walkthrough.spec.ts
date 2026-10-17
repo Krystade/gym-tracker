@@ -19,8 +19,8 @@ test('a first visit opens the walkthrough; Back and Next step through it, and Do
   for (const t of ['Log a set', 'The plan', 'History, Lifts and Stats', 'Your data']) {
     await sheet.getByRole('button', { name: 'Next' }).click();
     await expect(sheet.getByRole('heading')).toHaveText(t);
-    // The plan points at Gym, where the gear is listed; the last card at More, where backups are.
-    if (t === 'The plan') await expect(sheet).toContainText('on Gym');
+    // The plan points at Gym under More, where the gear is listed; the last card at More, where backups are.
+    if (t === 'The plan') await expect(sheet).toContainText('under More, in Gym');
     if (t === 'Your data') await expect(sheet).toContainText('under More');
   }
   await expect(sheet).toContainText('5 of 5');
@@ -90,9 +90,9 @@ test.describe('the spotlight', () => {
       expect(t.y + t.height <= s.y || t.y >= s.y + s.height, `card ${n + 1}: the sheet covers its target`).toBe(true);
       await page.screenshot({ path: `screenshots/72-walkthrough-${n + 1}.png` });
     }
-    // The Lifts and Stats tabs: History through Stats in one ring, Gym and More left out of it.
+    // The Lifts and Stats tabs: History through Stats in one ring, Friends and More left out of it.
     await sheet.getByRole('button', { name: 'Back' }).click();
-    for (const [t] of [await tabs(page, 'Gym'), await tabs(page, 'More')]) expect(around((await ring.boundingBox())!, t)).toBe(false);
+    for (const [t] of [await tabs(page, 'Friends'), await tabs(page, 'More')]) expect(around((await ring.boundingBox())!, t)).toBe(false);
   });
 
   test('reopened from More, it goes to Today and brings a target below the sheet up into view', async ({ page }) => {

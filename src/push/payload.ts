@@ -99,8 +99,11 @@ export const PRESETS = {
 export type PresetKey = keyof typeof PRESETS;
 export const PRESET_KEYS = Object.keys(PRESETS) as PresetKey[];
 export const isPreset = (k: unknown): k is PresetKey => typeof k === 'string' && Object.hasOwn(PRESETS, k);
-/** A ping as words: "💪 Strong", or for a key this version doesn't know, "sent you a ping". */
-export const pingText = (key: unknown) => (isPreset(key) ? `${PRESETS[key].emoji} ${PRESETS[key].copy}` : 'sent you a ping');
+/**
+ * A ping on the lock screen: its emoji alone ("💪", under the sender's name), or for a key this version doesn't know,
+ * "sent you a ping". A ping is the emoji, not a message: `copy` names it only for a screen reader and a long press.
+ */
+export const pingText = (key: unknown) => (isPreset(key) ? PRESETS[key].emoji : 'sent you a ping');
 /** A message's most characters, as firestore.rules counts them: UTF-16 units, a JS string's length (💪 is two). */
 export const MAX_MESSAGE = 140;
 export const pingNote = (name: string, key: unknown) => ({ title: name, body: pingText(key) });

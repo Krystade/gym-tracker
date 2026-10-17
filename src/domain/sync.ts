@@ -2,6 +2,7 @@ import { parseCsv, toCsv } from './csv';
 import { BODY_FIELDS, mergeBody, parseBodyFile, toBodyCsv, type BodyDay } from './body';
 import type { SetEntry } from './types';
 import { editStamp } from './cloud';
+import { replacements, type Replaced } from './replaced';
 
 // The spec's one deliberate network exception: sets and body data to the user's own private repo,
 // only when they tap Sync, with a token they pasted in. Photos never come through here.
@@ -101,6 +102,8 @@ type SyncDeps = {
   client: ReturnType<typeof repoClient>; sets: SetEntry[]; body: BodyDay[]; deleted: Set<string>;
   importSets: (e: SetEntry[]) => Promise<{ added: number; updated: number } | null>; importBody: (d: BodyDay[]) => Promise<boolean>; now: Date;
   paths?: SyncPaths;
+  /** Keeps this phone's values the pull is about to replace (domain/replaced); false when they couldn't be saved. */
+  recordReplaced?: (r: Replaced[]) => Promise<boolean>;
 };
 type SyncResult = { pulledSets: number; pulledBody: number; pushedSets: number; pushedBody: number };
 
@@ -153,6 +156,9 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
     if (Object.keys(fill).length > 1) bodyIn.push(fill);
   }
   const saveFailed = () => new SyncError('other', 'Saving the pulled data on this phone failed — nothing was pushed. Try again.');
+  // What the pull replaces of the phone's is kept first, so nothing is overwritten without a copy.
+  const replaced = replacements({ sets: deps.sets, body: deps.body }, { importSets: [...incoming.values()], deleteIds: [], importBody: bodyIn }, deps.now.getTime());
+  if (replaced.length && deps.recordReplaced && !(await deps.recordReplaced(replaced))) throw saveFailed();
   if (incoming.size && (await deps.importSets([...incoming.values()])) == null) throw saveFailed();
   if (bodyIn.length && (await deps.importBody(bodyIn)) === false) throw saveFailed();
 

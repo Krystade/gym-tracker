@@ -12,6 +12,7 @@ import { renameAliases, renameInPlan, renameInProgram, renameSets } from '../dom
 import { settingsKey } from '../domain/progression';
 import type { TagPrefs } from '../domain/tags';
 import type { CycleDay } from '../domain/cycle';
+import type { Replaced } from '../domain/replaced';
 
 const STORE = 'sets';
 /** The first profile: it keeps the original database, so existing data needs no migration. */
@@ -31,7 +32,7 @@ export const setBlockedHandler = (fn: (() => void) | null) => { onBlocked = fn; 
 function db(id = current): Promise<IDBPDatabase> {
   const open = conns.get(id);
   if (open) return open;
-  const p: Promise<IDBPDatabase> = openDB(dbName(id), 8, {
+  const p: Promise<IDBPDatabase> = openDB(dbName(id), 9, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) d.createObjectStore(STORE, { keyPath: 'id' }).createIndex('date', 'date');
       if (oldVersion < 2) d.createObjectStore('settings', { keyPath: 'key' });
@@ -43,6 +44,8 @@ function db(id = current): Promise<IDBPDatabase> {
       if (oldVersion < 7) d.createObjectStore('config', { keyPath: 'key' });
       // Cycle phase: private, so apart from body days (friends read those). See domain/cycle.
       if (oldVersion < 8) d.createObjectStore('cycle', { keyPath: 'date' });
+      // What a sync replaced on this phone, kept 30 days so it can be put back. See domain/replaced.
+      if (oldVersion < 9) d.createObjectStore('replaced', { keyPath: 'key' });
     },
     blocked() { onBlocked?.(); },
     // A newer version of the app is upgrading the database: step aside, and reload to pick up the new code.
@@ -304,6 +307,23 @@ export interface CloudLink { key: 'cloud'; uid: string; email: string; person: s
 export const getCloudLink = async (): Promise<CloudLink | undefined> => (await shared()).get('kv', 'cloud');
 export const putCloudLink = async (c: CloudLink): Promise<void> => { await (await shared()).put('kv', c); };
 export const deleteCloudLink = async (): Promise<void> => { await (await shared()).delete('kv', 'cloud'); };
+/**
+ * Friends as last read for one account (src/state/friendCache.ts): their lists, Orbit lines, news and threads, so Friends opens
+ * from the phone and refreshes quietly. Only what the account may read anyway; forgotten on sign-out.
+ */
+export const getFriendCache = async <T>(uid: string): Promise<T | undefined> => {
+  const x: (T & { key?: string }) | undefined = await (await shared()).get('kv', `friends:${uid}`);
+  if (!x) return undefined;
+  const { key: _key, ...rest } = x;
+  return rest as T;
+};
+export const putFriendCache = async (uid: string, v: object): Promise<void> => { await (await shared()).put('kv', { ...v, key: `friends:${uid}` }); };
+export async function deleteFriendCaches(): Promise<void> {
+  const d = await shared();
+  const keys = await d.getAllKeys('kv', IDBKeyRange.bound('friends:', 'friends;', false, true)); // ';' follows ':'
+  const tx = d.transaction('kv', 'readwrite');
+  await Promise.all([...keys.map((k) => tx.store.delete(k)), tx.done]);
+}
 /** What this person's last cloud sync left each month as (see domain/cloud monthsToSync), for one account. */
 export interface CloudSeen { key: 'cloud-seen'; uid: string; seen: Seen; at?: string; /** Settings, program and the rest: see cloud/sync MetaSeen. */ meta?: { items: Record<string, string>; at: number } }
 export async function getCloudSeen(): Promise<CloudSeen | undefined> { return (await db()).get('config', 'cloud-seen'); }
@@ -324,6 +344,23 @@ export async function addTombstone(id: string, at: number | null = Date.now()): 
   await Promise.all([tx.store.put(withTombstones(await tx.store.get('deleted'), [id], at)), tx.done]);
 }
 
+/** This phone's copies that a sync replaced (domain/replaced). */
+export const getReplaced = async (): Promise<Replaced[]> => (await db()).getAll('replaced');
+/** Saved before the sync takes the other copy; the same key again (a sync redone) replaces the record. */
+export async function putReplaced(xs: Replaced[]): Promise<void> {
+  const tx = (await db()).transaction('replaced', 'readwrite');
+  await Promise.all([...xs.map((x) => tx.store.put(x)), tx.done]);
+}
+export const deleteReplaced = async (key: string): Promise<void> => { await (await db()).delete('replaced', key); };
+/** Deletes the copies replaced before `before` (epoch ms); returns how many went. */
+export async function pruneReplaced(before: number): Promise<number> {
+  const tx = (await db()).transaction('replaced', 'readwrite');
+  let n = 0;
+  for (let c = await tx.store.openCursor(); c; c = await c.continue()) if ((c.value as Replaced).at < before) { void c.delete(); n++; }
+  await tx.done;
+  return n;
+}
+
 /** Note-name → exercise mappings the user confirmed while pasting notes. On this device only. */
 export async function getAliases(): Promise<Record<string, string>> {
   const x: { map: Record<string, string> } | undefined = await (await db()).get('config', 'aliases');
@@ -342,6 +379,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 const PER_PROFILE = {
   getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, putMany, getAllSettings, putSettings, deleteSettings, getTags, putTags, getStatus, putStatus, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan, deleteDayPlan,
   getBody, putBody, putBodyMany, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, getTombstoneTimes, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
+  getReplaced, putReplaced, deleteReplaced, pruneReplaced,
 };
 export type ProfileDb = typeof PER_PROFILE;
 const bound = new Map<string, ProfileDb>();

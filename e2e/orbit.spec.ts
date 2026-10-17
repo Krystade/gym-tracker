@@ -111,9 +111,10 @@ test('Orbit shows a friend’s week as kinds, their status and numbers, at 375×
   await expect(friends(a.page).getByRole('status')).toHaveText(`You and @${b.name} are now friends.`);
 
   const row = orbit(a.page).getByTestId(`orbit-${b.name}`);
-  // B's status syncs a few seconds after it's saved: Refresh until it's there.
+  // B's status syncs a few seconds after it's saved: refresh until it's there, by the keyboard's Refresh (touch pulls down).
   await expect(async () => {
-    await orbit(a.page).getByRole('button', { name: 'Refresh' }).click();
+    await a.page.getByRole('button', { name: 'Refresh friends' }).focus();
+    await a.page.keyboard.press('Enter');
     await expect(row.locator('.orbit-bubble')).toHaveText('Leg day survivor 🦵', { timeout: 1000 });
   }).toPass({ timeout: 20_000 });
   await expect(row.getByRole('button', { name: `@${b.name}`, exact: true })).toBeVisible();
@@ -130,8 +131,9 @@ test('Orbit shows a friend’s week as kinds, their status and numbers, at 375×
   await expect(orbit(a.page).locator('.orbit-row').first()).toHaveAttribute('data-testid', 'orbit-me');
   await expect(orbit(a.page)).not.toContainText(c.name);
   await expect(orbit(a.page)).not.toContainText('stranger danger');
-  // Fewer than three friends: Invite floats above the tab bar, clear of it.
-  const fab = a.page.getByRole('button', { name: 'Invite a friend' });
+  // Fewer than three friends: an Invite button in the page, under the lines (not floating: devices.spec checks what's under it).
+  const fab = orbit(a.page).getByRole('button', { name: 'Invite a friend' });
+  await fab.scrollIntoViewIfNeeded();
   const [fb, tabs] = [await fab.boundingBox(), await a.page.getByRole('navigation', { name: 'Sections' }).boundingBox()];
   expect(fb!.y + fb!.height).toBeLessThanOrEqual(tabs!.y);
   expect(await noSideScroll(a.page)).toBe(true);
@@ -210,4 +212,47 @@ test('the lines scroll back together by dragging, up to 8 weeks, and Today jumps
   await expect(orbit(page).getByRole('button', { name: 'Today' })).toBeVisible();
   await page.keyboard.press('ArrowRight');
   await expect(orbit(page).getByRole('button', { name: 'Today' })).toHaveCount(0);
+});
+
+/** Whether this phone has saved Friends for its account (friends' lists, lines and news), as src/state/friendCache.ts keeps them. */
+const saved = (page: Page, name: string) => page.evaluate(async (name) => {
+  const db: IDBDatabase = await new Promise((ok, no) => { const r = indexedDB.open('gym-tracker-shared'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+  const all: { key: string }[] = await new Promise((ok, no) => { const r = db.transaction('kv').objectStore('kv').getAll(); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+  db.close();
+  return all.some((x) => x.key.startsWith('friends:') && JSON.stringify(x).includes(name) && JSON.stringify(x).includes('"windows":{"'));
+}, name);
+
+test('Friends opens from what the phone saved: with Firestore unreachable, friends and their lines show at once, never Loading', async ({ browser }) => {
+  const [b, a] = await Promise.all([person(browser, [{ at: T, lift: 'Bench Press', sets: [[135, 8]] }]), person(browser)]);
+  await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(a.name);
+  await friends(b.page).getByRole('button', { name: 'Send request' }).click();
+  await a.page.reload();
+  await goto(a.page, 'Friends');
+  await friends(a.page).getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
+  const row = orbit(a.page).getByTestId(`orbit-${b.name}`);
+  await expect(row.locator(`[data-date="${iso(T)}"]`)).toHaveAttribute('data-kind', 'push');
+  await expect.poll(() => saved(a.page, b.name), { message: 'Friends saved on the phone' }).toBe(true);
+
+  // Next time, offline from Firestore: everything comes from the phone, at once.
+  await a.page.route(/127\.0\.0\.1:8080/, (r) => r.abort());
+  await a.page.reload();
+  await expect(a.page.getByRole('button', { name: 'Add exercise' })).toBeVisible();
+  await a.page.evaluate(() => {
+    const w = window as unknown as { sawLoading: boolean };
+    w.sawLoading = false;
+    new MutationObserver(() => { if (document.querySelector('main.screen')?.textContent?.includes('Loading…')) w.sawLoading = true; })
+      .observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
+  await goto(a.page, 'Friends');
+  await expect(row.locator(`[data-date="${iso(T)}"]`)).toHaveAttribute('data-kind', 'push');
+  await expect(row).toContainText('1 session · 1 set');
+  await expect(friends(a.page)).toContainText(`You’re @${a.name}`);
+  await expect(friends(a.page).getByRole('region', { name: 'Your friends' }).getByRole('button', { name: `@${b.name}`, exact: true })).toBeVisible();
+  await a.page.waitForTimeout(500); // the quiet refresh fails meanwhile; what was saved stays
+  await expect(row.locator(`[data-date="${iso(T)}"]`)).toHaveAttribute('data-kind', 'push');
+  await expect(a.page.locator('main.screen')).not.toContainText('Couldn’t load');
+  expect(await a.page.evaluate(() => (window as unknown as { sawLoading: boolean }).sawLoading), 'Loading… showed').toBe(false);
+  // No Refresh button: a pull at the top reads again. A screen reader or keyboard still has one.
+  await expect(orbit(a.page).getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(0);
+  await expect(a.page.getByRole('button', { name: 'Refresh friends' })).toHaveCount(1);
 });

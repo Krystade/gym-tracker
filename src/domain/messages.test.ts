@@ -5,8 +5,9 @@ const p = (id: string, from: string, at: number, e = 'strong'): InboxDoc => ({ i
 const m = (id: string, from: string, at: number, t: string): InboxDoc => ({ id, from, kind: 'm', t, at });
 
 describe('messages', () => {
-  it('words pings and messages, and an unknown ping plainly', () => {
-    expect(itemText(p('1', 'a', 0, 'fire'))).toBe('🔥 On fire');
+  it('shows a ping as its emoji alone (no words), a message as itself, and an unknown ping plainly', () => {
+    expect(itemText(p('1', 'a', 0, 'fire'))).toBe('🔥');
+    expect(itemText(p('1', 'a', 0, 'gym'))).toBe('🏋️');
     expect(itemText(p('1', 'a', 0, 'kiss'))).toBe('Ping');
     expect(itemText(m('1', 'a', 0, 'gym at 6?'))).toBe('gym at 6?');
     expect(itemShort(p('1', 'a', 0, 'salute'))).toBe('🫡');
@@ -16,7 +17,7 @@ describe('messages', () => {
   it('merges a thread oldest first, mine and theirs and their gyms, keeping the last 20', () => {
     const t = thread([p('m1', 'me', 10), m('m2', 'me', 30, 'hi')], [p('t1', 'jake', 20, 'clap')], [{ id: 'g1', sent: 25, name: 'Home' }]);
     expect(t.map((x) => [x.id, x.mine, x.kind, x.text])).toEqual([
-      ['m1', true, 'p', '💪 Strong'], ['t1', false, 'p', '👏 Nice work'], ['g1', false, 'gym', 'Home'], ['m2', true, 'm', 'hi'],
+      ['m1', true, 'p', '💪'], ['t1', false, 'p', '👏'], ['g1', false, 'gym', 'Home'], ['m2', true, 'm', 'hi'],
     ]);
     const many = Array.from({ length: 30 }, (_, i) => p(`x${String(i).padStart(2, '0')}`, 'jake', i));
     expect(thread([], many, []).map((x) => x.id)).toEqual(many.slice(10).map((x) => x.id));

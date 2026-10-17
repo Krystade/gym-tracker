@@ -14,7 +14,7 @@ beforeEach(() => { globalThis.indexedDB = new IDBFactory(); resetDbForTests(); }
 /** A phone that ran the Phase 10 app: one gym-tracker v7 database with sync and gyms in config. */
 async function oldPhone() {
   await putSet(SET);
-  const d = await openDB('gym-tracker', 8);
+  const d = await openDB('gym-tracker', 9);
   await d.put('config', SYNC);
   await d.put('config', { key: 'gyms', gyms: [{ id: 'g1', name: 'Downtown', equipment: ['dumbbells'], exclude: [], include: [] }], active: 'g1' });
   d.close();
@@ -51,7 +51,7 @@ describe('profiles', () => {
     await oldPhone();
     expect(await getSyncConfig()).toEqual(SYNC);
     expect((await getGyms()).active).toBe('g1');
-    const d = await openDB('gym-tracker', 8);
+    const d = await openDB('gym-tracker', 9);
     expect(await d.get('config', 'sync')).toBeUndefined();
     expect(await d.get('config', 'gyms')).toBeUndefined();
     d.close();

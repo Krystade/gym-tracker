@@ -17,12 +17,13 @@ describe('mergeMonth', () => {
     expect(r).toMatchObject({ importSets: [], deleteIds: [], importBody: [], changed: true });
   });
 
-  it('takes sets from the other phone, and the phone wins where both have the same set', () => {
+  it('takes sets from the other phone; where both have a set and no edit tells them apart, the cloud\'s copy', () => {
     const mine = set('2026-10-01', 1, { reps: 9 });
     const r = mergeMonth({ sets: [mine], body: [], tombstones: new Set() }, remote({ sets: [set('2026-10-01', 1, { reps: 12 }), set('2026-10-02', 1)] }), NOW);
-    expect(r.importSets.map((s) => s.id)).toEqual(['app|2026-10-02|bench press|1']);
-    expect(r.doc.sets.find((s) => s.id === mine.id)!.reps).toBe(9);
+    expect(r.importSets.map((s) => s.id)).toEqual(['app|2026-10-01|bench press|1', 'app|2026-10-02|bench press|1']);
+    expect(r.doc.sets.find((s) => s.id === mine.id)!.reps).toBe(12);
     expect(r.doc.sets).toHaveLength(2);
+    expect(r.changed).toBe(false);
   });
 
   it('a set deleted here is deleted in the cloud, with the time it went', () => {
@@ -75,16 +76,19 @@ describe('mergeMonth', () => {
     expect(r.deleteIds).toEqual([back.id]);
   });
 
-  it('body days fill each other in; the phone wins a field both have', () => {
+  it('body days fill each other in; a field both have with no edit time on either side goes to the cloud\'s', () => {
     const r = mergeMonth({ sets: [], body: [{ date: '2026-10-01', weight: 180 }], tombstones: new Set() },
       remote({ body: [{ date: '2026-10-01', weight: 175, protein: 150 }, { date: '2026-10-02', calories: 2400 }] }), NOW);
-    expect(r.doc.body).toEqual([{ date: '2026-10-01', weight: 180, protein: 150 }, { date: '2026-10-02', calories: 2400 }]);
-    expect(r.importBody).toEqual([{ date: '2026-10-01', protein: 150 }, { date: '2026-10-02', calories: 2400 }]);
+    expect(r.doc.body).toEqual([{ date: '2026-10-01', weight: 175, protein: 150 }, { date: '2026-10-02', calories: 2400 }]);
+    expect(r.importBody).toEqual([{ date: '2026-10-01', weight: 175, protein: 150 }, { date: '2026-10-02', calories: 2400 }]);
+    expect(r.changed).toBe(false);
   });
 
-  it('nothing to push when the cloud already has what the phone has', () => {
-    const s = set('2026-10-01', 1);
-    expect(mergeMonth({ sets: [s], body: [], tombstones: new Set() }, remote({ sets: [s] }), NOW).changed).toBe(false);
+  it('nothing to push, and nothing to take, when the cloud already has what the phone has', () => {
+    const s = set('2026-10-01', 1, { note: undefined });
+    const r = mergeMonth({ sets: [s], body: [{ date: '2026-10-01', weight: 180 }], tombstones: new Set() },
+      remote({ sets: [{ ...set('2026-10-01', 1) }], body: [{ date: '2026-10-01', weight: 180 }] }), NOW);
+    expect(r).toMatchObject({ changed: false, importSets: [], importBody: [] });
   });
 
   it('cloud documents hold no undefined fields (Firestore rejects them)', () => {
@@ -194,16 +198,37 @@ describe('two phones editing the same set (round 10)', () => {
     expect(r.changed).toBe(false);
   });
 
-  it('sets from before this round, with no edit time on either side, keep the old rule: the phone wins', () => {
+  it('two copies from before this round, with no edit time on either side: the cloud\'s wins, and goes onto the phone', () => {
     const r = mergeMonth({ sets: [{ ...x, weight: 190 }], body: [], tombstones: new Set() }, remote({ sets: [x] }), NOW);
-    expect(weightOf(r.doc.sets, x.id)).toBe(190);
-    expect(r.importSets).toEqual([]);
+    expect(weightOf(r.doc.sets, x.id)).toBe(185);
+    expect(r.importSets).toEqual([x]);
+    expect(r.changed).toBe(false);
   });
 
-  it('an equal edit time goes to the phone; an unstamped cloud copy never beats an edited one on the phone', () => {
+  it('an equal edit time goes to the cloud\'s copy; an unstamped cloud copy never beats an edited one on the phone', () => {
     const mine = { ...x, weight: 190, editedAt: NOW - 10 };
-    expect(weightOf(mergeMonth({ sets: [mine], body: [], tombstones: new Set() }, remote({ sets: [{ ...x, weight: 200, editedAt: NOW - 10 }] }), NOW).doc.sets, x.id)).toBe(190);
+    expect(weightOf(mergeMonth({ sets: [mine], body: [], tombstones: new Set() }, remote({ sets: [{ ...x, weight: 200, editedAt: NOW - 10 }] }), NOW).doc.sets, x.id)).toBe(200);
     expect(weightOf(mergeMonth({ sets: [mine], body: [], tombstones: new Set() }, remote({ sets: [x] }), NOW).doc.sets, x.id)).toBe(190);
+  });
+
+  it('two phones holding different copies from before edit times settle on the cloud\'s, and the cloud stops changing', () => {
+    for (const first of ['a', 'b'] as const) {
+      const ps = { a: phone([x]), b: phone([{ ...x, weight: 190 }]) }, c = cloudOf();
+      const order = first === 'a' ? (['a', 'b'] as const) : (['b', 'a'] as const);
+      for (let poll = 0; poll < 4; poll++) for (const k of order) sync(ps[k], c, NOW + poll * 120_000);
+      const want = first === 'a' ? 185 : 190; // whichever copy reached the cloud first
+      expect([weightOf(ps.a.sets, x.id), weightOf(ps.b.sets, x.id), weightOf(c.doc?.sets, x.id)]).toEqual([want, want, want]);
+      expect(c.writes).toBe(1);
+    }
+  });
+
+  it('this phone\'s replaced copy, put back as a new edit, wins on the next sync and reaches the other phone', () => {
+    const a = phone([x]), b = phone([{ ...x, weight: 190 }]), c = cloudOf();
+    sync(a, c, NOW); sync(b, c, NOW + 1);
+    expect(weightOf(b.sets, x.id)).toBe(185);
+    edit(b, x.id, { weight: 190 }, NOW + 60_000); // Keep this phone's: the copy it had, stamped now
+    for (let poll = 0; poll < 3; poll++) { sync(b, c, NOW + 120_000 * (poll + 1)); sync(a, c, NOW + 120_000 * (poll + 1) + 1); }
+    expect([weightOf(a.sets, x.id), weightOf(b.sets, x.id), weightOf(c.doc?.sets, x.id)]).toEqual([190, 190, 190]);
   });
 });
 
@@ -262,9 +287,20 @@ describe('two phones editing the same body day (round 10)', () => {
     for (const d of [a.body[0], b.body[0], c.doc!.body[0]]) expect(d).toEqual(want);
     expect(c.writes).toBe(2); // A's merge, then B's; then nothing
   });
-  it('an unstamped field (from before this round) only fills in, as before', () => {
-    const r = mergeMonth({ sets: [], body: [{ date: day.date, weight: 181 }], tombstones: new Set() }, remote({ body: [{ date: day.date, weight: 175, protein: 150 }] }), NOW);
-    expect(r.doc.body).toEqual([{ date: day.date, weight: 181, protein: 150 }]);
+  it('a field with no edit time on either side (from before this round) goes to the cloud\'s copy; one side\'s alone fills in', () => {
+    const r = mergeMonth({ sets: [], body: [{ date: day.date, weight: 181, calories: 2000 }], tombstones: new Set() }, remote({ body: [{ date: day.date, weight: 175, protein: 150 }] }), NOW);
+    expect(r.doc.body).toEqual([{ date: day.date, weight: 175, calories: 2000, protein: 150 }]);
+  });
+  it('an equal edit time on a field goes to the cloud\'s copy; an unstamped cloud field never beats an entered one', () => {
+    const at = { weight: NOW - 10 };
+    expect(mergeMonth({ sets: [], body: [{ date: day.date, weight: 181, at }], tombstones: new Set() }, remote({ body: [{ date: day.date, weight: 175, at }] }), NOW).doc.body[0].weight).toBe(175);
+    expect(mergeMonth({ sets: [], body: [{ date: day.date, weight: 181, at }], tombstones: new Set() }, remote({ body: [{ date: day.date, weight: 175 }] }), NOW).doc.body[0].weight).toBe(181);
+  });
+  it('two phones with different unstamped weigh-ins for a day settle on the cloud\'s', () => {
+    const a = phone([], [{ date: day.date, weight: 180 }]), b = phone([], [{ date: day.date, weight: 182 }]), c = cloudOf();
+    for (let poll = 0; poll < 3; poll++) { sync(a, c, NOW + poll); sync(b, c, NOW + poll); }
+    expect([a.body[0].weight, b.body[0].weight, c.doc!.body[0].weight]).toEqual([180, 180, 180]);
+    expect(c.writes).toBe(1);
   });
 });
 
