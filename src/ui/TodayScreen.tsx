@@ -17,7 +17,7 @@ import { getDraft, saveDraft } from '../state/drafts';
 const CARDS = '#cards';
 import { ExercisePicker } from './ExercisePicker';
 import { isHoldLift, swapSuggestions } from '../domain/care';
-import { leftToDo, TodayPlan, todayPlanFor } from './TodayPlan';
+import { inPlanOrder, leftToDo, plannedNames, TodayPlan, todayPlanFor } from './TodayPlan';
 import { WeighIn } from './WeighIn';
 import type { BodyStore } from '../state/useBody';
 import type { GymsStore } from '../state/useGyms';
@@ -39,9 +39,10 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
   const [extra, setExtra] = useState<string[]>(() => getDraft<string[]>(owner, `${CARDS}:${date}`, date) ?? []);
   useEffect(() => { saveDraft(owner, `${CARDS}:${date}`, date, extra); }, [owner, date, extra]);
   const logged = dayOrder(store.entries, date);
-  // `extra` is the day's card order: logging a set must not move an added card. Lifts logged elsewhere come first.
-  const cards = [...logged.filter((l) => !extra.some((x) => sameExercise(l, x))), ...extra];
   const plan = todayPlanFor(programs, store.entries, date);
+  // `extra` is the day's card order: logging a set must not move an added card. Lifts logged elsewhere come first.
+  // Planned lifts keep the plan's order, whichever was opened first.
+  const cards = inPlanOrder([...logged.filter((l) => !extra.some((x) => sameExercise(l, x))), ...extra], programs.program && plan ? plannedNames(programs.program, plan) : []);
   // Record the day once a working set is logged, so rotation and adherence don't depend on tapping the plan.
   // Only today: looking back at an older day must not record it and move today's rotation.
   useEffect(() => {
@@ -113,7 +114,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
       {programs.program && plan && hasPlan && (
         <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today} open={open} onToggle={() => setPlanOpen(!open)}
           buildQuick={(fits) => quickDay(profile, store.entries, date, fits, available ? { available, include: gyms.active!.include } : {})}
-          onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} loadFor={loadFor} />
+          onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} loadFor={loadFor} rangeFor={settings.get} />
       )}
       {cards.length === 0 && <p className="muted">{date < today ? 'Nothing logged that day.' : 'Nothing logged yet today.'}</p>}
       {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} today={today} store={store} settings={settings} onOpen={onOpen}
