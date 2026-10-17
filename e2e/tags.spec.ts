@@ -22,6 +22,8 @@ const logBench = async (page: Page, weight: string, reps: string, tap: string[] 
   }
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(rows(page)).toHaveCount(before + 1);
+  // The set lands before the form has finished resetting, and the reset folds More away.
+  await expect(page.getByRole('button', { name: /^More/ })).toHaveAttribute('aria-expanded', 'false');
 };
 /** Opens the editor: adds his own tags and hides the built-ins named. */
 const editTags = async (page: Page, add: string[], hide: string[] = []) => {
