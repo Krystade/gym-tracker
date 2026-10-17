@@ -1,4 +1,5 @@
 import { MAX_LABEL } from '../../src/push/payload';
+import type { Claim } from './notify';
 import { validZone } from './schedule';
 
 // Every request body is checked here, field by field; anything else is a 400. Nothing from a body is ever logged.
@@ -29,12 +30,15 @@ export function subscription(v: unknown, local: boolean): Subscription {
 
 export interface Prefs {
   tz: string;
-  kinds: { rest: boolean; remind: boolean; recap: boolean };
+  /** `activity`: a friend's request, acceptance or gym. Missing (an app from before it existed) means on. */
+  kinds: { rest: boolean; remind: boolean; recap: boolean; activity?: boolean };
   /** Days 0 = Sunday … 6 = Saturday, at local "HH:MM". */
   reminder: { days: number[]; at: string };
   recap: { day: number; at: string };
 }
-export const DEFAULT_PREFS: Prefs = { tz: 'UTC', kinds: { rest: true, remind: false, recap: false }, reminder: { days: [], at: '18:00' }, recap: { day: 0, at: '18:00' } };
+export const DEFAULT_PREFS: Prefs = { tz: 'UTC', kinds: { rest: true, remind: false, recap: false, activity: true }, reminder: { days: [], at: '18:00' }, recap: { day: 0, at: '18:00' } };
+/** Whether a kind that came later than the app's first prefs is on: unset is on. */
+export const on = (v: boolean | undefined) => v !== false;
 
 export function prefs(v: unknown): Prefs {
   const o = obj(v, 'body'), k = obj(o.kinds, 'kinds'), r = obj(o.reminder, 'reminder'), c = obj(o.recap, 'recap');
@@ -43,7 +47,7 @@ export function prefs(v: unknown): Prefs {
   if (new Set(days).size !== days.length) bad('days');
   return {
     tz: o.tz as string,
-    kinds: { rest: bool(k.rest, 'rest'), remind: bool(k.remind, 'remind'), recap: bool(k.recap, 'recap') },
+    kinds: { rest: bool(k.rest, 'rest'), remind: bool(k.remind, 'remind'), recap: bool(k.recap, 'recap'), activity: k.activity == null ? true : bool(k.activity, 'activity') },
     reminder: { days: days.sort(), at: hhmm(r.at, 'at') },
     recap: { day: int(c.day, 0, 6, 'day'), at: hhmm(c.at, 'at') },
   };
@@ -63,6 +67,16 @@ export function activity(v: unknown): Activity {
     next: o.next == null ? null : text(o.next, 40, 'next'),
     week: { start: date(w.start, 'start'), sessions: int(w.sessions, 0, 7, 'sessions'), sets: int(w.sets, 0, 10_000, 'sets'), prs: int(w.prs, 0, 10_000, 'prs') },
   };
+}
+
+/** A Firebase uid or a Firestore document id: letters, digits, _ and -. */
+export const docId = (v: unknown, what: string) => (typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v) ? v : bad(what));
+
+export function claim(v: unknown): Claim {
+  const o = obj(v, 'body');
+  if (o.kind !== 'request' && o.kind !== 'accepted' && o.kind !== 'gym') bad('kind');
+  const kind = o.kind as Claim['kind'];
+  return { kind, to: docId(o.to, 'to'), ...(kind === 'gym' && { id: docId(o.id, 'id') }) };
 }
 
 export const deviceId = (v: unknown) => (typeof v === 'string' && /^[0-9a-f]{16}$/.test(v) ? v : bad('sub'));

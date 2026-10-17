@@ -34,7 +34,7 @@ export default defineConfig({
       command: `node node_modules/wrangler/bin/wrangler.js dev --ip 127.0.0.1 --port ${workerPort} --show-interactive-dev-session=false`,
       cwd: 'worker', url: `http://127.0.0.1:${workerPort}/status`, reuseExistingServer: false, timeout: 180_000,
       // Local mode: the demo project and the emulator's unsigned tokens. Taken from the environment, not a file.
-      env: { ...env, CLOUDFLARE_INCLUDE_PROCESS_ENV: 'true', WRANGLER_SEND_METRICS: 'false', AUTH_EMULATOR: '1', FIREBASE_PROJECT: 'demo-gym-tracker', APP_URL: `${app}/`, VAPID_PRIVATE_JWK: JSON.stringify(jwk) },
+      env: { ...env, CLOUDFLARE_INCLUDE_PROCESS_ENV: 'true', WRANGLER_SEND_METRICS: 'false', AUTH_EMULATOR: '1', FIREBASE_PROJECT: 'demo-gym-tracker', FIRESTORE_EMULATOR: 'http://127.0.0.1:8080', APP_URL: `${app}/`, VAPID_PRIVATE_JWK: JSON.stringify(jwk) },
     },
   ],
 });

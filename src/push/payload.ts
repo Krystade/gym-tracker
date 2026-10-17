@@ -1,8 +1,11 @@
 // What a push carries, shared by the app's service worker and the Worker (worker/ imports this file by relative path),
 // so the two can't drift. No DOM, no Vite: plain TypeScript both builds understand.
 
-/** The kinds of push this round sends. Friend kinds come with friend messaging. */
-export type Kind = 'test' | 'rest' | 'remind' | 'recap';
+/** Pushes about friends: a request, an accepted request or invite, a gym sent to you. */
+export type ActivityKind = 'request' | 'accepted' | 'gym';
+export type FriendKind = ActivityKind;
+export type Kind = 'test' | 'rest' | 'remind' | 'recap' | FriendKind;
+export const ACTIVITY_KINDS: readonly ActivityKind[] = ['request', 'accepted', 'gym'];
 
 /** Where a tap on the notification lands: the hash `#open=<route>` (see routes.ts). */
 export type Route = 'rest' | 'today' | 'recap' | 'friends' | `friend.${string}`;
@@ -28,9 +31,32 @@ export const DELIVERY: Record<Kind, Delivery> = {
   remind: { ttl: 4 * 3600, urgency: 'normal', topic: 'remind' },
   recap: { ttl: 86400, urgency: 'low', topic: 'recap' },
   test: { ttl: 600, urgency: 'normal', topic: 'test' },
+  // A friend's: kept a day, and the topic is the sender's (friendTopic), so one waiting push per friend.
+  request: { ttl: 86400, urgency: 'normal', topic: 'friend' },
+  accepted: { ttl: 86400, urgency: 'normal', topic: 'friend' },
+  gym: { ttl: 86400, urgency: 'normal', topic: 'friend' },
 };
 
-const ROUTE: Record<Kind, Route> = { rest: 'rest', remind: 'today', recap: 'recap', test: 'today' };
+/** Where each kind lands; a friend's kinds land on that friend (the route passed to buildPayload). */
+const ROUTE: Record<Kind, Route> = { rest: 'rest', remind: 'today', recap: 'recap', test: 'today', request: 'friends', accepted: 'friends', gym: 'friends' };
+
+/**
+ * The Topic header for pushes from one sender: 22 base64url characters of SHA-256(uid). A push still waiting at the push
+ * service is replaced by a newer one with the same topic, so a phone that was off gets one per friend, not a pile.
+ */
+export async function friendTopic(uid: string): Promise<string> {
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(uid)));
+  return btoa(String.fromCharCode(...h)).replace(/\+/g, '-').replace(/\//g, '_').slice(0, 22);
+}
+
+/** The first `n` characters as a person counts them (an emoji, however it's built, is one), so a cut never leaves half of one. */
+export function cut(s: string, n: number): string {
+  const t = s.trim();
+  const seg = typeof Intl.Segmenter === 'function' ? [...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(t)].map((x) => x.segment) : [...t];
+  return seg.slice(0, n).join('');
+}
+/** A gym's name on the lock screen. */
+export const MAX_GYM = 40;
 
 /** The rest label as the app sends it ("Bench Press · set 4 next"), cut to what fits a lock-screen line. */
 export const MAX_LABEL = 60;
@@ -45,10 +71,22 @@ export const recapNote = (w: { sessions: number; sets: number; prs: number } | n
   body: w && w.sessions > 0 ? `This week: ${plural(w.sessions, 'session')} · ${plural(w.sets, 'set')} · ${plural(w.prs, 'PR')}` : 'This week: no sessions logged',
 });
 
-/** The payload for one push. `appUrl`: the app's start URL (its scope), so `navigate` is absolute and in scope. */
-export function buildPayload(kind: Kind, note: { title: string; body: string }, appUrl: string): PushPayload {
-  const route = ROUTE[kind];
-  return { web_push: 8030, notification: { title: note.title, body: note.body, lang: 'en', navigate: new URL(`#open=${route}`, appUrl).href, data: { kind, route } }, mutable: true };
+// Friend activity. `name` is the sender's username, read by the Worker from their profile, never from the request.
+export const requestNote = (name: string) => ({ title: 'Friend request', body: `${name} wants to be friends` });
+export const acceptedNote = (name: string) => ({ title: 'New friend', body: `You and ${name} are friends` });
+export const gymNote = (name: string, gym: string) => ({ title: 'Gym shared', body: `${name} sent you a gym: ${cut(gym, MAX_GYM) || 'a gym'}` });
+/** A push that stands for more held back by the one-a-minute limit says so. */
+export const withMore = (note: { title: string; body: string }, more: number) => (more > 0 ? { ...note, body: `${note.body} · +${more} more` } : note);
+
+/**
+ * The payload for one push. `appUrl`: the app's start URL (its scope), so `navigate` is absolute and in scope.
+ * `route` overrides the kind's landing place (a friend's pushes open that friend); `badge` is the app icon's count.
+ */
+export function buildPayload(kind: Kind, note: { title: string; body: string }, appUrl: string, opts: { route?: Route; badge?: number } = {}): PushPayload {
+  const route = opts.route ?? ROUTE[kind];
+  return { web_push: 8030, notification: {
+    title: note.title, body: note.body, lang: 'en', navigate: new URL(`#open=${route}`, appUrl).href,
+    ...(opts.badge != null && { app_badge: String(opts.badge) }), data: { kind, route } }, mutable: true };
 }
 
 /** What the service worker shows for whatever arrived: a broken payload still shows something (iOS revokes push after 3 silent ones). */

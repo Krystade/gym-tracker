@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { PUSH_ON } from '../push/config';
-import { defaultPrefs, disablePush, enablePush, getStatus, localState, PushError, resyncPush, sendTest, setPrefs, standalone, subscribeLocal, supported, type PushPrefs, type Status } from '../push/client';
+import { disablePush, enablePush, getStatus, localState, PushError, resyncPush, sendTest, setPrefs, standalone, subscribeLocal, supported, type PushPrefs, type Status, withDefaults } from '../push/client';
 import { read } from '../push/store';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -16,7 +16,7 @@ const plain = (e: unknown) => (e instanceof PushError ? (e.status === 401 ? 'Sig
 function Card({ signedIn, goal }: { signedIn: boolean; goal: number }) {
   const local = useSyncExternalStore(subscribeLocal, () => JSON.stringify(localState()));
   const { device, prefs: saved, lost } = JSON.parse(local) as ReturnType<typeof localState>;
-  const prefs = saved ?? defaultPrefs(goal);
+  const prefs = withDefaults(saved, goal);
   const [reg, setReg] = useState<ServiceWorkerRegistration | null>(null);
   const [perm, setPerm] = useState(() => (supported() ? Notification.permission : 'default'));
   const [busy, setBusy] = useState(false);
@@ -66,10 +66,11 @@ function Card({ signedIn, goal }: { signedIn: boolean; goal: number }) {
       <h2 id="notify-h">Notifications</h2>
       {perm === 'denied' ? <p className="muted small">Turned off in iPhone Settings → Notifications → Gym Tracker.</p>
         : !on || lost ? (<>
-          <p className="muted small">{lost ? 'This phone stopped getting notifications. Turn them on again to fix it.' : 'Rest timer done on the lock screen, a reminder on training days, and a weekly recap. You pick which.'}</p>
+          <p className="muted small">{lost ? 'This phone stopped getting notifications. Turn them on again to fix it.' : 'Rest timer done on the lock screen, friend requests, a reminder on training days, and a weekly recap. You pick which.'}</p>
           <button className="primary wide" disabled={!reg || busy} onClick={turnOn}>{lost ? 'Re-enable notifications' : 'Turn on notifications'}</button>
         </>) : (<>
           {kind('rest', 'Rest timer', 'When a rest ends with the phone locked or in another app.')}
+          {kind('activity', 'Friend activity', 'A friend request, a request or invite accepted, a gym sent to you.')}
           {kind('remind', 'Workout reminder', 'On the days below, if nothing is logged by then.')}
           {prefs.kinds.remind && (
             <div className="notify-sub">

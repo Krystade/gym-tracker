@@ -1,12 +1,13 @@
 import { loadCloud } from '../cloud/firebase';
-import { PUSH_ON, VAPID_PUBLIC_KEY, WORKER_URL } from './config';
+import { PUSH_ON, VAPID_PUBLIC_KEY, WORKER_REACHABLE, WORKER_URL } from './config';
 import type { Activity } from './activity';
 
 // The app's side of push: subscribing this phone, the preferences, and the calls the rest timer and the log make.
 // Nothing here runs unless config.ts names a Worker; until this phone is turned on, nothing calls it.
 
 export interface PushPrefs {
-  kinds: { rest: boolean; remind: boolean; recap: boolean };
+  /** `activity`: a friend request, a request or invite accepted, a gym sent to you. */
+  kinds: { rest: boolean; remind: boolean; recap: boolean; activity: boolean };
   /** Days 0 = Sunday … 6 = Saturday, at local "HH:MM". */
   reminder: { days: number[]; at: string };
   recap: { day: number; at: string };
@@ -29,10 +30,15 @@ export function spreadDays(goal: number): number[] {
   return table[Math.min(7, Math.max(1, Math.round(goal)))];
 }
 export const defaultPrefs = (goal: number): PushPrefs => ({
-  kinds: { rest: true, remind: false, recap: true },
+  kinds: { rest: true, remind: false, recap: true, activity: true },
   reminder: { days: spreadDays(goal), at: '18:00' },
   recap: { day: 0, at: '18:00' },
 });
+/** Saved prefs with any kind added since they were saved filled in as its default (on). */
+export const withDefaults = (p: PushPrefs | null, goal: number): PushPrefs => {
+  const d = defaultPrefs(goal);
+  return p ? { ...d, ...p, kinds: { ...d.kinds, ...p.kinds } } : d;
+};
 
 /** The app is running from the Home Screen, the only place iOS gives web push. */
 export const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -45,6 +51,7 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   await c.auth.authStateReady();
   const user = c.auth.currentUser;
   if (!user) throw new PushError(401);
+  if (!WORKER_REACHABLE) throw new PushError(0);
   const r = await fetch(`${WORKER_URL}${path}`, {
     method, headers: { authorization: `Bearer ${await user.getIdToken()}`, ...(body !== undefined && { 'content-type': 'application/json' }) },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -64,7 +71,7 @@ const register = (sub: PushSubscription) => api<{ id: string }>('POST', '/subscr
 export async function enablePush(reg: ServiceWorkerRegistration, goal: number): Promise<void> {
   const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key() });
   const { id } = await register(sub);
-  const prefs = load().prefs ?? defaultPrefs(goal);
+  const prefs = withDefaults(load().prefs, goal);
   save({ device: id, prefs, lost: false, synced: Date.now(), activity: undefined });
   await api('PUT', '/prefs', { tz: tz(), ...prefs });
 }
@@ -101,7 +108,7 @@ export async function resyncPush(force = false): Promise<void> {
   }
   const { id } = await register(sub);
   save({ device: id, lost: false, synced: Date.now() });
-  if (l.prefs) await api('PUT', '/prefs', { tz: tz(), ...l.prefs });
+  if (l.prefs) await api('PUT', '/prefs', { tz: tz(), ...withDefaults(l.prefs, 2) });
 }
 
 let prefsTimer: ReturnType<typeof setTimeout> | undefined;
@@ -118,6 +125,16 @@ export async function postActivity(a: Activity): Promise<void> {
   if (!PUSH_ON || !l.device || l.activity === json) return;
   await api('POST', '/activity', a);
   save({ activity: json });
+}
+
+/**
+ * Tells the Worker about a friend write just made, so the friend's phone can ring: a request, an accepted request or
+ * invite, a gym sent. The Worker checks it in Firestore as this person before anything is sent. Whether or not this
+ * phone has notifications on, and never failing the write it follows: a friend without them simply hears nothing.
+ */
+export function notifyFriend(kind: 'request' | 'accepted' | 'gym', to: string, id?: string): void {
+  if (!WORKER_REACHABLE) return;
+  void api('POST', '/notify', { kind, to, ...(id && { id }) }).catch(() => {});
 }
 
 export const sendTest = () => api<{ status: number }>('POST', '/test', { sub: load().device });

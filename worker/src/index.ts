@@ -1,6 +1,8 @@
 import { AuthError, verifyIdToken } from './auth';
 import { allowedOrigin, withCors } from './cors';
 import { localMode, type Env } from './env';
+import { FirestoreError } from './firestore';
+import { check, Refused } from './notify';
 import * as v from './validate';
 
 export { UserBox } from './userbox';
@@ -39,6 +41,19 @@ async function handle(req: Request, env: Env): Promise<Response> {
     }
     case 'DELETE /timer': await box.cancelTimer(); return json({ ok: true });
     case 'POST /activity': await box.activity(v.activity(await body(req))); return json({ ok: true });
+    case 'POST /notify': {
+      // A friend's push: checked in Firestore as the sender, then handed to the recipient's Durable Object. The answer is
+      // the same whether it rang, was held back or was muted, so the sender can't tell.
+      const claim = v.claim(await body(req));
+      const { success: ok } = await env.NOTIFY_LIMIT.limit({ key: uid }).catch(() => ({ success: false }));
+      if (!ok) throw new Http(429, 'slow down');
+      const push = await check(env, token, uid, claim, Date.now()).catch((e) => {
+        throw e instanceof Refused ? new Http(403, 'refused') : e instanceof FirestoreError ? new Http(502, 'firestore') : e;
+      });
+      const outcome = await env.USERS.get(env.USERS.idFromName(claim.to)).friendPush(push);
+      console.log(JSON.stringify({ kind: push.kind, outcome }));
+      return json({ ok: true });
+    }
     case 'POST /test': {
       const status = await box.sendTest(v.deviceId((await body(req) as { sub?: unknown })?.sub));
       if (status == null) throw new Http(404, 'device');

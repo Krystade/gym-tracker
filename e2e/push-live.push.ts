@@ -1,5 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 
 // End to end on this machine: the app (built with a Worker URL) → wrangler dev (local mode) → a fake push service here,
 // which decrypts what arrives with the subscription's private key; then the push is handed to the app's service worker
@@ -164,4 +165,87 @@ test('the rest alarm fires a push on its own, with the label the app sent', asyn
   const p = got.at(-1)!;
   expect(p.headers).toMatchObject({ urgency: 'high', ttl: '60', topic: 'rest' });
   expect(JSON.parse(await decrypt(p.body, priv, pub, auth)).notification).toMatchObject({ title: 'Rest done', body: 'Squat · set 2 next', data: { route: 'rest' } });
+});
+
+// ---- Friends: each phone its own push keys and endpoint on the fake push service, and its own account. ----
+
+/** A phone's push subscription keys, and a way to read what the fake push service got for it. */
+async function phoneKeys(name: string) {
+  const pair = await subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']) as CryptoKeyPair;
+  const pub = new Uint8Array(await subtle.exportKey('raw', pair.publicKey));
+  const auth = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const path = `/push/${name}-${Date.now().toString(36)}`;
+  return {
+    path, endpoint: endpoint.replace(/\/push\/.*$/, path), p256dh: b64u(pub), auth: b64u(auth),
+    pushes: () => got.filter((g) => g.path === path),
+    read: async (g: Got) => JSON.parse(await decrypt(g.body, pair.privateKey, pub, auth)) as { notification: { title: string; body: string; navigate: string; data: { kind: string; route: string } } },
+  };
+}
+
+/** A Home Screen phone with notifications on, an account and a username. */
+async function friendPhone(browser: import('@playwright/test').Browser, who: string) {
+  const keys = await phoneKeys(who);
+  const app = String(test.info().project.use.baseURL).replace(/\/$/, '');
+  const ctx = await browser.newContext({ viewport: { width: 375, height: 812 }, storageState: { cookies: [], origins: [{ origin: app, localStorage: [{ name: 'gym-tracker:walkthrough', value: 'done' }] }] } });
+  await ctx.grantPermissions(['notifications']);
+  const page = await ctx.newPage();
+  await page.addInitScript(({ endpoint, p256dh, auth }) => {
+    const mm = window.matchMedia.bind(window);
+    window.matchMedia = (q: string) => (q.includes('display-mode: standalone') ? { ...mm(q), matches: true, media: q } as MediaQueryList : mm(q));
+    let current: PushSubscription | null = null;
+    const make = () => ({ endpoint, expirationTime: null, toJSON: () => ({ endpoint, expirationTime: null, keys: { p256dh, auth } }), unsubscribe: async () => { current = null; return true; } }) as unknown as PushSubscription;
+    PushManager.prototype.subscribe = async function () { current = make(); return current; };
+    PushManager.prototype.getSubscription = async function () { return current; };
+    Object.defineProperty(Notification, 'permission', { get: () => 'granted' });
+  }, { endpoint: keys.endpoint, p256dh: keys.p256dh, auth: keys.auth });
+  await page.goto('/');
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+  const name = `${who}${Date.now().toString(36).slice(-5)}${Math.random().toString(36).slice(2, 6)}`;
+  await nav(page, 'More');
+  const account = page.getByRole('region', { name: 'Account' });
+  await account.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
+  await account.getByLabel('Password').fill('synthetic-pass-1');
+  await account.getByRole('button', { name: 'Create account' }).click();
+  await expect(account.getByText(/^Signed in as/)).toBeVisible();
+  await card(page).getByRole('button', { name: 'Turn on notifications' }).click();
+  await expect(card(page).getByRole('status')).toHaveText('Notifications are on.');
+  await expect(card(page).getByRole('checkbox', { name: /Friend activity/ })).toBeChecked();
+  await goto(page, 'Friends');
+  const friends = page.getByRole('region', { name: 'Friends', exact: true });
+  await friends.getByRole('textbox', { name: 'Username' }).fill(name);
+  await friends.getByRole('button', { name: 'Save username' }).click();
+  await expect(friends).toContainText(`You’re @${name}`);
+  return { page, name, keys, friends, close: () => ctx.close() };
+}
+
+test('friend activity: a request rings the person asked, accepting rings the asker, and its switch reaches the Worker', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const [a, b] = await Promise.all([friendPhone(browser, 'a'), friendPhone(browser, 'b')]);
+
+  // A asks B by username: B's phone gets the push, in the Worker's words, with A's name from A's profile.
+  await a.friends.getByRole('textbox', { name: 'Their username' }).fill(b.name);
+  await a.friends.getByRole('button', { name: 'Send request' }).click();
+  await expect(a.friends.getByRole('status')).toHaveText(`Request sent to @${b.name}.`);
+  await expect.poll(() => b.keys.pushes().length, { timeout: 15_000 }).toBe(1);
+  const req = b.keys.pushes()[0];
+  expect(req.headers).toMatchObject({ urgency: 'normal', ttl: '86400', 'content-encoding': 'aes128gcm' });
+  expect(String(req.headers.topic)).toMatch(/^[\w-]{22}$/);
+  expect((await b.keys.read(req)).notification).toMatchObject({ title: 'Friend request', body: `${a.name} wants to be friends`, data: { kind: 'request', route: 'friends' } });
+
+  // B accepts: A's phone hears, and the tap would open B.
+  await b.page.reload();
+  await goto(b.page, 'Friends');
+  await b.friends.getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
+  await expect(b.friends.getByRole('status')).toHaveText(`You and @${a.name} are now friends.`);
+  await expect.poll(() => a.keys.pushes().length, { timeout: 15_000 }).toBe(1);
+  const acc = await a.keys.read(a.keys.pushes()[0]);
+  expect(acc.notification).toMatchObject({ title: 'New friend', body: `You and ${b.name} are friends` });
+  expect(acc.notification.data.route).toMatch(/^friend\.[\w-]+$/);
+  expect(acc.notification.navigate).toBe(new URL(`#open=${acc.notification.data.route}`, a.page.url()).href);
+
+  // B switches friend activity off on More: the Worker has it (what it then holds back is in worker/test/notify.test.ts).
+  await nav(b.page, 'More');
+  await card(b.page).getByRole('checkbox', { name: /Friend activity/ }).uncheck();
+  await expect.poll(async () => ((await worker(b.page, 'GET', '/status')) as { prefs: { kinds: { activity: boolean } } }).prefs.kinds.activity, { timeout: 10_000 }).toBe(false);
+  await Promise.all([a.close(), b.close()]);
 });

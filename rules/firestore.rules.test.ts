@@ -5,6 +5,7 @@ import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, Timestamp, updateD
 
 // Synthetic users: alice owns the data, bob is her friend, eve is a stranger.
 let env: RulesTestEnvironment;
+const PROJECT = process.env.RULES_PROJECT ?? 'demo-gym-tracker';
 const as = (uid: string | null) => (uid ? env.authenticatedContext(uid) : env.unauthenticatedContext()).firestore() as unknown as Firestore;
 const seed = (f: (db: Firestore) => Promise<unknown>) => env.withSecurityRulesDisabled(async (c) => { await f(c.firestore() as unknown as Firestore); });
 const later = () => Timestamp.fromMillis(Date.now() + 86_400_000);
@@ -19,7 +20,7 @@ const accept = (who: string, owner: string, token: string, used = token) => {
 
 beforeAll(async () => {
   // RULES_PROJECT: a project of their own, to run against an emulator already serving the app's (its rules and data stay put).
-  env = await initializeTestEnvironment({ projectId: process.env.RULES_PROJECT ?? 'demo-gym-tracker', firestore: { rules: readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 } });
+  env = await initializeTestEnvironment({ projectId: PROJECT, firestore: { rules: readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 } });
 });
 afterAll(() => env.cleanup());
 beforeEach(async () => {
@@ -165,6 +166,58 @@ describe('gyms sent to a friend', () => {
     await seed((db) => setDoc(doc(db, 'users/alice/gymInbox/g2'), sent('bob')));
     await assertFails(getDocs(collection(as('bob'), 'users/alice/gymInbox')));
     await assertFails(setDoc(doc(as('bob'), 'users/alice/gymInbox/g2'), { ...sent('bob'), sent: 2 })); // no rewriting one already there
+  });
+});
+
+describe('a sent gym, read back by its sender (the push Worker checks it with their token)', () => {
+  const gym = { name: 'Home', equipment: ['barbell'], exclude: [], include: [] };
+  it('its sender can get that one; nobody else can, and the sender still can’t list the inbox', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'users/alice/gymInbox/g1'), { from: 'bob', fromName: 'bob', gym, sent: 1 });
+      await setDoc(doc(db, 'users/alice/gymInbox/g2'), { from: 'carol', fromName: 'carol', gym, sent: 1 });
+    });
+    await assertSucceeds(getDoc(doc(as('bob'), 'users/alice/gymInbox/g1')));
+    await assertFails(getDoc(doc(as('bob'), 'users/alice/gymInbox/g2')));
+    await assertFails(getDoc(doc(as('eve'), 'users/alice/gymInbox/g1')));
+    await assertFails(getDoc(doc(as(null), 'users/alice/gymInbox/g1')));
+    await assertFails(getDocs(collection(as('bob'), 'users/alice/gymInbox')));
+    await assertFails(deleteDoc(doc(as('bob'), 'users/alice/gymInbox/g1')));
+  });
+});
+
+// The push Worker reads Firestore over REST with the sender's own ID token. These go to the emulator the same way, with
+// the unsigned token the Auth emulator would issue, to prove what the Worker relies on: a 404 for a friend's
+// meta/__probe (allowed, and absent) and a 403 for a stranger's.
+describe('the push Worker’s reads over REST', () => {
+  const token = (uid: string) => {
+    const b = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const now = Math.floor(Date.now() / 1000);
+    return `${b({ alg: 'none', typ: 'JWT' })}.${b({ aud: PROJECT, iss: `https://securetoken.google.com/${PROJECT}`, sub: uid, user_id: uid, iat: now, auth_time: now, exp: now + 3600 })}.`;
+  };
+  const rest = async (uid: string, path: string) => {
+    const r = await fetch(`http://127.0.0.1:8080/v1/projects/${PROJECT}/databases/(default)/documents/${path}`, { headers: { authorization: `Bearer ${token(uid)}` } });
+    return { status: r.status, body: r.ok ? await r.json() as { createTime: string; fields: Record<string, { stringValue?: string }> } : null };
+  };
+  it('the friendship probe: 404 for a friend, 403 for a stranger', async () => {
+    expect((await rest('bob', 'users/alice/meta/__probe')).status).toBe(404);
+    expect((await rest('eve', 'users/alice/meta/__probe')).status).toBe(403);
+    // A friend only on your own list (anyone can add anyone there) is still a stranger to the probe.
+    await assertSucceeds(setDoc(doc(as('eve'), 'users/eve/friends/alice'), { since: 1 }));
+    expect((await rest('eve', 'users/alice/meta/__probe')).status).toBe(403);
+  });
+  it('a request and a sent gym come back to their sender with a server createTime; a stranger gets 403', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'users/alice/requests/eve'), { username: 'eve', sent: 1 });
+      await setDoc(doc(db, 'users/alice/gymInbox/g1'), { from: 'bob', fromName: 'bob', gym: { name: 'Home' }, sent: 1 });
+    });
+    const req = await rest('eve', 'users/alice/requests/eve');
+    expect(req.status).toBe(200);
+    expect(Math.abs(Date.parse(req.body!.createTime) - Date.now())).toBeLessThan(60_000);
+    const g = await rest('bob', 'users/alice/gymInbox/g1');
+    expect(g.status).toBe(200);
+    expect(g.body!.fields.from.stringValue).toBe('bob');
+    expect((await rest('eve', 'users/alice/gymInbox/g1')).status).toBe(403);
+    expect((await rest('carol', 'users/alice/requests/eve')).status).toBe(403);
   });
 });
 

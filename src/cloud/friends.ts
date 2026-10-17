@@ -4,10 +4,13 @@ import { monthOf, type CloudMonth, type MetaItems } from '../domain/cloud';
 import { cleanStatus } from '../domain/orbit';
 import { newToken, type Invite } from '../domain/invite';
 import type { SetEntry } from '../domain/types';
+import { notifyFriend } from '../push/client';
 import type { Cloud } from './firebase';
 
 // Friendship is two documents, users/A/friends/B and users/B/friends/A: A's list naming B is what lets B read A's log.
-// firestore.rules decides who may write each; these functions only make the writes the rules allow.
+// firestore.rules decides who may write each; these functions only make the writes the rules allow. After a write a friend
+// would want to hear about, the push Worker is told (notifyFriend): it checks the write in Firestore itself, and a failure
+// there never fails the write.
 
 export interface Friend { uid: string; name: string }
 export interface Request { uid: string; name: string }
@@ -77,6 +80,7 @@ export async function acceptInvite(c: Cloud, me: string, inv: Invite, now = Date
     if ((e as { code?: string }).code === 'permission-denied') throw fail(GONE);
     throw e;
   }
+  notifyFriend('accepted', inv.uid);
   return nameOf(c, inv.uid);
 }
 
@@ -91,6 +95,7 @@ export async function sendRequest(c: Cloud, me: string, myName: string, to: stri
   const ref = F.doc(db, `users/${them}/requests/${me}`);
   if ((await F.getDoc(ref)).exists()) throw fail(`You’ve already asked @${to}. They’ll see it under Friends.`);
   await F.setDoc(ref, { username: myName, sent: now });
+  notifyFriend('request', them);
   return 'sent';
 }
 export async function listRequests({ F, db }: Cloud, me: string): Promise<Request[]> {
@@ -103,6 +108,7 @@ export async function acceptRequest({ F, db }: Cloud, me: string, from: string, 
   b.set(F.doc(db, `users/${me}/friends/${from}`), { since: now, via: 'request' });
   b.delete(F.doc(db, `users/${me}/requests/${from}`));
   await b.commit();
+  notifyFriend('accepted', from);
 }
 export async function declineRequest({ F, db }: Cloud, me: string, from: string): Promise<void> {
   await F.deleteDoc(F.doc(db, `users/${me}/requests/${from}`));
@@ -159,7 +165,8 @@ export async function readFriendWindow({ F, db }: Cloud, uid: string, from: stri
 export interface SentGym { id: string; from: string; fromName: string; gym: Omit<Gym, 'id'> }
 export async function sendGym({ F, db }: Cloud, me: string, myName: string, to: string, g: Gym, now = Date.now()): Promise<void> {
   const { id: _id, ...gym } = g;
-  await F.addDoc(F.collection(db, `users/${to}/gymInbox`), { from: me, fromName: myName, gym, sent: now });
+  const ref = await F.addDoc(F.collection(db, `users/${to}/gymInbox`), { from: me, fromName: myName, gym, sent: now });
+  notifyFriend('gym', to, ref.id);
 }
 export async function listSentGyms({ F, db }: Cloud, me: string): Promise<SentGym[]> {
   return (await F.getDocs(F.collection(db, `users/${me}/gymInbox`))).docs

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildPayload, DELIVERY, noteOf, recapNote, remindNote, restNote, testNote, type Kind } from './payload';
+import { acceptedNote, buildPayload, cut, DELIVERY, friendTopic, gymNote, noteOf, recapNote, remindNote, requestNote, restNote, testNote, withMore, type Kind } from './payload';
+import { defaultPrefs, withDefaults } from './client';
 import { isRoute, parseOpen, tabOf } from './routes';
 import { onNotificationClick, onPush, type SwDeps } from './sw-push';
 
@@ -31,6 +32,36 @@ describe('payload', () => {
   it('stays under 1 KB with the longest label', () => {
     const p = buildPayload('rest', restNote('💪'.repeat(200)), APP);
     expect(new TextEncoder().encode(JSON.stringify(p)).length).toBeLessThan(1024);
+  });
+
+  it('words friend activity, lands it on the friend, and cuts a gym name without halving an emoji', () => {
+    expect(requestNote('jake')).toEqual({ title: 'Friend request', body: 'jake wants to be friends' });
+    expect(acceptedNote('jake').body).toBe('You and jake are friends');
+    expect(gymNote('jake', 'Planet Fitness').body).toBe('jake sent you a gym: Planet Fitness');
+    expect(gymNote('jake', '').body).toBe('jake sent you a gym: a gym');
+    const long = `${'x'.repeat(39)}🏋️‍♀️ and more`;
+    expect(cut(long, 40)).toBe(`${'x'.repeat(39)}🏋️‍♀️`);
+    expect(cut(long, 39)).toBe('x'.repeat(39));
+    expect(withMore({ title: 't', body: 'b' }, 2).body).toBe('b · +2 more');
+    expect(withMore({ title: 't', body: 'b' }, 0).body).toBe('b');
+    const p = buildPayload('gym', gymNote('jake', 'Home'), APP, { route: 'friend.u1' });
+    expect(p.notification).toMatchObject({ navigate: `${APP}#open=friend.u1`, data: { kind: 'gym', route: 'friend.u1' } });
+    expect(p.notification).not.toHaveProperty('app_badge');
+    expect(buildPayload('request', requestNote('jake'), APP).notification.navigate).toBe(`${APP}#open=friends`);
+  });
+
+  it('gives each sender a topic of 22 URL-safe characters, the same every time', async () => {
+    const a = await friendTopic('uid-a');
+    expect(a).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(await friendTopic('uid-a')).toBe(a);
+    expect(await friendTopic('uid-b')).not.toBe(a);
+  });
+
+  it('turns friend activity on for prefs saved before it existed, and keeps what was chosen', () => {
+    const old = { kinds: { rest: false, remind: true, recap: false }, reminder: { days: [1], at: '07:00' }, recap: { day: 3, at: '09:00' } };
+    expect(withDefaults(old as never, 2)).toEqual({ ...old, kinds: { rest: false, remind: true, recap: false, activity: true } });
+    expect(withDefaults({ ...defaultPrefs(2), kinds: { ...defaultPrefs(2).kinds, activity: false } }, 2).kinds.activity).toBe(false);
+    expect(withDefaults(null, 2)).toEqual(defaultPrefs(2));
   });
 
   it('reads whatever arrived into something showable', () => {

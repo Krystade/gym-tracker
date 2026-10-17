@@ -1,4 +1,4 @@
-import { exportJWK, generateKeyPair, SignJWT, type JWTPayload } from 'jose';
+import { decodeJwt, exportJWK, generateKeyPair, SignJWT, type JWTPayload } from 'jose';
 import { JWKS_URL, forgetKeys } from '../src/auth';
 import { net } from '../src/net';
 
@@ -26,14 +26,15 @@ export function unsigned(claims: JWTPayload) {
 }
 
 export interface Sent { url: string; headers: Headers; body: Uint8Array }
-/** Replaces the network: Google's keys from `jwks`, and every push recorded and answered with `status(url)`. */
-export function fakeNet(jwks: unknown, status: (url: string) => number = () => 201) {
+/** Replaces the network: Google's keys from `jwks`, Firestore from `world`, and every push recorded and answered with `status(url)`. */
+export function fakeNet(jwks: unknown, status: (url: string) => number = () => 201, world: World = new World()) {
   forgetKeys();
   const sent: Sent[] = [];
   let keyFetches = 0;
   net.fetch = async (input, init) => {
     const url = String(input instanceof Request ? input.url : input);
     if (url === JWKS_URL) { keyFetches++; return new Response(JSON.stringify(jwks), { headers: { 'cache-control': 'public, max-age=3600' } }); }
+    if (url.startsWith(FIRESTORE)) return world.get(decodeURIComponent(url.slice(FIRESTORE.length)), new Headers(init?.headers).get('authorization'));
     sent.push({ url, headers: new Headers(init?.headers), body: new Uint8Array(init?.body as ArrayBuffer) });
     return new Response(null, { status: status(url) });
   };
@@ -81,4 +82,45 @@ export async function decrypt(body: Uint8Array, uaPrivate: CryptoKey, uaPublic: 
 /** Imports a receiver's private key from its base64url `d` and uncompressed public point. */
 export async function receiverKey(d: string, pub: Uint8Array) {
   return crypto.subtle.importKey('jwk', { kty: 'EC', crv: 'P-256', d, x: b64u(pub.slice(1, 33)), y: b64u(pub.slice(33, 65)) }, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
+}
+
+export const FIRESTORE = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents/`;
+
+/** Firestore's typed JSON for a plain value. */
+function typed(v: unknown): Record<string, unknown> {
+  if (typeof v === 'string') return { stringValue: v };
+  if (typeof v === 'boolean') return { booleanValue: v };
+  if (typeof v === 'number') return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if (v === null) return { nullValue: null };
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(typed) } };
+  return { mapValue: { fields: Object.fromEntries(Object.entries(v as object).map(([k, x]) => [k, typed(x)])) } };
+}
+
+/**
+ * A stand-in for Firestore behind the REST API, answering reads the way firestore.rules would for the paths the Worker
+ * reads: anyone signed in reads a profile; meta only the owner's friends; requests their two people; friends only
+ * the owner; a gym in an inbox only the person who sent it (or the owner). The caller is the token's `sub`.
+ */
+export class World {
+  docs = new Map<string, { fields: Record<string, unknown>; createTime: number }>();
+  reads: { path: string; uid: string }[] = [];
+  put(path: string, fields: Record<string, unknown> = {}, createTime = Date.now()) { this.docs.set(path, { fields, createTime }); return this; }
+  friends(a: string, b: string, createTime = Date.now()) { return this.put(`users/${a}/friends/${b}`, { since: 1 }, createTime).put(`users/${b}/friends/${a}`, { since: 1 }, createTime); }
+  private may(path: string, uid: string) {
+    const [, owner, coll, id] = path.split('/');
+    if (!coll) return true;
+    if (uid === owner) return true;
+    if (coll === 'meta' || coll === 'months') return this.docs.has(`users/${owner}/friends/${uid}`);
+    if (coll === 'requests') return id === uid;
+    if (coll === 'gymInbox' || coll === 'inbox') return this.docs.get(path)?.fields.from === uid; // a missing one: no resource, refused
+    return false;
+  }
+  get(path: string, authorization: string | null): Response {
+    const uid = authorization ? (decodeJwt(authorization.replace(/^Bearer /, '')).sub ?? '') : '';
+    this.reads.push({ path, uid });
+    if (!uid || !this.may(path, uid)) return Response.json({ error: { code: 403 } }, { status: 403 });
+    const d = this.docs.get(path);
+    if (!d) return Response.json({ error: { code: 404 } }, { status: 404 });
+    return Response.json({ name: path, fields: typed(d.fields).mapValue && (typed(d.fields).mapValue as { fields: unknown }).fields, createTime: new Date(d.createTime).toISOString(), updateTime: new Date(d.createTime).toISOString() });
+  }
 }

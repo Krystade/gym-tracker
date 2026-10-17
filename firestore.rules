@@ -55,10 +55,12 @@ service cloud.firestore {
         allow read, delete: if me(uid) || me(from);
       }
       // A gym a friend sent you: they create it as themselves, only you read or clear it, nobody rewrites it.
+      // Its sender may get that one document back: the push Worker reads it with their token to check the gym is theirs.
       match /gymInbox/{id} {
         allow create: if signedIn() && request.resource.data.from == request.auth.uid && friendOf(uid)
           && request.resource.data.keys().hasOnly(['from', 'fromName', 'gym', 'sent']);
         allow read, delete: if me(uid);
+        allow get: if signedIn() && resource.data.from == request.auth.uid;
       }
     }
   }

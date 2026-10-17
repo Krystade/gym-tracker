@@ -1,9 +1,10 @@
 import { DurableObject } from 'cloudflare:workers';
-import { buildPayload, DELIVERY, recapNote, remindNote, restNote, testNote, type Kind } from '../../src/push/payload';
+import { ACTIVITY_KINDS, buildPayload, DELIVERY, friendTopic, recapNote, remindNote, restNote, testNote, withMore, type ActivityKind, type Kind, type Route } from '../../src/push/payload';
 import type { Env } from './env';
+import type { FriendPush } from './notify';
 import { sendOne } from './send';
 import { localDate, nextAt, weekStart } from './schedule';
-import { DEFAULT_PREFS, type Activity, type Prefs, type Subscription } from './validate';
+import { DEFAULT_PREFS, on, type Activity, type Prefs, type Subscription } from './validate';
 import { parseVapid, vapidAuth } from './vapid';
 
 // One per account (named by Firebase uid). It holds the account's devices, preferences and pending pushes, and one alarm
@@ -23,6 +24,16 @@ export interface Status {
 export const MAX_DEVICES = 5;
 export const STALE_MS = 30 * 864e5;
 const DAY = 864e5;
+
+// A friend's pushes, per sender: one a minute (those held back still wait in the app, and the next push says "+N more"),
+// thirty an hour, and the last 200 claims remembered so a replayed one sends nothing. Exact: a Durable Object runs one
+// call at a time.
+export const HOLD_MS = 60_000;
+export const PER_HOUR = 30;
+export const SEEN = 200;
+interface Rate { last: number; held: number; hour: number; n: number }
+/** What happened to a friend's push. Never told to the sender: a mute must not show. */
+export type Outcome = 'sent' | 'held' | 'limit' | 'replay' | 'off' | 'muted' | 'daily' | 'no device';
 
 const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
 export const deviceIdOf = async (endpoint: string) => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(endpoint))).slice(0, 16);
@@ -103,6 +114,29 @@ export class UserBox extends DurableObject<Env> {
     return (await this.send('test', testNote(), [device]))[device] ?? 0;
   }
 
+  /** A friend's push, already checked against Firestore by the Worker. */
+  async friendPush(p: FriendPush): Promise<Outcome> {
+    const now = this.now(), st = this.ctx.storage;
+    const seen = (await st.get<string[]>('seen')) ?? [];
+    if (seen.includes(p.key)) return 'replay';
+    seen.push(p.key);
+    await st.put('seen', seen.slice(-SEEN));
+    const prefs = await this.prefs();
+    if (!on(ACTIVITY_KINDS.includes(p.kind as ActivityKind) ? prefs.kinds.activity : true)) return 'off';
+    if (!Object.keys(await this.devices()).length) return 'no device';
+    if (p.daily && now - ((await st.get<number>(`daily:${p.daily}`)) ?? -DAY) < DAY) return 'daily';
+    const key = `rate:${p.from}`;
+    const rate = (await st.get<Rate>(key)) ?? { last: -HOLD_MS, held: 0, hour: now, n: 0 };
+    if (now - rate.hour >= 3600_000) Object.assign(rate, { hour: now, n: 0 });
+    if (rate.n >= PER_HOUR) return 'limit';
+    if (now - rate.last < HOLD_MS) { rate.held++; await st.put(key, rate); return 'held'; }
+    await this.send(p.kind, withMore(p.note, rate.held), undefined, { route: p.route, topic: await friendTopic(p.from) });
+    Object.assign(rate, { last: now, held: 0, n: rate.n + 1 });
+    await st.put(key, rate);
+    if (p.daily) await st.put(`daily:${p.daily}`, now);
+    return 'sent';
+  }
+
   async status(): Promise<Status> {
     const devices = Object.values(await this.devices()).map((d) => ({
       id: d.id, ua: d.ua, created: d.created, lastSeen: d.lastSeen, lastAt: d.lastAt ?? null, lastStatus: d.lastStatus ?? null, lastOkAt: d.lastOkAt ?? null,
@@ -151,18 +185,19 @@ export class UserBox extends DurableObject<Env> {
   }
 
   /** Sends one kind to the given devices (all by default), keeping each device's last result. Logs kind, status and time only. */
-  private async send(kind: Kind, note: { title: string; body: string }, ids?: string[]): Promise<Record<string, number>> {
+  private async send(kind: Kind, note: { title: string; body: string }, ids?: string[], opts: { route?: Route; topic?: string } = {}): Promise<Record<string, number>> {
     const key = parseVapid(this.env.VAPID_PRIVATE_JWK);
     const out: Record<string, number> = {};
     if (!key) { console.log(JSON.stringify({ kind, error: 'no VAPID key' })); return out; }
-    const payload = buildPayload(kind, note, this.env.APP_URL);
+    const payload = buildPayload(kind, note, this.env.APP_URL, { route: opts.route });
+    const delivery = { ...DELIVERY[kind], ...(opts.topic && { topic: opts.topic }) };
     const all = await this.devices();
     for (const d of Object.values(all)) {
       if (ids && !ids.includes(d.id)) continue;
       const now = this.now();
       if (d.backoffUntil && d.backoffUntil > now) { out[d.id] = 429; continue; }
       const t0 = Date.now();
-      const status = await sendOne(d, payload, DELIVERY[kind], await vapidAuth(this.kv, key, d.endpoint, this.env.VAPID_SUBJECT, now));
+      const status = await sendOne(d, payload, delivery, await vapidAuth(this.kv, key, d.endpoint, this.env.VAPID_SUBJECT, now));
       console.log(JSON.stringify({ kind, status, ms: Date.now() - t0 }));
       out[d.id] = status;
       if (status === 404 || status === 410) { delete all[d.id]; continue; } // the subscription is gone for good
