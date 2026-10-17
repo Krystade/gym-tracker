@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { CardioData, SetEntry } from '../domain/types';
 import { byOrderDone, lastSession, sameExercise } from '../domain/stats';
@@ -6,7 +6,7 @@ import { cardioTarget, fmtCardio, machine, type CardioField } from '../domain/ca
 import { fmtDay } from '../domain/format';
 import { localDate } from '../domain/ids';
 import { activeProfileDb } from '../db/db';
-import { clearDraft, getDraft, saveDraft } from '../state/drafts';
+import { clearDraft, getDraft, markDirty, saveDraft } from '../state/drafts';
 import { Stepper } from './Stepper';
 
 const LABEL: Record<CardioField, string> = { miles: 'Distance (mi)', incline: 'Incline %', level: 'Level', floors: 'Floors' };
@@ -39,6 +39,9 @@ function CardioForm({ name, initial, submitLabel, onSubmit, onCancel, onDelete, 
   useEffect(() => {
     if (draftKey && dirty.current) saveDraft<Draft>(draftKey.profile, draftKey.key, draftKey.date, { min, sec, vals, note, ...(whenOpen && { at }) });
   }, [draftKey, min, sec, vals, note, whenOpen, at]);
+  const formId = useId();
+  useEffect(() => markDirty(formId, dirty.current));
+  useEffect(() => () => markDirty(formId, false), [formId]);
 
   const seconds = (Number(min) || 0) * 60 + (Number(sec) || 0);
   const nums = Object.fromEntries(m.fields.map((f) => [f, vals[f]?.trim() ? Number(vals[f]) : undefined])) as Partial<Record<CardioField, number>>;
