@@ -96,7 +96,9 @@ test('a ping from an Orbit row and a message from the friend view land in the ot
 
   await sheet.getByRole('button', { name: 'Send 💪 Strong' }).click();
   await expect(sheet.getByRole('status')).toHaveText('Sent 💪');
-  await expect(sheet.getByRole('list', { name: 'Messages' }).locator('.bubble.mine')).toHaveText([/💪 Strong/]);
+  // A ping is its emoji alone, larger than a message's words; no label goes with it.
+  await expect(sheet.getByRole('list', { name: 'Messages' }).locator('.bubble.mine .bubble-text')).toHaveText(['💪']);
+  expect(await fontPx(sheet.locator('.bubble.ping .bubble-text'))).toBeGreaterThanOrEqual(28);
   // 140 characters at most, counted as it's typed; an empty one can't be sent.
   await expect(sheet.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
   await field.fill('x'.repeat(150));
@@ -107,7 +109,7 @@ test('a ping from an Orbit row and a message from the friend view land in the ot
   await sheet.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(sheet.getByRole('status')).toHaveText('Sent');
   await expect(field).toHaveValue('');
-  await expect(sheet.getByRole('list', { name: 'Messages' }).locator('.bubble.mine')).toHaveText([/💪 Strong/, /See you at 6\?/]);
+  await expect(sheet.getByRole('list', { name: 'Messages' }).locator('.bubble.mine .bubble-text')).toHaveText(['💪', LONG]);
   await a.page.screenshot({ path: `${SHOTS}/thread-sent.png` });
   await sheet.getByRole('button', { name: 'Close' }).click();
   await expect(sheet).toHaveCount(0);
@@ -140,7 +142,7 @@ test('a ping from an Orbit row and a message from the friend view land in the ot
   // Opening the thread reads them: both of A's, oldest first; the dots go.
   await aRow.getByRole('button', { name: `Message @${a.name}, 2 unread` }).click();
   const bSheet = sheetOf(b.page, a.name);
-  await expect(bSheet.getByRole('list', { name: 'Messages' }).locator('.bubble.theirs')).toHaveText([/💪 Strong/, /See you at 6\?/]);
+  await expect(bSheet.getByRole('list', { name: 'Messages' }).locator('.bubble.theirs .bubble-text')).toHaveText(['💪', LONG]);
   await bSheet.getByRole('button', { name: 'Close' }).click();
   await expect(aRow.getByRole('button', { name: `Message @${a.name}`, exact: true })).toBeVisible();
   await expect(aRow.locator('.unread-dot')).toHaveCount(0);
@@ -162,7 +164,7 @@ test('a ping from an Orbit row and a message from the friend view land in the ot
   // A: B's 👏 on Today, and a tap there opens B's thread.
   await a.page.reload();
   await a.page.getByRole('button', { name: new RegExp(`^@${b.name} 👏`) }).click();
-  await expect(sheetOf(a.page, b.name).getByRole('list', { name: 'Messages' }).locator('.bubble')).toHaveText([/💪 Strong/, /See you at 6\?/, /👏 Nice work/]);
+  await expect(sheetOf(a.page, b.name).getByRole('list', { name: 'Messages' }).locator('.bubble .bubble-text')).toHaveText(['💪', LONG, '👏']);
 });
 
 test('mute is quiet and private; block stops the sender and lists them to unblock', async ({ browser }) => {

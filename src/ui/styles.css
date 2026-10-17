@@ -655,3 +655,6 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .compose-side { display: flex; flex-direction: column; align-items: flex-end; flex: none; }
 .compose-side .small:not(:empty) { margin-bottom: 2px; }
 .bubble-text { white-space: pre-wrap; }
+/* A ping is its emoji alone, shown large; no words go with it. */
+.bubble.ping { align-items: center; padding: 4px 12px; }
+.bubble.ping .bubble-text { font-size: 32px; line-height: 1.15; }

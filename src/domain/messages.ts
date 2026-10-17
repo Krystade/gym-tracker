@@ -16,10 +16,13 @@ export const KEEP_MS = 30 * 864e5;
 /** The last this many show in a thread. */
 export const THREAD_MAX = 20;
 
-/** A ping or message as text: "💪 Strong", the message itself, or "Ping" for a preset this version doesn't know. */
+/**
+ * A ping or message as text: a ping's emoji alone ("💪"; it's stored as its key, so every ping ever sent shows this way),
+ * the message itself, or "Ping" for a preset this version doesn't know.
+ */
 export function itemText(d: Pick<InboxDoc, 'kind' | 'e' | 't'>): string {
   if (d.kind === 'm') return d.t ?? '';
-  return isPreset(d.e) ? `${PRESETS[d.e].emoji} ${PRESETS[d.e].copy}` : 'Ping';
+  return isPreset(d.e) ? PRESETS[d.e].emoji : 'Ping';
 }
 
 /** The short form for a row: a ping's emoji alone, a message cut to fit. */
