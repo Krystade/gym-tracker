@@ -1,12 +1,13 @@
 import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 import { readFileSync } from 'node:fs';
 
 const index = JSON.parse(readFileSync('public/characters/index.json', 'utf8')) as { sources: { group: string }[]; chars: { name: string; group: string }[] };
 
-test('the Data tab opens a preview of every character, grouped by pack, each one drawn', async ({ page }) => {
+test('More opens a preview of every character, grouped by pack, each one drawn', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Data', exact: true }).click();
-  await page.getByRole('button', { name: 'Characters (preview)' }).click();
+  await goto(page, 'More');
+  await page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: 'Characters' }).click();
   await expect(page.getByRole('heading', { name: 'Characters', exact: true })).toBeVisible();
   for (const s of index.sources) {
     const group = page.getByRole('region', { name: s.group });
@@ -23,6 +24,6 @@ test('the Data tab opens a preview of every character, grouped by pack, each one
   await expect(page.locator('.char canvas')).toHaveCount(index.chars.length);
   await expect(page.getByRole('link', { name: 'Kenney' }).first()).toBeVisible();
   await page.screenshot({ path: 'screenshots/80-characters.png', fullPage: true });
-  await page.getByRole('button', { name: '‹ Back' }).click();
-  await expect(page.getByRole('button', { name: 'Characters (preview)' })).toBeVisible();
+  await page.getByRole('button', { name: '‹ More' }).click();
+  await expect(page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: 'Characters' })).toBeVisible();
 });

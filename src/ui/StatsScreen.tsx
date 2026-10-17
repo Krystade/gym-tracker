@@ -93,7 +93,7 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
 }) {
   const p = profile.profile;
   // A new user sets priorities before the first workout, so they're here with an empty log too.
-  if (!store.entries.length) return (<><h1>Stats</h1><p className="muted">No sessions yet — log a workout or import your history on the Data tab.</p><BodyCard body={body} today={today} />{photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}<Priorities profile={profile} readOnly={readOnly} cardioMinutes={0} /></>);
+  if (!store.entries.length) return (<><h1>Stats</h1><p className="muted">No sessions yet — log a workout or import your history under More.</p><BodyCard body={body} today={today} />{photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}<Priorities profile={profile} readOnly={readOnly} cardioMinutes={0} /></>);
   const weeks = weeklySummary(store.entries, 12, today);
   const st = streak(weeklySummary(store.entries, 104, today), p.weeklyGoal);
   const thisWeek = weeks.at(-1)!;

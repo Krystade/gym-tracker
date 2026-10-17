@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 import type { Page } from '@playwright/test';
 
 // WCAG 2.x relative-luminance contrast of two computed `rgb(...)` colours.
@@ -39,7 +40,7 @@ test('the "under" status icon in Stats is readable (4.5:1) on its card', async (
   await logBench(page, '135', '10');
   await page.clock.setFixedTime(new Date('2026-09-30T09:00:00'));
   await page.reload();
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   const icon = page.locator('.mrow[aria-label^="Calves:"] .mstat.under b');
   await expect(icon).toBeVisible();
   const [fg] = await style(page, '.mrow[aria-label^="Calves:"] .mstat.under b', ['color']);

@@ -23,7 +23,7 @@ export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; on
   const today = localDate(new Date());
   const pace = useMemo(() => paces(store.entries), [store.entries]);
   const prs = useMemo(() => prIds(store.entries), [store.entries]);
-  if (!sessions.length) return (<><h1>History</h1><p className="muted">No history yet — import it from the Data tab.</p></>);
+  if (!sessions.length) return (<><h1>History</h1><p className="muted">No history yet — import it under More.</p></>);
   // By month, newest first. This month and last start open (and the newest month, if both are empty); older ones fold.
   const months: { key: string; days: typeof sessions }[] = [];
   for (const s of sessions) {

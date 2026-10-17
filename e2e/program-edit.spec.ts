@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 
 const openProgram = async (page: Page) => {
   await page.getByRole('button', { name: 'Program', exact: true }).click();
@@ -126,9 +127,9 @@ test('a rebuild drops a pending undo, so it cannot splice an old lift into the n
 
 test('a lift added to a day, or the back block, goes before its cardio', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   await page.getByRole('combobox', { name: 'Cardio' }).selectOption('2');
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   await openProgram(page);
   await page.getByRole('button', { name: 'Set up your gym' }).click();
   for (const e of ['dumbbells', 'flat bench', 'cable stack', 'treadmill']) await page.getByRole('checkbox', { name: e, exact: true }).check();

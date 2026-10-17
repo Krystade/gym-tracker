@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 
 const logBench = async (page: Page, weight: string, reps: string) => {
   const rows = page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem');
@@ -13,7 +14,7 @@ const openBench = async (page: Page) => {
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
   await page.getByRole('button', { name: /^Bench Press( · logged)?$/ }).click();
 };
-const more = (page: Page) => page.getByRole('button', { name: 'More' });
+const more = (page: Page) => page.getByRole('main').getByRole('button', { name: 'More' });
 
 // 4 sets: with 3 the button still fits before the change on a fresh day (no cards above the exercise)
 test('Add set sits in view after a few sets', async ({ page }) => {
@@ -38,8 +39,8 @@ test('More reopens for a drafted note, and folds after the set is saved', async 
   await expect(more(page)).toHaveAttribute('aria-expanded', 'false');
   await more(page).click();
   await page.getByRole('textbox', { name: 'Note' }).fill('felt strong');
-  await page.getByRole('button', { name: 'History' }).click();
-  await page.getByRole('button', { name: 'Today', exact: true }).click();
+  await goto(page, 'History');
+  await goto(page, 'Today');
   await expect(more(page)).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('textbox', { name: 'Note' })).toHaveValue('felt strong');
   await page.getByRole('textbox', { name: 'Weight' }).fill('135'); // no history: the weight starts empty

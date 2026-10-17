@@ -1,9 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 
 // Spacing rhythm: 12px between blocks, cards inset evenly, controls clear of the text beside them.
 const FX = (f: string) => path.join(import.meta.dirname, 'fixtures', f);
-const nav = (page: Page, t: string) => page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: t, exact: true }).click();
 
 /** Cards whose content sits further from the top edge than the bottom (or the reverse) by more than 2px. */
 const unevenCards = (page: Page) => page.evaluate(() => [...document.querySelectorAll<HTMLElement>('main .card')].flatMap((c) => {
@@ -43,18 +43,18 @@ test('Today: the energy row and the date arrows have room, and the button under 
 
 test('cards are inset evenly and sub-screens give their title room under Back', async ({ page }) => {
   await page.goto('/');
-  await nav(page, 'Data');
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FX('history.sample.csv'));
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   const bad: string[] = [];
   bad.push(...(await unevenCards(page)).map((s) => `Data: ${s}`));
-  await nav(page, 'Stats');
+  await goto(page, 'Stats');
   bad.push(...(await unevenCards(page)).map((s) => `Stats: ${s}`));
-  await nav(page, 'Lifts');
+  await goto(page, 'Lifts');
   await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
   bad.push(...(await unevenCards(page)).map((s) => `Exercise: ${s}`));
   expect(await gap(page, 'main button:text-is("‹ Back")', 'main h1')).toBeGreaterThanOrEqual(12);
-  await nav(page, 'Today');
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   bad.push(...(await unevenCards(page)).map((s) => `Program: ${s}`));
   expect(await gap(page, 'main button:text-is("‹ Back")', 'main h1')).toBeGreaterThanOrEqual(12);
@@ -64,16 +64,16 @@ test('cards are inset evenly and sub-screens give their title room under Back', 
 test('Stats: the wide program tile keeps the tile grid gap', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
-  await nav(page, 'Data');
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FX('history.sample.csv'));
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
-  await nav(page, 'Today');
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('textbox', { name: 'Days per week' }).fill('2');
   await page.getByRole('textbox', { name: 'Sets per session' }).fill('14');
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('heading', { name: /^Day A/ })).toBeVisible();
-  await nav(page, 'Today'); // the program tile shows once a planned set is logged
+  await goto(page, 'Today'); // the program tile shows once a planned set is logged
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
   await page.getByRole('button', { name: 'Bench Press', exact: true }).click();
@@ -81,7 +81,7 @@ test('Stats: the wide program tile keeps the tile grid gap', async ({ page }) =>
   await page.getByRole('textbox', { name: 'Reps' }).fill('10');
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(1);
-  await nav(page, 'Stats');
+  await goto(page, 'Stats');
   const tiles = page.locator('.tiles').first().locator('.tile');
   await expect(tiles.last()).toHaveClass(/wide/);
   const last = (await tiles.last().boundingBox())!, above = (await tiles.nth(-2).boundingBox())!;

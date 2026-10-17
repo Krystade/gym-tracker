@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 
 const HEADER = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source';
 
@@ -9,10 +10,10 @@ async function seed(page: Page, rows: string[] = [
 ]) {
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...rows].join('\n')) });
   await expect(page.getByText(`✓ Imported ${rows.length} new sets`)).toBeVisible();
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
 }
 const order = (page: Page) => page.locator('[data-card]').evaluateAll((els) => els.map((e) => e.getAttribute('data-card')));
 
@@ -69,7 +70,7 @@ test('a hold logs seconds with no RIR chips', async ({ page }) => {
 
 test('progression settings say why they can’t be saved', async ({ page }) => {
   await seed(page);
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Bench Press/ }).click();
   const card = page.getByRole('group', { name: 'Progression settings' });
   await card.getByRole('textbox', { name: 'Max reps' }).fill('6');
@@ -81,7 +82,7 @@ test('progression settings say why they can’t be saved', async ({ page }) => {
 
 test('a hold’s progression settings are in seconds, and go past 50', async ({ page }) => {
   await seed(page, ['2026-10-01,Plank,,1,0,40,,hold,,sample', '2026-10-01,Plank,,2,0,40,,hold,,sample']);
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Plank/ }).click();
   const card = page.getByRole('group', { name: 'Progression settings' });
   await expect(card.getByRole('textbox', { name: /reps/i })).toHaveCount(0);
@@ -94,7 +95,7 @@ test('a hold’s progression settings are in seconds, and go past 50', async ({ 
 
 test('a hold held at the top of its range says to add weight or go harder, not “40 s+”', async ({ page }) => {
   await seed(page, ['2026-10-01,Plank,,1,0,40,,hold,,sample', '2026-10-01,Plank,,2,0,40,,hold,,sample']);
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Plank/ }).click();
   const next = page.getByRole('region', { name: 'Next time' });
   await expect(next.locator('.big')).toHaveText('2 × 40 s @ BW');
@@ -110,13 +111,13 @@ const marker = (s: ReturnType<Page['locator']>) => s.evaluate((el) => {
 
 test('fold-away sections show an arrow that turns when open', async ({ page }) => {
   await seed(page, ['2026-09-28,Bench Press,,1,130,8,,,,sample', '2026-10-01,Bench Press,,1,135,8,,,,sample']);
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Bench Press/ }).click();
   const table = page.locator('.chart-table > summary').first();
   expect(await marker(table)).toEqual({ content: '"›"', turned: false });
   await table.click();
   expect(await marker(table)).toEqual({ content: '"›"', turned: true });
-  await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('button', { name: 'Build program' }).click();
   expect((await marker(page.locator('details.builder > summary'))).content).toBe('"›"');
@@ -166,7 +167,7 @@ test('a card’s Best and Last lines are the same size, and an idle profile chip
   const card = page.locator('[data-card="seated cable row"]');
   const size = (t: RegExp) => card.getByText(t).evaluate((el) => getComputedStyle(el).fontSize);
   expect(await size(/^Last \(/)).toBe(await size(/^Best /));
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByRole('textbox', { name: 'Name' }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   const idle = page.getByRole('group', { name: 'Who’s training' }).locator('button[aria-pressed=false]');

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 
 const DAY1 = new Date('2026-09-28T17:00:00');
 const DAY2 = new Date('2026-10-02T17:00:00');
@@ -22,7 +23,7 @@ test('open an exercise: next sets × reps @ weight with a warm-up, history below
 
   await page.clock.setSystemTime(DAY2);
   await page.reload();
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await page.getByRole('searchbox', { name: 'Filter lifts' }).fill('bench');
   await page.getByRole('button', { name: /^Bench Press/ }).first().click();
   const card = page.getByRole('region', { name: 'Next time' });
@@ -50,7 +51,7 @@ test('open an exercise: next sets × reps @ weight with a warm-up, history below
   await expect(page.getByRole('button', { name: 'Log it today' })).toHaveCount(0);
 
   // The backup carries when it was logged and what was suggested; the body file carries energy.
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
   await expect(page.getByText('Copied the CSV to the clipboard')).toBeVisible();
   const csv = await page.evaluate(() => (window as unknown as { copied: string }).copied);
@@ -62,7 +63,7 @@ test('open an exercise: next sets × reps @ weight with a warm-up, history below
 
 test('Lifts search finds catalog lifts never logged, with a no-history suggestion', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await page.getByRole('searchbox', { name: 'Filter lifts' }).fill('hammer');
   await page.getByRole('button', { name: /^Hammer Curl/ }).click();
   const card = page.getByRole('region', { name: 'Next time' });

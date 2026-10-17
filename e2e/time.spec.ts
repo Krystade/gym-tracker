@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 
 const logBench = async (page: import('@playwright/test').Page, weight: string, reps: string) => {
   const rows = page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem');
@@ -24,7 +25,7 @@ test('a forgotten set goes into yesterday at the suggested time, and the workout
   // Today: open yesterday from History and add the set that was forgotten in the gap.
   await page.clock.setFixedTime(new Date('2026-10-02T09:00:00'));
   await page.reload();
-  await page.getByRole('button', { name: 'History' }).click();
+  await goto(page, 'History');
   await expect(page.locator('details.day').filter({ hasText: 'Thu, Oct 1' })).toContainText('1 exercise · 5 sets · 18 min');
   await page.getByRole('button', { name: 'Add to this day' }).click();
   await expect(page.getByText('Logging to a past day')).toBeVisible();
@@ -50,7 +51,7 @@ test('a set entered a few minutes late today can take an earlier time', async ({
   await logBench(page, '135', '10');
   await page.clock.setFixedTime(new Date('2026-10-02T18:12:00'));
   await expect(page.getByRole('textbox', { name: 'When' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('main').getByRole('button', { name: 'More' }).click();
   await page.getByRole('button', { name: 'Did this earlier?' }).click();
   await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('18:03');
   await logBench(page, '135', '9');
@@ -140,7 +141,7 @@ test('switching day with the same lift on both days gives each day its own time 
   await expect(page.getByRole('textbox', { name: 'When' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Previous day' }).click();
   await logBench(page, '135', '8');
-  await page.getByRole('button', { name: 'History' }).click();
+  await goto(page, 'History');
   await expect(page.locator('details.day').filter({ hasText: 'Thu, Oct 1' })).toContainText('1 exercise · 4 sets · 8 min');
 });
 
@@ -150,8 +151,8 @@ test('a card added but not logged stays on its own day', async ({ page }) => {
   await openBench(page);
   await page.getByRole('button', { name: 'Previous day' }).click();
   await expect(page.getByRole('list', { name: 'Sets for Bench Press' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Stats' }).click();
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Stats');
+  await goto(page, 'Today');
   await expect(page.getByRole('list', { name: 'Sets for Bench Press' })).toBeAttached();
 });
 
@@ -191,7 +192,7 @@ test('looking at a past day does not move the program rotation, and "Log it toda
   await expect(page.getByRole('heading', { name: 'Today’s plan · Day A' })).toBeVisible();
   // From a past day, "Log it today" lands on today.
   await page.getByRole('button', { name: 'Previous day' }).click();
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await page.getByRole('searchbox', { name: 'Filter lifts' }).fill('bench');
   await page.getByRole('button', { name: /^Bench Press/ }).first().click();
   await page.getByRole('region', { name: 'Next time' }).getByRole('button', { name: 'Log it today' }).click();
@@ -204,7 +205,7 @@ test("a time later than now can't be saved for today", async ({ page }) => {
   await page.goto('/');
   await openBench(page);
   await logBench(page, '135', '10');
-  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('main').getByRole('button', { name: 'More' }).click();
   await page.getByRole('button', { name: 'Did this earlier?' }).click();
   await page.getByRole('textbox', { name: 'When' }).fill('23:30');
   await expect(page.getByRole('button', { name: 'Add set' })).toBeDisabled();
@@ -293,9 +294,9 @@ test('a workout past midnight stays on its day', async ({ page }) => {
   await logBench(page, '135', '9');
   await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(2);
   await page.screenshot({ path: 'screenshots/26-past-midnight.png' });
-  await page.getByRole('button', { name: 'History' }).click();
+  await goto(page, 'History');
   await expect(page.locator('details.day').filter({ hasText: 'Thu, Oct 1' })).toContainText('1 exercise · 2 sets');
-  await page.getByRole('button', { name: 'Today', exact: true }).click();
+  await goto(page, 'Today');
   await expect(page.getByText('Still logging')).toBeVisible(); // the tab keeps the carry; only the banner button ends it
   await page.locator('.past-day').getByRole('button', { name: 'Today', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Fri, Oct 2' })).toBeVisible();
@@ -321,7 +322,7 @@ test('the carry ends by itself once the workout is 3 hours old, even with the da
 
 test('a late set on the old day can be later than the clock after midnight', async ({ page }) => {
   await pastMidnight(page, '23:40');
-  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('main').getByRole('button', { name: 'More' }).click();
   await page.getByRole('button', { name: 'Did this earlier?' }).click();
   await page.getByRole('textbox', { name: 'When' }).fill('23:59');
   await expect(page.getByText('Later than now')).toHaveCount(0);
@@ -348,13 +349,13 @@ test('pasting notes onto a live day keeps the next set prefilled from the last l
   await page.goto('/');
   await openBench(page);
   await logBench(page, '135', '10');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByRole('button', { name: 'Paste from notes' }).click();
   await page.getByLabel('Workout notes').fill(['10/2/26', 'Bench press: 95x12'].join('\n'));
   await page.getByRole('button', { name: 'Read notes' }).click();
   await page.getByLabel('Already in your log — add anyway').check();
   await page.getByRole('button', { name: /^Add 1 set/ }).click();
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(2);
   await expect(page.getByRole('textbox', { name: 'Weight' })).toHaveValue('135');
 });
@@ -394,7 +395,7 @@ test('editing a set can move its time, and an untouched time stays put', async (
   await expect(when).toHaveValue('18:00');
   await page.getByRole('button', { name: 'Cancel' }).click();
   // Stored times: the moved set keeps when it was entered; the reps-only edit keeps its exact time.
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
   await expect(page.getByText('Copied the CSV to the clipboard')).toBeVisible();
   const [head, ...lines] = (await page.evaluate(() => (window as unknown as { copied: string }).copied)).trim().split('\r\n').map((l) => l.split(','));
@@ -429,10 +430,10 @@ test('a lift logged as a hold is timed in seconds everywhere, whatever its name'
   const file = info.outputPath('hold.csv');
   (await import('node:fs')).writeFileSync(file, csv);
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(file);
   await expect(page.getByText('✓ Imported 2 new sets')).toBeVisible();
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Wall Sit');
   await page.getByRole('button', { name: /^Wall Sit Hold X/ }).click();

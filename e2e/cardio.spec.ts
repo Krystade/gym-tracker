@@ -1,21 +1,22 @@
 import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
 
 test('cardio: a priority plans treadmill slots; logging one fills the plan, History and the week', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
 
   // Cardio is a priority next to the muscles, in minutes a week.
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   await page.getByRole('combobox', { name: 'Cardio' }).selectOption('2');
   await expect(page.getByLabel('Cardio this week')).toHaveText('This week: 0 of 40–60 min');
 
   // A gym with a treadmill.
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('button', { name: 'Set up your gym' }).click();
   for (const e of ['dumbbells', 'flat bench', 'cable stack', 'treadmill']) await page.getByRole('checkbox', { name: e, exact: true }).check();
@@ -55,9 +56,9 @@ test('cardio: a priority plans treadmill slots; logging one fills the plan, Hist
   await expect(card.getByRole('button', { name: 'Show Treadmill' })).toContainText('20:00 · 1.3 mi · −2%');
   await expect(row).toContainText('1/1');
 
-  await page.getByRole('button', { name: 'History' }).click();
+  await goto(page, 'History');
   await expect(page.getByText('20:00 · 1.3 mi · −2%').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   await expect(page.getByLabel('Cardio this week')).toHaveText('This week: 20 of 40–60 min');
 });
 

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
@@ -38,10 +39,10 @@ test('a long gym name ellipsises and Delete stays on one line', async ({ page })
 test('a gym without machines gets a plan it can do; exclusions and inclusions stick', async ({ page }) => {
   page.on('dialog', (d) => void d.accept());
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
 
   await expect(page.getByText('Priorities aren’t set')).toBeVisible();

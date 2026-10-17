@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 
 test('a new user sets priorities before logging anything, from Stats or from Program’s note', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   // An empty log still has the Priorities card, Cardio included.
   await expect(page.getByRole('heading', { name: 'Priorities' })).toBeVisible();
   await page.getByRole('combobox', { name: 'Biceps' }).selectOption('1');
@@ -10,7 +11,7 @@ test('a new user sets priorities before logging anything, from Stats or from Pro
   await expect(page.getByLabel('Cardio this week')).toHaveText('This week: 0 of 40–60 min');
   await page.screenshot({ path: 'screenshots/r7-first-run-stats.png' });
   await page.reload();
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   await expect(page.getByRole('combobox', { name: 'Biceps' })).toHaveValue('1'); // saved
   await expect(page.getByRole('combobox', { name: 'Cardio' })).toHaveValue('2');
 });

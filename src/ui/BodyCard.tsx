@@ -58,7 +58,7 @@ export function BodyCard({ body, today }: { body: BodyStore; today: string }) {
   return (
     <section className="card" aria-labelledby="body-h">
       <h2 id="body-h">Body weight</h2>
-      {!t.length ? <p className="muted">Weigh in on the Today tab, or import MyFitnessPal’s export on the Data tab.</p> : (<>
+      {!t.length ? <p className="muted">Weigh in on the Today tab, or import MyFitnessPal’s export under More.</p> : (<>
         <div className="tiles">
           <div className="tile"><span>Trend</span><b>{t.at(-1)!.trend.toFixed(1)} lb</b></div>
           <div className="tile"><span>4-week rate</span><b className="sm">{r ? `${signed(r.lbPerWeek)} lb/week` : '—'}</b>{r && <span>{signed(r.pctPerWeek, 2)} % of body weight</span>}</div>

@@ -14,7 +14,7 @@ import { ProfileBar } from './ProfileBar';
 import { ProfileDbProvider } from '../state/profileDb';
 import { useFittedProfile } from '../state/useFittedProfile';
 import { getDraft, saveDraft } from '../state/drafts';
-import { sameExercise } from '../domain/stats';
+import { exerciseNames, sameExercise } from '../domain/stats';
 import { sessionDay } from '../domain/timing';
 
 /** Puts an exercise on Today's cards (the same list Today keeps for cards not logged yet). */
@@ -41,6 +41,7 @@ import { Walkthrough, walkthroughPending } from './Walkthrough';
 import { FriendsScreen } from './FriendsScreen';
 import { FriendView, type FriendTab } from './FriendView';
 import { CharactersScreen } from './CharactersScreen';
+import { GymsScreen } from './GymsScreen';
 import type { Friend } from '../cloud/friends';
 import { parseInvite, type Invite } from '../domain/invite';
 
@@ -48,8 +49,9 @@ import { parseInvite, type Invite } from '../domain/invite';
 let launchInvite: Invite | null = typeof location !== 'undefined' ? parseInvite(location.hash) : null;
 if (launchInvite) history.replaceState(null, '', location.pathname + location.search);
 
-type Tab = 'today' | 'history' | 'lifts' | 'stats' | 'friends' | 'data';
-const TABS: [Tab, string][] = [['today', 'Today'], ['history', 'History'], ['lifts', 'Lifts'], ['stats', 'Stats'], ['friends', 'Friends'], ['data', 'Data']];
+// Friends isn't on the bar: it opens from More and shows as More.
+type Tab = 'today' | 'history' | 'lifts' | 'stats' | 'gym' | 'more' | 'friends';
+const TABS: [Tab, string][] = [['today', 'Today'], ['history', 'History'], ['lifts', 'Lifts'], ['stats', 'Stats'], ['gym', 'Gym'], ['more', 'More']];
 const FRIEND_TABS = TABS.filter(([t]) => t === 'history' || t === 'lifts' || t === 'stats');
 
 export default function App() {
@@ -121,8 +123,8 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
       {tour && <Walkthrough onClose={() => setTour(false)} />}
       <nav className="tabs" aria-label="Sections">
         {(viewing ? FRIEND_TABS : TABS).map(([t, label]) => (
-          <button key={t} data-tour={t} aria-current={tab === t && !exercise && !programOpen && !photosOpen && !pasteOpen && !charsOpen ? 'page' : undefined} onClick={() => { setTab(t); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); }}>
-            {label}{t === 'friends' && waiting > 0 && <span className="tab-dot" aria-hidden="true" />}
+          <button key={t} data-tour={t} aria-current={(tab === t || (t === 'more' && tab === 'friends')) && !exercise && !programOpen && !photosOpen && !pasteOpen && !charsOpen ? 'page' : undefined} onClick={() => { setTab(t); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); }}>
+            {label}{t === 'more' && waiting > 0 && <span className="tab-dot" aria-hidden="true" />}
           </button>
         ))}
       </nav>
@@ -152,10 +154,14 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
     rev: [rawProfile.profile, programs.program, programs.plans, settings.get, settings.tags, gyms.gyms],
   });
   const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, open, showTour } = nav;
+  // A screen opened from More goes back to it by name; from anywhere else it's plain Back.
+  const back = tab === 'more' ? '‹ More' : '‹ Back';
+  const top = (fn: () => void) => () => { fn(); window.scrollTo(0, 0); };
+  const uid = cloud.mine ? cloud.link?.uid : null;
   // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.
   const [carryOff, setCarryOff] = useState<string | null>(null);
   const day = carryOff === date ? date : sessionDay(store.entries, date, new Date());
-  // Every screen reads targets fitted to your week; the Data tab imports and exports the stored profile as it is.
+  // Every screen reads targets fitted to your week; More imports and exports the stored profile as it is.
   const profile = useFittedProfile(rawProfile, programs.program, store.entries, day);
   const error = store.error ?? programs.error ?? body.error ?? photos.error ?? gyms.error ?? people.error;
 
@@ -165,22 +171,24 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
       <main className="screen">
         <ProfileBar people={people} />
         {store.loading ? <p className="muted">Loading…</p>
-          : pasteOpen ? <PasteScreen store={store} today={date} onBack={() => setPasteOpen(false)} onDone={() => { setPasteOpen(false); setTab('history'); window.scrollTo(0, 0); }} />
-          : charsOpen ? <CharactersScreen onBack={() => setCharsOpen(false)} />
-          : photosOpen ? <PhotosScreen photos={photos} body={body} today={date} onBack={() => setPhotosOpen(false)} />
-          : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} uid={cloud.mine ? cloud.link?.uid : null} onBack={() => setProgramOpen(false)}
+          : pasteOpen ? <PasteScreen store={store} today={date} backLabel={back} onBack={() => setPasteOpen(false)} onDone={() => { setPasteOpen(false); setTab('history'); window.scrollTo(0, 0); }} />
+          : charsOpen ? <CharactersScreen backLabel={back} onBack={() => setCharsOpen(false)} />
+          : photosOpen ? <PhotosScreen photos={photos} body={body} today={date} backLabel={back} onBack={() => setPhotosOpen(false)} />
+          : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} uid={uid} backLabel={back} onBack={() => setProgramOpen(false)}
             onOpenPriorities={() => { setProgramOpen(false); setTab('stats'); requestAnimationFrame(() => document.getElementById('priorities')?.scrollIntoView({ block: 'start' })); }} />
           : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={day} onBack={() => setExercise(null)}
             onRenamed={(to) => { renameToday(person.id, day, exercise, to); setExercise(to); window.scrollTo(0, 0); }}
             onLog={() => { logToday(person.id, day, exercise); setLogDay(null); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'today' ? <TodayScreen key={logDay ?? day} who={people.people.length > 1 ? person.name : undefined} store={store} settings={settings} programs={programs} body={body} gyms={gyms} profile={profile.profile} date={logDay ?? day} today={day}
             carried={day !== date && !logDay} onSplit={() => setCarryOff(date)}
-            onDay={(d) => { setLogDay(d === day ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={() => { setProgramOpen(true); window.scrollTo(0, 0); }} />
+            onDay={(d) => { setLogDay(d === day ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={top(() => setProgramOpen(true))} onOpenGym={top(() => setTab('gym'))} />
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
-          : tab === 'friends' ? <FriendsScreen cloud={cloud} gyms={gyms} pending={nav.pending} onPendingDone={nav.clearPending} onView={nav.view} onRequests={nav.setWaiting} onSignIn={() => { setTab('data'); window.scrollTo(0, 0); }} />
+          : tab === 'friends' ? <FriendsScreen cloud={cloud} gyms={gyms} pending={nav.pending} onPendingDone={nav.clearPending} onView={nav.view} onRequests={nav.setWaiting} onSignIn={top(() => setTab('more'))} onBack={top(() => setTab('more'))} />
+          : tab === 'gym' ? <GymsScreen gyms={gyms} logged={exerciseNames(store.entries)} uid={uid} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />
-          : <DataScreen store={store} profile={rawProfile} body={body} sync={sync} cloud={cloud} people={people} onOpenPaste={() => { setPasteOpen(true); window.scrollTo(0, 0); }} onShowWalkthrough={showTour} onOpenCharacters={() => { setCharsOpen(true); window.scrollTo(0, 0); }} />}
+          : <DataScreen store={store} profile={rawProfile} body={body} sync={sync} cloud={cloud} people={people} requests={nav.waiting} onOpenPaste={top(() => setPasteOpen(true))} onShowWalkthrough={showTour}
+            onOpenCharacters={top(() => setCharsOpen(true))} onOpenFriends={top(() => setTab('friends'))} onOpenProgram={top(() => setProgramOpen(true))} onOpenPhotos={top(() => setPhotosOpen(true))} />}
       </main>
     </>
   );

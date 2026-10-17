@@ -5,7 +5,7 @@ import type { PeopleStore } from '../state/usePeople';
 
 const toSlug = (name: string) => name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
 
-// What's typed in the new-person form. Every switch of person remounts the Data screen, so it lives here, outside it.
+// What's typed in the new-person form. Every switch of person remounts the More screen, so it lives here, outside it.
 let kept: { name: string; slug: string | null } = { name: '', slug: null };
 
 /** Add, rename and delete the people tracked on this phone. Each has their own sets, body log, priorities and program. */
