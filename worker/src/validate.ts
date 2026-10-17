@@ -1,0 +1,68 @@
+import { MAX_LABEL } from '../../src/push/payload';
+import { validZone } from './schedule';
+
+// Every request body is checked here, field by field; anything else is a 400. Nothing from a body is ever logged.
+
+export class BadRequest extends Error {}
+const bad = (what: string): never => { throw new BadRequest(what); };
+const obj = (v: unknown, what: string) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : bad(what));
+const int = (v: unknown, lo: number, hi: number, what: string) => (Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi ? (v as number) : bad(what));
+const bool = (v: unknown, what: string) => (typeof v === 'boolean' ? v : bad(what));
+const hhmm = (v: unknown, what: string) => (typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : bad(what));
+const date = (v: unknown, what: string) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : bad(what));
+const text = (v: unknown, max: number, what: string) => (typeof v === 'string' && v.length <= max ? v : bad(what));
+const b64u = (v: unknown, bytes: number, what: string) => (typeof v === 'string' && v.length === Math.ceil((bytes * 4) / 3) && /^[A-Za-z0-9_-]+$/.test(v) ? v : bad(what));
+
+/** Push services the Worker will send to: Apple, Google, Mozilla, Microsoft. Nothing else, so it can't be pointed anywhere. */
+const PUSH_HOSTS = [/^web\.push\.apple\.com$/, /(^|\.)push\.apple\.com$/, /^fcm\.googleapis\.com$/, /(^|\.)push\.services\.mozilla\.com$/, /(^|\.)notify\.windows\.com$/];
+
+export interface Subscription { endpoint: string; p256dh: string; auth: string; ua: string }
+export function subscription(v: unknown, local: boolean): Subscription {
+  const o = obj(v, 'body'), keys = obj(o.keys, 'keys');
+  const endpoint = text(o.endpoint, 1024, 'endpoint');
+  let u: URL;
+  try { u = new URL(endpoint); } catch { return bad('endpoint'); }
+  const fine = (u.protocol === 'https:' && PUSH_HOSTS.some((h) => h.test(u.hostname))) || (local && u.protocol === 'http:' && u.hostname === '127.0.0.1');
+  if (!fine) bad('endpoint');
+  return { endpoint, p256dh: b64u(keys.p256dh, 65, 'p256dh'), auth: b64u(keys.auth, 16, 'auth'), ua: o.ua == null ? '' : text(o.ua, 200, 'ua') };
+}
+
+export interface Prefs {
+  tz: string;
+  kinds: { rest: boolean; remind: boolean; recap: boolean };
+  /** Days 0 = Sunday … 6 = Saturday, at local "HH:MM". */
+  reminder: { days: number[]; at: string };
+  recap: { day: number; at: string };
+}
+export const DEFAULT_PREFS: Prefs = { tz: 'UTC', kinds: { rest: true, remind: false, recap: false }, reminder: { days: [], at: '18:00' }, recap: { day: 0, at: '18:00' } };
+
+export function prefs(v: unknown): Prefs {
+  const o = obj(v, 'body'), k = obj(o.kinds, 'kinds'), r = obj(o.reminder, 'reminder'), c = obj(o.recap, 'recap');
+  if (!validZone(o.tz)) bad('tz');
+  const days = Array.isArray(r.days) && r.days.length <= 7 ? r.days.map((d) => int(d, 0, 6, 'days')) : bad('days');
+  if (new Set(days).size !== days.length) bad('days');
+  return {
+    tz: o.tz as string,
+    kinds: { rest: bool(k.rest, 'rest'), remind: bool(k.remind, 'remind'), recap: bool(k.recap, 'recap') },
+    reminder: { days: days.sort(), at: hhmm(r.at, 'at') },
+    recap: { day: int(c.day, 0, 6, 'day'), at: hhmm(c.at, 'at') },
+  };
+}
+
+export interface Timer { sub: string; seconds: number; label: string }
+export function timer(v: unknown): Timer {
+  const o = obj(v, 'body');
+  return { sub: deviceId(o.sub), seconds: int(o.seconds, 5, 3600, 'seconds'), label: o.label == null ? '' : text(o.label, 200, 'label').slice(0, MAX_LABEL) };
+}
+
+export interface Activity { date: string; next: string | null; week: { start: string; sessions: number; sets: number; prs: number } }
+export function activity(v: unknown): Activity {
+  const o = obj(v, 'body'), w = obj(o.week, 'week');
+  return {
+    date: date(o.date, 'date'),
+    next: o.next == null ? null : text(o.next, 40, 'next'),
+    week: { start: date(w.start, 'start'), sessions: int(w.sessions, 0, 7, 'sessions'), sets: int(w.sets, 0, 10_000, 'sets'), prs: int(w.prs, 0, 10_000, 'prs') },
+  };
+}
+
+export const deviceId = (v: unknown) => (typeof v === 'string' && /^[0-9a-f]{16}$/.test(v) ? v : bad('sub'));

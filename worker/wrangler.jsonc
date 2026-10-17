@@ -1,0 +1,27 @@
+// The push sender for Gym Tracker: one Worker plus one SQLite-backed Durable Object per account. Free plan throughout.
+// Owner steps (account, keys, deploy) are in SETUP.md. The VAPID private key is a secret, never in this file.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gym-tracker-push",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "vars": {
+    // Firebase project whose ID tokens are accepted.
+    "FIREBASE_PROJECT": "krystade-gym-tracker",
+    // The only origin allowed to call (CORS), and the app's start URL (where a notification tap lands).
+    "APP_ORIGIN": "https://krystade.github.io",
+    "APP_URL": "https://krystade.github.io/gym-tracker/",
+    // VAPID `sub`: who the push services can contact. A URL, so no address goes into this public repo.
+    "VAPID_SUBJECT": "https://krystade.github.io/gym-tracker/",
+    // "1" only in .dev.vars, and only honoured with FIREBASE_PROJECT=demo-gym-tracker: accepts the Auth emulator's unsigned tokens.
+    "AUTH_EMULATOR": ""
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "USERS", "class_name": "UserBox" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["UserBox"] }],
+  // Per account, approximate and per location: 60 calls a minute across every route.
+  "ratelimits": [{ "name": "LIMIT", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } }]
+}
