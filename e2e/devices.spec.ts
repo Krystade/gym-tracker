@@ -158,9 +158,6 @@ test('More and every screen it opens fit each phone', async ({ page }) => {
   await expect(page.locator('.char canvas').first()).toBeVisible();
   await check(page, 'characters');
   await back(page);
-  await row(page, 'Friends');
-  await check(page, 'friends-signed-out');
-  await back(page);
   await row(page, 'Photos');
   await check(page, 'photos');
   await back(page);
@@ -171,6 +168,13 @@ test('More and every screen it opens fit each phone', async ({ page }) => {
   await check(page, 'paste-review');
   await page.getByRole('button', { name: '‹ Edit the text' }).click();
   await back(page);
+});
+
+test('the Friends tab fits each phone, signed out', async ({ page }) => {
+  await start(page);
+  await goto(page, 'Friends');
+  await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Friends', exact: true })).toHaveAttribute('aria-current', 'page');
+  await check(page, 'friends-signed-out');
 });
 
 test('Gym and Program fit each phone', async ({ page }) => {

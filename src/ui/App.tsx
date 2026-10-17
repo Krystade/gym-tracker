@@ -55,9 +55,9 @@ import { tabOf } from '../push/routes';
 let launchInvite: Invite | null = typeof location !== 'undefined' ? parseInvite(location.hash) : null;
 if (launchInvite) history.replaceState(null, '', location.pathname + location.search);
 
-// Friends isn't on the bar: it opens from More and shows as More.
-type Tab = 'today' | 'history' | 'lifts' | 'stats' | 'gym' | 'more' | 'friends';
-const TABS: [Tab, string][] = [['today', 'Today'], ['history', 'History'], ['lifts', 'Lifts'], ['stats', 'Stats'], ['gym', 'Gym'], ['more', 'More']];
+// Gym isn't on the bar: it opens from More (or Today's gym line) over the tab, like Program.
+type Tab = 'today' | 'history' | 'lifts' | 'stats' | 'friends' | 'more';
+const TABS: [Tab, string][] = [['today', 'Today'], ['history', 'History'], ['lifts', 'Lifts'], ['stats', 'Stats'], ['friends', 'Friends'], ['more', 'More']];
 const FRIEND_TABS = TABS.filter(([t]) => t === 'history' || t === 'lifts' || t === 'stats');
 
 export default function App() {
@@ -73,6 +73,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const [photosOpen, setPhotosOpen] = useState(false);
   const [charsOpen, setCharsOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
+  const [gymOpen, setGymOpen] = useState(false);
   const [tour, setTour] = useState(walkthroughPending);
   const [tab, setTab] = useState<Tab>(launchInvite ? 'friends' : 'today');
   const [pending, setPending] = useState(launchInvite);
@@ -104,7 +105,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const [exercise, setExercise] = useState<string | null>(null);
   // A notification tap: its screen, with nothing on top.
   useOpenRoute((r) => {
-    setViewing(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false);
+    setViewing(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false);
     setTab(tabOf(r)); window.scrollTo(0, 0);
     // A friend's push opens their thread: one tap to answer with a ping.
     setThread(r.startsWith('friend.') ? { uid: r.slice('friend.'.length) } : null);
@@ -127,15 +128,15 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
     return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(id); };
   }, []);
   const open = (name: string) => { setExercise(name); window.scrollTo(0, 0); };
-  // The tab you're on. A screen opened over a tab (Program, Photos, Paste, Characters) keeps More lit when More opened it,
+  // The tab you're on. A screen opened over a tab (Program, Photos, Paste, Characters, Gym) keeps More lit when More opened it,
   // since its Back goes there; from Today or Stats it lights nothing. An exercise lights nothing.
-  const overlay = programOpen || photosOpen || pasteOpen || charsOpen;
-  const current = (t: Tab) => !exercise && (overlay ? t === 'more' && tab === 'more' : tab === t || (t === 'more' && tab === 'friends'));
-  const nav = { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, open,
+  const overlay = programOpen || photosOpen || pasteOpen || charsOpen || gymOpen;
+  const current = (t: Tab) => !exercise && (overlay ? t === 'more' && tab === 'more' : tab === t);
+  const nav = { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, gymOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, setGymOpen, open,
     // The walkthrough points at Today, so it opens there.
     pending, waiting, news, newsRev, setNews, bumpNews, setMe, openThread: (f: ThreadWith) => setThread(f), clearPending: () => { launchInvite = null; setPending(null); },
     view: (f: Friend) => { setViewing(f); setTab('stats'); setExercise(null); window.scrollTo(0, 0); },
-    showTour: () => { setViewing(null); setTab('today'); setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); window.scrollTo(0, 0); setTour(true); } };
+    showTour: () => { setViewing(null); setTab('today'); setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); window.scrollTo(0, 0); setTour(true); } };
 
   return (
     <div className="app">
@@ -155,8 +156,8 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
       {tour && <Walkthrough onClose={() => setTour(false)} />}
       <nav className="tabs" aria-label="Sections">
         {(viewing ? FRIEND_TABS : TABS).map(([t, label]) => (
-          <button key={t} data-tour={t} aria-current={current(t) ? 'page' : undefined} onClick={() => { setTab(t); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); }}>
-            {label}{t === 'more' && waiting > 0 && <span className="tab-dot" aria-hidden="true" />}
+          <button key={t} data-tour={t} aria-current={current(t) ? 'page' : undefined} onClick={() => { setTab(t); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); }}>
+            {label}{t === 'friends' && waiting > 0 && <span className="tab-dot" aria-hidden="true" />}
           </button>
         ))}
       </nav>
@@ -165,8 +166,8 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
 }
 
 interface Nav {
-  tab: Tab; exercise: string | null; date: string; logDay: string | null; setLogDay: (d: string | null) => void; programOpen: boolean; photosOpen: boolean; pasteOpen: boolean; charsOpen: boolean;
-  setTab: (t: Tab) => void; setExercise: (x: string | null) => void; setProgramOpen: (b: boolean) => void; setPhotosOpen: (b: boolean) => void; setPasteOpen: (b: boolean) => void; setCharsOpen: (b: boolean) => void;
+  tab: Tab; exercise: string | null; date: string; logDay: string | null; setLogDay: (d: string | null) => void; programOpen: boolean; photosOpen: boolean; pasteOpen: boolean; charsOpen: boolean; gymOpen: boolean;
+  setTab: (t: Tab) => void; setExercise: (x: string | null) => void; setProgramOpen: (b: boolean) => void; setPhotosOpen: (b: boolean) => void; setPasteOpen: (b: boolean) => void; setCharsOpen: (b: boolean) => void; setGymOpen: (b: boolean) => void;
   open: (name: string) => void; showTour: () => void;
   pending: Invite | null; clearPending: () => void; waiting: number; view: (f: Friend) => void;
   news: FriendNews | null; newsRev: number; setNews: (n: FriendNews | null) => void; bumpNews: () => void; setMe: (uid: string | null) => void; openThread: (f: ThreadWith) => void;
@@ -189,7 +190,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
     onSynced: () => { if (Date.now() - newsAt.current > 60_000) nav.bumpNews(); },
     rev: [rawProfile.profile, programs.program, programs.plans, settings.get, settings.tags, gyms.gyms, status.status],
   });
-  const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, open, showTour } = nav;
+  const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, gymOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, setGymOpen, open, showTour } = nav;
   // A screen opened from More goes back to it by name; from anywhere else it's plain Back.
   const back = tab === 'more' ? '‹ More' : '‹ Back';
   const top = (fn: () => void) => () => { fn(); window.scrollTo(0, 0); };
@@ -223,6 +224,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
         {store.loading ? <p className="muted">Loading…</p>
           : pasteOpen ? <PasteScreen store={store} today={date} backLabel={back} onBack={() => setPasteOpen(false)} onDone={() => { setPasteOpen(false); setTab('history'); window.scrollTo(0, 0); }} />
           : charsOpen ? <CharactersScreen backLabel={back} onBack={() => setCharsOpen(false)} />
+          : gymOpen ? <GymsScreen gyms={gyms} logged={exerciseNames(store.entries)} uid={uid} backLabel={back} onBack={top(() => setGymOpen(false))} />
           : photosOpen ? <PhotosScreen photos={photos} body={body} today={date} backLabel={back} onBack={() => setPhotosOpen(false)} />
           : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} uid={uid} backLabel={back} onBack={() => setProgramOpen(false)}
             onOpenPriorities={() => { setProgramOpen(false); setTab('stats'); requestAnimationFrame(() => document.getElementById('priorities')?.scrollIntoView({ block: 'start' })); }} />
@@ -232,16 +234,15 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : tab === 'today' ? <TodayScreen key={logDay ?? day} who={people.people.length > 1 ? person.name : undefined} news={uid ? nav.news?.top ?? null : null}
             onOpenNews={(f) => nav.openThread(f)} store={store} settings={settings} programs={programs} body={body} gyms={gyms} profile={profile.profile} date={logDay ?? day} today={day}
             carried={day !== date && !logDay} onSplit={() => setCarryOff(date)}
-            onDay={(d) => { setLogDay(d === day ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={top(() => setProgramOpen(true))} onOpenGym={top(() => setTab('gym'))} />
+            onDay={(d) => { setLogDay(d === day ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={top(() => setProgramOpen(true))} onOpenGym={top(() => setGymOpen(true))} />
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
           : tab === 'friends' ? <FriendsScreen cloud={cloud} gyms={gyms} pending={nav.pending} entries={store.entries} status={status} today={date} onPendingDone={nav.clearPending} onView={nav.view}
             news={nav.news} newsRev={nav.newsRev} onChanged={nav.bumpNews} onMessage={nav.openThread}
-            onSignIn={top(() => setTab('more'))} onBack={top(() => setTab('more'))} onOpenMine={top(() => setTab('history'))} />
-          : tab === 'gym' ? <GymsScreen gyms={gyms} logged={exerciseNames(store.entries)} uid={uid} />
+            onSignIn={top(() => setTab('more'))} onOpenMine={top(() => setTab('history'))} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />
-          : <DataScreen store={store} profile={rawProfile} body={body} sync={sync} cloud={cloud} people={people} requests={nav.waiting} onOpenPaste={top(() => setPasteOpen(true))} onShowWalkthrough={showTour}
-            onOpenCharacters={top(() => setCharsOpen(true))} onOpenFriends={top(() => setTab('friends'))} onOpenProgram={top(() => setProgramOpen(true))} onOpenPhotos={top(() => setPhotosOpen(true))} />}
+          : <DataScreen store={store} profile={rawProfile} body={body} sync={sync} cloud={cloud} people={people} onOpenPaste={top(() => setPasteOpen(true))} onShowWalkthrough={showTour}
+            onOpenCharacters={top(() => setCharsOpen(true))} onOpenGym={top(() => setGymOpen(true))} onOpenProgram={top(() => setProgramOpen(true))} onOpenPhotos={top(() => setPhotosOpen(true))} />}
       </main>
     </>
   );

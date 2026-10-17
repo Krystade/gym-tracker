@@ -77,8 +77,8 @@ function ShareGym({ gym, uid }: { gym: Gym; uid?: string | null }) {
   );
 }
 
-/** The Gym tab, or a step off Program. As a tab it has no Back: the tab bar is the way out. */
-export function GymsScreen({ gyms, logged, fresh, uid, onBack }: { gyms: GymsStore; logged: string[]; fresh?: boolean; uid?: string | null; onBack?: () => void }) {
+/** Opened from More, Today's gym line, or Program; Back goes where it came from (`backLabel` names More when it's More). */
+export function GymsScreen({ gyms, logged, fresh, uid, backLabel = '‹ Back', onBack }: { gyms: GymsStore; logged: string[]; fresh?: boolean; uid?: string | null; backLabel?: string; onBack?: () => void }) {
   const [pasting, setPasting] = useState(false);
   const [q, setQ] = useState('');
   // "Set up your gym" opens on an unsaved draft: backing out leaves no gym; the first edit saves it.
@@ -90,7 +90,7 @@ export function GymsScreen({ gyms, logged, fresh, uid, onBack }: { gyms: GymsSto
     void gyms.save(gyms.gyms.map((x) => (x.id === g.id ? fn(x) : x)), g.id);
   };
 
-  const back = onBack && <button className="back" onClick={onBack}>‹ Back</button>;
+  const back = onBack && <button className="back" onClick={onBack}>{backLabel}</button>;
   if (!g) return (
     <>
       {back}

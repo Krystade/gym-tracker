@@ -9,18 +9,17 @@ import { FriendsCard } from './FriendsCard';
 import { Orbit } from './Orbit';
 import type { GymsStore } from '../state/useGyms';
 
-/** Friends need an account: signed out, this points to the Account card on More. It opens from More, so Back goes there. */
-export function FriendsScreen({ cloud, gyms, pending, entries, status, today, news, newsRev, onPendingDone, onView, onChanged, onMessage, onSignIn, onBack, onOpenMine }: {
+/** Friends need an account: signed out, this points to the Account card on More. A tab of its own, so no Back. */
+export function FriendsScreen({ cloud, gyms, pending, entries, status, today, news, newsRev, onPendingDone, onView, onChanged, onMessage, onSignIn, onOpenMine }: {
   cloud: CloudStore; gyms: GymsStore; pending: Invite | null; entries: SetEntry[]; status: StatusStore; today: string;
   /** Requests, gyms and unread messages; `newsRev` moves whenever they're read again. */ news: FriendNews | null; newsRev: number;
-  onPendingDone: () => void; onView: (f: Friend) => void; onChanged: () => void; onMessage: (f: ThreadWith) => void; onSignIn: () => void; onBack: () => void; onOpenMine: () => void;
+  onPendingDone: () => void; onView: (f: Friend) => void; onChanged: () => void; onMessage: (f: ThreadWith) => void; onSignIn: () => void; onOpenMine: () => void;
 }) {
   const [friends, setFriends] = useState<Friend[] | null>(null);
   // The invite controls sit in the list below; Orbit's Invite button brings them up.
   const invite = () => document.getElementById('add-friend')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   return (
     <>
-      <button className="back" onClick={onBack}>‹ More</button>
       <h1>Friends</h1>
       {cloud.link === undefined ? <p className="muted">Loading…</p>
         : !cloud.link ? (

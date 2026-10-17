@@ -57,11 +57,11 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   await friends(b.page).getByRole('button', { name: 'Send request' }).click();
   await expect(friends(b.page).getByRole('alert')).toHaveText('No one goes by “nobody_here_123”. Check the spelling.');
 
-  // The request shows as a dot on More, the tab Friends lives under, and as a count on its Friends row.
+  // The request shows as a dot on the Friends tab, and on no other.
   await a.page.reload();
-  await expect(a.page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'More', exact: true }).locator('.tab-dot')).toBeVisible();
-  await goto(a.page, 'More');
-  await expect(a.page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: /^Friends/ })).toContainText('1 request');
+  const bar = a.page.getByRole('navigation', { name: 'Sections' });
+  await expect(bar.getByRole('button', { name: 'Friends', exact: true }).locator('.tab-dot')).toBeVisible();
+  await expect(bar.locator('.tab-dot')).toHaveCount(1);
   await goto(a.page, 'Friends');
   const req = friends(a.page).getByRole('region', { name: 'Requests' });
   await expect(req).toContainText(`@${b.name} wants to be friends`);

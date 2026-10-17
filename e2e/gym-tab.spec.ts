@@ -4,20 +4,30 @@ import { goto } from './nav';
 const bar = (page: Page) => page.getByRole('navigation', { name: 'Sections' });
 const tabButton = (page: Page, name: string) => bar(page).getByRole('button', { name, exact: true });
 
-test('the tab bar is Today · History · Lifts · Stats · Gym · More', async ({ page }) => {
+test('the tab bar is Today · History · Lifts · Stats · Friends · More', async ({ page }) => {
   await page.goto('/');
-  await expect(bar(page).getByRole('button')).toHaveText(['Today', 'History', 'Lifts', 'Stats', 'Gym', 'More']);
+  await expect(bar(page).getByRole('button')).toHaveText(['Today', 'History', 'Lifts', 'Stats', 'Friends', 'More']);
 });
 
-test('the Gym tab has no Back, and Add gym then leaving saves nothing', async ({ page }) => {
+test('Friends is a tab: lit as itself, with no Back to More', async ({ page }) => {
+  await page.goto('/');
+  await tabButton(page, 'Friends').click();
+  await expect(page.getByRole('heading', { name: 'Friends', level: 1 })).toBeVisible();
+  await expect(tabButton(page, 'Friends')).toHaveAttribute('aria-current', 'page');
+  await expect(tabButton(page, 'More')).not.toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('button', { name: /Back|‹/ })).toHaveCount(0);
+});
+
+test('Gym opens from More with ‹ More back, and Add gym then leaving saves nothing', async ({ page }) => {
   await page.goto('/');
   await goto(page, 'Gym');
-  await expect(tabButton(page, 'Gym')).toHaveAttribute('aria-current', 'page');
+  await expect(tabButton(page, 'More')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('heading', { name: 'Gyms', level: 1 })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Back/ })).toHaveCount(0);
+  await page.getByRole('button', { name: '‹ More' }).click();
+  await expect(page.getByRole('heading', { name: 'More', level: 1 })).toBeVisible();
+  await goto(page, 'Gym');
   await page.getByRole('button', { name: 'Add gym', exact: true }).click();
   await expect(page.getByLabel('Gym name')).toHaveValue('My gym');
-  await expect(page.getByRole('button', { name: /Back/ })).toHaveCount(0);
   // Left untouched: no gym was made.
   await goto(page, 'Today');
   await goto(page, 'Gym');
@@ -36,7 +46,7 @@ test('the Gym tab has no Back, and Add gym then leaving saves nothing', async ({
   await page.screenshot({ path: 'screenshots/85-gym-tab.png' });
 });
 
-test('Today names the gym only with two or more, and the line opens the Gym tab', async ({ page }) => {
+test('Today names the gym only with two or more, and the line opens Gyms, with Back to Today', async ({ page }) => {
   await page.goto('/');
   await goto(page, 'Gym');
   await page.getByRole('button', { name: 'Add gym', exact: true }).click();
@@ -51,8 +61,10 @@ test('Today names the gym only with two or more, and the line opens the Gym tab'
   await expect(line).toBeVisible();
   await page.screenshot({ path: 'screenshots/86-today-gym-line.png' });
   await line.click();
-  await expect(tabButton(page, 'Gym')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByLabel('Gym name')).toHaveValue('Downtown');
+  await expect(tabButton(page, 'More')).not.toHaveAttribute('aria-current', 'page');
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  await expect(line).toBeVisible();
 });
 
 test('+ Add gym beside a gym opens a draft: leaving it adds no second gym', async ({ page }) => {
@@ -86,14 +98,14 @@ test('Program shows the gym above the days, outside the folded rebuild', async (
   await page.screenshot({ path: 'screenshots/87-program-gym-line.png' });
 });
 
-test('More lists Characters, Friends, Program and Photos; each opens with ‹ More back', async ({ page }) => {
+test('More lists Characters, Gym, Program and Photos; each opens with ‹ More back', async ({ page }) => {
   await page.goto('/');
   await goto(page, 'More');
   await expect(page.getByRole('heading', { name: 'More', level: 1 })).toBeVisible();
   const rows = page.getByRole('list', { name: 'More screens' }).getByRole('button');
-  await expect(rows).toHaveText([/^Characters/, /^Friends/, /^Program/, /^Photos/]);
+  await expect(rows).toHaveText([/^Characters/, /^Gym/, /^Program/, /^Photos/]);
   await page.screenshot({ path: 'screenshots/88-more.png' });
-  for (const [row, heading] of [['Characters', 'Characters'], ['Friends', 'Friends'], ['Program', 'Program'], ['Photos', 'Progress photos']]) {
+  for (const [row, heading] of [['Characters', 'Characters'], ['Gym', 'Gyms'], ['Program', 'Program'], ['Photos', 'Progress photos']]) {
     await rows.filter({ hasText: new RegExp(`^${row}`) }).click();
     await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
     // Opened from More, each is shown as the More tab.

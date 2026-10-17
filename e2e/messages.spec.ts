@@ -115,13 +115,13 @@ test('a ping from an Orbit row and a message from the friend view land in the ot
   await expect(row.getByRole('button', { name: `Message @${b.name}`, exact: true })).toBeVisible();
   await expect(row.locator('.unread-dot')).toHaveCount(0);
 
-  // B opens the app: Today has the newest in one line, and More its dot.
+  // B opens the app: Today has the newest in one line, and the Friends tab its dot.
   await b.page.reload();
   const news = b.page.getByRole('button', { name: new RegExp(`^@${a.name} See you at 6\\?`) });
   await expect(news).toBeVisible();
   await expect(news).toContainText('tap to reply');
   expect(await noSideScroll(b.page)).toBe(true);
-  await expect(b.page.getByRole('navigation', { name: 'Sections' }).locator('.tab-dot')).toHaveCount(1);
+  await expect(b.page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Friends', exact: true }).locator('.tab-dot')).toHaveCount(1);
   await b.page.screenshot({ path: `${SHOTS}/today-news.png` });
   await info.attach('today-news', { path: `${SHOTS}/today-news.png`, contentType: 'image/png' });
   // On Friends, A's row has the dot and says how many.
