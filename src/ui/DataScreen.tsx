@@ -20,7 +20,11 @@ import { fmtDay, plural } from '../domain/format';
 
 const KIND: Partial<Record<CsvKind, string>> = { body: 'Body data', 'mfp-weight': 'MyFitnessPal weight', 'mfp-nutrition': 'MyFitnessPal nutrition' };
 
-export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPaste, onShowWalkthrough, onOpenCharacters }: { store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; cloud: CloudStore; people: PeopleStore; onOpenPaste: () => void; onShowWalkthrough: () => void; onOpenCharacters: () => void }) {
+/** The More tab: the screens that aren't tabs on top, then backup, account, sync and help. */
+export function DataScreen({ store, profile, body, sync, cloud, people, requests = 0, onOpenPaste, onShowWalkthrough, onOpenCharacters, onOpenFriends, onOpenProgram, onOpenPhotos }: {
+  store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; cloud: CloudStore; people: PeopleStore; requests?: number;
+  onOpenPaste: () => void; onShowWalkthrough: () => void; onOpenCharacters: () => void; onOpenFriends: () => void; onOpenProgram: () => void; onOpenPhotos: () => void;
+}) {
   const db = useDb();
   const [bodyMsgs, setBodyMsgs] = useState<{ ok: boolean; text: string }[]>([]);
   const [result, setResult] = useState<{ added: number; updated: number; same: number; kept: boolean; errors: CsvError[] } | null>(null);
@@ -95,7 +99,13 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
 
   return (
     <>
-      <h1>Data</h1>
+      <h1>More</h1>
+      <ul className="card more-list" aria-label="More screens">
+        {([['Characters', onOpenCharacters, null], ['Friends', onOpenFriends, requests ? plural(requests, 'request') : null], ['Program', onOpenProgram, null], ['Photos', onOpenPhotos, null]] as const).map(([name, go, note]) => (
+          <li key={name}><button className="more-row" onClick={go}><span>{name}</span>{note && <span className="more-note">{note}</span>}<span className="muted" aria-hidden="true">›</span></button></li>
+        ))}
+      </ul>
+      <h2>Backup</h2>
       <section className="card">
         <p>{plural(store.entries.length, 'set')} · {plural(sessions.length, 'session')} · {plural(exerciseNames(store.entries).length, 'lift')}</p>
         {sessions.length > 0 && <p className="muted">{fmtDay(sessions.at(-1)!.date, localDate(new Date()))} → {fmtDay(sessions[0].date, localDate(new Date()))}</p>}
@@ -149,7 +159,8 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
       <AccountCard cloud={cloud} people={people.people} />
       <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} />
       <PeopleCard people={people} />
-      <section className="card"><button className="wide" onClick={onShowWalkthrough}>Show walkthrough</button><button className="wide" onClick={onOpenCharacters}>Characters (preview)</button><button className="wide" onClick={() => location.assign(`${import.meta.env.BASE_URL}tools/accessory-placer.html`)}>Accessory placer</button></section>
+      <h2>Help</h2>
+      <section className="card"><button className="wide" onClick={onShowWalkthrough}>Show walkthrough</button><button className="wide" onClick={() => location.assign(`${import.meta.env.BASE_URL}tools/accessory-placer.html`)}>Accessory placer</button></section>
       <p className="muted small">Build {__BUILD_ID__} · {__BUILT_AT__.slice(0, 16).replace('T', ' ')} UTC</p>
     </>
   );

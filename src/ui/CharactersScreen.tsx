@@ -9,7 +9,7 @@ type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 const RARITY: Record<Rarity, string> = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', epic: 'Epic', legendary: 'Legendary' };
 const BASE = `${import.meta.env.BASE_URL}characters/`;
 
-export function CharactersScreen({ onBack }: { onBack: () => void }) {
+export function CharactersScreen({ backLabel = '‹ Back', onBack }: { backLabel?: string; onBack: () => void }) {
   const [data, setData] = useState<{ sources: Source[]; chars: Char[] } | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
@@ -19,7 +19,7 @@ export function CharactersScreen({ onBack }: { onBack: () => void }) {
   }, []);
   return (
     <>
-      <button className="back" onClick={onBack}>‹ Back</button>
+      <button className="back" onClick={onBack}>{backLabel}</button>
       <h1>Characters</h1>
       <p className="muted small">A preview of every character so far, by the pack it came from.</p>
       {error ? <p role="alert" className="card">Couldn’t load the characters.</p>

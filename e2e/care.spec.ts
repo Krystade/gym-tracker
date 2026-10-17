@@ -13,7 +13,7 @@ test('pain region and severity, care card, back block, swap suggestions', async 
   await goto(page, 'Today');
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
-  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('main').getByRole('button', { name: 'More' }).click();
   await page.getByRole('button', { name: 'Pain', exact: true }).click();
   await page.getByRole('group', { name: 'Pain region' }).getByRole('button', { name: 'Elbow' }).click();
   await page.getByRole('group', { name: 'Pain severity' }).getByRole('button', { name: 'Moderate' }).click();

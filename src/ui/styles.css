@@ -128,6 +128,12 @@ details.card { padding: 0 12px; }
 details.card[open] { padding-bottom: 12px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .link { background: none; border: 0; padding: 0; color: var(--text); font-size: var(--fs-lg); font-weight: 700; justify-content: flex-start; text-align: left; }
+/* More's list of screens: one row each, divided by hairlines, inside the card's own padding. */
+.more-list { list-style: none; }
+.more-list li + li { border-top: 1px solid var(--line); }
+.more-row { width: 100%; min-height: 52px; padding: 0; border: 0; border-radius: 0; background: none; justify-content: flex-start; gap: 8px; }
+.more-row > span:first-child { flex: 1; text-align: left; }
+.more-note { color: var(--accent); font-size: var(--fs-sm); }
 
 input, select, textarea {
   font: inherit; font-size: var(--fs-md); min-height: 44px; width: 100%; padding: 0 12px;
@@ -310,6 +316,13 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 /* Program */
 .today-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
 .today-head h1 { margin: 4px 0; }
+/* "at Garage ›" under the day: quiet, a full-width 44px tap target pulled up into the head's gap. */
+.gym-line { width: 100%; justify-content: flex-start; margin: -12px 0 4px; padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
+.gym-line > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gym-line b { color: var(--text); font-weight: 600; }
+/* Program's gym, one line above the days: the name gives way before the button does. */
+.gym-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gym-head .mini { flex: none; }
 .plan h2:last-child { margin-bottom: 0; } /* folded: nothing under the title */
 .plan-toggle { width: 100%; padding: 0; border: 0; background: none; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left; font-size: inherit; }
 .plan-slots, .prog-slots { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }

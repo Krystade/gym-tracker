@@ -77,7 +77,8 @@ function ShareGym({ gym, uid }: { gym: Gym; uid?: string | null }) {
   );
 }
 
-export function GymsScreen({ gyms, logged, fresh, uid, onBack }: { gyms: GymsStore; logged: string[]; fresh?: boolean; uid?: string | null; onBack: () => void }) {
+/** The Gym tab, or a step off Program. As a tab it has no Back: the tab bar is the way out. */
+export function GymsScreen({ gyms, logged, fresh, uid, onBack }: { gyms: GymsStore; logged: string[]; fresh?: boolean; uid?: string | null; onBack?: () => void }) {
   const [pasting, setPasting] = useState(false);
   const [q, setQ] = useState('');
   // "Set up your gym" opens on an unsaved draft: backing out leaves no gym; the first edit saves it.
@@ -90,12 +91,14 @@ export function GymsScreen({ gyms, logged, fresh, uid, onBack }: { gyms: GymsSto
   };
   const add = () => { const n = newGym(gyms.gyms.length); void gyms.save([...gyms.gyms, n], n.id); };
 
+  const back = onBack && <button className="back" onClick={onBack}>‹ Back</button>;
   if (!g) return (
     <>
-      <button className="back" onClick={onBack}>‹ Back</button>
+      {back}
       <h1>Gyms</h1>
       <p className="muted">List what your gym has, and the program and swap suggestions only use lifts you can do there.</p>
-      <button className="primary wide" onClick={add}>Add gym</button>
+      {/* A draft, like "Set up your gym": leaving before naming it or ticking gear leaves no gym behind. */}
+      <button className="primary wide" onClick={() => setDraft(newGym(gyms.gyms.length))}>Add gym</button>
       {pasting ? <AddFromText gyms={gyms} onDone={() => setPasting(false)} /> : <button className="wide" onClick={() => setPasting(true)}>Add from text</button>}
     </>
   );
@@ -107,7 +110,7 @@ export function GymsScreen({ gyms, logged, fresh, uid, onBack }: { gyms: GymsSto
 
   return (
     <>
-      <button className="back" onClick={onBack}>‹ Back</button>
+      {back}
       <h1>Gyms</h1>
       {!draft && <div className="chips gym-chips" role="group" aria-label="Active gym">
         {gyms.gyms.map((x) => <button key={x.id} className={`chip${x.id === g.id ? ' primary' : ''}`} aria-pressed={x.id === g.id} onClick={() => void gyms.save(gyms.gyms, x.id)}><span className="pname">{x.name}</span></button>)}

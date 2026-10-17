@@ -23,7 +23,7 @@ const chip = (s: NoteSet): string => s.cardio ? fmtCardio(s.cardio) :
   s.flags.includes('hold') ? `${s.weight ? `${fmtWeight(s.weight)} lb · ` : ''}${s.reps ?? '—'} s` : `${s.weight === 0 ? 'BW' : fmtWeight(s.weight)}×${s.reps ?? '—'}`;
 const BADGE: Partial<Record<string, string>> = { warmup: 'warm-up', pain: 'pain', unsure: '?', partial: 'partial', double_pulley: '2×pulley' };
 
-export function PasteScreen({ store, today, onBack, onDone }: { store: SetsStore; today: string; onBack: () => void; onDone: () => void }) {
+export function PasteScreen({ store, today, backLabel = '‹ Back', onBack, onDone }: { store: SetsStore; today: string; backLabel?: string; onBack: () => void; onDone: () => void }) {
   const db = useDb();
   const [text, setText] = useState('');
   const [raws, setRaws] = useState<string[] | null>(null);
@@ -63,7 +63,7 @@ export function PasteScreen({ store, today, onBack, onDone }: { store: SetsStore
 
   if (done) return (
     <>
-      <button className="back" onClick={onBack}>‹ Back</button>
+      <button className="back" onClick={onBack}>{backLabel}</button>
       <h1>Paste from notes</h1>
       <p role="status" className="card">{done}</p>
       <button className="primary wide" onClick={onDone}>View history</button>
@@ -73,7 +73,7 @@ export function PasteScreen({ store, today, onBack, onDone }: { store: SetsStore
 
   if (!raws) return (
     <>
-      <button className="back" onClick={onBack}>‹ Back</button>
+      <button className="back" onClick={onBack}>{backLabel}</button>
       <h1>Paste from notes</h1>
       <label className="paste-label">Workout notes
         <textarea className="paste" rows={12} value={text} onChange={(e) => setText(e.target.value)} placeholder={EXAMPLE} />

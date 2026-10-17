@@ -26,11 +26,11 @@ import { availableSet } from '../domain/equipment';
 import { CATALOG } from '../domain/catalog';
 import { addDays } from '../domain/analytics';
 
-export function TodayScreen({ who, store, settings, programs, body, gyms, profile, date, today, carried, onSplit, onDay, onOpen, onOpenProgram }: {
+export function TodayScreen({ who, store, settings, programs, body, gyms, profile, date, today, carried, onSplit, onDay, onOpen, onOpenProgram, onOpenGym }: {
   /** Whose sets these are, named only when several people share the phone. */
   who?: string;
   store: SetsStore; settings: SettingsStore; programs: ProgramStore; body: BodyStore; gyms: GymsStore; profile: Profile; date: string; today: string;
-  carried?: boolean; onSplit?: () => void; onDay: (d: string) => void; onOpen: (name: string) => void; onOpenProgram: () => void;
+  carried?: boolean; onSplit?: () => void; onDay: (d: string) => void; onOpen: (name: string) => void; onOpenProgram: () => void; onOpenGym?: () => void;
 }) {
   const [picking, setPicking] = useState(false);
   const [swapFor, setSwapFor] = useState<string | null>(null);
@@ -108,6 +108,8 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
         </div>
         <button data-tour="program" onClick={onOpenProgram}>Program</button>
       </div>
+      {/* Which gym only matters once there's a choice of them. */}
+      {gyms.gyms.length > 1 && gyms.active && <button className="gym-line" onClick={onOpenGym}><span>at <b className="pname">{gyms.active.name}</b></span><span aria-hidden="true">›</span></button>}
       {date < today && <p className="card note-card past-day"><span>Logging to a past day</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={() => onDay(today)}>Back to today</button></p>}
       {carried && <p className="card note-card past-day"><span>Still logging {fmtDay(today, today)}’s workout</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={onSplit}>Today</button></p>}
       <WeighIn body={body} date={date} />

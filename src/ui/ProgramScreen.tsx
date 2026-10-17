@@ -19,7 +19,7 @@ import { warmupCount } from '../domain/suggest';
 import { localDate } from '../domain/ids';
 import type { ProgramDay } from '../domain/program';
 
-export function ProgramScreen({ programs, profile, entries, gyms, uid, onBack, onOpenPriorities }: { programs: ProgramStore; profile: ProfileStore; entries: SetEntry[]; gyms: GymsStore; uid?: string | null; onBack: () => void; onOpenPriorities: () => void }) {
+export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel = '‹ Back', onBack, onOpenPriorities }: { programs: ProgramStore; profile: ProfileStore; entries: SetEntry[]; gyms: GymsStore; uid?: string | null; backLabel?: string; onBack: () => void; onOpenPriorities: () => void }) {
   const p = programs.program;
   const [days, setDays] = useState(String(p?.days.length ?? profile.profile.weeklyGoal));
   const [per, setPer] = useState(String(p?.perSession ?? 14));
@@ -74,16 +74,24 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, onBack, o
 
   // With a program, the builder folds into "Rebuild program" below the days, so its cards lose their own frame.
   const frame = p ? 'sub' : 'card';
+  // Above the days, not in the fold: which gym the plan is for is worth seeing without rebuilding. Once there are days, it's one line.
+  const gymLine = p ? (
+    <div className="today-head gym-head">
+      <span>{gym ? <>Gym: <b className="pname">{gym.name}</b></> : <span className="muted">No gym: any lift can be picked</span>}</span>
+      <button className="mini" onClick={() => setGymsOpen(true)}>{gym ? 'Change' : 'Set up your gym'}</button>
+    </div>
+  ) : (
+    <section className="card">
+      {gym ? (
+        <div className="today-head"><span>Gym: <b>{gym.name}</b></span><button className="mini" onClick={() => setGymsOpen(true)}>Change</button></div>
+      ) : (
+        <button className="wide" onClick={() => setGymsOpen(true)}>Set up your gym</button>
+      )}
+      <p className="muted small">{gym ? 'Only lifts this gym can do are used.' : 'Without a gym, any lift can be picked.'}</p>
+    </section>
+  );
   const builder = (
     <>
-      <section className={frame}>
-        {gym ? (
-          <div className="today-head"><span>Gym: <b>{gym.name}</b></span><button className="mini" onClick={() => setGymsOpen(true)}>Change</button></div>
-        ) : (
-          <button className="wide" onClick={() => setGymsOpen(true)}>Set up your gym</button>
-        )}
-        <p className="muted small">{gym ? 'Only lifts this gym can do are used.' : 'Without a gym, any lift can be picked.'}</p>
-      </section>
       <section className={frame}>
         <p className="muted small">Built from your priorities: each set goes to the priority muscle furthest below its weekly target, using the lifts you actually do. Full-body days: every day trains your priority muscles, with a different lift for a muscle where you have one.</p>
         <div className="settings-grid two">
@@ -118,14 +126,15 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, onBack, o
 
   return (
     <>
-      <button className="back" onClick={onBack}>‹ Back</button>
+      <button className="back" onClick={onBack}>{backLabel}</button>
       <h1>Program</h1>
       {unset && (
         <section className="card note-card">
-          <p><b>Priorities aren’t set.</b> Every muscle is priority 3, so the plan spreads sets evenly over all of them. Set priorities on Stats, or import your profile file on Data, then build.</p>
+          <p><b>Priorities aren’t set.</b> Every muscle is priority 3, so the plan spreads sets evenly over all of them. Set priorities on Stats, or import your profile file under More, then build.</p>
           <button className="mini" onClick={onOpenPriorities}>Set priorities</button>
         </section>
       )}
+      {gymLine}
       {!p && builder}
       {over.length > 0 && <p className="warn small" role="status">{over.map((x) => `${x.name} ≈ ${dayMinutes(x)} min`).join(', ')}: over your {budget}. Train fewer days a week or allow more minutes, then rebuild.</p>}
       {bare ? <p className="warn small">No gear ticked at {gym.name}: only bodyweight lifts are used.</p>

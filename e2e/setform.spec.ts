@@ -14,7 +14,7 @@ const openBench = async (page: Page) => {
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
   await page.getByRole('button', { name: /^Bench Press( · logged)?$/ }).click();
 };
-const more = (page: Page) => page.getByRole('button', { name: 'More' });
+const more = (page: Page) => page.getByRole('main').getByRole('button', { name: 'More' });
 
 // 4 sets: with 3 the button still fits before the change on a fresh day (no cards above the exercise)
 test('Add set sits in view after a few sets', async ({ page }) => {

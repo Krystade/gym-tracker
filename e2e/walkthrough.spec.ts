@@ -19,6 +19,9 @@ test('a first visit opens the walkthrough; Back and Next step through it, and Do
   for (const t of ['Log a set', 'The plan', 'History, Lifts and Stats', 'Your data']) {
     await sheet.getByRole('button', { name: 'Next' }).click();
     await expect(sheet.getByRole('heading')).toHaveText(t);
+    // The plan points at Gym, where the gear is listed; the last card at More, where backups are.
+    if (t === 'The plan') await expect(sheet).toContainText('on Gym');
+    if (t === 'Your data') await expect(sheet).toContainText('under More');
   }
   await expect(sheet).toContainText('5 of 5');
   await sheet.getByRole('button', { name: 'Done' }).click();
@@ -28,7 +31,7 @@ test('a first visit opens the walkthrough; Back and Next step through it, and Do
   await expect(sheet).toHaveCount(0);
 });
 
-test('Skip closes it for good, and the Data tab opens it again from the start', async ({ page }) => {
+test('Skip closes it for good, and More opens it again from the start', async ({ page }) => {
   await page.goto('/');
   const sheet = page.getByRole('dialog', { name: 'Walkthrough' });
   await sheet.getByRole('button', { name: 'Next' }).click();
@@ -72,7 +75,7 @@ test.describe('the spotlight', () => {
       async () => [(await page.getByRole('button', { name: 'Add exercise' }).boundingBox())!],
       async () => [(await page.getByRole('button', { name: 'Program', exact: true }).boundingBox())!],
       () => tabs(page, 'History', 'Lifts', 'Stats'),
-      () => tabs(page, 'Data'),
+      () => tabs(page, 'More'),
     ];
     for (const [n, target] of targets.entries()) {
       if (n) await sheet.getByRole('button', { name: 'Next' }).click();
@@ -87,13 +90,12 @@ test.describe('the spotlight', () => {
       expect(t.y + t.height <= s.y || t.y >= s.y + s.height, `card ${n + 1}: the sheet covers its target`).toBe(true);
       await page.screenshot({ path: `screenshots/72-walkthrough-${n + 1}.png` });
     }
-    // The Lifts and Stats tabs: History through Stats in one ring, Data left out of it.
+    // The Lifts and Stats tabs: History through Stats in one ring, Gym and More left out of it.
     await sheet.getByRole('button', { name: 'Back' }).click();
-    const [data] = await tabs(page, 'Data');
-    expect(around((await ring.boundingBox())!, data)).toBe(false);
+    for (const [t] of [await tabs(page, 'Gym'), await tabs(page, 'More')]) expect(around((await ring.boundingBox())!, t)).toBe(false);
   });
 
-  test('reopened from Data, it goes to Today and brings a target below the sheet up into view', async ({ page }) => {
+  test('reopened from More, it goes to Today and brings a target below the sheet up into view', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('dialog', { name: 'Walkthrough' }).getByRole('button', { name: 'Skip' }).click();
     for (const lift of ['Bench Press', 'Barbell Squat']) { // two open cards push Add exercise off the bottom

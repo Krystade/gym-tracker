@@ -4,12 +4,13 @@ import type { Invite } from '../domain/invite';
 import { FriendsCard } from './FriendsCard';
 import type { GymsStore } from '../state/useGyms';
 
-/** Friends need an account: signed out, this points to the Account card on Data. */
-export function FriendsScreen({ cloud, gyms, pending, onPendingDone, onView, onRequests, onSignIn }: {
-  cloud: CloudStore; gyms: GymsStore; pending: Invite | null; onPendingDone: () => void; onView: (f: Friend) => void; onRequests: (n: number) => void; onSignIn: () => void;
+/** Friends need an account: signed out, this points to the Account card on More. It opens from More, so Back goes there. */
+export function FriendsScreen({ cloud, gyms, pending, onPendingDone, onView, onRequests, onSignIn, onBack }: {
+  cloud: CloudStore; gyms: GymsStore; pending: Invite | null; onPendingDone: () => void; onView: (f: Friend) => void; onRequests: (n: number) => void; onSignIn: () => void; onBack: () => void;
 }) {
   return (
     <>
+      <button className="back" onClick={onBack}>‹ More</button>
       <h1>Friends</h1>
       {cloud.link === undefined ? <p className="muted">Loading…</p>
         : !cloud.link ? (

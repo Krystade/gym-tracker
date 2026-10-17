@@ -42,7 +42,7 @@ function encode(img: HTMLImageElement, max: number): Promise<{ blob: Blob; width
   return new Promise((ok, fail) => cv.toBlob((b) => (b ? ok({ blob: b, width, height }) : fail(new Error('Could not encode the photo'))), 'image/jpeg', 0.85));
 }
 
-export function PhotosScreen({ photos, body, today, onBack }: { photos: PhotosStore; body: BodyStore; today: string; onBack: () => void }) {
+export function PhotosScreen({ photos, body, today, backLabel = '‹ Back', onBack }: { photos: PhotosStore; body: BodyStore; today: string; backLabel?: string; onBack: () => void }) {
   const db = useDb();
   const [pose, setPose] = useState<Pose>('front');
   const [date, setDate] = useState(today);
@@ -100,7 +100,7 @@ export function PhotosScreen({ photos, body, today, onBack }: { photos: PhotosSt
 
   return (
     <>
-      <button className="back" onClick={onBack}>‹ Back</button>
+      <button className="back" onClick={onBack}>{backLabel}</button>
       <h1>Progress photos</h1>
       <section className="card">
         <p className="muted small">Kept only on this phone — never uploaded, exported or synced. Same spot, light and time of day each time.</p>

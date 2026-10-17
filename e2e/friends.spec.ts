@@ -57,7 +57,11 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   await friends(b.page).getByRole('button', { name: 'Send request' }).click();
   await expect(friends(b.page).getByRole('alert')).toHaveText('No one goes by “nobody_here_123”. Check the spelling.');
 
-  await goto(a.page, 'Today');
+  // The request shows as a dot on More, the tab Friends lives under, and as a count on its Friends row.
+  await a.page.reload();
+  await expect(a.page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'More', exact: true }).locator('.tab-dot')).toBeVisible();
+  await goto(a.page, 'More');
+  await expect(a.page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: /^Friends/ })).toContainText('1 request');
   await goto(a.page, 'Friends');
   const req = friends(a.page).getByRole('region', { name: 'Requests' });
   await expect(req).toContainText(`@${b.name} wants to be friends`);
@@ -150,10 +154,7 @@ async function befriend(a: { page: Page }, b: { page: Page; name: string }) {
   await friends(b.page).getByRole('region', { name: 'Invite' }).getByRole('button', { name: 'Accept' }).click();
   await expect(note(b.page)).toHaveText(/are now friends/);
 }
-const openGyms = async (page: Page) => {
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
-  await page.getByRole('button', { name: 'Change' }).click();
-};
+const openGyms = (page: Page) => goto(page, 'Gym');
 
 test('a friend’s gym can be added to yours from their Stats', async ({ browser }) => {
   const a = await person(browser, { gym: 'Garage' });

@@ -223,7 +223,7 @@ test('a time typed under “Did this earlier?” survives a profile switch', asy
   await bar(page).getByRole('button', { name: /Me/ }).click();
   await goto(page, 'Today');
   await addCurl(page);
-  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('main').getByRole('button', { name: 'More' }).click();
   await page.getByRole('button', { name: 'Did this earlier?' }).click();
   await page.getByRole('textbox', { name: 'When' }).fill('07:15');
   await bar(page).getByRole('button', { name: /Sam/ }).click();
@@ -243,7 +243,7 @@ test('a future time restored after a profile switch is still blocked', async ({ 
   await addCurl(page);
   await page.getByRole('textbox', { name: 'Weight' }).fill('20');
   await page.getByRole('textbox', { name: 'Reps' }).fill('10');
-  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('main').getByRole('button', { name: 'More' }).click();
   await page.getByRole('button', { name: 'Did this earlier?' }).click();
   await page.getByRole('textbox', { name: 'When' }).fill('19:00');
   await expect(page.getByRole('button', { name: 'Add set' })).toBeDisabled();
