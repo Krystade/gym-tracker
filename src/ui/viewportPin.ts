@@ -16,8 +16,12 @@ export function pinChromeToVisualViewport(root: HTMLElement = document.documentE
   const vv = window.visualViewport;
   if (!vv) return () => {};
   let last = '';
+  // A select keeps focus after its picker closes, with no event once the screen settles: after a pick it no longer
+  // counts as holding a picker up, until it is focused again.
+  let picked: Element | null = null;
   const update = () => {
-    const field = document.activeElement?.matches(FIELD) ?? false;
+    const active = document.activeElement;
+    const field = (active?.matches(FIELD) ?? false) && active !== picked;
     // A keyboard or picker takes a fifth of the screen or more; the stuck gap left behind is far smaller, or has no focus.
     const inputUp = field && vv.height < innerHeight * 0.8;
     const pinch = Math.abs(vv.scale - 1) > 0.01; // zoomed in by hand: the chrome is meant to stay put then
@@ -35,15 +39,19 @@ export function pinChromeToVisualViewport(root: HTMLElement = document.documentE
   vv.addEventListener('resize', update);
   vv.addEventListener('scroll', update);
   window.addEventListener('scroll', update, { passive: true });
-  document.addEventListener('focusin', later);
+  const onFocus = () => { picked = null; later(); };
+  const onChange = (e: Event) => { if (e.target instanceof HTMLSelectElement) { picked = e.target; later(); } };
+  document.addEventListener('focusin', onFocus);
   document.addEventListener('focusout', later);
+  document.addEventListener('change', onChange, true);
   update();
   return () => {
     vv.removeEventListener('resize', update);
     vv.removeEventListener('scroll', update);
     window.removeEventListener('scroll', update);
-    document.removeEventListener('focusin', later);
+    document.removeEventListener('focusin', onFocus);
     document.removeEventListener('focusout', later);
+    document.removeEventListener('change', onChange, true);
     timers.forEach(clearTimeout);
   };
 }

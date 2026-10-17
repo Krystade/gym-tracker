@@ -150,3 +150,30 @@ test('a sticky header stays at the top of the screen when the screen is stuck be
   await vv(page, { offsetTop: 0, height: null });
   await expect.poll(() => box(page, '.picker-head').then((b) => b.top)).toBe(0);
 });
+
+test('a select still focused after its picker closes lets the chrome follow a stuck screen', async ({ page }) => {
+  await notched(page);
+  await fakeViewport(page);
+  await page.goto('/');
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Stats', exact: true }).click();
+  const biceps = page.getByRole('combobox', { name: 'Biceps' });
+  const H = 812;
+  // The picker up: the screen shrinks and the bar stays put.
+  await biceps.focus();
+  await vv(page, { height: 420 });
+  await page.waitForTimeout(150);
+  expect((await box(page, 'nav.tabs')).bottom).toBe(H);
+  // A pick closes it and leaves the screen stuck 200px down and short, with the select still focused and no event.
+  await vv(page, { offsetTop: 200, height: 600 }, false);
+  await biceps.selectOption('1');
+  await expect(biceps).toBeFocused();
+  await expect.poll(() => box(page, 'nav.tabs').then((b) => b.bottom)).toBe(200 + 600);
+  // Focused again, it can hold a picker up once more.
+  await vv(page, { offsetTop: 0, height: null });
+  await expect.poll(() => box(page, 'nav.tabs').then((b) => b.bottom)).toBe(H);
+  await biceps.blur();
+  await biceps.focus();
+  await vv(page, { height: 420 });
+  await page.waitForTimeout(150);
+  expect((await box(page, 'nav.tabs')).bottom).toBe(H);
+});
