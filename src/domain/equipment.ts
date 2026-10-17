@@ -53,7 +53,7 @@ export const NEEDS: Record<string, Needs> = {
   'Supported Leg Raise': one('captain’s chair', 'dip station'), 'Torso Rotation Machine': one('torso rotation machine'), 'Plank': NOTHING, 'Side Plank': NOTHING,
   'Bird Dog': NOTHING, 'McGill Curl-Up': NOTHING, 'Dead Bug': NOTHING, 'Back Extension': one('back extension bench'), 'Pallof Press': one('cable stack'),
   'Leg Press': one('leg press'), 'Leg Extension': one('leg extension'), 'Seated Leg Curl': one('seated leg curl'), 'Lying Leg Curl': one('lying leg curl'),
-  'Romanian Deadlift': one('barbell'), 'DB Romanian Deadlift': one('dumbbells'), 'Barbell Squat': [['barbell', 'squat rack']], 'Smith Squat': one('smith machine'),
+  'Deadlift': one('barbell'), 'Romanian Deadlift': one('barbell'), 'DB Romanian Deadlift': one('dumbbells'), 'Barbell Squat': [['barbell', 'squat rack']], 'Smith Squat': one('smith machine'),
   'Bulgarian Split Squat': one('flat bench'), 'Hip Thrust': [['barbell', 'hip thrust bench'], ['barbell', 'flat bench'], ['smith machine', 'flat bench']],
   'Glute Press': one('glute press'), 'Hip Adduction Machine': one('hip adduction machine'), 'Hip Abduction Machine': one('hip abduction machine'),
   'Standing Calf Raise': one('standing calf machine', 'smith machine', 'dumbbells'), 'Seated Calf Raise': one('seated calf machine'),

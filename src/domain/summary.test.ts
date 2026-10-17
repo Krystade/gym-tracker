@@ -24,6 +24,12 @@ describe('prSetIds', () => {
     expect(prSetIds([old, today], TODAY).has(today.id)).toBe(true);
   });
 
+  it('counts a name spelled with extra spaces as the same lift', () => {
+    const old = s('2026-09-28', 'Bench Press', 135, 8);
+    const today = s(TODAY, 'bench  press', 140, 8); // beats the old set, so not this spelling's first set ever
+    expect([...prSetIds([old, today], TODAY)]).toEqual([today.id]);
+  });
+
   it('ignores warm-ups, holds and other lifts', () => {
     const base = s('2026-09-28', 'Bench Press', 135, 8);
     const warm = s(TODAY, 'Bench Press', 200, 5, ['warmup']);

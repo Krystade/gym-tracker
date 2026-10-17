@@ -25,6 +25,10 @@ describe('catalog coverage', () => {
   it('maps every catalog exercise except cardio, which counts minutes', () => {
     expect(CATALOG.filter((n) => muscleVector(n) == null && !isCardio(n))).toEqual([]);
   });
+  it('has a plain barbell Deadlift, a hinge', () => {
+    expect(CATALOG).toContain('Deadlift');
+    expect(muscleVector('Deadlift')).toEqual(muscleVector('Romanian Deadlift'));
+  });
 });
 
 describe('keyword fallback word boundaries', () => {

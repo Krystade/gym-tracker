@@ -19,7 +19,7 @@ export const CATALOG: string[] = [
   'Cable Crunch', 'Ab Crunch Machine', 'Decline Sit-up', 'Hanging Leg Raise', 'Supported Leg Raise', 'Torso Rotation Machine',
   'Plank', 'Side Plank', 'Bird Dog', 'McGill Curl-Up', 'Dead Bug', 'Back Extension', 'Pallof Press',
   // Legs
-  'Leg Press', 'Leg Extension', 'Seated Leg Curl', 'Lying Leg Curl', 'Romanian Deadlift', 'DB Romanian Deadlift', 'Barbell Squat',
+  'Leg Press', 'Leg Extension', 'Seated Leg Curl', 'Lying Leg Curl', 'Deadlift', 'Romanian Deadlift', 'DB Romanian Deadlift', 'Barbell Squat',
   'Smith Squat', 'Bulgarian Split Squat', 'Hip Thrust', 'Glute Press', 'Hip Adduction Machine', 'Hip Abduction Machine',
   'Standing Calf Raise', 'Seated Calf Raise',
   // Landmine (a bar anchored at one end)

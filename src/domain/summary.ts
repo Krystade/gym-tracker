@@ -1,9 +1,10 @@
 import { muscleVector, type Muscle } from './muscles';
 import { isWorking } from './progression';
 import { byOrderDone, e1rm, lastSession, sameExercise } from './stats';
+import { normalizeName } from './ids';
 import type { SetEntry } from './types';
 
-const key = (s: string) => s.trim().toLowerCase();
+const key = (s: string) => normalizeName(s).toLowerCase();
 const chrono = (a: SetEntry, b: SetEntry) => (a.date < b.date ? -1 : a.date > b.date ? 1 : byOrderDone(a, b));
 
 /** Every set that beat all earlier sets of its lift (by e1RM) when it was done. A lift's first set ever isn't one. One pass per lift. */

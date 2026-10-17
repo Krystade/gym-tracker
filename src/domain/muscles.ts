@@ -40,7 +40,7 @@ const TABLE: Record<string, Vector> = {
   'torso rotation machine': A, plank: A, 'side plank': { Abs: 1, Erectors: 0.5 }, 'bird dog': { Erectors: 1, Glutes: 0.5, Abs: 0.5 },
   'mcgill curl-up': A, 'dead bug': A, 'pallof press': A, 'back extension': { Erectors: 1, Glutes: 0.5, Hamstrings: 0.5 },
   'leg press': SQUAT, 'barbell squat': SQUAT, 'smith squat': SQUAT, 'bulgarian split squat': SQUAT, 'leg extension': { Quads: 1 },
-  'seated leg curl': LEGCURL, 'lying leg curl': LEGCURL, 'romanian deadlift': HINGE, 'db romanian deadlift': HINGE,
+  'seated leg curl': LEGCURL, 'lying leg curl': LEGCURL, deadlift: HINGE, 'romanian deadlift': HINGE, 'db romanian deadlift': HINGE,
   'hip thrust': { Glutes: 1, Hamstrings: 0.5 }, 'glute press': { Glutes: 1, Hamstrings: 0.5 }, 'cable kickback': { Glutes: 1, Hamstrings: 0.5 },
   'hip adduction machine': { Adductors: 1 }, 'hip abduction machine': { Abductors: 1 },
   'standing calf raise': { Calves: 1 }, 'seated calf raise': { Calves: 1 }, 'db calf raise': { Calves: 1 },
