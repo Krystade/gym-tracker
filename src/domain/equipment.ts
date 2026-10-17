@@ -8,12 +8,12 @@ export const EQUIPMENT = [
   'smith machine', 'leg press', 'leg extension', 'seated leg curl', 'lying leg curl', 'chest press machine', 'pec deck',
   'shoulder press machine', 'lateral raise machine', 'row machine', 'seated calf machine', 'standing calf machine', 'glute press',
   'hip abduction machine', 'hip adduction machine', 'ab crunch machine', 'biceps curl machine', 'triceps machine', 'torso rotation machine',
-  'treadmill', 'stair climber', 'exercise bike', 'elliptical',
+  'treadmill', 'stair climber', 'exercise bike', 'elliptical', 'landmine',
 ] as const;
 export type Equipment = (typeof EQUIPMENT)[number];
 
 export const EQUIPMENT_GROUPS: [string, Equipment[]][] = [
-  ['Free weights', ['barbell', 'squat rack', 'plates', 'dumbbells']],
+  ['Free weights', ['barbell', 'squat rack', 'plates', 'dumbbells', 'landmine']],
   ['Benches & stations', ['flat bench', 'incline bench', 'decline bench', 'preacher bench', 'pull-up bar', 'dip station', 'captain’s chair', 'back extension bench', 'hip thrust bench']],
   ['Cables', ['cable stack', 'dual cable', 'lat pulldown']],
   ['Machines', ['smith machine', 'leg press', 'leg extension', 'seated leg curl', 'lying leg curl', 'chest press machine', 'pec deck',
@@ -57,6 +57,8 @@ export const NEEDS: Record<string, Needs> = {
   'Bulgarian Split Squat': one('flat bench'), 'Hip Thrust': [['barbell', 'hip thrust bench'], ['barbell', 'flat bench'], ['smith machine', 'flat bench']],
   'Glute Press': one('glute press'), 'Hip Adduction Machine': one('hip adduction machine'), 'Hip Abduction Machine': one('hip abduction machine'),
   'Standing Calf Raise': one('standing calf machine', 'smith machine', 'dumbbells'), 'Seated Calf Raise': one('seated calf machine'),
+  'Landmine Press': [['landmine', 'barbell']], 'Landmine Row': [['landmine', 'barbell']], 'T-Bar Row': [['landmine', 'barbell']],
+  'Landmine Squat': [['landmine', 'barbell']], 'Landmine Rotation': [['landmine', 'barbell']],
   Treadmill: one('treadmill'), StairMaster: one('stair climber'), 'Exercise Bike': one('exercise bike'), Elliptical: one('elliptical'),
 };
 

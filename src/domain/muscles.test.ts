@@ -39,6 +39,11 @@ describe('keyword fallback word boundaries', () => {
     expect(muscleVector('Narrow Grip Bench Press')?.Chest).toBe(1);
     expect(muscleVector('Neutral Grip Chin')?.Lats).toBe(1);
     expect(muscleVector('T-Bar Row')?.['Mid-Back']).toBe(1);
+    expect(muscleVector('Landmine Press')).toEqual({ 'Front Delts': 1, Chest: 0.5, Triceps: 0.5 });
+    expect(muscleVector('Landmine Row')?.Lats).toBe(1);
+    expect(muscleVector('Landmine Squat')?.Quads).toBe(1);
+    expect(muscleVector('Landmine Rotation')?.Abs).toBe(1);
+    expect(muscleVector('Standing Cable Crunch')).toEqual({ Abs: 1 });
   });
 });
 

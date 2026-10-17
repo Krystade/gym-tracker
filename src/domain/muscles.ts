@@ -28,6 +28,8 @@ const TABLE: Record<string, Vector> = {
   'cross-body db curl': { Biceps: 1, Forearms: 0.5 }, 'machine biceps curl': B, 'reverse curl': { Forearms: 1, Biceps: 0.5 }, 'db reverse curl': { Forearms: 1, Biceps: 0.5 },
   'zottman curl': { Biceps: 1, Forearms: 0.5 }, 'wrist curl': { Forearms: 1 }, 'db wrist curl': { Forearms: 1 }, 'db reverse wrist curl': { Forearms: 1 },
   'farmer’s carry': { Forearms: 1, Traps: 0.5 }, 'plate pinch hold': { Forearms: 1 },
+  'landmine press': { 'Front Delts': 1, Chest: 0.5, Triceps: 0.5 }, 'landmine row': ROW_LAT, 't-bar row': ROW_MID,
+  'landmine squat': SQUAT, 'landmine rotation': { Abs: 1, 'Front Delts': 0.25 },
   'overhead press': OHP, 'overhead db press': OHP, 'machine shoulder press': OHP, 'arnold press': OHP,
   'db lateral raise': SD, 'cable lateral raise': SD, 'machine lateral raise': SD, 'front raise': { 'Front Delts': 1 },
   'face pull': { 'Rear Delts': 1, 'Mid-Back': 0.5, Traps: 0.5 }, 'cable rear delt fly': RD, 'reverse pec deck': RD,

@@ -28,11 +28,11 @@ export const PREFERENCE: Record<Muscle, string[]> = {
   Chest: ['Machine Chest Press', 'Flat DB Press', 'Bench Press', 'Incline DB Press', 'Smith Flat Press', 'Push-up'],
   Triceps: ['Cable Pushdown', 'Overhead Cable Extension', 'Rope Pushdown', 'Overhead DB Triceps Extension', 'DB Kickback', 'Triceps Press Machine'],
   Biceps: ['Cable Curl', 'DB Curl', 'Incline DB Curl', 'Hammer Curl', 'Preacher Curl', 'Machine Biceps Curl'],
-  'Front Delts': ['Machine Shoulder Press', 'Arnold Press', 'Overhead Press', 'Front Raise'],
+  'Front Delts': ['Machine Shoulder Press', 'Arnold Press', 'Overhead Press', 'Landmine Press', 'Front Raise'],
   'Side Delts': ['Cable Lateral Raise', 'DB Lateral Raise', 'Machine Lateral Raise'],
   'Rear Delts': ['Reverse Pec Deck', 'Cable Rear Delt Fly', 'Face Pull'],
   Lats: ['Lat Pulldown', 'Pull-up', 'Close-Grip Lat Pulldown', 'Straight-Arm Pulldown', 'Lat Pull-In'],
-  'Mid-Back': ['Chest-Supported Row', 'Seated Cable Row', 'Kneeling DB Row'],
+  'Mid-Back': ['Chest-Supported Row', 'Seated Cable Row', 'Kneeling DB Row', 'T-Bar Row'],
   Traps: ['Face Pull'], // no catalog lift trains traps directly; kept as the long-standing default
   Erectors: ['Back Extension', 'Bird Dog'],
   Quads: ['Leg Press', 'Leg Extension', 'Smith Squat', 'Bulgarian Split Squat', 'Barbell Squat'],

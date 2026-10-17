@@ -16,6 +16,11 @@ describe('equipment', () => {
     expect(canDo(gym(['barbell', 'flat bench']), 'Bench Press')).toBe(true);
     expect(canDo(gym([]), 'Plank')).toBe(true);
   });
+  it('a landmine needs a bar in it', () => {
+    expect(canDo(gym(['landmine']), 'Landmine Press')).toBe(false);
+    expect(canDo(gym(['landmine', 'barbell']), 'Landmine Press')).toBe(true);
+    expect(canDo(gym(['landmine', 'barbell']), 't-bar row')).toBe(true);
+  });
   it('lets exclusions beat the gear, and inclusions cover unknown lifts', () => {
     expect(canDo(gym(['cable stack'], { exclude: ['Cable Curl'] }), 'Cable Curl')).toBe(false);
     expect(canDo(gym([]), 'Zercher Squat')).toBeNull();
