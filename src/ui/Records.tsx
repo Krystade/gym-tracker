@@ -58,7 +58,8 @@ export function Records({ entries, name, today, onDay }: { entries: SetEntry[]; 
                 {h ? tap(h, 'rec-cell', <>
                   <span className="rec-name">{plural(n, 'rep')}</span>
                   <b className="rec-val">{fmtRecord(h.kind, h.value)}</b>
-                  <span className="rec-meta">× {h.set!.reps} · {shortDay(h.date, today)}</span>
+                  <span className="rec-meta">× {h.set!.reps}</span>
+                  <span className="rec-meta">{shortDay(h.date, today)}</span>
                 </>) : (
                   <div className="rec-cell empty"><span className="rec-name">{plural(n, 'rep')}</span><b className="rec-val">—</b></div>
                 )}

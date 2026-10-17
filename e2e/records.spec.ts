@@ -75,7 +75,7 @@ test('Records: worked out from the log, a tap opens the day, and a new best show
   await expect(row(/^Best set volume/)).toHaveText(/1,080 lb\s*135 × 8 · .*Jul 7/);
   await expect(row(/^Best session volume/)).toHaveText(/2,160 lb\s*2 sets · .*Jul 7/); // the warm-up isn't counted
   const maxes = rec.getByRole('list', { name: 'Rep maxes' }).getByRole('listitem');
-  await expect(maxes).toHaveText([/^1 rep\s*170 lb\s*× 3 · Sep 15$/, /^3 reps\s*170 lb/, /^5 reps\s*155 lb\s*× 5 · Sep 8$/, /^8 reps\s*135 lb\s*× 8 · Jul 7$/, /^10 reps\s*—$/, /^12 reps\s*—$/]);
+  await expect(maxes).toHaveText([/^1 rep\s*170 lb\s*× 3\s*Sep 15$/, /^3 reps\s*170 lb/, /^5 reps\s*155 lb\s*× 5\s*Sep 8$/, /^8 reps\s*135 lb\s*× 8\s*Jul 7$/, /^10 reps\s*—$/, /^12 reps\s*—$/]);
   await expect(maxes.nth(4).getByRole('button')).toHaveCount(0); // nothing to open
   await rec.scrollIntoViewIfNeeded();
   await fits(page);
@@ -118,7 +118,7 @@ test('Records: worked out from the log, a tap opens the day, and a new best show
   rec = await openBench(page);
   await expect(row(/^Best e1RM/)).toHaveText(/209 lb\s*190 × 3 · .*Oct 2/);
   await expect(row(/^Heaviest/)).toHaveText(/190 lb\s*190 × 3 · .*Oct 2/);
-  await expect(maxes.nth(0)).toHaveText(/^1 rep\s*190 lb\s*× 3 · Oct 2$/);
+  await expect(maxes.nth(0)).toHaveText(/^1 rep\s*190 lb\s*× 3\s*Oct 2$/);
   await expect(maxes.nth(2)).toHaveText(/^5 reps\s*155 lb/);
   await rec.scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${SHOTS}/4-records-new.png` });
@@ -132,7 +132,7 @@ test('Records: worked out from the log, a tap opens the day, and a new best show
   rec = await openBench(page);
   await expect(row(/^Best e1RM/)).toHaveText(/187 lb\s*170 × 3 · .*Sep 15/);
   await expect(row(/^Heaviest/)).toHaveText(/185 lb\s*185 × \? · .*Sep 15/);
-  await expect(maxes.nth(0)).toHaveText(/^1 rep\s*170 lb\s*× 3 · Sep 15$/);
+  await expect(maxes.nth(0)).toHaveText(/^1 rep\s*170 lb\s*× 3\s*Sep 15$/);
 
   // Left open while the log changes elsewhere (another tab here; a sync does the same): the records follow it.
   const other = await page.context().newPage();

@@ -666,6 +666,8 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
   justify-content: flex-start; gap: 1px; text-align: left; font-weight: 400;
 }
 .records .rec-cell .rec-name, .records .rec-cell .rec-meta { font-size: var(--fs-xs); font-weight: 400; color: var(--muted); }
+/* One line each, so a date never breaks inside ("Jul 7, 2025" fits a 320px phone's cell). */
+.records .rec-cell .rec-meta { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .records .rec-cell .rec-val { font-size: var(--fs-md); }
 .records .rec-cell.empty .rec-val { color: var(--muted); }
 /* A record tapped opens its day in History, scrolled clear of the status bar. */
