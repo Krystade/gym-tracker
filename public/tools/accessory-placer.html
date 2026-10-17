@@ -20,7 +20,12 @@
   --bg: #0f1218; --panel: #171b24; --ink: #e8ebf2; --muted: #98a1b3; --line: #2a303d;
   --stage: #0b0e14; --stage-grid: #151a26; --accent: #f0646a; --accent-ink: #160406; --mine: #46c48a; --guess: #e6a93a; color-scheme: dark }
 * { box-sizing: border-box }
-body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); padding-inline: 16px; padding-block: 12px 32px }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body);
+  /* Clear the notch and home indicator: the page is viewport-fit=cover. */
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) calc(env(safe-area-inset-right, 0px) + 16px) calc(env(safe-area-inset-bottom, 0px) + 32px) calc(env(safe-area-inset-left, 0px) + 16px) }
+/* Nothing scrolls under the status bar. */
+body::before { content: ''; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 50 }
+.back { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 4px; margin-inline-start: -4px; color: var(--muted); font-size: 15px; text-decoration: none }
 h1 { font: 400 20px/1.1 var(--display); margin: 0; letter-spacing: .02em }
 .wrap { max-width: 1060px; margin: 0 auto; display: grid; gap: 14px }
 @media (min-width: 860px) { .wrap { grid-template-columns: 260px minmax(0, 1fr); align-items: start } .list { position: sticky; top: env(safe-area-inset-top, 0px); max-height: calc(100vh - 24px); overflow: auto } }
@@ -70,7 +75,7 @@ button.b.sq { width: 40px; padding: 0 }
 
 <div class="wrap">
   <div class="top" style="row-gap:4px">
-    <a href="../" class="small" style="color:var(--muted)">‹ Back to the app</a>
+    <a href="../" class="back">‹ Back to the app</a>
     <h1>Accessory Placer</h1>
     <span class="small muted" id="overall"></span>
     <span class="save muted" id="save" role="status"></span>
