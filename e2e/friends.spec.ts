@@ -10,7 +10,7 @@ const friends = (page: Page) => page.getByRole('region', { name: 'Friends', exac
 const note = (page: Page) => friends(page).getByRole('status');
 
 async function person(browser: Browser, opts: { bench?: boolean; gym?: string } = {}) {
-  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [{ origin: 'http://127.0.0.1:4173', localStorage: [{ name: 'gym-tracker:walkthrough', value: 'done' }] }] } });
+  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [{ origin: `http://127.0.0.1:${process.env.E2E_PORT ?? 4173}`, localStorage: [{ name: 'gym-tracker:walkthrough', value: 'done' }] }] } });
   const page = await ctx.newPage();
   await page.clock.install({ time: T });
   await page.goto('/');

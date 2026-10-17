@@ -11,7 +11,7 @@ const account = (page: Page) => page.getByRole('region', { name: 'Account' });
 const rows = (page: Page) => page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem');
 
 async function phone(browser: Browser) {
-  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [{ origin: 'http://127.0.0.1:4173', localStorage: [{ name: 'gym-tracker:walkthrough', value: 'done' }] }] } });
+  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [{ origin: `http://127.0.0.1:${process.env.E2E_PORT ?? 4173}`, localStorage: [{ name: 'gym-tracker:walkthrough', value: 'done' }] }] } });
   const page = await ctx.newPage();
   await page.clock.install({ time: T });
   await page.goto('/');
