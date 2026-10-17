@@ -34,11 +34,11 @@ export default defineConfig({
           { src: 'maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png}'],
-        clientsClaim: true,
-        skipWaiting: true,
-      },
+      // src/sw.ts reproduces what generateSW did (precache, index.html for navigations, skipWaiting + clientsClaim) and adds push.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectManifest: { globPatterns: ['**/*.{js,css,html,svg,png}'] },
     }),
   ],
   server: { host: true, port: 5190 },
