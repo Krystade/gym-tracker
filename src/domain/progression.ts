@@ -84,7 +84,8 @@ export function estimateRir(set: SetEntry, sessionSets: SetEntry[], prior: numbe
   return clamp(Math.round(shortfall(set, prior) + offset), 0, 5);
 }
 
-export interface Target { kind: 'increase' | 'reps' | 'repeat' | 'maxed'; weight: number; reps: number; last: SetEntry[]; text: string }
+/** `done`: for an increase, the reps that earned it, over that many sets at the top weight. */
+export interface Target { kind: 'increase' | 'reps' | 'repeat' | 'maxed'; weight: number; reps: number; last: SetEntry[]; text: string; done?: { total: number; sets: number } }
 
 const lb = (w: number) => (w === 0 ? 'BW' : `${Math.round(w * 100) / 100} lb`);
 
@@ -100,12 +101,15 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
   const unit = isHoldLift(exercise, entries) ? 's' : '';
   const atTop = working.filter((x) => x.weight === top);
   const minReps = Math.min(...atTop.map((x) => x.reps as number));
-  if (top > 0 && minReps >= st.repMax) {
+  // Up once the sets at the top weight total within 2 reps of all at the top of the range (12/12/10 at 3 × 8–12), none below its bottom.
+  const total = atTop.reduce((a, x) => a + (x.reps as number), 0);
+  const topped = total >= atTop.length * st.repMax - 2 && minReps >= st.repMin;
+  if (top > 0 && topped) {
     const w = top + st.increment;
-    return { kind: 'increase', weight: w, reps: st.repMin, last: last.sets, text: `Go up: ${lb(w)} × ${st.repMin}${unit}+` };
+    return { kind: 'increase', weight: w, reps: st.repMin, last: last.sets, text: `Go up: ${lb(w)} × ${st.repMin}${unit}+`, done: { total, sets: atTop.length } };
   }
   // A bodyweight hold at the top of its range has nowhere to go in time: add weight or a harder variation.
-  if (unit && top === 0 && minReps >= st.repMax) {
+  if (unit && top === 0 && topped) {
     return { kind: 'maxed', weight: 0, reps: st.repMax, last: last.sets, text: `BW × ${st.repMax}s on every set: add weight or try a harder variation` };
   }
   // Bodyweight reps have no weight to add, so their target is not capped by the range. Holds step in 5 s, like the stepper.

@@ -27,15 +27,15 @@ describe('suggest', () => {
     const log = [s('2026-09-28', 'Bench Press', 135, 12), s('2026-09-28', 'Bench Press', 135, 12), s('2026-09-28', 'Bench Press', 135, 12)];
     const x = suggest(log, 'Bench Press', st, '2026-10-02', 4)!;
     expect(x).toMatchObject({ weight: 140, reps: 8, repMax: 12, sets: 4, setsFrom: 'program', kind: 'increase' });
-    expect(x.reason).toMatch(/12 on every set.*\+5 lb/);
+    expect(x.reason).toBe('36 reps last time, within 2 of 3 × 12, so +5 lb.');
   });
   it('stays and chases reps otherwise, matching last session’s working-set count', () => {
     const log = [s('2026-09-28', 'Bench Press', 95, 10, ['warmup']), s('2026-09-28', 'Bench Press', 135, 10), s('2026-09-28', 'Bench Press', 135, 9)];
     expect(suggest(log, 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: 135, reps: 10, sets: 2, setsFrom: 'last', kind: 'reps' });
   });
   it('never uses the day’s own sets, so the suggestion holds all session', () => {
-    const log = [s('2026-09-28', 'Bench Press', 135, 10), s('2026-10-02', 'Bench Press', 135, 12), s('2026-10-02', 'Bench Press', 135, 12)];
-    expect(suggest(log, 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: 135, reps: 11, sets: 1 });
+    const log = [s('2026-09-28', 'Bench Press', 135, 9), s('2026-10-02', 'Bench Press', 135, 12), s('2026-10-02', 'Bench Press', 135, 12)];
+    expect(suggest(log, 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: 135, reps: 10, sets: 1 });
   });
   it('with no history: reps and 3 sets, no weight', () => {
     expect(suggest([], 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: null, reps: 8, sets: 3, setsFrom: 'default', kind: 'new', warmups: [] });

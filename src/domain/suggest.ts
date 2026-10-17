@@ -63,7 +63,7 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
   const unit = isHoldLift(exercise, entries) ? ' s' : '';
   if (!t) return { unit, weight: null, reps: st.repMin, repMax: st.repMax, sets: clamped, setsFrom, kind: 'new', warmups: [],
     reason: `No history yet: pick a weight you can do about ${st.repMax} times, and log every set.` };
-  const reason = t.kind === 'increase' ? `You hit ${st.repMax}${unit} on every set last time, so +${st.increment} lb.`
+  const reason = t.kind === 'increase' ? `${t.done!.total}${unit || ' reps'} last time, within 2 of ${t.done!.sets} × ${st.repMax}${unit}, so +${st.increment} lb.`
     : t.kind === 'repeat' ? 'Last time had no complete sets: repeat the weight and log every rep.'
     : t.kind === 'maxed' ? `You held ${st.repMax}${unit} on every set: add weight, or move to a harder variation.`
     : `Same weight; beat last time with ${t.reps}${unit}+ on every set.`;
