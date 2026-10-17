@@ -73,7 +73,6 @@ function CardioForm({ name, initial, submitLabel, onSubmit, onCancel, onDelete, 
       {whenOpen && <div className="when"><label>When <input type="time" aria-label="When" value={at} onChange={(e) => touch(setAt)(e.target.value)} /></label><span className="muted small">Leave empty if you don’t know</span></div>}
       <div className="form-actions">
         {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
-        {onDelete && <button type="button" className="danger" onClick={onDelete}>Delete</button>}
         <button type="submit" className="primary" disabled={!!problem}>{submitLabel}</button>
       </div>
       <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>More</button>
@@ -81,6 +80,7 @@ function CardioForm({ name, initial, submitLabel, onSubmit, onCancel, onDelete, 
         {!whenOpen && <button type="button" className="chip" onClick={() => setWhenOpen(true)}>Did this earlier?</button>}
         <input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => touch(setNote)(e.target.value)} />
       </>)}
+      {onDelete && <button type="button" className="mini danger form-delete" onClick={onDelete}>Delete</button>}
     </form>
   );
 }

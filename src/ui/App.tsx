@@ -108,6 +108,8 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
 
   return (
     <div className="app">
+      {/* Under the clock and battery: with no sticky bar on top, a scrolled card would show through the status bar. */}
+      <div className="status-backdrop" aria-hidden="true" />
       {/* Your screens stay mounted while you look at a friend's, so your log keeps syncing and Back finds you where you were. */}
       <div hidden={!!viewing}>
         <ProfileDbProvider key={people.active!.id} id={people.active!.id}>

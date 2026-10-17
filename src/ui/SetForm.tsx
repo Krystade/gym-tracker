@@ -81,6 +81,9 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
     : w === 0 && r === 0 ? `A set needs a weight or ${unit.toLowerCase()}`
     : null;
   const valid = !problem && !tooLate;
+  // A new card's empty weight is help until the field is touched, not an error from the start (Add set stays off either way).
+  const [loud, setLoud] = useState(false);
+  const quiet = weight.trim() === '' && !loud;
   const busy = useRef(false);
   // A weight far over the best is asked about once; the same weight tapped again is kept.
   const [asked, setAsked] = useState<number | null>(null);
@@ -103,7 +106,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       if (ok && keepDraft) { clearDraft(owner.profile, draftKey); dirty.current = false; }
       // A warm-up doesn't move the next set: back to what the card suggests (the last working set, else the target).
       if (ok && keepDraft && flags.includes('warmup')) { setWeight(initial.weight == null ? '' : String(initial.weight)); setReps(initial.reps == null ? '' : String(initial.reps)); }
-      if (ok) { setAsked(null); setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); setMoreOpen(false); }
+      if (ok) { setLoud(false); setAsked(null); setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); setMoreOpen(false); }
     } finally { busy.current = false; }
   }
 
@@ -117,10 +120,10 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   return (
     <form className="set-form" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       <div className="steppers">
-        <Stepper label="Weight" value={weight} onChange={touch(setWeight)} step={5} mode="decimal" />
+        <Stepper label="Weight" value={weight} onChange={(v) => { setLoud(true); touch(setWeight)(v); }} step={5} mode="decimal" />
         <Stepper label={unit} value={reps} onChange={touch(setReps)} step={hold ? 5 : 1} mode="numeric" />
       </div>
-      {problem && <p role="status" className="small err">{problem}</p>}
+      {problem && <p role="status" className={quiet ? 'small muted' : 'small err'}>{problem}</p>}
       {!problem && typo && asked === w && <p role="status" className="small err">{weight} lb is {Math.round(w / heaviest)}× your best: tap {submitLabel.split(' ·')[0]} again to keep it</p>}
       {/* Reps in reserve doesn't apply to a timed hold. */}
       {!hold && <div className="chips" role="group" aria-label="RIR">
@@ -133,7 +136,6 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       {whenField}
       <div className="form-actions">
         {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
-        {onDelete && <button type="button" className="danger" onClick={onDelete}>Delete</button>}
         <button type="submit" className="primary" disabled={!valid}>{submitLabel}</button>
       </div>
       <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>{moreOpen || !moreHint ? 'More' : `More · ${moreHint}`}</button>
@@ -160,6 +162,8 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
           <input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => touch(setNote)(e.target.value)} />
         </>
       )}
+      {/* Out of the Cancel/Save row, so a reach for Save can't delete; Undo still brings it back. */}
+      {onDelete && <button type="button" className="mini danger form-delete" onClick={onDelete}>Delete</button>}
     </form>
   );
 }
