@@ -52,11 +52,14 @@ test('the plan stays open while lifts are left, and folds once the day is done',
   const sets = Number((await first.locator('.plan-count').textContent())!.split('/')[1]);
   await first.locator('.plan-name').click();
   const card = page.locator(`[data-card="${name.toLowerCase()}"]`);
+  const logged = card.getByRole('list', { name: `Sets for ${name}` }).getByRole('listitem');
   for (let i = 0; i < sets; i++) {
     const w = card.getByRole('textbox', { name: 'Weight' });
     if ((await w.inputValue()) === '') await w.fill('50');
     await card.getByRole('button', { name: /^Add set/ }).click();
-    if (i < sets - 1) await expect(list).toBeVisible(); // one lift started isn't the day done
+    if (i === sets - 1) break; // its last set folds the card
+    await expect(logged).toHaveCount(i + 1); // saved before the next set goes in
+    await expect(list).toBeVisible(); // one lift started isn't the day done
   }
   await expect(list).toBeHidden();
   await expect(page.getByRole('heading', { name: /^Today’s plan · Day A/ })).toBeVisible();

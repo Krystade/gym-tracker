@@ -176,7 +176,7 @@ async function person(browser: Browser) {
 }
 
 test('a friend’s view shows no cycle data and never asks for it', async ({ browser, request }) => {
-  const a = await person(browser);
+  const [a, b] = await Promise.all([person(browser), person(browser)]); // two sign-ups side by side
   await tab(a.page, 'Today');
   await turnOn(a.page);
   await cycle(a.page).getByRole('button', { name: 'Period' }).click();
@@ -188,7 +188,6 @@ test('a friend’s view shows no cycle data and never asks for it', async ({ bro
   });
   expect(put.ok()).toBe(true);
 
-  const b = await person(browser);
   const asked: string[] = [];
   b.page.on('request', (r) => { if (r.url().startsWith('http://127.0.0.1:8080/')) asked.push(`${decodeURIComponent(r.url())} ${r.postData() ?? ''}`); });
   await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(`@${a.name}`);

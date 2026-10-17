@@ -44,13 +44,12 @@ async function syncNow(page: Page) {
 
 test('a set logged on one phone reaches another that signs in, both ways, and a delete follows', async ({ browser }) => {
   const mail = email();
-  const a = await phone(browser);
+  const [a, b] = await Promise.all([phone(browser), phone(browser)]); // b only loads the app until a has an account
   await logBench(a, '135', '8');
   await enter(a, mail, 'Create account');
   await expect(account(a)).toContainText(`Signed in as ${mail}`);
   await expect(account(a).getByRole('status')).toHaveText(/^Synced/);
 
-  const b = await phone(browser);
   await enter(b, mail, 'Sign in');
   await expect(account(b).getByRole('status')).toHaveText(/^Synced/);
   await goto(b, 'Today');

@@ -47,8 +47,8 @@ async function person(browser: Browser, opts: { bench?: boolean; gym?: string } 
 }
 
 test('a request, accepted, lets each see the other’s log read-only; removing ends it for both', async ({ browser }) => {
-  const a = await person(browser, { bench: true });
-  const b = await person(browser);
+  // Two phones set up side by side: each is a sign-up and a username against the emulators.
+  const [a, b] = await Promise.all([person(browser, { bench: true }), person(browser)]);
 
   await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(`@${a.name.toUpperCase()}`);
   await friends(b.page).getByRole('button', { name: 'Send request' }).click();
@@ -106,7 +106,8 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
 });
 
 test('an invite link asks before it befriends, says what each side sees, and works once', async ({ browser }) => {
-  const a = await person(browser, { bench: true });
+  // All three phones set up at once; none of them depends on another until the link is opened.
+  const [a, c, d] = await Promise.all([person(browser, { bench: true }), person(browser), person(browser)]);
   await friends(a.page).getByRole('button', { name: 'Make an invite link' }).click();
   const link = await friends(a.page).getByRole('textbox', { name: 'Your invite link' }).inputValue();
   expect(link).toMatch(/#invite=\w+\.[a-f0-9]{32}$/);
@@ -116,7 +117,6 @@ test('an invite link asks before it befriends, says what each side sees, and wor
   await expect(friends(a.page).getByRole('alert')).toHaveText('That’s your own invite link. Send it to a friend.');
 
   // Opening the link only asks; Not now leaves both lists as they were.
-  const c = await person(browser);
   await c.page.goto(link);
   await expect(c.page.getByRole('heading', { name: 'Friends', level: 1 })).toBeVisible();
   const offer = friends(c.page).getByRole('region', { name: 'Invite' });
@@ -136,7 +136,6 @@ test('an invite link asks before it befriends, says what each side sees, and wor
   await expect(c.page.getByRole('button', { name: /Bench Press/ })).toContainText('135 × 8');
 
   // Used once: the next person holding the same link is turned away before anything is asked.
-  const d = await person(browser);
   await d.page.goto(link);
   await expect(friends(d.page).getByRole('alert')).toHaveText('That invite has expired, was cancelled or was already used. Ask for a new link.');
   await expect(friends(d.page).getByRole('region', { name: 'Invite' })).toHaveCount(0);

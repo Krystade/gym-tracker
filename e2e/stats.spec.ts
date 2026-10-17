@@ -61,10 +61,10 @@ const logBench = async (page: Pg, weight: string, reps: string) => {
   await expect(rows).toHaveCount(before + 1); // saved: the next step moves the clock and reloads
 };
 
-/** Mon/Wed/Fri sessions for the 12 weeks up to TODAY, climbing weight so the charts have a shape. */
-function history(): string {
+/** Mon/Wed/Fri sessions for the `weeks` (up to 12) up to TODAY, climbing weight so the charts have a shape. */
+function history(weeks = 12): string {
   const rows = ['date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source'];
-  for (let w = 0; w < 12; w++) {
+  for (let w = 12 - weeks; w < 12; w++) {
     for (const off of [0, 2, 4]) {
       const d = new Date(Date.UTC(2026, 6, 13 + 7 * w + off));
       if (iso(d) > TODAY) continue;
@@ -79,11 +79,13 @@ function weighIns(): string {
   for (let i = 0; i < 30; i++) rows.push(`${iso(new Date(Date.UTC(2026, 8, 3 + i)))},,${(180 + Math.sin(i / 3) + i * 0.05).toFixed(1)},`);
   return rows.join('\n');
 }
-async function seed(page: Pg, body = true) {
+// Each imported set is an IndexedDB put, and Playwright's WebKit on Windows takes a timer tick (~15.6 ms) per put:
+// the full 12 weeks (216 sets) is ~3.4 s of the test, more under load. A test that needs less imports less.
+async function seed(page: Pg, body = true, weeks = 12) {
   await page.clock.install({ time: new Date(`${TODAY}T09:00:00`) });
   await page.goto('/');
   await goto(page, 'More');
-  const files = [{ name: 'history.csv', mimeType: 'text/csv', buffer: Buffer.from(history()) }];
+  const files = [{ name: 'history.csv', mimeType: 'text/csv', buffer: Buffer.from(history(weeks)) }];
   if (body) files.push({ name: 'mfp-weight.csv', mimeType: 'text/csv', buffer: Buffer.from(weighIns()) });
   await page.getByLabel('Import CSV').setInputFiles(files);
   await expect(page.getByText(/Imported \d+ new/)).toBeVisible();
@@ -199,7 +201,7 @@ test('stats: the goal label stays inside the sessions chart when the goal is its
 });
 
 test('program: weekly volume shows the target beside each value and never "on pace"', async ({ page }) => {
-  await seed(page, false);
+  await seed(page, false, 1); // this week's volume is all the program screen shows
   await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('button', { name: 'Build program' }).click();
