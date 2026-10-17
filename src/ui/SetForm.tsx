@@ -8,6 +8,7 @@ import { isHold, likelyRegion, painDefaults } from '../domain/care';
 import { Stepper } from './Stepper';
 import { BUILT_IN, type TagPrefs } from '../domain/tags';
 import { TagEditor } from './TagEditor';
+import { fmtPerSide } from '../domain/plates';
 
 export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3; at?: string | null; tags?: string[] }
 const SEVERITY: [1 | 2 | 3, string][] = [[1, 'Mild'], [2, 'Moderate'], [3, 'Sharp']];
@@ -136,6 +137,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
         <Stepper label="Weight" value={weight} onChange={(v) => { setLoud(true); touch(setWeight)(v); }} step={5} mode="decimal" />
         <Stepper label={unit} value={reps} onChange={touch(setReps)} step={hold ? 5 : 1} mode="numeric" />
       </div>
+      {!problem && fmtPerSide(w, exercise) && <p className="small muted plates" aria-label="Per side">{fmtPerSide(w, exercise)}</p>}
       {problem && <p role="status" className={quiet ? 'small muted' : 'small err'}>{problem}</p>}
       {!problem && typo && asked === w && <p role="status" className="small err">{weight} lb is {Math.round(w / heaviest)}× your best: tap {submitLabel.split(' ·')[0]} again to keep it</p>}
       {/* Reps in reserve doesn't apply to a timed hold. */}
