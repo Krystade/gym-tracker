@@ -51,16 +51,29 @@ export async function revokeInvites({ F, db }: Cloud, uid: string): Promise<void
   await b.commit();
 }
 
-/** Both sides of the friendship in one write; the rules let you into their list because you hold their live invite. */
-export async function acceptInvite(c: Cloud, me: string, inv: Invite, now = Date.now()): Promise<string> {
+const GONE = 'That invite has expired, was cancelled or was already used. Ask for a new link.';
+async function checkInvite(c: Cloud, me: string, inv: Invite): Promise<void> {
   const { F, db } = c;
   if (inv.uid === me) throw fail('That’s your own invite link. Send it to a friend.');
-  if ((await F.getDoc(F.doc(db, `users/${me}/friends/${inv.uid}`))).exists()) throw fail(`You’re already friends with ${await nameOf(c, inv.uid)}.`);
+  if ((await F.getDoc(F.doc(db, `users/${me}/friends/${inv.uid}`))).exists()) throw fail(`You’re already friends with @${await nameOf(c, inv.uid)}.`);
+}
+/** Who sent an invite, before anything is accepted: the link alone only asks. */
+export async function peekInvite(c: Cloud, me: string, inv: Invite, now = Date.now()): Promise<string> {
+  await checkInvite(c, me, inv);
+  const d = await c.F.getDoc(c.F.doc(c.db, `users/${inv.uid}/invites/${inv.token}`));
+  if (!d.exists() || (d.data().expires as { toMillis(): number }).toMillis() <= now) throw fail(GONE);
+  return nameOf(c, inv.uid);
+}
+/** Both sides of the friendship and the invite used up, in one write: the rules let you into their list because you hold their live invite, and only while it goes. */
+export async function acceptInvite(c: Cloud, me: string, inv: Invite, now = Date.now()): Promise<string> {
+  const { F, db } = c;
+  await checkInvite(c, me, inv);
   const b = F.writeBatch(db);
   b.set(F.doc(db, `users/${inv.uid}/friends/${me}`), { since: now, via: inv.token });
   b.set(F.doc(db, `users/${me}/friends/${inv.uid}`), { since: now, via: 'invite' });
+  b.delete(F.doc(db, `users/${inv.uid}/invites/${inv.token}`));
   try { await b.commit(); } catch (e) {
-    if ((e as { code?: string }).code === 'permission-denied') throw fail('That invite has expired or was cancelled. Ask for a new link.');
+    if ((e as { code?: string }).code === 'permission-denied') throw fail(GONE);
     throw e;
   }
   return nameOf(c, inv.uid);
@@ -72,10 +85,10 @@ export async function sendRequest(c: Cloud, me: string, myName: string, to: stri
   const them = (await F.getDoc(F.doc(db, `usernames/${to}`))).data()?.uid as string | undefined;
   if (!them) throw fail(`No one goes by “${to}”. Check the spelling.`);
   if (them === me) throw fail('That’s you.');
-  if ((await F.getDoc(F.doc(db, `users/${me}/friends/${them}`))).exists()) throw fail(`You’re already friends with ${to}.`);
+  if ((await F.getDoc(F.doc(db, `users/${me}/friends/${them}`))).exists()) throw fail(`You’re already friends with @${to}.`);
   if ((await F.getDoc(F.doc(db, `users/${me}/requests/${them}`))).exists()) { await acceptRequest(c, me, them, now); return 'accepted'; }
   const ref = F.doc(db, `users/${them}/requests/${me}`);
-  if ((await F.getDoc(ref)).exists()) throw fail(`You’ve already asked ${to}. They’ll see it under Friends.`);
+  if ((await F.getDoc(ref)).exists()) throw fail(`You’ve already asked @${to}. They’ll see it under Friends.`);
   await F.setDoc(ref, { username: myName, sent: now });
   return 'sent';
 }

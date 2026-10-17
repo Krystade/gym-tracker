@@ -129,4 +129,8 @@ describe('diffSets', () => {
     expect(diffSets([stored], [{ ...stored, flags: [] }]).changed).toHaveLength(1);
     expect(diffSets([stored], [{ ...stored, target: { weight: 60, reps: 12, sets: 4 } }]).changed).toHaveLength(1);
   });
+  it('a set put back by Undo matches its row in a backup (the CSV has no restoredAt)', () => {
+    const back = mk(1, { restoredAt: 5 });
+    expect(diffSets([back], parseCsv(toCsv([back]), 'backup').entries).same).toBe(1);
+  });
 });

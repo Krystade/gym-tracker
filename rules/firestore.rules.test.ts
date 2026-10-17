@@ -1,16 +1,25 @@
 import { readFileSync } from 'node:fs';
-import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, Timestamp, type Firestore } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, Timestamp, writeBatch, type Firestore } from 'firebase/firestore';
 
 // Synthetic users: alice owns the data, bob is her friend, eve is a stranger.
 let env: RulesTestEnvironment;
 const as = (uid: string | null) => (uid ? env.authenticatedContext(uid) : env.unauthenticatedContext()).firestore() as unknown as Firestore;
 const seed = (f: (db: Firestore) => Promise<unknown>) => env.withSecurityRulesDisabled(async (c) => { await f(c.firestore() as unknown as Firestore); });
 const later = () => Timestamp.fromMillis(Date.now() + 86_400_000);
+/** Accepting an invite, as the app does it: both friend documents, and the invite used up, in one write. */
+const accept = (who: string, owner: string, token: string, used = token) => {
+  const db = as(who), b = writeBatch(db);
+  b.set(doc(db, `users/${owner}/friends/${who}`), { since: 1, via: token });
+  b.set(doc(db, `users/${who}/friends/${owner}`), { since: 1, via: 'invite' });
+  b.delete(doc(db, `users/${owner}/invites/${used}`));
+  return b.commit();
+};
 
 beforeAll(async () => {
-  env = await initializeTestEnvironment({ projectId: 'demo-gym-tracker', firestore: { rules: readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 } });
+  // RULES_PROJECT: a project of their own, to run against an emulator already serving the app's (its rules and data stay put).
+  env = await initializeTestEnvironment({ projectId: process.env.RULES_PROJECT ?? 'demo-gym-tracker', firestore: { rules: readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 } });
 });
 afterAll(() => env.cleanup());
 beforeEach(async () => {
@@ -58,14 +67,36 @@ describe('your log', () => {
 });
 
 describe('invites', () => {
-  it('a live invite lets its holder become a friend', async () => {
+  it('a live invite lets its holder become a friend, using it up in the same write', async () => {
     await seed((db) => setDoc(doc(db, 'users/alice/invites/tok123'), { created: 1, expires: later() }));
-    await assertSucceeds(setDoc(doc(as('eve'), 'users/alice/friends/eve'), { since: 1, via: 'tok123' }));
+    await assertSucceeds(accept('eve', 'alice', 'tok123'));
     await assertSucceeds(getDoc(doc(as('eve'), 'users/alice/months/2026-10')));
+    expect((await getDoc(doc(as('alice'), 'users/alice/invites/tok123'))).exists()).toBe(false);
+  });
+  it('works once: the next person holding the same link is refused', async () => {
+    await seed((db) => setDoc(doc(db, 'users/alice/invites/tok123'), { created: 1, expires: later() }));
+    await assertSucceeds(accept('eve', 'alice', 'tok123'));
+    await assertFails(accept('carol', 'alice', 'tok123'));
+    await assertFails(setDoc(doc(as('carol'), 'users/alice/friends/carol'), { since: 1, via: 'tok123' }));
+  });
+  it('an invite left in place does not let anyone in (it must go in the same write)', async () => {
+    await seed((db) => setDoc(doc(db, 'users/alice/invites/tok123'), { created: 1, expires: later() }));
+    await assertFails(setDoc(doc(as('eve'), 'users/alice/friends/eve'), { since: 1, via: 'tok123' }));
+    await seed((db) => setDoc(doc(db, 'users/alice/invites/tok456'), { created: 1, expires: later() }));
+    await assertFails(accept('eve', 'alice', 'tok123', 'tok456')); // using up another invite instead
   });
   it('an expired invite does not', async () => {
     await seed((db) => setDoc(doc(db, 'users/alice/invites/old'), { created: 1, expires: Timestamp.fromMillis(Date.now() - 1000) }));
     await assertFails(setDoc(doc(as('eve'), 'users/alice/friends/eve'), { since: 1, via: 'old' }));
+    await assertFails(accept('eve', 'alice', 'old'));
+  });
+  it('nobody but the owner deletes an invite, except by accepting it', async () => {
+    await seed((db) => setDoc(doc(db, 'users/alice/invites/tok123'), { created: 1, expires: later() }));
+    await assertFails(deleteDoc(doc(as('eve'), 'users/alice/invites/tok123')));
+    await assertFails(accept('bob', 'alice', 'tok123')); // already a friend: nothing to accept, so it can't be burnt
+    await seed((db) => setDoc(doc(db, 'users/alice/friends/carol'), { since: 1, via: 'tok123' })); // let in before invites worked once
+    await assertFails(deleteDoc(doc(as('carol'), 'users/alice/invites/tok123')));
+    await assertSucceeds(deleteDoc(doc(as('alice'), 'users/alice/invites/tok123')));
   });
   it('only the owner can list or make invites', async () => {
     await assertFails(getDocs(collection(as('eve'), 'users/alice/invites')));

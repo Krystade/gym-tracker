@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { activeProfileDb } from '../db/db';
 import { localDate } from '../domain/ids';
-import { clearDraft, getDraft, saveDraft } from '../state/drafts';
+import { clearDraft, getDraft, markDirty, saveDraft } from '../state/drafts';
 import { REGIONS, type Flag, type Region } from '../domain/types';
 import { derivedFlags } from '../domain/buildSet';
 import { isHold, likelyRegion, painDefaults } from '../domain/care';
@@ -58,6 +58,10 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   useEffect(() => {
     if (keepDraft && dirty.current) saveDraft<Draft>(owner.profile, draftKey, owner.date, { weight, reps, rir, flags, note, region, severity, ...(whenOpen && { at: time }) });
   }, [keepDraft, owner, draftKey, weight, reps, rir, flags, note, region, severity, whenOpen, time]);
+  // An app update waits while any form has changes not saved yet (main.tsx).
+  const formId = useId();
+  useEffect(() => markDirty(formId, dirty.current));
+  useEffect(() => () => markDirty(formId, false), [formId]);
   // Flags, pain, "Did this earlier?" and the note fold away; double_pulley persists between sets on purpose, so it doesn't hold the fold open.
   const used = flags.filter((f) => f !== 'double_pulley' && TOGGLES.some(([t]) => t === f));
   const [moreOpen, setMoreOpen] = useState(() => used.length > 0 || note !== '');

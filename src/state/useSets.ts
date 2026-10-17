@@ -72,7 +72,9 @@ export function useSets() {
     return true;
   }, [reload]);
 
-  const restore = useCallback(async (e: SetEntry): Promise<boolean> => {
+  const restore = useCallback(async (gone: SetEntry): Promise<boolean> => {
+    // Stamped, so the delete it undoes can't win again in the next sync if that delete already went up.
+    const e = { ...gone, restoredAt: Date.now() };
     try { await db.restoreSet(e); } catch (err) { fail('Undoing the delete', err); return false; }
     ref.current = [...ref.current.filter((x) => x.id !== e.id), e];
     setEntries(ref.current);

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { cloudError, loadCloud, type Cloud } from '../cloud/firebase';
 import {
-  acceptInvite, acceptRequest, claimUsername, clearSentGym, listSentGyms, declineRequest, listFriends, listRequests, liveInvite, makeInvite, myUsername, removeFriend, revokeInvites, sendRequest,
+  acceptInvite, acceptRequest, claimUsername, clearSentGym, listSentGyms, declineRequest, listFriends, listRequests, liveInvite, makeInvite, myUsername, peekInvite, removeFriend, revokeInvites, sendRequest,
   type Friend, type Request, type SentGym,
 } from '../cloud/friends';
 import type { GymsStore } from '../state/useGyms';
@@ -24,6 +24,11 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
   const [find, setFind] = useState('');
   const [paste, setPaste] = useState('');
   const [armed, setArmed] = useState<string | null>(null);
+  // An invite opened or pasted: shown with who sent it, and accepted only on a tap.
+  const [offer, setOffer] = useState<{ inv: Invite; name: string } | null>(null);
+  const offerBox = useRef<HTMLElement>(null);
+  // A pasted link is at the bottom of the card; the offer is at the top.
+  useEffect(() => { if (offer) offerBox.current?.scrollIntoView({ block: 'nearest' }); }, [offer]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
 
@@ -49,12 +54,13 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
       catch (e) { setMe(null); setMsg({ ok: false, text: cloudError(e) }); }
     })();
   }, [uid, refresh]);
-  // An invite link opened in this app: accepted once you have a username, so they see who you are.
+  const open = useCallback((inv: Invite) => act(async (c) => { setOffer(null); setOffer({ inv, name: await peekInvite(c, uid, inv) }); }), [act, uid]);
+  // An invite link opened in this app: offered once you have a username, so they see who you are.
   useEffect(() => {
     if (!pending || !me) return;
     onPendingDone();
-    void act(async (c) => `You and ${await acceptInvite(c, uid, pending)} are now friends.`);
-  }, [pending, me, uid, act, onPendingDone]);
+    void open(pending);
+  }, [pending, me, open, onPendingDone]);
 
   const message = msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? 'muted small' : 'warn'}>{msg.text}</p>;
   if (me === undefined) return <section className="card" aria-label="Friends"><p className="muted">Loading…</p>{message}</section>;
@@ -62,7 +68,7 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
     const n = cleanUsername(name), ok = USERNAME.test(n);
     return (
       <section className="card" aria-label="Friends">
-        <p className="muted small">Pick a username so friends can find you: 3–20 lowercase letters, numbers or _.{pending && ' Then the invite you opened is accepted.'}</p>
+        <p className="muted small">Pick a username so friends can find you: 3–20 lowercase letters, numbers or _.{pending && ' Then you can accept the invite you opened.'}</p>
         <form className="sync-form" onSubmit={(e) => { e.preventDefault(); if (ok) void act(async (c) => { await claimUsername(c, uid, n); setMe(n); }); }}>
           <label>Username<input autoCapitalize="off" autoCorrect="off" spellCheck={false} value={name} onChange={(e) => setName(e.target.value)} /></label>
           {name && !ok && <p className="small err" role="status">3–20 lowercase letters, numbers or _</p>}
@@ -84,6 +90,16 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
     <section className="card" aria-label="Friends">
       <p className="muted small">You’re @{me}. Friends see your log, notes, body weight, priorities and program. Never your photos.</p>
       {message}
+      {offer && (
+        <section ref={offerBox} className="sub invite-offer" aria-label="Invite">
+          <p><b>@{offer.name}</b> invited you to be friends.</p>
+          <p className="muted small">Accept, and you each see the other’s log, notes, body weight, priorities and program. Never photos. Either of you can remove the other later.</p>
+          <div className="form-actions">
+            <button disabled={busy} onClick={() => setOffer(null)}>Not now</button>
+            <button className="primary" disabled={busy} onClick={() => { const { inv } = offer; void act(async (c) => { const n = await acceptInvite(c, uid, inv); setOffer(null); setPaste(''); return `You and @${n} are now friends.`; }); }}>Accept</button>
+          </div>
+        </section>
+      )}
       {requests.length > 0 && (
         <section className="sub" aria-label="Requests">
           <h3>Requests</h3>
@@ -92,7 +108,7 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
               <li key={r.uid}>
                 <span>@{r.name} wants to be friends</span>
                 <span className="friend-actions">
-                  <button className="primary" disabled={busy} onClick={() => void act(async (c) => { await acceptRequest(c, uid, r.uid); return `You and ${r.name} are now friends.`; })}>Accept</button>
+                  <button className="primary" disabled={busy} onClick={() => void act(async (c) => { await acceptRequest(c, uid, r.uid); return `You and @${r.name} are now friends.`; })}>Accept</button>
                   <button disabled={busy} onClick={() => void act(async (c) => { await declineRequest(c, uid, r.uid); })}>Decline</button>
                 </span>
               </li>
@@ -130,7 +146,7 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
                 <button className="link" onClick={() => onView(f)}>@{f.name}</button>
                 <span className="friend-actions">
                   <button className="mini" disabled={busy} onClick={() => (armed === f.uid
-                    ? void act(async (c) => { setArmed(null); await removeFriend(c, uid, f.uid); return `Removed ${f.name}. Neither of you can see the other’s log now.`; })
+                    ? void act(async (c) => { setArmed(null); await removeFriend(c, uid, f.uid); return `Removed @${f.name}. Neither of you can see the other’s log now.`; })
                     : setArmed(f.uid))}>{armed === f.uid ? 'Tap again to remove' : 'Remove'}</button>
                 </span>
               </li>
@@ -142,26 +158,28 @@ export function FriendsCard({ uid, gyms, pending, onPendingDone, onView, onReque
         <h3>Add a friend</h3>
         <form className="sync-form" onSubmit={(e) => {
           e.preventDefault();
-          if (USERNAME.test(to)) void act(async (c) => { const r = await sendRequest(c, uid, me, to); setFind(''); return r === 'accepted' ? `You and ${to} are now friends.` : `Request sent to ${to}.`; });
+          if (USERNAME.test(to)) void act(async (c) => { const r = await sendRequest(c, uid, me, to); setFind(''); return r === 'accepted' ? `You and @${to} are now friends.` : `Request sent to @${to}.`; });
         }}>
           <label>Their username<input autoCapitalize="off" autoCorrect="off" spellCheck={false} value={find} onChange={(e) => setFind(e.target.value)} /></label>
           <button type="submit" className="wide" disabled={!USERNAME.test(to) || busy}>Send request</button>
         </form>
-        {link ? (<>
-          <label className="invite-link">Your invite link<input readOnly value={link} onFocus={(e) => e.target.select()} /></label>
-          <p className="muted small">Anyone who opens it while signed in becomes your friend. It works for 7 days.</p>
-          <div className="form-actions">
-            <button disabled={busy} onClick={() => void act(async (c) => { await revokeInvites(c, uid); return 'Invite link cancelled.'; })}>Cancel link</button>
-            <button className="primary" onClick={() => void share()}>Share link</button>
+        {link ? (
+          <div className="sync-form">
+            <label className="invite-link">Your invite link<input readOnly value={link} onFocus={(e) => e.target.select()} /></label>
+            <p className="muted small">Send it to one friend: they see who it’s from and accept it. Works once, for 7 days.</p>
+            <div className="form-actions">
+              <button disabled={busy} onClick={() => void act(async (c) => { await revokeInvites(c, uid); return 'Invite link cancelled.'; })}>Cancel link</button>
+              <button className="primary" onClick={() => void share()}>Share link</button>
+            </div>
           </div>
-        </>) : <button className="wide" disabled={busy} onClick={() => void act(async (c) => { await makeInvite(c, uid); })}>Make an invite link</button>}
+        ) : <button className="wide" disabled={busy} onClick={() => void act(async (c) => { await makeInvite(c, uid); })}>Make an invite link</button>}
         <form className="sync-form" onSubmit={(e) => {
           e.preventDefault();
           const inv = parseInvite(paste);
-          if (inv) void act(async (c) => { const n = await acceptInvite(c, uid, inv); setPaste(''); return `You and ${n} are now friends.`; });
+          if (inv) void open(inv);
         }}>
           <label>Got an invite link? Paste it<input autoCapitalize="off" autoCorrect="off" spellCheck={false} value={paste} onChange={(e) => setPaste(e.target.value)} /></label>
-          <button type="submit" className="wide" disabled={!parseInvite(paste) || busy}>Accept invite</button>
+          <button type="submit" className="wide" disabled={!parseInvite(paste) || busy}>Open invite</button>
         </form>
       </section>
     </section>

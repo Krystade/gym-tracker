@@ -137,8 +137,9 @@ const canon = (v: unknown): unknown =>
   Array.isArray(v) ? v.map(canon)
   : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => [k, canon(x)]))
   : v;
-// `seq` is the import row index for a CSV and a timestamp for a live set, so it says nothing about whether the set changed.
-const sig = ({ seq: _seq, ...rest }: SetEntry): string => JSON.stringify(canon(rest));
+// `seq` is the import row index for a CSV and a timestamp for a live set, so it says nothing about whether the set changed;
+// `restoredAt` is sync bookkeeping a CSV doesn't carry.
+const sig = ({ seq: _seq, restoredAt: _r, ...rest }: SetEntry): string => JSON.stringify(canon(rest));
 
 /** Which incoming sets are new, which differ from the stored set with the same id, and how many are already identical. */
 export function diffSets(existing: SetEntry[], incoming: SetEntry[]): { fresh: SetEntry[]; changed: SetEntry[]; same: number } {
