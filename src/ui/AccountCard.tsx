@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { CloudStore } from '../state/useCloud';
 import type { Person } from '../db/db';
 
 const when = (iso: string) => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-/** Sign in or create an account; signed in, the log syncs with the cloud on its own. */
-export function AccountCard({ cloud, people }: { cloud: CloudStore; people: Person[] }) {
+/** Sign in or create an account; signed in, the log syncs with the cloud on its own. `replaced`: what syncs replaced here. */
+export function AccountCard({ cloud, people, replaced }: { cloud: CloudStore; people: Person[]; replaced?: ReactNode }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -45,6 +45,7 @@ export function AccountCard({ cloud, people }: { cloud: CloudStore; people: Pers
         <button className="wide" disabled={busy} onClick={() => void cloud.run()}>Sync now</button>
       </>) : <p className="muted small">This account belongs to {owner ?? 'another person'} on this phone; switch to them to sync.</p>}
       {message}
+      {replaced}
       <button className="wide" onClick={() => void cloud.signOut()}>Sign out</button>
       <details className="danger-zone">
         <summary>Delete account</summary>

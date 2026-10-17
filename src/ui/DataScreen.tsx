@@ -9,6 +9,8 @@ import { CycleCard } from './Cycle';
 import { NotificationsCard } from './NotificationsCard';
 import type { CloudStore } from '../state/useCloud';
 import { PeopleCard } from './PeopleCard';
+import { ReplacedList } from './ReplacedList';
+import { useReplaced } from '../state/useReplaced';
 import type { PeopleStore } from '../state/usePeople';
 import { parseBodyFile, stampDay, toBodyCsv, type CsvKind } from '../domain/body';
 import { parseProfileJson } from '../domain/profile';
@@ -36,6 +38,9 @@ export function DataScreen({ store, profile, body, sync, cloud, people, requests
   const [persisted, setPersisted] = useState<boolean | null | undefined>(knownStoragePersistence);
   useEffect(() => { if (persisted === undefined) void storagePersistence().then(setPersisted); }, []);
   const sessions = sessionsByDate(store.entries);
+  // What syncs replaced on this phone: under the account when it's this person's, else under the backup.
+  const replaced = useReplaced(store, body);
+  const replacedList = <ReplacedList replaced={replaced} />;
 
   async function onFiles(files: File[]) {
     setResult(null); setProfileMsg(null); setBodyMsgs([]);
@@ -162,9 +167,9 @@ export function DataScreen({ store, profile, body, sync, cloud, people, requests
           : <textarea className="csv" aria-label="Body CSV export" readOnly value={bodyFallback} onFocus={(e) => e.currentTarget.select()} />)}
       </section>
       <CycleCard name={people.active?.name ?? 'Me'} />
-      <AccountCard cloud={cloud} people={people.people} />
+      <AccountCard cloud={cloud} people={people.people} replaced={cloud.mine ? replacedList : undefined} />
       <NotificationsCard signedIn={cloud.mine} goal={profile.profile.weeklyGoal} />
-      <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} />
+      <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} replaced={cloud.mine ? undefined : replacedList} />
       <PeopleCard people={people} />
       <h2>Help</h2>
       <section className="card"><button className="wide" onClick={onShowWalkthrough}>Show walkthrough</button><button className="wide" onClick={() => location.assign(`${import.meta.env.BASE_URL}tools/accessory-placer.html`)}>Accessory placer</button></section>

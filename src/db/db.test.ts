@@ -2,10 +2,11 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { addSet, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, deleteSyncConfig, getSyncConfig, getTombstones, getTombstoneTimes, deleteSettings, deleteDayPlan, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync } from './db';
+import { addSet, getReplaced, putReplaced, deleteReplaced, pruneReplaced, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, deleteSyncConfig, getSyncConfig, getTombstones, getTombstoneTimes, deleteSettings, deleteDayPlan, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
 import { buildAppSet } from '../domain/buildSet';
+import { KEEP_MS, type Replaced } from '../domain/replaced';
 
 const CSV = 'date,exercise,set,weight_lb,reps,note,source\n2026-01-05,Cable Curl,1,52.5,12,"a, ""b""",s\n2026-01-05,Cable Curl,2,60,,,s\n';
 
@@ -360,5 +361,38 @@ describe('round 10: delete times and edit times', () => {
     await deleteDayPlan('day:2026-09-01');
     expect((await getAllSettings()).map((x) => x.key)).toEqual(['curl']);
     expect(await getDayPlans()).toEqual([]);
+  });
+});
+
+describe('db v9: copies a sync replaced', () => {
+  const rec = (key: string, at: number): Replaced => ({ key, kind: 'body', at, date: '2026-10-01', mine: { weight: 180 }, theirs: { weight: 182 } });
+  it('upgrades v8 keeping every store, with nothing replaced yet', async () => {
+    const v8 = await openDB('gym-tracker', 8, { upgrade(d) {
+      d.createObjectStore('sets', { keyPath: 'id' }).createIndex('date', 'date');
+      for (const [s, k] of [['settings', 'key'], ['profile', 'key'], ['program', 'key'], ['body', 'date'], ['config', 'key'], ['cycle', 'date']]) d.createObjectStore(s, { keyPath: k });
+      d.createObjectStore('photos', { keyPath: 'id' }).createIndex('date', 'date');
+      d.createObjectStore('photoBlobs');
+    } });
+    await v8.put('sets', { id: 'a', date: '2026-01-01', seq: 0, exercise: 'Curl', setNo: 1, weight: 30, reps: 10, flags: [], source: 's' });
+    await v8.put('body', { date: '2026-09-01', weight: 180 });
+    await v8.put('cycle', { date: '2026-09-01', phase: 'period' });
+    v8.close();
+    expect(await getAllSets()).toHaveLength(1);
+    expect(await getBody()).toHaveLength(1);
+    expect((await getCycle()).days).toHaveLength(1);
+    expect(await getReplaced()).toEqual([]);
+  });
+  it('keeps each by key: the same key again replaces it; dismissing one deletes only it', async () => {
+    await putReplaced([rec('a', 1), rec('b', 2)]);
+    await putReplaced([rec('a', 3)]);
+    expect((await getReplaced()).map((r) => [r.key, r.at])).toEqual([['a', 3], ['b', 2]]);
+    await deleteReplaced('a');
+    expect((await getReplaced()).map((r) => r.key)).toEqual(['b']);
+  });
+  it('prunes copies older than the cutoff (30 days, at startup) and keeps the rest', async () => {
+    const now = Date.parse('2026-10-17T12:00:00Z');
+    await putReplaced([rec('old', now - KEEP_MS - 1), rec('edge', now - KEEP_MS + 1), rec('new', now - 1000)]);
+    expect(await pruneReplaced(now - KEEP_MS)).toBe(1);
+    expect((await getReplaced()).map((r) => r.key).sort()).toEqual(['edge', 'new']);
   });
 });

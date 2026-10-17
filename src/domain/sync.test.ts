@@ -4,6 +4,7 @@ import { parseCsv, toCsv } from './csv';
 import { parseBodyFile, toBodyCsv, type BodyDay } from './body';
 import type { SetEntry } from './types';
 import { setId } from './ids';
+import type { Replaced } from './replaced';
 
 const CFG: SyncConfig = { key: 'sync', repo: 'someone/private-data', token: 'test-token-123', branch: 'main' };
 
@@ -293,5 +294,22 @@ describe('edits in the backup (round 10)', () => {
     const got = await run(gh, [], [{ date: '2026-09-29', weight: 182, protein: 150, at: { weight: Date.parse('2026-09-30T07:00:00Z') } }]);
     expect(got.body).toEqual([{ date: '2026-09-29', weight: 181, at: { weight: Date.parse('2026-09-30T08:00:00Z') } }]);
     expect(parseBodyFile(gh.store.get('app/body.csv')!.text).days).toEqual([{ date: '2026-09-29', weight: 181, protein: 150, at: { weight: Date.parse('2026-09-30T08:00:00Z') } }]);
+  });
+});
+
+describe('the backup’s copies replacing this phone’s (round 10)', () => {
+  it('keeps this phone’s set and body field before taking the newer ones; nothing for the same values', async () => {
+    const mine = { ...set('2026-09-29'), seq: 1_759_000_000_000 }, same = { ...set('2026-09-28'), seq: 1_758_000_000_000 };
+    const theirs = { ...mine, weight: 55, editedAt: Date.parse('2026-09-30T08:00:00Z') };
+    const gh = fakeGitHub({
+      'app/sets.csv': toCsv([theirs, { ...same, editedAt: Date.parse('2026-09-30T08:00:00Z') }]),
+      'app/body.csv': toBodyCsv([{ date: '2026-09-29', weight: 181, at: { weight: Date.parse('2026-09-30T08:00:00Z') } }]),
+    });
+    const log: string[] = [], kept: Replaced[] = [];
+    await sync({ client: repoClient(CFG, gh.fetchFn), sets: [mine, same], body: [{ date: '2026-09-29', weight: 182 }], deleted: new Set(),
+      importSets: async (e) => { log.push('import sets'); return { added: 0, updated: e.length }; }, importBody: async () => { log.push('import body'); return true; },
+      recordReplaced: async (xs) => { log.push('keep'); kept.push(...xs); return true; }, now: new Date('2026-09-30T12:00:00Z') });
+    expect(log).toEqual(['keep', 'import sets', 'import body']);
+    expect(kept.map((r) => [r.kind, r.mine])).toEqual([['set', mine], ['body', { weight: 182 }]]);
   });
 });
