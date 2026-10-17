@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { CardioData, SetEntry } from '../domain/types';
 import { byOrderDone, lastSession, sameExercise } from '../domain/stats';
-import { cardioTarget, fmtCardio, machine, type CardioField } from '../domain/cardio';
+import { cardioTarget, carrySeconds, fmtCardio, machine, type CardioField } from '../domain/cardio';
 import { fmtDay } from '../domain/format';
 import { localDate } from '../domain/ids';
 import { activeProfileDb } from '../db/db';
@@ -43,7 +43,6 @@ function CardioForm({ name, initial, submitLabel, onSubmit, onCancel, onDelete, 
   const seconds = (Number(min) || 0) * 60 + (Number(sec) || 0);
   const nums = Object.fromEntries(m.fields.map((f) => [f, vals[f]?.trim() ? Number(vals[f]) : undefined])) as Partial<Record<CardioField, number>>;
   const problem = !/^\d*$/.test(min.trim()) || !/^\d*$/.test(sec.trim()) ? 'Time is whole minutes and seconds'
-    : Number(sec) > 59 ? 'Seconds go up to 59'
     : seconds <= 0 ? 'Enter how long you went'
     : m.fields.find((f) => nums[f] != null && !Number.isFinite(nums[f]!)) ? 'Numbers only'
     : m.fields.find((f) => f !== 'incline' && nums[f] != null && nums[f]! < 0) ? 'Only incline can go below 0'
@@ -62,7 +61,8 @@ function CardioForm({ name, initial, submitLabel, onSubmit, onCancel, onDelete, 
     <form className="set-form cardio-form" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       <div className="steppers">
         <Stepper label="Minutes" value={min} onChange={touch(setMin)} step={1} mode="numeric" />
-        <Stepper label="Seconds" value={sec} onChange={touch((v: string) => setSec(Number(v) > 59 ? '0' : v))} step={15} mode="numeric" />
+        {/* Below 0 only so − can borrow a minute. */}
+        <Stepper label="Seconds" value={sec} onChange={touch((v: string) => { const [m2, s2] = carrySeconds(min, v); setMin(m2); setSec(s2); })} step={15} mode="numeric" min={-15} />
         {m.fields.map((f) => (
           <Stepper key={f} label={LABEL[f]} value={vals[f] ?? ''} onChange={touch((v: string) => setVals((x) => ({ ...x, [f]: v })))} step={STEP[f]} mode="decimal"
             min={f === 'incline' && m.decline ? -10 : 0} />

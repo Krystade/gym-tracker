@@ -63,6 +63,17 @@ export const fmtClock = (seconds: number): string => {
   const s = Math.max(0, Math.round(seconds)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
   return h ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`;
 };
+/** Seconds stepped past 59 carry into minutes, and below 0 borrow from them (with none to borrow, 0). Typing is left alone. */
+export function carrySeconds(min: string, sec: string): [string, string] {
+  const s = Number(sec), m = Number(min) || 0;
+  if (!/^-?\d+$/.test(sec.trim()) || (s >= 0 && s < 60)) return [min, sec];
+  if (s >= 60) return [String(m + Math.floor(s / 60)), String(s % 60)];
+  if (m <= 0) return [min, '0'];
+  const back = Math.min(m, Math.ceil(-s / 60));
+  return [String(m - back), String(Math.max(0, s + back * 60))];
+}
+/** A distance on a chart or tile: tenths under 10 mi, whole miles from there. */
+export const fmtMiles = (n: number): string => (n < 10 ? n.toFixed(1) : String(Math.round(n)));
 const trim = (n: number) => String(Math.round(n * 100) / 100);
 /** "20:00 · 1.25 mi · 3%", "15:00 · L8 · 52 floors"; decline reads as a minus. */
 export function fmtCardio(c: CardioData): string {
@@ -87,7 +98,8 @@ export interface CardioTarget {
   text: string;
 }
 
-const EASY = { minutes: 10, incline: 0, level: 4 };
+// No incline: an untouched 0 would be saved as "0%". It starts empty, like distance, unless the last session had one.
+const EASY = { minutes: 10, level: 4 };
 export const BUMP = 1.02;
 
 /**
@@ -103,14 +115,15 @@ export function cardioTarget(entries: SetEntry[], name: string, minutes: number 
   const settings = { ...(last?.incline != null && m?.fields.includes('incline') && { incline: last.incline }), ...(last?.level != null && m?.fields.includes('level') && { level: last.level }) };
   if (!m || !measured) {
     const mins = Math.max(EASY.minutes, minutes ?? 0);
-    return { minutes: mins, aim: null, unit, ...(m?.fields.includes('incline') && { incline: EASY.incline }), ...(m?.fields.includes('level') && { level: EASY.level }), ...settings, text: `Easy start · ${mins} min` };
+    return { minutes: mins, aim: null, unit, ...(m?.fields.includes('level') && { level: EASY.level }), ...settings, text: `Easy start · ${mins} min` };
   }
   const c = measured.cardio!;
   const mins = minutes ?? Math.round(c.seconds / 60);
   const pace = amount(m, c)! / (c.seconds / 60);
   const met = c.aim == null || amount(m, c)! >= c.aim;
   const raw = pace * mins * (met ? BUMP : 1);
-  const aim = unit === 'mi' ? Math.ceil(raw * 100) / 100 : Math.ceil(raw);
+  // Up to the next 0.1 mi or whole floor; the nudge keeps float noise (1.1 → 11.000000000000002) from adding a step.
+  const aim = unit === 'mi' ? Math.ceil(raw * 10 - 1e-9) / 10 : Math.ceil(raw - 1e-9);
   return { minutes: mins, aim, unit, ...settings, text: `${mins} min · aim ${trim(aim)} ${unit}` };
 }
 

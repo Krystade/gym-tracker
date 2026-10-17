@@ -43,11 +43,14 @@ export function HistoryScreen({ store, onOpen, onAddTo }: { store: SetsStore; on
         const i = sessions.indexOf(s);
         const groups = byExercise(s.sets);
         const mins = sessionMinutes(store.entries, s.date, pace);
+        // Cardio counts in minutes, not sets.
+        const bouts = s.sets.filter((x) => x.cardio), lifts = s.sets.length - bouts.length;
+        const cardio = Math.round(bouts.reduce((a, x) => a + x.cardio!.seconds, 0) / 60);
         return (
           <details className="day" key={s.date} open={i === 0}>
             <summary>
               <span className="day-date">{fmtDay(s.date, today)}</span>
-              <span className="muted small">{plural(groups.length, 'exercise')} · {plural(s.sets.length, 'set')}{mins != null && ` · ${mins} min`}{s.sets.some((x) => prs.has(x.id)) && <>{' '}<span className="tag pr-tag">PR</span></>}</span>
+              <span className="muted small">{plural(groups.length, 'exercise')}{(lifts > 0 || !bouts.length) && ` · ${plural(lifts, 'set')}`}{bouts.length > 0 && ` · ${cardio} min cardio`}{mins != null && ` · ${mins} min`}{s.sets.some((x) => prs.has(x.id)) && <>{' '}<span className="tag pr-tag">PR</span></>}</span>
             </summary>
             <div className="day-body">
               {groups.map(([name, sets]) => {
