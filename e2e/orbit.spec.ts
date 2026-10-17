@@ -82,12 +82,15 @@ async function setStatus(page: Page, text: string) {
 const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth);
 
 test('Orbit shows a friend’s week as kinds, their status and numbers, at 375×812; a stranger never appears', async ({ browser }, info) => {
-  const b = await person(browser, [
-    { at: Y, lift: 'Barbell Squat', sets: [[185, 5], [185, 5]] },
-    { at: T, lift: 'Bench Press', sets: [[135, 8], [135, 8], [135, 7]] },
+  // Three phones at once: each is independent until B asks A.
+  const [b, a, c] = await Promise.all([
+    person(browser, [
+      { at: Y, lift: 'Barbell Squat', sets: [[185, 5], [185, 5]] },
+      { at: T, lift: 'Bench Press', sets: [[135, 8], [135, 8], [135, 7]] },
+    ]),
+    person(browser),
+    person(browser, [{ at: T, lift: 'Lat Pulldown', sets: [[100, 10]] }]),
   ]);
-  const a = await person(browser);
-  const c = await person(browser, [{ at: T, lift: 'Lat Pulldown', sets: [[100, 10]] }]);
 
   // B: their own row first, with this week's numbers; a status phrase set inline, capped at 24 characters.
   await expect(orbit(b.page).getByTestId('orbit-me')).toContainText('2 sessions · 5 sets');
