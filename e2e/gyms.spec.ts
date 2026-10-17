@@ -65,7 +65,8 @@ test('a gym without machines gets a plan it can do; exclusions and inclusions st
   await expect(page.getByRole('heading', { name: /^Day A/ })).toBeVisible();
   const names = await slotNames(page);
   expect(names).not.toMatch(/Leg Press|Machine|Pec Deck|Leg Curl|Leg Extension|Seated Calf Raise|Glute Press|Cable Curl/);
-  await expect(page.getByText(/Nothing at this gym trains/)).toBeVisible();
+  // Every muscle is priority 3 here: a gym that can't train one is no news (the warning is for priority 1–2).
+  await expect(page.getByText(/Nothing at this gym trains/)).toHaveCount(0);
   await page.screenshot({ path: 'screenshots/17-program-gym.png', fullPage: true });
 
   // The swap picker lists what the gym can't do last, under a divider.
