@@ -1,6 +1,7 @@
 import type { BodyDay } from '../domain/body';
 import type { Gym } from '../domain/equipment';
-import type { CloudMonth, MetaItems } from '../domain/cloud';
+import { monthOf, type CloudMonth, type MetaItems } from '../domain/cloud';
+import { cleanStatus } from '../domain/orbit';
 import { newToken, type Invite } from '../domain/invite';
 import type { SetEntry } from '../domain/types';
 import type { Cloud } from './firebase';
@@ -134,6 +135,24 @@ export async function readFriend({ F, db }: Cloud, uid: string): Promise<FriendD
     body: months.flatMap((m) => m?.body ?? []),
     meta: Object.fromEntries(Object.entries(items).map(([k, v]) => [k, JSON.parse(v) as unknown])),
   };
+}
+
+/**
+ * What Orbit needs of a friend: their sets from `from` to `to` and their status phrase. Only the months that window touches are
+ * read, never the whole history; nothing else in their settings is kept (and cycle data is never in what a friend can read).
+ */
+export interface FriendWindow { sets: SetEntry[]; status: string }
+export async function readFriendWindow({ F, db }: Cloud, uid: string, from: string, to: string): Promise<FriendWindow> {
+  const index = ((await F.getDoc(F.doc(db, `users/${uid}/meta/index`))).data()?.months ?? {}) as Record<string, number>;
+  const want = Object.keys(index).filter((m) => m >= monthOf(from) && m <= monthOf(to));
+  const [months, metaDoc] = await Promise.all([
+    Promise.all(want.map(async (m) => (await F.getDoc(F.doc(db, `users/${uid}/months/${m}`))).data() as CloudMonth | undefined)),
+    F.getDoc(F.doc(db, `users/${uid}/meta/profile`)),
+  ]);
+  const raw = (metaDoc.data()?.items as Record<string, string> | undefined)?.status;
+  let status = '';
+  try { status = raw ? cleanStatus(JSON.parse(raw)) : ''; } catch { /* not a phrase */ }
+  return { sets: months.flatMap((m) => m?.sets ?? []).filter((x) => x.date >= from && x.date <= to), status };
 }
 
 /** A gym a friend sent you, waiting under Friends until you add it or dismiss it. */

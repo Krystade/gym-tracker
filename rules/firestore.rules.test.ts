@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, Timestamp, writeBatch, type Firestore } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, Timestamp, updateDoc, writeBatch, type Firestore } from 'firebase/firestore';
 
 // Synthetic users: alice owns the data, bob is her friend, eve is a stranger.
 let env: RulesTestEnvironment;
@@ -187,5 +187,17 @@ describe('private (cycle phase)', () => {
     await assertFails(getDoc(doc(as('eve'), 'users/alice/private/cycle')));
     await assertFails(getDoc(doc(as(null), 'users/alice/private/cycle')));
     await assertFails(setDoc(doc(as('eve'), 'users/alice/private/cycle'), cycle));
+  });
+});
+describe('Orbit status phrase (in the synced settings)', () => {
+  const settings = (status: string) => ({ items: { status: JSON.stringify(status) }, updatedAt: 1 });
+  it('is yours to set; a friend can read it but not write it; a stranger can do neither', async () => {
+    await assertSucceeds(setDoc(doc(as('alice'), 'users/alice/meta/profile'), settings('deload week')));
+    const got = await assertSucceeds(getDoc(doc(as('bob'), 'users/alice/meta/profile')));
+    expect(JSON.parse((got.data() as { items: { status: string } }).items.status)).toBe('deload week');
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/meta/profile'), settings('hacked')));
+    await assertFails(updateDoc(doc(as('bob'), 'users/alice/meta/profile'), { 'items.status': JSON.stringify('hacked') }));
+    await assertFails(getDoc(doc(as('eve'), 'users/alice/meta/profile')));
+    await assertFails(setDoc(doc(as('eve'), 'users/alice/meta/profile'), settings('hacked')));
   });
 });

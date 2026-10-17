@@ -174,6 +174,9 @@ export const putSettings = async (s: ExerciseSettings): Promise<void> => { await
 /** The tag row: hidden built-ins and their own tags. Absent until first changed. */
 export const getTags = async (): Promise<TagPrefs | undefined> => (await db()).get('config', 'tags');
 export const putTags = async (t: TagPrefs): Promise<void> => { await (await db()).put('config', t); };
+/** Your Orbit status phrase (domain/orbit): '' once cleared, absent until first set. */
+export const getStatus = async (): Promise<string | undefined> => ((await (await db()).get('config', 'status')) as { text: string } | undefined)?.text;
+export const putStatus = async (text: string): Promise<void> => { await (await db()).put('config', { key: 'status', text }); };
 
 export const getProfile = async (): Promise<Profile | undefined> => (await db()).get('profile', 'profile');
 export const putProfile = async (p: Profile): Promise<void> => { await (await db()).put('profile', p); };
@@ -316,7 +319,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 
 // Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
 const PER_PROFILE = {
-  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, putMany, getAllSettings, putSettings, getTags, putTags, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
+  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, putMany, getAllSettings, putSettings, getTags, putTags, getStatus, putStatus, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
   getBody, putBody, putBodyMany, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
 };
 export type ProfileDb = typeof PER_PROFILE;

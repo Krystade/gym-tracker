@@ -20,3 +20,18 @@ describe('tags in the synced settings', () => {
     expect(await boundDb('main').getTags()).toEqual(prefs);
   });
 });
+
+describe('the Orbit status phrase in the synced settings', () => {
+  it('goes up once set, cleared as an empty phrase, per profile', async () => {
+    expect(await readMeta(boundDb('main'))).not.toHaveProperty('status');
+    await boundDb('main').putStatus('deload week');
+    expect((await readMeta(boundDb('main'))).status).toBe('deload week');
+    await boundDb('main').putStatus('');
+    expect((await readMeta(boundDb('main'))).status).toBe('');
+    expect(await readMeta(boundDb('p2'))).not.toHaveProperty('status');
+  });
+  it('comes down onto the phone cleaned: trimmed and cut to 24 characters', async () => {
+    await writeMeta(boundDb('main'), { status: `  ${'z'.repeat(30)} ` });
+    expect(await boundDb('main').getStatus()).toBe('z'.repeat(24));
+  });
+});
