@@ -37,6 +37,13 @@ describe('suggest', () => {
     const log = [s('2026-09-28', 'Bench Press', 135, 9), s('2026-10-02', 'Bench Press', 135, 12), s('2026-10-02', 'Bench Press', 135, 12)];
     expect(suggest(log, 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: 135, reps: 10, sets: 1 });
   });
+  it('after a test day, takes the weight from the test and the sets from the last working session', () => {
+    const log = [s('2026-09-25', 'Bench Press', 135, 10), s('2026-09-25', 'Bench Press', 135, 10), s('2026-09-28', 'Bench Press', 225, 1, ['test'])];
+    const x = suggest(log, 'Bench Press', st, '2026-10-02', null);
+    // 225 / (1 + 12/30) ≈ 160.7 → 160.
+    expect(x).toMatchObject({ weight: 160, reps: 8, sets: 2, setsFrom: 'last', kind: 'test' });
+    expect(x.reason).toBe('Your test set puts 12 reps at about 160 lb, so that’s the working weight now.');
+  });
   it('with no history: reps and 3 sets, no weight', () => {
     expect(suggest([], 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: null, reps: 8, sets: 3, setsFrom: 'default', kind: 'new', warmups: [] });
   });

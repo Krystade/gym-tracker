@@ -1,5 +1,5 @@
 import { normalizeName } from './ids';
-import { e1rm, sameExercise, sessionsFor } from './stats';
+import { e1rm, estimateWeightForReps, sameExercise, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 import { isHold, isHoldLift } from './care';
 
@@ -85,14 +85,28 @@ export function estimateRir(set: SetEntry, sessionSets: SetEntry[], prior: numbe
 }
 
 /** `done`: for an increase, the reps that earned it, over that many sets at the top weight. */
-export interface Target { kind: 'increase' | 'reps' | 'repeat' | 'maxed'; weight: number; reps: number; last: SetEntry[]; text: string; done?: { total: number; sets: number } }
+export interface Target { kind: 'increase' | 'reps' | 'repeat' | 'maxed' | 'test'; weight: number; reps: number; last: SetEntry[]; text: string; done?: { total: number; sets: number } }
 
 const lb = (w: number) => (w === 0 ? 'BW' : `${Math.round(w * 100) / 100} lb`);
 
+const isTest = (s: SetEntry) => s.flags.includes('test');
+/** A set double progression works from: a working set that isn't a test (a test recalibrates instead). */
+export const isProgressionSet = (s: SetEntry): boolean => isWorking(s) && !isTest(s);
+
 export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string): Target | null {
-  const last = sessionsFor(entries, exercise).find((x) => x.date < date);
-  if (!last) return null;
-  const working = last.sets.filter(isWorking);
+  const before = sessionsFor(entries, exercise).filter((x) => x.date < date);
+  if (!before.length) return null;
+  // The session to progress from: the last one that isn't only test sets.
+  const at = before.findIndex((x) => x.sets.some(isProgressionSet) || !x.sets.some(isTest));
+  // A test newer than it resets the working weight: the weight its e1RM (reps in reserve counted) gives at the top of the range.
+  const tests = (at < 0 ? before : before.slice(0, at)).flatMap((x) => x.sets.filter((t) => isTest(t) && isWorking(t)));
+  const best = Math.max(0, ...tests.map((t) => e1rm({ ...t, reps: (t.reps as number) + (t.rir ?? 0) }) ?? 0));
+  if (best > 0) {
+    const w = Math.max(st.increment, Math.round(estimateWeightForReps(best, st.repMax) / st.increment) * st.increment);
+    return { kind: 'test', weight: w, reps: st.repMin, last: before[0].sets, text: `From your test: ${lb(w)} × ${st.repMin}+` };
+  }
+  const last = before[Math.max(0, at)];
+  const working = last.sets.filter(isProgressionSet);
   if (!working.length) {
     const w = Math.max(...last.sets.map((x) => x.weight));
     return { kind: 'repeat', weight: w, reps: st.repMin, last: last.sets, text: `Repeat ${lb(w)} and log every rep` };
