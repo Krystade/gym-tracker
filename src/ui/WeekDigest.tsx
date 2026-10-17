@@ -48,7 +48,7 @@ export function DigestBody({ d }: { d: Digest }) {
     </>}
     {d.under.length > 0 && <>
       <h3 className="digest-sub">Furthest under target</h3>
-      <ul className="digest-lifts" aria-label="Furthest under target">
+      <ul className="digest-lifts" aria-label="Muscles furthest behind">
         {d.under.map((u) => <li key={u.muscle}><span>{u.muscle}</span><span className="muted">{u.sets} of {u.target[0]}–{u.target[1]} sets</span></li>)}
       </ul>
     </>}

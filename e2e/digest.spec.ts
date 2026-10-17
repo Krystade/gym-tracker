@@ -75,7 +75,7 @@ test('Today: last week from Monday; it folds and stays folded, hides until next 
   await expect(card.getByLabel('1 more than the week before').first()).toBeVisible();
   await expect(card.getByRole('list', { name: 'By lift' }).getByRole('listitem')).toHaveText([
     /Lat Pulldown\s*3 sets$/, /Leg Press\s*3 sets$/, /Bench Press\s*2 sets · 1 PR$/, /Treadmill\s*1 bout$/]);
-  await expect(card.getByRole('list', { name: 'Furthest under target' }).getByRole('listitem')).toHaveCount(3);
+  await expect(card.getByRole('list', { name: 'Muscles furthest behind' }).getByRole('listitem')).toHaveCount(3);
   await fits(page);
   await page.screenshot({ path: `${SHOTS}/1-today.png`, fullPage: true });
 
