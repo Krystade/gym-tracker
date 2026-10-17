@@ -108,6 +108,8 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
 
   return (
     <div className="app">
+      {/* Under the clock and battery: with no sticky bar on top, a scrolled card would show through the status bar. */}
+      <div className="status-backdrop" aria-hidden="true" />
       {/* Your screens stay mounted while you look at a friend's, so your log keeps syncing and Back finds you where you were. */}
       <div hidden={!!viewing}>
         <ProfileDbProvider key={people.active!.id} id={people.active!.id}>
@@ -147,7 +149,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const cloud = useCloud(store, body, person, {
     reload: () => { void rawProfile.reload(); void programs.reload(); void settings.reload(); void gyms.reload(); },
     onRequests: nav.setWaiting,
-    rev: [rawProfile.profile, programs.program, programs.plans, settings.get, gyms.gyms],
+    rev: [rawProfile.profile, programs.program, programs.plans, settings.get, settings.tags, gyms.gyms],
   });
   const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, open, showTour } = nav;
   // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.

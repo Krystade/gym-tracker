@@ -6,20 +6,21 @@ import { REGIONS, type Flag, type Region } from '../domain/types';
 import { derivedFlags } from '../domain/buildSet';
 import { isHold, likelyRegion, painDefaults } from '../domain/care';
 import { Stepper } from './Stepper';
+import { BUILT_IN, type TagPrefs } from '../domain/tags';
+import { TagEditor } from './TagEditor';
 
-export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3; at?: string | null }
+export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3; at?: string | null; tags?: string[] }
 const SEVERITY: [1 | 2 | 3, string][] = [[1, 'Mild'], [2, 'Moderate'], [3, 'Sharp']];
 const cap = (r: string) => r[0].toUpperCase() + r.slice(1);
-const TOGGLES: [Flag, string][] = [['pain', 'Pain'], ['unsure', 'Unsure'], ['warmup', 'Warm-up'], ['double_pulley', '2× pulley'], ['test', 'Test']];
 
-interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; note: string; region?: Region; severity?: 1 | 2 | 3; at?: string }
+interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; note: string; region?: Region; severity?: 1 | 2 | 3; at?: string; tags?: string[] }
 
 /** `keepDraft`: what's typed survives leaving the screen or switching profile, until it's saved (the new-set form). */
 /**
  * `when`: the set may have been done earlier — `always` shows the time field (a past day), otherwise "Did this earlier?" opens it.
  * `suggest` is asked when the field opens, so it reflects the clock then. An empty field means unknown.
  */
-export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day, hold: holdLift, heaviest = 0 }: {
+export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day, hold: holdLift, heaviest = 0, tagPrefs, onTagPrefs }: {
   /** An empty weight (null) is for a lift with nothing to suggest from. */
   exercise: string; initial: Omit<SetFormValue, 'weight'> & { weight: number | null }; submitLabel: string;
   /** The heaviest working weight logged for this lift: over twice it asks once before saving. */
@@ -30,6 +31,8 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   /** The day this form logs to; defaults to today. */
   day?: string;
   when?: { suggest: () => string | null; always: boolean; max?: () => string | null }; // max: latest allowed HH:MM, null/absent = no limit
+  /** The tag row as the person keeps it; with `onTagPrefs` it ends in Edit tags. */
+  tagPrefs?: TagPrefs; onTagPrefs?: (t: TagPrefs) => void;
 }) {
   const [owner] = useState(() => ({ profile: activeProfileDb(), date: day ?? localDate(new Date()) }));
   // One draft per lift per day, so a past day's half-typed set never lands in today's form.
@@ -50,22 +53,28 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   const [rir, setRir] = useState<number | undefined>(d ? d.rir : initial.rir);
   const [flags, setFlags] = useState<Flag[]>(d?.flags ?? initial.flags.filter((f) => f !== 'bodyweight' && f !== 'partial'));
   const [note, setNote] = useState(d?.note ?? initial.note ?? '');
+  const [tags, setTags] = useState<string[]>(d?.tags ?? initial.tags ?? []);
+  const [editTags, setEditTags] = useState(false);
   const [region, setRegion] = useState<Region | undefined>(() => (d ? d.region : painDefaults(initial, exercise).region));
   const [severity, setSeverity] = useState<1 | 2 | 3 | undefined>(() => (d ? d.severity : painDefaults(initial, exercise).severity));
   // Only a form the user has touched leaves a draft, so an untouched one keeps following the suggested next set.
   const dirty = useRef(d != null);
   const touch = <T,>(set: (v: T) => void) => (v: T) => { dirty.current = true; set(v); };
   useEffect(() => {
-    if (keepDraft && dirty.current) saveDraft<Draft>(owner.profile, draftKey, owner.date, { weight, reps, rir, flags, note, region, severity, ...(whenOpen && { at: time }) });
-  }, [keepDraft, owner, draftKey, weight, reps, rir, flags, note, region, severity, whenOpen, time]);
+    if (keepDraft && dirty.current) saveDraft<Draft>(owner.profile, draftKey, owner.date, { weight, reps, rir, flags, note, region, severity, tags, ...(whenOpen && { at: time }) });
+  }, [keepDraft, owner, draftKey, weight, reps, rir, flags, note, region, severity, tags, whenOpen, time]);
   // An app update waits while any form has changes not saved yet (main.tsx).
   const formId = useId();
   useEffect(() => markDirty(formId, dirty.current));
   useEffect(() => () => markDirty(formId, false), [formId]);
   // Flags, pain, "Did this earlier?" and the note fold away; double_pulley persists between sets on purpose, so it doesn't hold the fold open.
-  const used = flags.filter((f) => f !== 'double_pulley' && TOGGLES.some(([t]) => t === f));
-  const [moreOpen, setMoreOpen] = useState(() => used.length > 0 || note !== '');
-  const moreHint = [...TOGGLES.filter(([f]) => used.includes(f)).map(([, l]) => l), ...(note.trim() ? ['note'] : [])].join(', ');
+  const used = flags.filter((f) => f !== 'double_pulley' && BUILT_IN.some(([t]) => t === f));
+  const [moreOpen, setMoreOpen] = useState(() => used.length > 0 || tags.length > 0 || note !== '');
+  const moreHint = [...BUILT_IN.filter(([f]) => used.includes(f)).map(([, l]) => l), ...tags, ...(note.trim() ? ['note'] : [])].join(', ');
+  // A hidden built-in or a removed tag still shows on a set that has it, so it can be turned off.
+  const hidden = tagPrefs?.hidden ?? [];
+  const builtIns = BUILT_IN.filter(([f]) => !hidden.includes(f) || flags.includes(f));
+  const own = [...(tagPrefs?.custom ?? []), ...tags.filter((t) => !tagPrefs?.custom.includes(t))];
   const hold = holdLift ?? isHold(exercise);
   const pain = flags.includes('pain');
   const w = Number(weight);
@@ -85,6 +94,9 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
     : w === 0 && r === 0 ? `A set needs a weight or ${unit.toLowerCase()}`
     : null;
   const valid = !problem && !tooLate;
+  // A new card's empty weight is help until the field is touched, not an error from the start (Add set stays off either way).
+  const [loud, setLoud] = useState(false);
+  const quiet = weight.trim() === '' && !loud;
   const busy = useRef(false);
   // A weight far over the best is asked about once; the same weight tapped again is kept.
   const [asked, setAsked] = useState<number | null>(null);
@@ -100,12 +112,14 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       const withHold: Flag[] = hold && !flags.includes('hold') ? [...flags, 'hold'] : flags;
       const ok = await onSubmit({
         weight: w, reps: r, rir: rir ?? (flags.includes('test') ? 0 : undefined), flags: derivedFlags(withHold, w, r), note: note.trim() || undefined,
-        painRegion: pain ? region : undefined, painSeverity: pain ? severity : undefined,
+        painRegion: pain ? region : undefined, painSeverity: pain ? severity : undefined, tags: tags.length ? tags : undefined,
         ...(whenOpen && { at: time || null }),
       });
       if (ok && when) { if (when.always) resuggest.current = true; else setWhenOpen(false); }
       if (ok && keepDraft) { clearDraft(owner.profile, draftKey); dirty.current = false; }
-      if (ok) { setAsked(null); setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); setMoreOpen(false); }
+      // A warm-up doesn't move the next set: back to what the card suggests (the last working set, else the target).
+      if (ok && keepDraft && flags.includes('warmup')) { setWeight(initial.weight == null ? '' : String(initial.weight)); setReps(initial.reps == null ? '' : String(initial.reps)); }
+      if (ok) { setLoud(false); setAsked(null); setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setTags([]); setEditTags(false); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); setMoreOpen(false); }
     } finally { busy.current = false; }
   }
 
@@ -119,10 +133,10 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   return (
     <form className="set-form" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       <div className="steppers">
-        <Stepper label="Weight" value={weight} onChange={touch(setWeight)} step={5} mode="decimal" />
+        <Stepper label="Weight" value={weight} onChange={(v) => { setLoud(true); touch(setWeight)(v); }} step={5} mode="decimal" />
         <Stepper label={unit} value={reps} onChange={touch(setReps)} step={hold ? 5 : 1} mode="numeric" />
       </div>
-      {problem && <p role="status" className="small err">{problem}</p>}
+      {problem && <p role="status" className={quiet ? 'small muted' : 'small err'}>{problem}</p>}
       {!problem && typo && asked === w && <p role="status" className="small err">{weight} lb is {Math.round(w / heaviest)}× your best: tap {submitLabel.split(' ·')[0]} again to keep it</p>}
       {/* Reps in reserve doesn't apply to a timed hold. */}
       {!hold && <div className="chips" role="group" aria-label="RIR">
@@ -135,17 +149,21 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       {whenField}
       <div className="form-actions">
         {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
-        {onDelete && <button type="button" className="danger" onClick={onDelete}>Delete</button>}
         <button type="submit" className="primary" disabled={!valid}>{submitLabel}</button>
       </div>
       <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>{moreOpen || !moreHint ? 'More' : `More · ${moreHint}`}</button>
       {moreOpen && (
         <>
           <div className="chips" role="group" aria-label="Flags">
-            {TOGGLES.map(([f, label]) => (
+            {builtIns.map(([f, label]) => (
               <button type="button" key={f} className="chip" aria-pressed={flags.includes(f)} onClick={() => touch(setFlags)(flags.includes(f) ? flags.filter((x) => x !== f) : [...flags, f])}>{label}</button>
             ))}
+            {own.map((t) => (
+              <button type="button" key={`#${t}`} className="chip" aria-pressed={tags.includes(t)} onClick={() => touch(setTags)(tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t])}>{t}</button>
+            ))}
+            {onTagPrefs && <button type="button" className="chip edit-tags" aria-expanded={editTags} onClick={() => setEditTags(!editTags)}>Edit tags</button>}
           </div>
+          {editTags && tagPrefs && onTagPrefs && <TagEditor prefs={tagPrefs} onChange={onTagPrefs} onDone={() => setEditTags(false)} />}
           {pain && (
             <div ref={painBox} className="pain-box">
               <div className="chips" role="group" aria-label="Pain region">
@@ -162,6 +180,8 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
           <input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => touch(setNote)(e.target.value)} />
         </>
       )}
+      {/* Out of the Cancel/Save row, so a reach for Save can't delete; Undo still brings it back. */}
+      {onDelete && <button type="button" className="mini danger form-delete" onClick={onDelete}>Delete</button>}
     </form>
   );
 }
