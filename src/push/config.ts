@@ -3,8 +3,8 @@
 // The __PUSH_TEST_*__ values are empty in every normal build; only the local push e2e build sets them (vite.config.ts).
 
 /** The Worker's URL, e.g. https://gym-tracker-push.<subdomain>.workers.dev (no trailing slash). */
-export const WORKER_URL: string = __PUSH_TEST_WORKER_URL__ || '';
+export const WORKER_URL: string = __PUSH_TEST_WORKER_URL__ || 'https://gym-tracker-push.jackpschmid.workers.dev';
 /** The VAPID public key: the uncompressed P-256 point, base64url. */
-export const VAPID_PUBLIC_KEY: string = __PUSH_TEST_VAPID_KEY__ || '';
+export const VAPID_PUBLIC_KEY: string = __PUSH_TEST_VAPID_KEY__ || 'BIfd-T8Is6u2djmwW3a7zhJnq4S7Qz1Vy9iR2M6KOhfrpIHj47aE3ycqJNn38ppETvuDSZDnrMAGhDoVFPjPgAo';
 
 export const PUSH_ON = WORKER_URL !== '' && VAPID_PUBLIC_KEY !== '';
