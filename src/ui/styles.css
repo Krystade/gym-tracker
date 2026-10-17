@@ -165,6 +165,23 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .chip[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .form-actions { display: flex; gap: 8px; }
 .form-actions .primary { flex: 1; }
+/* Edit tags: a quieter chip at the end of the tag row, and the editor that opens under it. */
+.chip.edit-tags { border-style: dashed; color: var(--muted); }
+.tag-editor { display: grid; gap: 8px; padding: 4px 12px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); }
+.tag-list { list-style: none; margin: 0; padding: 0; }
+.tag-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.tag-list li:first-child { border-top: 0; }
+.tag-add { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.tag-done { justify-self: end; }
+/* A switch: a 44px target round a 48×28 track; the knob slides right when on. */
+.switch { position: relative; flex: none; width: 56px; padding: 0; border: 0; background: none; }
+.switch::before { content: ''; width: 48px; height: 28px; border-radius: 14px; background: var(--line-strong); transition: background-color .15s; }
+.switch::after { content: ''; position: absolute; top: calc(50% - 11px); left: 7px; width: 22px; height: 22px; border-radius: 50%; background: var(--text); transition: left .15s; }
+.switch[aria-checked='true']::before { background: var(--accent); }
+.switch[aria-checked='true']::after { left: 27px; background: var(--accent-ink); }
+@media (prefers-reduced-motion: reduce) { .switch::before, .switch::after { transition: none; } }
+.tag.own { color: var(--text); }
+.row-button .tag.own { background: var(--bg); } /* History's rows are --surface-2 already */
 
 .picker-head {
   display: grid; grid-template-columns: 1fr auto; gap: 8px; position: sticky; top: 0; z-index: 2; background: var(--bg);

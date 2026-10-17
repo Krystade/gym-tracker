@@ -169,7 +169,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       {editing ? (
         <div ref={editBox} className="edit-box">
         <p className="edit-title">Editing set {today.findIndex((x) => x.id === editing.id) + 1}</p>
-        <SetForm key={editing.id} exercise={exercise} hold={hold} initial={editing} submitLabel="Save"
+        <SetForm key={editing.id} exercise={exercise} hold={hold} initial={editing} submitLabel="Save" tagPrefs={settings.tags} onTagPrefs={settings.saveTags}
           onCancel={() => setEditing(null)}
           onDelete={async () => {
             const no = today.findIndex((x) => x.id === editing.id) + 1; // the number on the row, not the entry order
@@ -196,6 +196,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
         </div>
       ) : (
         <SetForm key="new" exercise={exercise} hold={hold} initial={initial} submitLabel={who ? `Add set · ${who}` : 'Add set'} onSubmit={addSet} keepDraft day={date} heaviest={heaviest}
+          tagPrefs={settings.tags} onTagPrefs={settings.saveTags}
           when={{ suggest: suggestWhen, always: date < realToday, max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined }} />
       )}
     </section>

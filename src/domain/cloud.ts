@@ -89,7 +89,7 @@ export function monthsToSync(local: Map<string, LocalMonth>, remoteIndex: Record
 
 /**
  * Everything else that's yours, flattened to one item per key (`profile`, `program`, `day:<date>`, `settings:<lift>`, `alias:<name>`,
- * `gyms`), so two phones merge as a union. `seen` holds each item's fingerprint as the last sync left it.
+ * `gyms`, `tags`), so two phones merge as a union. `seen` holds each item's fingerprint as the last sync left it.
  */
 export type MetaItems = Record<string, unknown>;
 export interface MergedMeta { items: MetaItems; pull: MetaItems; changed: boolean; seen: Record<string, string> }

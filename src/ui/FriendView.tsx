@@ -4,6 +4,7 @@ import { readFriend, type Friend, type FriendData } from '../cloud/friends';
 import { defaultProfile, type Profile } from '../domain/profile';
 import type { DayPlan, Program } from '../domain/program';
 import { defaultSettings, settingsKey, type ExerciseSettings } from '../domain/progression';
+import { defaultTags, type TagPrefs } from '../domain/tags';
 import { useFittedProfile } from '../state/useFittedProfile';
 import type { SetsStore } from '../state/useSets';
 import type { BodyStore } from '../state/useBody';
@@ -59,7 +60,7 @@ function Screens({ data, tab, exercise, today, gyms, onOpen, onExerciseBack }: {
       store: { entries: data.sets, loading: false, error: null } as unknown as SetsStore,
       body: { days: data.body, error: null } as unknown as BodyStore,
       programs: { program: (m.program as Program | undefined) ?? null, plans, error: null, save: noop, savePlan: noop, reload: noop } as unknown as ProgramStore,
-      settings: { get: (n: string, hold?: boolean) => lifts.get(settingsKey(n)) ?? defaultSettings(n, hold), save: noop, reload: noop } as unknown as SettingsStore,
+      settings: { get: (n: string, hold?: boolean) => lifts.get(settingsKey(n)) ?? defaultSettings(n, hold), save: noop, reload: noop, tags: (m.tags as TagPrefs | undefined) ?? defaultTags(), saveTags: noop } as unknown as SettingsStore,
       raw: { profile: { ...defaultProfile(), ...(m.profile as Profile | undefined) }, save: noop },
     };
   }, [data]);

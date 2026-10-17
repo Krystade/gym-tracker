@@ -36,4 +36,6 @@ export interface SetEntry {
   gym?: string;
   /** A cardio machine session: weight 0, reps null, the `cardio` flag. */
   cardio?: CardioData;
+  /** The person's own tags (see domain/tags): plain labels, shown with the set; nothing counts them. */
+  tags?: string[];
 }

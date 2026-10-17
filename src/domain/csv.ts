@@ -1,10 +1,11 @@
 import { normalizeName, setId } from './ids';
 import { byOrderDone } from './stats';
 import { isFlag, isRegion, type Flag, type SetEntry } from './types';
+import { parseTags } from './tags';
 
 export const CSV_HEADER = ['date', 'exercise', 'as_written', 'set', 'weight_lb', 'reps', 'rir', 'flags', 'note', 'source', 'pain_region', 'pain_severity',
   'logged_at', 'target_weight_lb', 'target_reps', 'target_sets', 'gym', 'entered_at',
-  'duration_s', 'distance_mi', 'incline_pct', 'level', 'floors', 'cardio_aim'] as const;
+  'duration_s', 'distance_mi', 'incline_pct', 'level', 'floors', 'cardio_aim', 'tags'] as const;
 const REQUIRED = ['date', 'exercise', 'set', 'weight_lb', 'reps'];
 
 export interface CsvError { row: number; message: string }
@@ -21,7 +22,7 @@ export function toCsv(entries: SetEntry[]): string {
       [e.date, e.exercise, e.asWritten ?? '', String(e.setNo), String(e.weight), e.reps == null ? '' : String(e.reps),
         e.rir == null ? '' : String(e.rir), e.flags.join(';'), e.note ?? '', e.source, e.painRegion ?? '', e.painSeverity == null ? '' : String(e.painSeverity),
         e.loggedAt ?? '', e.target?.weight != null ? String(e.target.weight) : '', e.target ? String(e.target.reps) : '', e.target ? String(e.target.sets) : '', e.gym ?? '', e.enteredAt ?? '',
-        ...[e.cardio?.seconds, e.cardio?.miles, e.cardio?.incline, e.cardio?.level, e.cardio?.floors, e.cardio?.aim].map((v) => (v == null ? '' : String(v)))].map(esc).join(','),
+        ...[e.cardio?.seconds, e.cardio?.miles, e.cardio?.incline, e.cardio?.level, e.cardio?.floors, e.cardio?.aim].map((v) => (v == null ? '' : String(v))), (e.tags ?? []).join(';')].map(esc).join(','),
     );
   }
   return lines.join('\r\n') + '\r\n';
@@ -108,6 +109,7 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     const source = col(r, 'source').trim() || defaultSource;
     const asWritten = col(r, 'as_written');
     const note = col(r, 'note');
+    const tags = parseTags(col(r, 'tags'));
     // The id ignores case and spacing, so the second row would silently replace the first on import.
     const id = setId(source, date, exercise, setNo);
     const first = seen.get(id);
@@ -127,6 +129,7 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
       ...(gym && { gym }),
       ...(enteredAt && { enteredAt }),
       ...(cardio && { cardio }),
+      ...(tags.length > 0 && { tags }),
     });
   });
   return { entries, errors };

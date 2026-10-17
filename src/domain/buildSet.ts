@@ -6,6 +6,7 @@ export interface NewSetInput { date: string; exercise: string; weight: number; r
   /** When it was done, for a set entered late: a time, or null for unknown. Absent: now. */
   at?: Date | null;
   cardio?: CardioData;
+  tags?: string[];
 }
 
 /** partial and bodyweight follow from the numbers, so an edit that fills in reps or adds weight clears them. */
@@ -35,5 +36,6 @@ export function buildAppSet(existing: SetEntry[], input: NewSetInput, now: Date)
     ...(input.target && { target: input.target }),
     ...(input.gym && { gym: input.gym }),
     ...(input.cardio && { cardio: input.cardio }),
+    ...(input.tags?.length && { tags: input.tags }),
   };
 }

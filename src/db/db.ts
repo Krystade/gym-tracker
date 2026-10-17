@@ -10,6 +10,7 @@ import type { Seen } from '../domain/cloud';
 import type { Gym } from '../domain/equipment';
 import { renameAliases, renameInPlan, renameInProgram, renameSets } from '../domain/rename';
 import { settingsKey } from '../domain/progression';
+import type { TagPrefs } from '../domain/tags';
 
 const STORE = 'sets';
 /** The first profile: it keeps the original database, so existing data needs no migration. */
@@ -167,6 +168,9 @@ export async function renameLift(from: string, to: string): Promise<number> {
 
 export const getAllSettings = async (): Promise<ExerciseSettings[]> => (await db()).getAll('settings');
 export const putSettings = async (s: ExerciseSettings): Promise<void> => { await (await db()).put('settings', s); };
+/** The tag row: hidden built-ins and their own tags. Absent until first changed. */
+export const getTags = async (): Promise<TagPrefs | undefined> => (await db()).get('config', 'tags');
+export const putTags = async (t: TagPrefs): Promise<void> => { await (await db()).put('config', t); };
 
 export const getProfile = async (): Promise<Profile | undefined> => (await db()).get('profile', 'profile');
 export const putProfile = async (p: Profile): Promise<void> => { await (await db()).put('profile', p); };
@@ -269,7 +273,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 
 // Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
 const PER_PROFILE = {
-  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, putMany, getAllSettings, putSettings, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
+  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, putMany, getAllSettings, putSettings, getTags, putTags, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
   getBody, putBody, putBodyMany, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
 };
 export type ProfileDb = typeof PER_PROFILE;
