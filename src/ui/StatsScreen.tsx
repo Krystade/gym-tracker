@@ -17,6 +17,7 @@ import { BodyCard } from './BodyCard';
 import type { BodyStore } from '../state/useBody';
 import type { PhotosStore } from '../state/usePhotos';
 import { PhotosCard } from './PhotosScreen';
+import { LastWeekCard } from './WeekDigest';
 
 const tons = (n: number) => (n >= 1000 ? `${fmtWeight(Math.round(n / 100) / 10)}k` : fmtWeight(Math.round(n)));
 const fmt = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
@@ -115,6 +116,7 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
           {adh && adh.planned > 0 && <div className="tile wide"><span>Program, 4 weeks</span><b>{Math.round((100 * adh.done) / adh.planned)}% · {adh.done} / {adh.planned} sets</b></div>}
         </div>
       </section>
+      <LastWeekCard entries={store.entries} profile={p} today={today} />
       <section className="card">
         <h2>Muscle volume</h2>
         <p className="muted small">Fractional sets this week (direct 1, indirect ½), against each priority’s target range (outlined). “On pace” is short of the target but keeping up with the week so far.</p>

@@ -27,14 +27,17 @@ import { availableSet } from '../domain/equipment';
 import { CATALOG } from '../domain/catalog';
 import { addDays } from '../domain/analytics';
 import type { ThreadWith } from './ThreadSheet';
+import { TodayDigest } from './WeekDigest';
 
-export function TodayScreen({ who, store, settings, programs, body, gyms, profile, date, today, carried, news, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews }: {
+export function TodayScreen({ who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews }: {
   /** Whose sets these are, named only when several people share the phone. */
   who?: string;
   store: SetsStore; settings: SettingsStore; programs: ProgramStore; body: BodyStore; gyms: GymsStore; profile: Profile; date: string; today: string;
   carried?: boolean; onSplit?: () => void; onDay: (d: string) => void; onOpen: (name: string) => void; onOpenProgram: () => void; onOpenGym?: () => void;
   /** A friend's newest unread ping or message: one line, and a tap opens their thread to reply. */
   news?: { uid: string; name: string; text: string } | null; onOpenNews?: (f: ThreadWith) => void;
+  /** When the weekly recap push was tapped: Today opens at the week's digest. */
+  recap?: number;
 }) {
   const [picking, setPicking] = useState(false);
   const [swapFor, setSwapFor] = useState<string | null>(null);
@@ -121,6 +124,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
       )}
       {date < today && <p className="card note-card past-day"><span>Logging to a past day</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={() => onDay(today)}>Back to today</button></p>}
       {carried && <p className="card note-card past-day"><span>Still logging {fmtDay(today, today)}’s workout</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={onSplit}>Today</button></p>}
+      {date === today && <TodayDigest owner={owner} entries={store.entries} profile={profile} today={today} recap={recap} />}
       <WeighIn body={body} date={date} />
       <Energy body={body} date={date} />
       <CycleRow date={date} />

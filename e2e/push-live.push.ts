@@ -135,9 +135,9 @@ test('turn on, send a test push, read it, and hand it to the service worker; the
   await page.getByRole('button', { name: 'Dismiss rest timer' }).click();
   await expect.poll(async () => ((await worker(page, 'GET', '/status')) as { rest: unknown }).rest).toBeNull();
 
-  // A launch on #open=recap lands on Stats.
+  // A launch on #open=recap lands on Today, at the week's digest.
   await page.goto('/#open=recap');
-  await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Stats' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Today' })).toHaveAttribute('aria-current', 'page');
   expect(new URL(page.url()).hash).toBe('');
 });
 

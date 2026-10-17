@@ -11,7 +11,7 @@ export function parseOpen(hash: string): Route | null {
 /** The same check for a route that came from a message or storage. */
 export const isRoute = (v: unknown): v is Route => typeof v === 'string' && parseOpen(`#open=${v}`) != null;
 
-/** Which tab a route opens. Friend routes open Friends until friend messages bring a sheet to open. */
-export function tabOf(r: Route): 'today' | 'stats' | 'friends' {
-  return r === 'recap' ? 'stats' : r === 'friends' || r.startsWith('friend.') ? 'friends' : 'today';
+/** Which tab a route opens. The recap opens Today at the week's digest; friend routes open Friends (the thread on top). */
+export function tabOf(r: Route): 'today' | 'friends' {
+  return r === 'friends' || r.startsWith('friend.') ? 'friends' : 'today';
 }

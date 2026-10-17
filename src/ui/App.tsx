@@ -102,10 +102,13 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
     return () => window.removeEventListener('hashchange', on);
   }, []);
   const [exercise, setExercise] = useState<string | null>(null);
+  const [recapAt, setRecapAt] = useState(0);
   // A notification tap: its screen, with nothing on top.
   useOpenRoute((r) => {
     setViewing(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false);
     setTab(tabOf(r)); window.scrollTo(0, 0);
+    // The recap opens today's Today at the week's digest.
+    if (r === 'recap') { setChosen(null); setRecapAt(Date.now()); }
     // A friend's push opens their thread: one tap to answer with a ping.
     setThread(r.startsWith('friend.') ? { uid: r.slice('friend.'.length) } : null);
   });
@@ -131,7 +134,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   // since its Back goes there; from Today or Stats it lights nothing. An exercise lights nothing.
   const overlay = programOpen || photosOpen || pasteOpen || charsOpen;
   const current = (t: Tab) => !exercise && (overlay ? t === 'more' && tab === 'more' : tab === t || (t === 'more' && tab === 'friends'));
-  const nav = { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, open,
+  const nav = { recapAt, tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, open,
     // The walkthrough points at Today, so it opens there.
     pending, waiting, news, newsRev, setNews, bumpNews, setMe, openThread: (f: ThreadWith) => setThread(f), clearPending: () => { launchInvite = null; setPending(null); },
     view: (f: Friend) => { setViewing(f); setTab('stats'); setExercise(null); window.scrollTo(0, 0); },
@@ -165,7 +168,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
 }
 
 interface Nav {
-  tab: Tab; exercise: string | null; date: string; logDay: string | null; setLogDay: (d: string | null) => void; programOpen: boolean; photosOpen: boolean; pasteOpen: boolean; charsOpen: boolean;
+  recapAt: number; tab: Tab; exercise: string | null; date: string; logDay: string | null; setLogDay: (d: string | null) => void; programOpen: boolean; photosOpen: boolean; pasteOpen: boolean; charsOpen: boolean;
   setTab: (t: Tab) => void; setExercise: (x: string | null) => void; setProgramOpen: (b: boolean) => void; setPhotosOpen: (b: boolean) => void; setPasteOpen: (b: boolean) => void; setCharsOpen: (b: boolean) => void;
   open: (name: string) => void; showTour: () => void;
   pending: Invite | null; clearPending: () => void; waiting: number; view: (f: Friend) => void;
@@ -234,7 +237,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
             onLog={() => { logToday(person.id, day, exercise); setLogDay(null); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'today' ? <TodayScreen key={logDay ?? day} who={people.people.length > 1 ? person.name : undefined} news={uid ? nav.news?.top ?? null : null}
             onOpenNews={(f) => nav.openThread(f)} store={store} settings={settings} programs={programs} body={body} gyms={gyms} profile={profile.profile} date={logDay ?? day} today={day}
-            carried={day !== date && !logDay} onSplit={() => setCarryOff(date)}
+            carried={day !== date && !logDay} recap={nav.recapAt || undefined} onSplit={() => setCarryOff(date)}
             onDay={(d) => { setLogDay(d === day ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={top(() => setProgramOpen(true))} onOpenGym={top(() => setTab('gym'))} />
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} focus={historyAt} onFocused={() => setHistoryAt(null)} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
