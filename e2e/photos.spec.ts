@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 
 // A generated image: no photo file is ever committed to this public repo.
@@ -22,11 +23,11 @@ test('photos stay on the device: add, compare, delete, never exported', async ({
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t: string) => { (window as unknown as { copied: string }).copied = t; } } });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(path.join(import.meta.dirname, 'fixtures', 'history.sample.csv'));
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
 
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   await page.getByRole('region', { name: 'Progress photos' }).getByRole('button', { name: 'Open photos' }).click();
   await addPhoto(page, '2026-08-01', '#446');
   await addPhoto(page, '2026-09-20', '#664');
@@ -47,7 +48,7 @@ test('photos stay on the device: add, compare, delete, never exported', async ({
   await page.getByRole('button', { name: 'Delete photo' }).click();
   await expect(tl.getByRole('img')).toHaveCount(1);
 
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
   await expect(page.getByText('Copied the CSV to the clipboard')).toBeVisible();
   const text = await page.evaluate(() => (window as unknown as { copied: string }).copied);
@@ -65,7 +66,7 @@ test('Save to Photos shares the file, and says so when sharing fails', async ({ 
     } });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   await page.getByRole('region', { name: 'Progress photos' }).getByRole('button', { name: 'Open photos' }).click();
   await addPhoto(page, '2026-08-01', '#446');
   await page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: 'Front, 2026-08-01' }).click();

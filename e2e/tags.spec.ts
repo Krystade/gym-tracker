@@ -1,11 +1,11 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { goto } from './nav';
 
 // Tags he manages: built-ins shown or hidden, his own added and removed, saved on the set and synced. Synthetic data only.
 const T = new Date('2026-10-02T18:00:00');
 const rows = (page: Page) => page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem');
 const flags = (page: Page) => page.getByRole('group', { name: 'Flags' });
 const editor = (page: Page) => page.getByRole('group', { name: 'Edit tags' });
-const nav = (page: Page, t: string) => page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: t, exact: true }).click();
 const addBench = async (page: Page) => {
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
@@ -78,7 +78,7 @@ test('his own tags join the row, hidden built-ins leave it, and a tagged set sho
   await page.getByRole('button', { name: 'More' }).click();
   await expect(flags(page).getByRole('button')).toHaveText(['Pain', 'Unsure', 'Warm-up', '2× pulley', 'Paused', 'Edit tags']);
 
-  await nav(page, 'History');
+  await goto(page, 'History');
   await expect(page.locator('details.day').first()).toContainText('135 × 8 Paused');
   await page.screenshot({ path: 'screenshots/r7-tag-history.png', fullPage: true });
 });
@@ -91,9 +91,9 @@ test('a hidden built-in still shows on a set that has it, so it can be turned of
   await editTags(page, [], ['Warm-up']);
   await expect(flags(page).getByRole('button', { name: 'Warm-up' })).toHaveCount(0);
   // Still a warm-up: History counts it, not lists it.
-  await nav(page, 'History');
+  await goto(page, 'History');
   await expect(page.locator('details.day').first()).toContainText('1 warm-up');
-  await nav(page, 'Today');
+  await goto(page, 'Today');
   await rows(page).first().getByRole('button').click();
   const box = page.locator('.edit-box');
   await expect(box.getByRole('group', { name: 'Flags' }).getByRole('button', { name: 'Warm-up' })).toHaveAttribute('aria-pressed', 'true');
@@ -133,7 +133,7 @@ async function phone(browser: Browser) {
   return page;
 }
 async function enter(page: Page, mail: string, how: 'Create account' | 'Sign in') {
-  await nav(page, 'Data');
+  await goto(page, 'More');
   await account(page).getByRole('textbox', { name: 'Email' }).fill(mail);
   await account(page).getByLabel('Password').fill(PASSWORD);
   await account(page).getByRole('button', { name: how }).click();
@@ -150,7 +150,7 @@ test('the tag row and a set’s tags reach another phone on the same account', a
 
   const b = await phone(browser);
   await enter(b, mail, 'Sign in');
-  await nav(b, 'Today');
+  await goto(b, 'Today');
   await expect(rows(b)).toHaveCount(1);
   await expect(rows(b).first()).toContainText('Paused');
   await b.getByRole('button', { name: 'More' }).click();

@@ -1,17 +1,18 @@
 // e2e/progression.spec.ts
 import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
 
 test('target, estimated RIR, PR banner and settings', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
 
   // Sample: last Cable Curl session 70×12, 80×8, 80×? → top working weight 80, weakest 8 → 80 lb × 9+
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
   await expect(page.getByLabel('Target')).toContainText('× 9+ @ 80 lb');

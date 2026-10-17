@@ -1,14 +1,15 @@
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
 
 const buildProgram = async (page: Page) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('textbox', { name: 'Days per week' }).fill('2');
   await page.getByRole('textbox', { name: 'Sets per session' }).fill('14');
@@ -101,14 +102,14 @@ test('with sets logged but lifts left, the plan is still open after a reload', a
 test('a jump lands the card below the profile bar', async ({ page }) => {
   await buildProgram(page);
   // A second person brings the profile bar; switch straight back to Me (no reload, so Sam's save can't race it).
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   const bar = page.getByRole('group', { name: 'Who’s training' });
   await expect(bar.getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
   await bar.getByRole('button', { name: /Me/ }).click();
   await expect(bar.getByRole('button', { name: /Me/ })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   const plan = page.getByRole('button', { name: /^Today’s plan/ });
   const row = (i: number) => page.getByRole('list', { name: 'Planned exercises' }).getByRole('listitem').nth(i).locator('.plan-name');
   for (let i = 0; i < 4; i++) {

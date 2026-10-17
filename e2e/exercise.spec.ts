@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 
 const HEADER = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source';
 const day = (i: number) => new Date(Date.UTC(2026, 7, 19 + i * 3)).toISOString().slice(0, 10); // Aug 19 … Sep 30, every 3 days
@@ -6,7 +7,7 @@ const day = (i: number) => new Date(Date.UTC(2026, 7, 19 + i * 3)).toISOString()
 // Synthetic history: n sessions of one working set each, the weight (or hold time) rising so every session is a PR.
 async function seed(page: Page, name: string, n: number, hold = false) {
   const rows = Array.from({ length: n }, (_, i) => `${day(i)},${name},,1,${hold ? 0 : 135 + 5 * i},${hold ? 20 + i : 8},,${hold ? 'hold' : ''},,sample`);
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...rows].join('\n')) });
   await expect(page.getByText(`✓ Imported ${n} new sets`)).toBeVisible();
 }
@@ -17,7 +18,7 @@ async function open(page: Page) {
 }
 
 async function openLift(page: Page, name: string) {
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await page.getByRole('button', { name: new RegExp(name) }).click();
   await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible();
 }

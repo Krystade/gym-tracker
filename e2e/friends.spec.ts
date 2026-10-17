@@ -1,11 +1,11 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { goto } from './nav';
 
 // Friends against the local Auth and Firestore emulators. Synthetic users only.
 // Today at 18:00: the emulator checks invite expiry against the real clock, so a fixed date goes stale within a week.
 const T = new Date(new Date().setHours(18, 0, 0, 0));
 const PASSWORD = 'synthetic-pass-1';
 const rand = () => Math.random().toString(36).slice(2, 10);
-const nav = (page: Page, t: string) => page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: t, exact: true }).click();
 const friends = (page: Page) => page.getByRole('region', { name: 'Friends', exact: true });
 const note = (page: Page) => friends(page).getByRole('status');
 
@@ -32,14 +32,14 @@ async function person(browser: Browser, opts: { bench?: boolean; gym?: string } 
     await page.getByRole('button', { name: '‹ Back' }).click();
   }
   const name = `u${rand()}`;
-  await nav(page, 'Friends');
+  await goto(page, 'Friends');
   await page.getByRole('button', { name: 'Sign in or create an account' }).click();
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
   await account.getByLabel('Password').fill(PASSWORD);
   await account.getByRole('button', { name: 'Create account' }).click();
   await expect(account.getByRole('status')).toHaveText(/^Synced/);
-  await nav(page, 'Friends');
+  await goto(page, 'Friends');
   await friends(page).getByRole('textbox', { name: 'Username' }).fill(name);
   await friends(page).getByRole('button', { name: 'Save username' }).click();
   await expect(friends(page)).toContainText(`You’re @${name}`);
@@ -57,8 +57,8 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   await friends(b.page).getByRole('button', { name: 'Send request' }).click();
   await expect(friends(b.page).getByRole('alert')).toHaveText('No one goes by “nobody_here_123”. Check the spelling.');
 
-  await nav(a.page, 'Today');
-  await nav(a.page, 'Friends');
+  await goto(a.page, 'Today');
+  await goto(a.page, 'Friends');
   const req = friends(a.page).getByRole('region', { name: 'Requests' });
   await expect(req).toContainText(`@${b.name} wants to be friends`);
   await req.getByRole('button', { name: 'Accept' }).click();
@@ -66,32 +66,32 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   await expect(friends(a.page).getByRole('region', { name: 'Your friends' }).getByRole('button', { name: `@${b.name}` })).toBeVisible();
 
   // b looks at a's log: the same screens, nothing to edit.
-  await nav(b.page, 'Today');
-  await nav(b.page, 'Friends');
+  await goto(b.page, 'Today');
+  await goto(b.page, 'Friends');
   await friends(b.page).getByRole('button', { name: `@${a.name}` }).click();
   await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing @${a.name}`);
   await expect(b.page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
   await expect(b.page.getByRole('combobox', { name: 'Chest' })).toBeDisabled();
   await expect(b.page.getByRole('navigation', { name: 'Sections' }).getByRole('button')).toHaveText(['History', 'Lifts', 'Stats']);
-  await nav(b.page, 'History');
+  await goto(b.page, 'History');
   await expect(b.page.getByRole('button', { name: /Bench Press/ })).toContainText('135 × 8');
   await expect(b.page.getByRole('button', { name: 'Add to this day' })).toHaveCount(0);
-  await nav(b.page, 'Lifts');
+  await goto(b.page, 'Lifts');
   await b.page.getByRole('button', { name: /Bench Press/ }).click();
   await expect(b.page.getByRole('heading', { name: 'Bench Press', level: 1 })).toBeVisible();
   await expect(b.page.getByRole('button', { name: 'Save settings' })).toHaveCount(0);
   await expect(b.page.getByRole('button', { name: 'Rename' })).toHaveCount(0);
   await b.page.getByRole('button', { name: 'Back to you' }).click();
   await expect(b.page.getByRole('heading', { name: 'Friends', level: 1 })).toBeVisible();
-  await nav(b.page, 'Today');
+  await goto(b.page, 'Today');
   await expect(b.page.getByRole('list', { name: 'Sets for Bench Press' })).toHaveCount(0); // b's own Today, still empty
 
-  await nav(a.page, 'Today');
-  await nav(a.page, 'Friends');
+  await goto(a.page, 'Today');
+  await goto(a.page, 'Friends');
   await friends(a.page).getByRole('button', { name: 'Remove' }).click();
   await friends(a.page).getByRole('button', { name: 'Tap again to remove' }).click();
   await expect(note(a.page)).toHaveText(`Removed @${b.name}. Neither of you can see the other’s log now.`);
-  await nav(b.page, 'Friends');
+  await goto(b.page, 'Friends');
   await expect(friends(b.page).getByRole('region', { name: 'Your friends' })).toContainText('None yet');
 });
 
@@ -122,7 +122,7 @@ test('an invite link asks before it befriends, says what each side sees, and wor
   await friends(c.page).getByRole('region', { name: 'Invite' }).getByRole('button', { name: 'Accept' }).click();
   await expect(note(c.page)).toHaveText(`You and @${a.name} are now friends.`);
   await friends(c.page).getByRole('button', { name: `@${a.name}` }).click();
-  await nav(c.page, 'History');
+  await goto(c.page, 'History');
   await expect(c.page.getByRole('button', { name: /Bench Press/ })).toContainText('135 × 8');
 
   // Used once: the next person holding the same link is turned away before anything is asked.
@@ -133,7 +133,7 @@ test('an invite link asks before it befriends, says what each side sees, and wor
 
   // Cancelled, a fresh link stops working too.
   await a.page.reload();
-  await nav(a.page, 'Friends');
+  await goto(a.page, 'Friends');
   await friends(a.page).getByRole('button', { name: 'Make an invite link' }).click();
   const second = await friends(a.page).getByRole('textbox', { name: 'Your invite link' }).inputValue();
   await friends(a.page).getByRole('button', { name: 'Cancel link' }).click();
@@ -165,7 +165,7 @@ test('a friend’s gym can be added to yours from their Stats', async ({ browser
   await theirs.getByRole('button', { name: 'Add to my gyms' }).click();
   await expect(theirs.getByRole('status')).toHaveText('Added Garage to your gyms.');
   await b.page.getByRole('button', { name: 'Back to you' }).click();
-  await nav(b.page, 'Today');
+  await goto(b.page, 'Today');
   await openGyms(b.page);
   await expect(b.page.getByLabel('Gym name')).toHaveValue('Garage');
   await expect(b.page.getByRole('checkbox', { name: 'dumbbells', exact: true })).toBeChecked();
@@ -176,21 +176,21 @@ test('a gym sent to a friend waits under Friends until they add it', async ({ br
   const a = await person(browser, { gym: 'Garage' });
   const b = await person(browser);
   await befriend(a, b);
-  await nav(a.page, 'Today');
+  await goto(a.page, 'Today');
   await openGyms(a.page);
   const share = a.page.getByRole('region', { name: 'Share this gym' });
   await share.getByRole('button', { name: 'Send to a friend' }).click();
   await share.getByRole('list', { name: 'Send to' }).getByRole('button', { name: 'Send' }).click();
   await expect(share.getByRole('status')).toHaveText(`Sent Garage to ${b.name}.`);
 
-  await nav(b.page, 'Today');
-  await nav(b.page, 'Friends');
+  await goto(b.page, 'Today');
+  await goto(b.page, 'Friends');
   const inbox = friends(b.page).getByRole('region', { name: 'Gyms sent to you' });
   await expect(inbox).toContainText(`@${a.name} sent you a gym: Garage`);
   await inbox.getByRole('button', { name: 'Add' }).click();
   await expect(note(b.page)).toHaveText('Added Garage to your gyms.');
   await expect(inbox).toHaveCount(0);
-  await nav(b.page, 'Today');
+  await goto(b.page, 'Today');
   await openGyms(b.page);
   await expect(b.page.getByLabel('Gym name')).toHaveValue('Garage');
   await expect(b.page.getByRole('checkbox', { name: 'barbell', exact: true })).toBeChecked();

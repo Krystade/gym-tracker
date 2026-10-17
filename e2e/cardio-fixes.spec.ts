@@ -1,9 +1,8 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
-// The tab bar's data tab, by either name (it becomes More).
-const tab = (page: Page, name: string) => page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: name === 'Data' ? /^(Data|More)$/ : name, exact: name !== 'Data' });
 
 test('cardio form: seconds carry and borrow minutes; an untouched incline is not saved; History counts minutes', async ({ page }) => {
   await page.goto('/');
@@ -30,7 +29,7 @@ test('cardio form: seconds carry and borrow minutes; an untouched incline is not
   await expect(card.getByRole('list', { name: 'Sessions for Treadmill' })).toContainText('10:45 · 1.2 mi');
   await expect(card.getByRole('list', { name: 'Sessions for Treadmill' })).not.toContainText('%');
 
-  await tab(page, 'History').click();
+  await goto(page, 'History');
   const day = page.locator('details.day').first();
   await expect(day.locator('summary')).toContainText('1 exercise · 11 min cardio');
   await expect(day.locator('summary')).not.toContainText('set');
@@ -40,7 +39,7 @@ test('cardio form: seconds carry and borrow minutes; an untouched incline is not
 
 test('pasted cardio reads like History; the chart shows tenths of a mile with distinct ticks; no priority shows minutes alone', async ({ page }) => {
   await page.goto('/');
-  await tab(page, 'Data').click();
+  await goto(page, 'More');
   await page.getByRole('button', { name: 'Paste from notes' }).click();
   // The first line is today; the rest go on two earlier days.
   await page.getByLabel('Workout notes').fill(['bike 25 min', '10/1/26', 'Treadmill 20 min 1.15 mi', '10/3/26', 'Treadmill 20:00 1.27mi 5%', 'stairs 15 min 52 floors'].join('\n'));
@@ -55,7 +54,7 @@ test('pasted cardio reads like History; the chart shows tenths of a mile with di
   await page.getByRole('button', { name: /^Add 4 sets from 3 days/ }).click();
   await expect(page.getByRole('status')).toContainText('Added 4 sets');
 
-  await tab(page, 'Lifts').click();
+  await goto(page, 'Lifts');
   await page.getByRole('button', { name: /^Treadmill/ }).click();
   await expect(page.locator('.tile', { hasText: 'Best distance' })).toContainText('1.3 mi');
   await expect(page.locator('.readout')).toContainText('1.3 mi');
@@ -70,7 +69,7 @@ test('pasted cardio reads like History; the chart shows tenths of a mile with di
   await expect(page.getByText('Log this on two days to see a trend.')).toBeVisible();
 
   // No cardio priority set: minutes alone, no range to fall short of.
-  await tab(page, 'Stats').click();
+  await goto(page, 'Stats');
   await expect(page.getByLabel('Cardio this week')).toHaveText('This week: 25 min');
   await page.getByLabel('Cardio this week').scrollIntoViewIfNeeded();
   await page.screenshot({ path: 'screenshots/cardio-stats.png' });
@@ -80,12 +79,12 @@ test('pasted cardio reads like History; the chart shows tenths of a mile with di
 
 test('the cardio exercise screen aims at the planned minutes', async ({ page }) => {
   await page.goto('/');
-  await tab(page, 'Data').click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
-  await tab(page, 'Stats').click();
+  await goto(page, 'Stats');
   await page.getByRole('combobox', { name: 'Cardio' }).selectOption('2');
-  await tab(page, 'Today').click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('button', { name: 'Set up your gym' }).click();
   for (const e of ['dumbbells', 'flat bench', 'cable stack', 'treadmill']) await page.getByRole('checkbox', { name: e, exact: true }).check();

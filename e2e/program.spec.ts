@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
@@ -11,11 +12,11 @@ const openPlan = async (page: import('@playwright/test').Page) => {
 
 test('build a program, then run today from it with skip and log', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
 
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('textbox', { name: 'Days per week' }).fill('2');
   await page.getByRole('textbox', { name: 'Sets per session' }).fill('14');
@@ -50,7 +51,7 @@ test('build a program, then run today from it with skip and log', async ({ page 
 
 test('logging without touching the plan still records the session for adherence', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('button', { name: 'Build program' }).click();
   await page.getByRole('button', { name: '‹ Back' }).click();
@@ -59,6 +60,6 @@ test('logging without touching the plan still records the session for adherence'
   await page.getByRole('textbox', { name: 'Weight' }).fill('50'); // no history: the weight starts empty
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   await expect(page.locator('.tile', { hasText: 'Program, 4 weeks' })).toContainText(/\d+% · \d+ \/ \d+ sets/);
 });

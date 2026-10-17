@@ -1,15 +1,15 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
-const nav = (page: Page, t: string) => page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: t, exact: true }).click();
 
 test('a PR stays marked on its row, in the day summary and in History', async ({ page }) => {
   await page.goto('/');
-  await nav(page, 'Data');
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // Cable Curl, last 70 × 12 · 80 × 8
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
-  await nav(page, 'Today');
+  await goto(page, 'Today');
   await expect(page.getByRole('region', { name: 'Today so far' })).toHaveCount(0); // nothing logged yet
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Cable Curl');
@@ -31,7 +31,7 @@ test('a PR stays marked on its row, in the day summary and in History', async ({
   await expect(sum).toContainText('↑ last 80 × 8');
   await expect(sum.getByLabel('Sets per muscle')).toContainText('Biceps 2');
 
-  await nav(page, 'History');
+  await goto(page, 'History');
   await expect(page.locator('details.day').first().locator('summary')).toContainText('PR');
 });
 
@@ -57,25 +57,25 @@ test('Today so far counts a top set done more than once', async ({ page }) => {
 
 test('a Lifts row says what you lifted last time', async ({ page }) => {
   await page.goto('/');
-  await nav(page, 'Data');
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // Cable Curl, last 70 × 12 · 80 × 8 · 80 × (partial)
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
-  await nav(page, 'Lifts');
+  await goto(page, 'Lifts');
   await expect(page.getByRole('button', { name: /^Cable Curl/ })).toContainText('80 × 8');
 });
 
 test('History is grouped by month, with only recent months open', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-06T18:00:00') });
   await page.goto('/');
-  await nav(page, 'Data');
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // two days in January 2026
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
-  await nav(page, 'Today');
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Cable Curl');
   await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
   await page.locator('[data-card="cable curl"]').getByRole('button', { name: /^Add set/ }).click();
-  await nav(page, 'History');
+  await goto(page, 'History');
   const months = page.locator('details.month');
   await expect(months).toHaveCount(2);
   await expect(months.nth(0).locator('> summary')).toContainText('October 2026');
@@ -88,10 +88,10 @@ test('History is grouped by month, with only recent months open', async ({ page 
 
 test('the priority picker says what each priority asks for', async ({ page }) => {
   await page.goto('/');
-  await nav(page, 'Data');
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // Stats shows Priorities once there's a log
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
-  await nav(page, 'Stats');
+  await goto(page, 'Stats');
   await expect(page.getByRole('group', { name: 'Weekly sets' })).toContainText('1 gets the most, 4 the least.');
   // The picker offers the same fitted range the Weekly sets list shows for priority 1.
   const range = (await page.locator('.tier-target').first().innerText()).match(/^1 · ([\d.]+–[\d.]+) sets/)![1];

@@ -1,16 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 import { dataSettled } from './settle';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
-const nav = (page: Page, t: string) => page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: t, exact: true }).click();
 
 const importFixture = async (page: Page) => {
   await page.goto('/');
-  await nav(page, 'Data');
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
-  await nav(page, 'Today');
+  await goto(page, 'Today');
 };
 const buildProgram = async (page: Page) => {
   await importFixture(page);
@@ -106,11 +106,11 @@ test('with two people, Add set names whose set it is', async ({ page }) => {
   await importFixture(page);
   await addCard(page, 'Cable Curl');
   await expect(page.getByRole('button', { name: 'Add set', exact: true })).toBeVisible();
-  await nav(page, 'Data');
+  await goto(page, 'More');
   await dataSettled(page);
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
-  await nav(page, 'Today');
+  await goto(page, 'Today');
   await addCard(page, 'Cable Curl');
   await expect(page.getByRole('button', { name: 'Add set · Sam' })).toBeVisible();
 });

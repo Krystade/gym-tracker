@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { dataSettled } from './settle';
@@ -31,7 +32,7 @@ test('private backup: save settings, sync through a mocked GitHub, token stays h
   });
 
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await dataSettled(page);
   const card = page.getByRole('region', { name: 'Private backup' });
   await card.getByText('How to make a token').click();
@@ -80,7 +81,7 @@ test('switching profile while a sync is pulling keeps what it pulled with the pe
     return route.fulfill({ status: 201, json: {} });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await dataSettled(page);
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();

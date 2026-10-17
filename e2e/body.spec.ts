@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 
 const fx = (n: string) => path.join(import.meta.dirname, 'fixtures', n);
@@ -16,18 +17,18 @@ test('weigh in, import MyFitnessPal, see the trend, export body CSV', async ({ p
   await weigh.getByRole('button', { name: 'Save weight' }).click();
   await expect(weigh).toContainText('183.4 lb');
 
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles([fx('mfp-weight.sample.csv'), fx('mfp-nutrition.sample.csv')]);
   await expect(page.getByText('MyFitnessPal weight: 6 days')).toBeVisible();
   await expect(page.getByText('MyFitnessPal nutrition: 3 days')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   const card = page.getByRole('region', { name: 'Body weight' });
   await expect(card).toContainText('Trend');
   await expect(card).toContainText(/lb\/week/);
   await expect(card.getByRole('img', { name: /Body weight/ })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByRole('button', { name: 'Export body CSV' }).click();
   await expect(page.getByText('Copied the CSV to the clipboard')).toBeVisible();
   const text = await page.evaluate(() => (window as unknown as { copied: string }).copied);

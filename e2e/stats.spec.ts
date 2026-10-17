@@ -1,17 +1,18 @@
 import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
 
 test('stats: empty state, then charts after import, and priorities edit', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   await expect(page.getByText('No sessions yet')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   for (const h of ['This week', 'Muscle volume', 'Sessions per week', 'Weekly tonnage', 'Calendar', 'Priorities']) {
     await expect(page.getByRole('heading', { name: h })).toBeVisible();
   }
@@ -23,16 +24,16 @@ test('stats: empty state, then charts after import, and priorities edit', async 
 
 test('exercise screen: rep-max picker, calibration note, and a logged test set', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Cable Curl/ }).click();
   await expect(page.getByText('Epley · no tests yet')).toBeVisible();
   await expect(page.getByText('Est. 6RM')).toBeVisible();
   await page.getByRole('button', { name: '10RM' }).click();
   await expect(page.getByText('Est. 10RM')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
   await page.getByRole('button', { name: 'More' }).click();
@@ -81,12 +82,12 @@ function weighIns(): string {
 async function seed(page: Pg, body = true) {
   await page.clock.install({ time: new Date(`${TODAY}T09:00:00`) });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   const files = [{ name: 'history.csv', mimeType: 'text/csv', buffer: Buffer.from(history()) }];
   if (body) files.push({ name: 'mfp-weight.csv', mimeType: 'text/csv', buffer: Buffer.from(weighIns()) });
   await page.getByLabel('Import CSV').setInputFiles(files);
   await expect(page.getByText(/Imported \d+ new/)).toBeVisible();
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
 }
 
 test('stats: early in the week, a muscle keeping up with the week reads on pace, with its target beside the value', async ({ page }) => {
@@ -100,7 +101,7 @@ test('stats: early in the week, a muscle keeping up with the week reads on pace,
   await logBench(page, '135', '10');
   await page.clock.setFixedTime(new Date('2026-09-30T09:00:00'));
   await page.reload();
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   const chest = page.locator('.mrow[aria-label^="Chest:"]');
   await expect(chest.locator('.mval')).toHaveText('2 / 2.5–4');
   await expect(chest.locator('.mstat')).toHaveText(/on pace/);
@@ -164,12 +165,12 @@ test('stats: tiles say each thing once, hide the program tile without a program,
   await page.screenshot({ path: 'screenshots/45-stats-volume.png' });
 
   // With a program built, one merged tile.
-  await page.getByRole('button', { name: 'Today', exact: true }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('heading', { name: 'Weekly volume' })).toBeVisible();
   await page.getByRole('button', { name: '‹ Back' }).click();
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   const merged = week.locator('.tile').filter({ hasText: 'Program, 4 weeks' });
   await expect(merged.locator('b')).toHaveText(/^\d+% · \d+ \/ \d+ sets$/);
   await expect(week.locator('.tile')).toHaveCount(5);
@@ -183,7 +184,7 @@ test('stats: the goal label stays inside the sessions chart when the goal is its
   await page.getByRole('textbox', { name: 'Weight' }).fill('50');
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Stats' }).click();
+  await goto(page, 'Stats');
   const sessions = page.getByRole('img', { name: /Sessions per week/ });
   const box = await sessions.evaluate((svg: SVGSVGElement) => {
     const goal = [...svg.querySelectorAll('text')].find((t) => t.textContent === 'goal')!.getBBox();
@@ -199,7 +200,7 @@ test('stats: the goal label stays inside the sessions chart when the goal is its
 
 test('program: weekly volume shows the target beside each value and never "on pace"', async ({ page }) => {
   await seed(page, false);
-  await page.getByRole('button', { name: 'Today', exact: true }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('button', { name: 'Build program' }).click();
   const vol = card(page, 'Weekly volume');

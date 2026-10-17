@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 
 const HEADER = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source';
 const day = (i: number) => new Date(Date.UTC(2026, 7, 19 + i * 3)).toISOString().slice(0, 10); // Aug 19 … Wed, Sep 30
@@ -8,7 +9,7 @@ async function seed(page: Page, now = '2026-10-02T18:00:00') {
   await page.clock.install({ time: new Date(now) });
   await page.goto('/');
   const rows = Array.from({ length: 15 }, (_, i) => `${day(i)},Bench Press,,1,${135 + 5 * i},8,,,,sample`);
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...rows].join('\n')) });
   await expect(page.getByText('✓ Imported 15 new sets')).toBeVisible();
 }
@@ -17,7 +18,7 @@ const box = async (page: Page, sel: ReturnType<Page['locator']>) => (await sel.b
 
 test('a typed name to add as a new lift comes after the lifts it matches, not before them', async ({ page }) => {
   await seed(page);
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('bench');
   const list = page.locator('.picker-list');
@@ -33,7 +34,7 @@ test('a typed name to add as a new lift comes after the lifts it matches, not be
 
 test('the program builder describes days that vary their lifts', async ({ page }) => {
   await seed(page);
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await expect(page.getByText(/different lift/)).toBeVisible();
   await expect(page.getByText(/repeats on every day/)).toHaveCount(0);
@@ -41,7 +42,7 @@ test('the program builder describes days that vary their lifts', async ({ page }
 
 test('dates this year leave the year off on Lifts, the lift’s history and Today’s last line', async ({ page }) => {
   await seed(page);
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await expect(page.getByRole('button', { name: /Bench Press/ })).toContainText('last Wed, Sep 30');
   await expect(page.getByRole('button', { name: /Bench Press/ })).not.toContainText('2026');
   await page.getByRole('button', { name: /Bench Press/ }).click();
@@ -53,13 +54,13 @@ test('dates this year leave the year off on Lifts, the lift’s history and Toda
 
 test('a date from another year keeps its year', async ({ page }) => {
   await seed(page, '2027-01-05T18:00:00');
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await expect(page.getByRole('button', { name: /Bench Press/ })).toContainText('last Sep 30, 2026');
 });
 
 test('the rep-max chips sit under the estimate they change, above the other tiles', async ({ page }) => {
   await seed(page);
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Bench Press/ }).click();
   const est = await box(page, page.locator('.tile', { hasText: 'Est. 6RM' }));
   const chips = await box(page, page.getByRole('group', { name: 'Rep max' }));
@@ -70,7 +71,7 @@ test('the rep-max chips sit under the estimate they change, above the other tile
 
 test('the warm-up goes on its own line under the target', async ({ page }) => {
   await seed(page);
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Bench Press/ }).click();
   await page.getByRole('button', { name: 'Log it today' }).click();
   const target = page.getByLabel('Target');
@@ -83,7 +84,7 @@ test('the warm-up goes on its own line under the target', async ({ page }) => {
 
 test('the plan header has no dead space, folded or open', async ({ page }) => {
   await seed(page);
-  await page.getByRole('button', { name: 'Today' }).click();
+  await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('button', { name: 'Build program' }).click();
   await page.getByRole('button', { name: '‹ Back' }).click();

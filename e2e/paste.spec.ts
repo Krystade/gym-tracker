@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { goto } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
@@ -7,7 +8,7 @@ const NOTES = ['1/12/26', 'Cable curls: 70x12 80x8', '1/14/26', 'Lat pull down: 
 
 test('paste from notes: review, fix a line, map a name, add once', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText('✓ Imported 6 new sets')).toBeVisible();
 
@@ -42,16 +43,16 @@ test('paste from notes: review, fix a line, map a name, add once', async ({ page
   await expect(page.getByLabel('Exercise on line 6')).toHaveValue('Barbell Squat');
   await expect(page.getByRole('button', { name: 'Nothing to add' })).toBeDisabled();
 
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await expect(page.getByText(/^11 sets/)).toBeVisible();
-  await page.getByRole('button', { name: 'Lifts' }).click();
+  await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Barbell Squat/ }).click();
   await expect(page.getByText('135 × 5').first()).toBeVisible();
 });
 
 test('paste review shows every date a set lands on, and the notes it read', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByRole('button', { name: 'Paste from notes' }).click();
   await page.getByLabel('Workout notes').fill('9/28/26\nBench: 135x8 felt heavy\n9/29/26 Row 100x10\nCurl 30x10');
   await page.getByRole('button', { name: 'Read notes' }).click();
@@ -63,7 +64,7 @@ test('paste review shows every date a set lands on, and the notes it read', asyn
 
 test('dimmed rows dim their text, not the Edit/Ignore buttons that still work', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data' }).click();
+  await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText('✓ Imported 6 new sets')).toBeVisible();
   await page.getByRole('button', { name: 'Paste from notes' }).click();

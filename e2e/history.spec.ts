@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 
 const openLift = async (page: Page, name: string) => {
   await page.getByRole('button', { name: 'Add exercise' }).click();
@@ -37,7 +38,7 @@ test('History: short date, a two-line summary, warm-ups folded to a suffix, pain
     await page.getByRole('button', { name: new RegExp(`^${lift}( · logged)?$`) }).first().click();
     await logSet(page, lift, '100', '5');
   }
-  await page.getByRole('button', { name: 'History' }).click();
+  await goto(page, 'History');
   const day = page.locator('details.day').first();
   const bench = day.getByRole('button', { name: /^Bench Press/ });
   await expect(bench).toContainText('135 × 8, 135 × 8');

@@ -1,9 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 
 // The config marks the walkthrough as seen for every other spec; here the phone is new.
 test.use({ storageState: { cookies: [], origins: [] } });
 
-const nav = (page: Page, t: string) => page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: t, exact: true }).click();
 
 test('a first visit opens the walkthrough; Back and Next step through it, and Done closes it for good', async ({ page }) => {
   await page.goto('/');
@@ -37,7 +37,7 @@ test('Skip closes it for good, and the Data tab opens it again from the start', 
   await page.reload();
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(sheet).toHaveCount(0);
-  await nav(page, 'Data');
+  await goto(page, 'More');
   await page.getByRole('button', { name: 'Show walkthrough' }).click();
   await expect(sheet.getByRole('heading')).toHaveText('Today');
 });
@@ -102,7 +102,7 @@ test.describe('the spotlight', () => {
       await page.getByRole('button', { name: lift, exact: true }).click();
     }
     const add = page.getByRole('button', { name: 'Add exercise' });
-    await nav(page, 'Data');
+    await goto(page, 'More');
     await page.getByRole('button', { name: 'Show walkthrough' }).click();
     await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Today' })).toHaveAttribute('aria-current', 'page');
     const sheet = page.getByRole('dialog', { name: 'Walkthrough' });
