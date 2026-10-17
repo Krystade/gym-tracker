@@ -5,6 +5,7 @@ import type { BodyStore } from '../state/useBody';
 import type { SyncStore } from '../state/useSync';
 import { SyncCard } from './SyncCard';
 import { AccountCard } from './AccountCard';
+import { CycleCard } from './Cycle';
 import type { CloudStore } from '../state/useCloud';
 import { PeopleCard } from './PeopleCard';
 import type { PeopleStore } from '../state/usePeople';
@@ -156,6 +157,7 @@ export function DataScreen({ store, profile, body, sync, cloud, people, requests
           ? <p className="muted" role="status">{bodyFallback}</p>
           : <textarea className="csv" aria-label="Body CSV export" readOnly value={bodyFallback} onFocus={(e) => e.currentTarget.select()} />)}
       </section>
+      <CycleCard />
       <AccountCard cloud={cloud} people={people.people} />
       <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} />
       <PeopleCard people={people} />

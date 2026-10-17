@@ -1,4 +1,4 @@
-import { deleteDB, openDB, type IDBPDatabase } from 'idb';
+import { deleteDB, openDB, type IDBPDatabase, type IDBPObjectStore } from 'idb';
 import type { SetEntry } from '../domain/types';
 import type { ExerciseSettings } from '../domain/progression';
 import type { Profile } from '../domain/profile';
@@ -11,6 +11,7 @@ import type { Gym } from '../domain/equipment';
 import { renameAliases, renameInPlan, renameInProgram, renameSets } from '../domain/rename';
 import { settingsKey } from '../domain/progression';
 import type { TagPrefs } from '../domain/tags';
+import type { CycleDay } from '../domain/cycle';
 
 const STORE = 'sets';
 /** The first profile: it keeps the original database, so existing data needs no migration. */
@@ -30,7 +31,7 @@ export const setBlockedHandler = (fn: (() => void) | null) => { onBlocked = fn; 
 function db(id = current): Promise<IDBPDatabase> {
   const open = conns.get(id);
   if (open) return open;
-  const p: Promise<IDBPDatabase> = openDB(dbName(id), 7, {
+  const p: Promise<IDBPDatabase> = openDB(dbName(id), 8, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) d.createObjectStore(STORE, { keyPath: 'id' }).createIndex('date', 'date');
       if (oldVersion < 2) d.createObjectStore('settings', { keyPath: 'key' });
@@ -40,6 +41,8 @@ function db(id = current): Promise<IDBPDatabase> {
       // Metadata apart from the image blobs, so listing the timeline never reads the images.
       if (oldVersion < 6) { d.createObjectStore('photos', { keyPath: 'id' }).createIndex('date', 'date'); d.createObjectStore('photoBlobs'); }
       if (oldVersion < 7) d.createObjectStore('config', { keyPath: 'key' });
+      // Cycle phase: private, so apart from body days (friends read those). See domain/cycle.
+      if (oldVersion < 8) d.createObjectStore('cycle', { keyPath: 'date' });
     },
     blocked() { onBlocked?.(); },
     // A newer version of the app is upgrading the database: step aside, and reload to pick up the new code.
@@ -212,6 +215,44 @@ export async function putBodyMany(days: BodyDay[]): Promise<void> {
   await Promise.all([...days.map((d) => tx.store.put(d)), tx.done]);
 }
 
+/**
+ * The cycle setting and sync state. `tracking` is absent until set on this phone (then the account's copy fills it in).
+ * `rev` counts changes here; `synced` is the account and `rev` the cloud last took; `wiped`: deleted here, not yet in the cloud.
+ */
+export interface CycleConfig { key: 'cycle'; tracking?: boolean; rev: number; synced?: { uid: string; rev: number }; wiped?: boolean }
+const NO_CYCLE: CycleConfig = { key: 'cycle', rev: 0 };
+export async function getCycle(): Promise<{ days: CycleDay[]; cfg: CycleConfig }> {
+  const tx = (await db()).transaction(['cycle', 'config']);
+  const [days, cfg] = await Promise.all([tx.objectStore('cycle').getAll() as Promise<CycleDay[]>, tx.objectStore('config').get('cycle') as Promise<CycleConfig | undefined>, tx.done]);
+  return { days, cfg: cfg ?? NO_CYCLE };
+}
+/** A change to the cycle data, and its mark for the next sync, in one transaction. */
+async function cycleChange(f: (days: IDBPObjectStore<unknown, string[], 'cycle', 'readwrite'>, cfg: CycleConfig) => Promise<unknown> | void, set: Partial<CycleConfig> = {}): Promise<void> {
+  const tx = (await db()).transaction(['cycle', 'config'], 'readwrite');
+  const cfg: CycleConfig = (await tx.objectStore('config').get('cycle')) ?? NO_CYCLE;
+  await f(tx.objectStore('cycle'), cfg);
+  await Promise.all([tx.objectStore('config').put({ ...cfg, ...set, rev: cfg.rev + 1 }), tx.done]);
+}
+/** A phase for a day, or `null` to clear it (kept as a mark until the cloud has the clearing too). */
+export const putCycleDay = (d: CycleDay): Promise<void> => cycleChange((s) => s.put(d));
+export const putCycleTracking = (on: boolean): Promise<void> => cycleChange(() => {}, { tracking: on });
+/** Every cycle day on this phone; the next sync deletes the account's copy. The setting stays as it is. */
+export const clearCycle = (): Promise<void> => cycleChange((s) => s.clear(), { wiped: true });
+/**
+ * After a cycle sync: saves the account's days this phone lacked and its setting if this phone has none. Only when nothing
+ * changed here since `rev` was read does it drop the cleared-day marks and count the cloud as up to date.
+ */
+export async function finishCycleSync(uid: string, rev: number, pull: CycleDay[], tracking: boolean | undefined): Promise<void> {
+  const tx = (await db()).transaction(['cycle', 'config'], 'readwrite');
+  const days = tx.objectStore('cycle'), cf = tx.objectStore('config');
+  const cfg: CycleConfig = (await cf.get('cycle')) ?? NO_CYCLE;
+  for (const d of pull) if (!(await days.getKey(d.date))) await days.put(d);
+  const same = cfg.rev === rev;
+  if (same) for (const d of (await days.getAll()) as CycleDay[]) if (d.phase == null) await days.delete(d.date);
+  const next: CycleConfig = { ...cfg, tracking: cfg.tracking ?? tracking, ...(same ? { synced: { uid, rev }, wiped: false } : {}) };
+  await Promise.all([cf.put(next), tx.done]);
+}
+
 export const getPhotoMetas = async (): Promise<PhotoMeta[]> => (await db()).getAll('photos');
 // Stored as ArrayBuffers: WebKit rejects Blobs in IndexedDB in ephemeral sessions (private browsing, test browsers).
 interface StoredImage { type: string; data: ArrayBuffer }
@@ -274,7 +315,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 // Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
 const PER_PROFILE = {
   getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, putMany, getAllSettings, putSettings, getTags, putTags, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan,
-  getBody, putBody, putBodyMany, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
+  getBody, putBody, putBodyMany, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
 };
 export type ProfileDb = typeof PER_PROFILE;
 const bound = new Map<string, ProfileDb>();

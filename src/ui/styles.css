@@ -185,6 +185,11 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .form-actions .primary { flex: 1; }
 /* Edit tags: a quieter chip at the end of the tag row, and the editor that opens under it. */
 .chip.edit-tags { border-style: dashed; color: var(--muted); }
+/* Cycle phase: the likely phase, outlined only (no fill, no label); it isn't pressed until tapped. */
+.chip.predicted:not([aria-pressed='true']) { border-style: dashed; border-color: var(--accent); }
+.chips.cycle .chip { padding: 0 8px; } /* four phases on one line at 375px */
+.cycle-setting { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cycle-setting h2 { margin: 0; }
 .tag-editor { display: grid; gap: 8px; padding: 4px 12px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); }
 .tag-list { list-style: none; margin: 0; padding: 0; }
 .tag-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }

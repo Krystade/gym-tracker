@@ -9,6 +9,7 @@ import { fmtDay } from '../domain/format';
 import { ExerciseCard } from './ExerciseCard';
 import { SessionSummary } from './SessionSummary';
 import { Energy } from './Energy';
+import { CycleRow } from './Cycle';
 import { plannedMinutes, plannedSets, suggest } from '../domain/suggest';
 import { isWorking, nextTarget } from '../domain/progression';
 import { activeProfileDb } from '../db/db';
@@ -114,6 +115,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
       {carried && <p className="card note-card past-day"><span>Still logging {fmtDay(today, today)}’s workout</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={onSplit}>Today</button></p>}
       <WeighIn body={body} date={date} />
       <Energy body={body} date={date} />
+      <CycleRow date={date} />
       {programs.program && plan && hasPlan && (
         <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today} open={open} onToggle={() => setPlanOpen(!open)}
           buildQuick={(fits) => quickDay(profile, store.entries, date, fits, available ? { available, include: gyms.active!.include } : {})}
