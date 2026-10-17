@@ -47,6 +47,21 @@ describe('mergeMonth', () => {
     expect(r.doc.deleted).toEqual({});
   });
 
+  it('a set put back by Undo after its delete synced stays, and the delete goes from the cloud', () => {
+    const back = set('2026-10-01', 2, { restoredAt: NOW - 10 }); // logged long before the delete; Undo after it
+    const r = mergeMonth({ sets: [back], body: [], tombstones: new Set() }, remote({ deleted: { [back.id]: NOW - 5000 } }), NOW);
+    expect(r.deleteIds).toEqual([]);
+    expect(r.doc.sets.map((s) => s.id)).toEqual([back.id]);
+    expect(r.doc.deleted).toEqual({});
+    expect(r.doc.sets[0].seq).toBe(back.seq); // the day keeps its order
+  });
+
+  it('a delete after an Undo still wins', () => {
+    const back = set('2026-10-01', 2, { restoredAt: NOW - 5000 });
+    const r = mergeMonth({ sets: [back], body: [], tombstones: new Set() }, remote({ deleted: { [back.id]: NOW - 10 } }), NOW);
+    expect(r.deleteIds).toEqual([back.id]);
+  });
+
   it('body days fill each other in; the phone wins a field both have', () => {
     const r = mergeMonth({ sets: [], body: [{ date: '2026-10-01', weight: 180 }], tombstones: new Set() },
       remote({ body: [{ date: '2026-10-01', weight: 175, protein: 150 }, { date: '2026-10-02', calories: 2400 }] }), NOW);

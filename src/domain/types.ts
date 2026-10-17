@@ -19,6 +19,8 @@ export interface SetEntry {
   loggedAt?: string;
   /** When a late set was entered; absent for sets logged as they were done. */
   enteredAt?: string;
+  /** When Undo put this set back after a delete (epoch ms): it beats that delete in sync without moving the set in its day. */
+  restoredAt?: number;
   exercise: string;
   asWritten?: string;
   setNo: number;

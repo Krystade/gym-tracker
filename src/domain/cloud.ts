@@ -27,7 +27,7 @@ export function mergeMonth(local: LocalMonth, remote: CloudMonth | null, now: nu
   for (const [id, at] of Object.entries(deleted)) {
     const s = live.get(id);
     if (!s) continue;
-    if (s.seq > at) delete deleted[id]; // logged again after the delete
+    if (Math.max(s.seq, s.restoredAt ?? 0) > at) delete deleted[id]; // logged again, or put back by Undo, after the delete
     else { deleteIds.push(id); live.delete(id); }
   }
   const importSets = (remote?.sets ?? []).filter((s) => !live.has(s.id) && !(s.id in deleted) && !local.tombstones.has(s.id));
