@@ -39,9 +39,10 @@ export const perSetSeconds = (p: Paces, exercise: string): number =>
   p.perSet.get(settingsKey(exercise)) ?? (defaultSettings(exercise).repMin >= 10 ? DEFAULT_PACE.isolation : DEFAULT_PACE.compound);
 
 /** A list of lifts and sets, in seconds: every set, a switch between lifts, and the warm-up of the first lift that has one (`warmups(ex)` sets). */
-export function estimateSeconds(slots: { exercise: string; sets: number }[], p: Paces, warmups: (ex: string) => number = () => 0): number {
-  const warm = slots.map((s) => warmups(s.exercise)).find((n) => n > 0) ?? 0; // only the session's first compound warms up
-  const work = warm * DEFAULT_PACE.warmup + slots.reduce((a, s) => a + s.sets * perSetSeconds(p, s.exercise), 0);
+export function estimateSeconds(slots: { exercise: string; sets: number; minutes?: number }[], p: Paces, warmups: (ex: string) => number = () => 0): number {
+  const warm = slots.filter((s) => s.minutes == null).map((s) => warmups(s.exercise)).find((n) => n > 0) ?? 0; // only the session's first compound warms up
+  // A cardio slot takes its minutes.
+  const work = warm * DEFAULT_PACE.warmup + slots.reduce((a, s) => a + (s.minutes != null ? s.minutes * 60 : s.sets * perSetSeconds(p, s.exercise)), 0);
   return work + Math.max(0, slots.length - 1) * p.transition;
 }
 

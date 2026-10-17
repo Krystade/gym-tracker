@@ -8,6 +8,10 @@ import type { ProgramStore } from '../state/useProgram';
 import { estimateSeconds, hhmm, paces, timedDay } from '../domain/timing';
 import { warmupCount } from '../domain/suggest';
 import { fmtLoad } from './SuggestionCard';
+import { cardioTarget } from '../domain/cardio';
+
+/** Done for the plan: a working set, or a cardio bout. */
+const doneEntry = (e: SetEntry) => isWorking(e) || !!e.cardio;
 
 export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: string): DayPlan | null => {
   if (!store.program) return null;
@@ -19,7 +23,7 @@ export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: str
 export function leftToDo(program: Program, plan: DayPlan, entries: SetEntry[]): string[] {
   const day = plan.quick != null ? { slots: plan.slots ?? [] } : program.days[plan.day] ?? program.days[0];
   return day.slots.filter((s) => !plan.skips.includes(s.exercise)).map((s) => ({ ex: plan.swaps[s.exercise] ?? s.exercise, sets: s.sets }))
-    .filter(({ ex, sets }) => entries.filter((e) => e.date === plan.date && sameExercise(e.exercise, ex) && isWorking(e)).length < sets).map(({ ex }) => ex);
+    .filter(({ ex, sets }) => entries.filter((e) => e.date === plan.date && sameExercise(e.exercise, ex) && doneEntry(e)).length < sets).map(({ ex }) => ex);
 }
 
 /** `buildQuick`: a one-off day of lifts that fits, for the Quick chip. */
@@ -33,7 +37,7 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
   const quick = plan.quick != null;
   const day = quick ? { name: 'Quick', slots: plan.slots ?? [] } : program.days[plan.day] ?? program.days[0];
   const [minutes, setMinutes] = useState(String(plan.quick ?? program.minutes ?? 30));
-  const doneOf = (ex: string) => entries.filter((e) => e.date === plan.date && sameExercise(e.exercise, ex) && isWorking(e)).length;
+  const doneOf = (ex: string) => entries.filter((e) => e.date === plan.date && sameExercise(e.exercise, ex) && doneEntry(e)).length;
   const title = past ? 'Plan' : 'Today’s plan';
   const pace = useMemo(() => paces(entries), [entries]);
   // Warm-up counts per lift, worked out once per log change.
@@ -53,7 +57,7 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
   // The second line of the header: how long it runs when open, how far along when folded. Inside the
   // toggle, so it fills the 44 px tap area instead of sitting under it.
   const length = () => {
-    const todo = live.map((s) => ({ exercise: plan.swaps[s.exercise] ?? s.exercise, sets: s.sets }));
+    const todo = live.map((s) => ({ exercise: plan.swaps[s.exercise] ?? s.exercise, sets: s.sets, minutes: s.minutes }));
     const mins = Math.round(estimateSeconds(todo, pace, warm) / 60);
     const first = timedDay(entries, plan.date)[0];
     const start = first ? new Date(first.loggedAt!) : null;
@@ -94,7 +98,9 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
                 <b>{target}</b>
                 {target !== slot.exercise && <span className="muted small">for {slot.exercise}</span>}
                 {/* The count rides under the name, so the name gets the width it needs. */}
-                <span className="muted small"><span className="plan-count">{skipped ? 'Skipped' : `${Math.min(done, slot.sets)}/${slot.sets}`}</span> · {slot.repMin}–{slot.repMax}{isHoldLift(slot.exercise, entries) ? ' s hold' : ' reps'}{!skipped && loadFor && fmtLoad(loadFor(target, slot.sets))}</span>
+                <span className="muted small"><span className="plan-count">{skipped ? 'Skipped' : `${Math.min(done, slot.sets)}/${slot.sets}`}</span> · {slot.minutes != null
+                  ? cardioTarget(entries, target, slot.minutes, plan.date).text
+                  : <>{slot.repMin}–{slot.repMax}{isHoldLift(slot.exercise, entries) ? ' s hold' : ' reps'}{!skipped && loadFor && fmtLoad(loadFor(target, slot.sets))}</>}</span>
               </button>
               <button type="button" onClick={() => onChange({ ...plan, skips: skipped ? plan.skips.filter((x) => x !== slot.exercise) : [...plan.skips, slot.exercise] })}>
                 {skipped ? 'Undo' : 'Skip'}

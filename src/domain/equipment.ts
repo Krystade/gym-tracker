@@ -8,6 +8,7 @@ export const EQUIPMENT = [
   'smith machine', 'leg press', 'leg extension', 'seated leg curl', 'lying leg curl', 'chest press machine', 'pec deck',
   'shoulder press machine', 'lateral raise machine', 'row machine', 'seated calf machine', 'standing calf machine', 'glute press',
   'hip abduction machine', 'hip adduction machine', 'ab crunch machine', 'biceps curl machine', 'triceps machine', 'torso rotation machine',
+  'treadmill', 'stair climber', 'exercise bike', 'elliptical',
 ] as const;
 export type Equipment = (typeof EQUIPMENT)[number];
 
@@ -18,6 +19,7 @@ export const EQUIPMENT_GROUPS: [string, Equipment[]][] = [
   ['Machines', ['smith machine', 'leg press', 'leg extension', 'seated leg curl', 'lying leg curl', 'chest press machine', 'pec deck',
     'shoulder press machine', 'lateral raise machine', 'row machine', 'seated calf machine', 'standing calf machine', 'glute press',
     'hip abduction machine', 'hip adduction machine', 'ab crunch machine', 'biceps curl machine', 'triceps machine', 'torso rotation machine']],
+  ['Cardio', ['treadmill', 'stair climber', 'exercise bike', 'elliptical']],
 ];
 
 export interface Gym { id: string; name: string; equipment: Equipment[]; exclude: string[]; include: string[] }
@@ -55,12 +57,14 @@ export const NEEDS: Record<string, Needs> = {
   'Bulgarian Split Squat': one('flat bench'), 'Hip Thrust': [['barbell', 'hip thrust bench'], ['barbell', 'flat bench'], ['smith machine', 'flat bench']],
   'Glute Press': one('glute press'), 'Hip Adduction Machine': one('hip adduction machine'), 'Hip Abduction Machine': one('hip abduction machine'),
   'Standing Calf Raise': one('standing calf machine', 'smith machine', 'dumbbells'), 'Seated Calf Raise': one('seated calf machine'),
+  Treadmill: one('treadmill'), StairMaster: one('stair climber'), 'Exercise Bike': one('exercise bike'), Elliptical: one('elliptical'),
 };
 
 const key = (s: string) => normalizeName(s).toLowerCase();
 const NEEDS_BY_KEY = new Map(Object.entries(NEEDS).map(([k, v]) => [key(k), v]));
 
 const MACHINES = new Set<Equipment>(EQUIPMENT_GROUPS.find(([g]) => g === 'Machines')![1]);
+const CARDIO_GEAR = new Set<Equipment>(EQUIPMENT_GROUPS.find(([g]) => g === 'Cardio')![1]);
 const CABLES = new Set<Equipment>(EQUIPMENT_GROUPS.find(([g]) => g === 'Cables')![1]);
 /** The main gear a catalog lift is done with, in a word ("dumbbells", "cable", "machine"); null when it isn't a catalog lift. */
 export function gearOf(exercise: string): string | null {
@@ -73,7 +77,7 @@ export function gearOf(exercise: string): string | null {
   // A bench is where you do it, not what you lift; a lift that needs only a bench names nothing.
   const main = alt.find((e) => !e.endsWith('bench'));
   if (!main) return null;
-  return main === 'smith machine' ? 'Smith machine' : MACHINES.has(main) ? 'machine' : CABLES.has(main) ? 'cable' : main;
+  return main === 'smith machine' ? 'Smith machine' : CARDIO_GEAR.has(main) ? 'cardio machine' : MACHINES.has(main) ? 'machine' : CABLES.has(main) ? 'cable' : main;
 }
 
 /** Whether this gym can do the lift: an exclusion or inclusion decides first, then the gear. Null = gear unknown (not a catalog lift). */

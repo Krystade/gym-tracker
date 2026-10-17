@@ -3,7 +3,8 @@ import { byOrderDone } from './stats';
 import { isFlag, isRegion, type Flag, type SetEntry } from './types';
 
 export const CSV_HEADER = ['date', 'exercise', 'as_written', 'set', 'weight_lb', 'reps', 'rir', 'flags', 'note', 'source', 'pain_region', 'pain_severity',
-  'logged_at', 'target_weight_lb', 'target_reps', 'target_sets', 'gym', 'entered_at'] as const;
+  'logged_at', 'target_weight_lb', 'target_reps', 'target_sets', 'gym', 'entered_at',
+  'duration_s', 'distance_mi', 'incline_pct', 'level', 'floors', 'cardio_aim'] as const;
 const REQUIRED = ['date', 'exercise', 'set', 'weight_lb', 'reps'];
 
 export interface CsvError { row: number; message: string }
@@ -19,7 +20,8 @@ export function toCsv(entries: SetEntry[]): string {
     lines.push(
       [e.date, e.exercise, e.asWritten ?? '', String(e.setNo), String(e.weight), e.reps == null ? '' : String(e.reps),
         e.rir == null ? '' : String(e.rir), e.flags.join(';'), e.note ?? '', e.source, e.painRegion ?? '', e.painSeverity == null ? '' : String(e.painSeverity),
-        e.loggedAt ?? '', e.target?.weight != null ? String(e.target.weight) : '', e.target ? String(e.target.reps) : '', e.target ? String(e.target.sets) : '', e.gym ?? '', e.enteredAt ?? ''].map(esc).join(','),
+        e.loggedAt ?? '', e.target?.weight != null ? String(e.target.weight) : '', e.target ? String(e.target.reps) : '', e.target ? String(e.target.sets) : '', e.gym ?? '', e.enteredAt ?? '',
+        ...[e.cardio?.seconds, e.cardio?.miles, e.cardio?.incline, e.cardio?.level, e.cardio?.floors, e.cardio?.aim].map((v) => (v == null ? '' : String(v)))].map(esc).join(','),
     );
   }
   return lines.join('\r\n') + '\r\n';
@@ -96,6 +98,13 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     const gym = col(r, 'gym').trim();
     const enteredAt = col(r, 'entered_at').trim();
     if (enteredAt && !Number.isFinite(Date.parse(enteredAt))) return fail(`Bad entered_at "${enteredAt}"`);
+    // Cardio: a flagged row needs a duration; the other numbers are optional. Older files have none of these columns.
+    const cn = (name: string) => num(col(r, name));
+    const isCardioRow = flagParts.includes('cardio');
+    const seconds = cn('duration_s');
+    if (isCardioRow && (seconds == null || seconds <= 0)) return fail('Cardio row needs duration_s');
+    const cardio = isCardioRow ? Object.fromEntries(Object.entries({ seconds, miles: cn('distance_mi'), incline: cn('incline_pct'), level: cn('level'), floors: cn('floors'), aim: cn('cardio_aim') })
+      .filter(([, v]) => v != null)) as unknown as SetEntry['cardio'] : undefined;
     const source = col(r, 'source').trim() || defaultSource;
     const asWritten = col(r, 'as_written');
     const note = col(r, 'note');
@@ -117,6 +126,7 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
       ...(target && { target }),
       ...(gym && { gym }),
       ...(enteredAt && { enteredAt }),
+      ...(cardio && { cardio }),
     });
   });
   return { entries, errors };

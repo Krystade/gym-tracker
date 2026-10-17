@@ -15,7 +15,8 @@ export function weeklyMuscleSets(entries: SetEntry[], week: string): { sets: Rec
   const unmapped = new Set<string>();
   const byDay = new Map<string, Record<Muscle, number>>();
   for (const e of entries) {
-    if (e.date < week || e.date >= end || e.flags.includes('warmup')) continue;
+    // Cardio counts as minutes (domain/cardio), not muscle sets, and isn't unknown either.
+    if (e.date < week || e.date >= end || e.flags.includes('warmup') || e.cardio) continue;
     const v = muscleVector(e.exercise);
     if (!v) { unmapped.add(e.exercise); continue; }
     const day = byDay.get(e.date) ?? byDay.set(e.date, zero()).get(e.date)!;
@@ -36,7 +37,7 @@ export function weeklySummary(entries: SetEntry[], weeks: number, today: string)
     const i = idx.get(weekStart(e.date));
     if (i == null) continue;
     const w = out[i];
-    if (!e.flags.includes('warmup')) w.sets += 1;
+    if (!e.flags.includes('warmup') && !e.cardio) w.sets += 1;
     if (e.weight > 0 && e.reps != null && !e.flags.includes('hold')) w.tonnage += e.weight * e.reps;
     (days.get(w.week) ?? days.set(w.week, new Set()).get(w.week)!).add(e.date);
   }

@@ -1,3 +1,4 @@
+import { CARDIO_NAMES, isCardio } from './cardio';
 import { addDays, weekStart } from './analytics';
 import { CATALOG } from './catalog';
 import { gearOf } from './equipment';
@@ -77,6 +78,8 @@ function muscleWhy(from: string, to: string): string {
 
 /** Same-muscle alternatives, ranked by similarity, pushed down if they hurt recently or load a region that did. */
 export function swapSuggestions(exercise: string, entries: SetEntry[], today: string, limit = 5, available?: Set<string>): Suggestion[] {
+  // A cardio slot swaps to another machine this gym has.
+  if (isCardio(exercise)) return CARDIO_NAMES.filter((n) => !sameExercise(n, exercise) && (!available || available.has(n))).map((name) => ({ name, score: 1, why: 'cardio machine' })).slice(0, limit);
   const pain = recentPain(entries, today);
   const logged = exerciseNames(entries);
   const pool = [...logged, ...CATALOG.filter((c) => !logged.some((l) => sameExercise(l, c)))].filter((n) => !sameExercise(n, exercise) && (!available || available.has(n)));

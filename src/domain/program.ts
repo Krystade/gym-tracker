@@ -6,10 +6,13 @@ import { sameExercise } from './stats';
 import { addDays } from './analytics';
 import type { SetEntry } from './types';
 import { CATALOG } from './catalog';
+import { CARDIO_TARGETS, cardioSlots, cardioTierOf, pickMachine, weeklyCardioMinutes } from './cardio';
+import { weekStart } from './analytics';
 
-export interface Slot { exercise: string; sets: number; repMin: number; repMax: number }
+/** `minutes`: a cardio slot (one bout of that long on `exercise`, a machine); its `sets` is 1 and the rep range is unused. */
+export interface Slot { exercise: string; sets: number; repMin: number; repMax: number; minutes?: number }
 export interface ProgramDay { name: string; slots: Slot[] }
-export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string; /** Minutes per session it was built for; unset when built by sets. */ minutes?: number; /** Set once its days were hand-edited; a rebuild drops it. */ edited?: boolean; newToYou?: string[]; unavailable?: Muscle[] }
+export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string; /** Minutes per session it was built for; unset when built by sets. */ minutes?: number; /** Set once its days were hand-edited; a rebuild drops it. */ edited?: boolean; newToYou?: string[]; unavailable?: Muscle[]; /** Cardio has a weekly goal but this gym has no cardio machine. */ cardioUnavailable?: boolean }
 /** What happened to the program on one date: which day was run, and what was skipped or swapped. */
 /** `slots` is the day as planned when the session was logged, so later program edits don't rewrite history. */
 /** `quick`: a one-off Quick day built for this many minutes; its `slots` are the day, and it doesn't move the rotation. */
@@ -146,14 +149,29 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
 
   const order = [...weekly.keys()].sort((a, b) => bestTier(a, profile) - bestTier(b, profile) || weekly.get(b)! - weekly.get(a)!);
   const newToYou = order.filter((ex) => !isKnown(ex) && perDay.some((d) => d.has(ex)));
+  // Cardio: the priority's weekly minutes in slots of about 25, on the days with the fewest lifting sets, each last in its day.
+  const goal = CARDIO_TARGETS[cardioTierOf(profile)][0];
+  const cardioMachine = goal > 0 ? pickMachine(entries, today, (n) => !ctx.available || ctx.available.has(n)) : null;
+  const cardio = new Map<number, number>();
+  if (cardioMachine) {
+    const lightest = totals.map((t, i) => [t, i]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, i]) => i);
+    cardioSlots(goal, days).forEach((min, k) => cardio.set(lightest[k], min));
+  }
   return {
     key: 'program', perSession, createdAt: now.toISOString(), newToYou, unavailable,
+    ...(goal > 0 && !cardioMachine && { cardioUnavailable: true }),
     days: perDay.map((m, i) => ({
       name: `Day ${String.fromCharCode(65 + i)}`,
-      slots: order.filter((ex) => m.has(ex)).map((ex) => { const st = defaultSettings(ex); return { exercise: ex, sets: m.get(ex)!, repMin: st.repMin, repMax: st.repMax }; }),
+      slots: [
+        ...order.filter((ex) => m.has(ex)).map((ex) => { const st = defaultSettings(ex); return { exercise: ex, sets: m.get(ex)!, repMin: st.repMin, repMax: st.repMax }; }),
+        ...(cardio.has(i) ? [cardioSlot(cardioMachine!, cardio.get(i)!)] : []),
+      ],
     })),
   };
 }
+
+/** A cardio slot of `minutes` on `machine`. */
+export const cardioSlot = (machine: string, minutes: number): Slot => ({ exercise: machine, sets: 1, repMin: 0, repMax: 0, minutes });
 
 /** Weekly fractional sets per muscle for one pass through every day. */
 export function programVolume(p: Program): Record<Muscle, number> {
@@ -164,7 +182,9 @@ export function programVolume(p: Program): Record<Muscle, number> {
   return v;
 }
 
-const trainedOn = (entries: SetEntry[], date: string) => entries.some((e) => e.date === date && isWorking(e));
+/** A day counts as trained with a working set or a cardio bout, so a cardio-only day still moves the rotation. */
+const counts = (e: SetEntry) => isWorking(e) || !!e.cardio;
+const trainedOn = (entries: SetEntry[], date: string) => entries.some((e) => e.date === date && counts(e));
 
 /** The day after the last one actually trained; a plan with nothing logged doesn't count. */
 export function nextDay(p: Program, plans: DayPlan[], entries: SetEntry[], today: string): number {
@@ -179,7 +199,7 @@ export function adherence(p: Program, plans: DayPlan[], entries: SetEntry[], sin
     const slots = x.slots ?? p.days[x.day]?.slots;
     if (x.date < since || x.date > today || !slots || !trainedOn(entries, x.date)) continue;
     // Each logged set counts toward one slot, so a swap onto an exercise already planned can't be counted twice.
-    const left = entries.filter((e) => e.date === x.date && isWorking(e));
+    const left = entries.filter((e) => e.date === x.date && counts(e));
     for (const slot of slots) {
       planned += slot.sets;
       if (x.skips.includes(slot.exercise)) continue;
@@ -228,7 +248,13 @@ export function quickDay(profile: Profile, entries: SetEntry[], date: string, fi
     return goal > 0 ? (TIER_WEIGHT[profile.tiers[m]] * (goal - achieved[m])) / goal : 0;
   };
   const day = new Map<string, number>();
-  const slots = () => [...day].map(([exercise, sets]) => { const st = defaultSettings(exercise); return { exercise, sets, repMin: st.repMin, repMax: st.repMax }; });
+  // Cardio at priority 1–2 that's behind for the week: its shortfall, 10–20 minutes, if it fits.
+  const tier = cardioTierOf(profile), short = CARDIO_TARGETS[tier][0] - weeklyCardioMinutes(entries.filter((e) => e.date < date), weekStart(date));
+  const m0 = tier <= 2 && short > 0 ? pickMachine(entries, date, (n) => !ctx.available || ctx.available.has(n)) : null;
+  let cardio: Slot[] = m0 ? [cardioSlot(m0, Math.min(20, Math.max(10, Math.round(short / 5) * 5)))] : [];
+  if (cardio.length && !fits(cardio)) cardio = [];
+  const lifts = () => [...day].map(([exercise, sets]) => { const st = defaultSettings(exercise); return { exercise, sets, repMin: st.repMin, repMax: st.repMax }; });
+  const slots = () => [...lifts(), ...cardio];
   for (;;) {
     const open = MUSCLES.filter((m) => !done.has(m));
     const below = (bound: 0 | 1) => open.filter((m) => score(m, bound) > 0)
@@ -241,5 +267,5 @@ export function quickDay(profile: Profile, entries: SetEntry[], date: string, fi
     if (!fits(slots())) { day.set(ex, day.get(ex)! - UNIT); if (!day.get(ex)) day.delete(ex); break; }
     for (const [mm, f] of Object.entries(muscleVector(ex) ?? {}) as [Muscle, number][]) achieved[mm] += f * UNIT;
   }
-  return slots().sort((a, b) => bestTier(a.exercise, profile) - bestTier(b.exercise, profile) || b.sets - a.sets);
+  return [...lifts().sort((a, b) => bestTier(a.exercise, profile) - bestTier(b.exercise, profile) || b.sets - a.sets), ...cardio];
 }

@@ -22,4 +22,6 @@ export const CATALOG: string[] = [
   'Leg Press', 'Leg Extension', 'Seated Leg Curl', 'Lying Leg Curl', 'Romanian Deadlift', 'DB Romanian Deadlift', 'Barbell Squat',
   'Smith Squat', 'Bulgarian Split Squat', 'Hip Thrust', 'Glute Press', 'Hip Adduction Machine', 'Hip Abduction Machine',
   'Standing Calf Raise', 'Seated Calf Raise',
+  // Cardio
+  'Treadmill', 'StairMaster', 'Exercise Bike', 'Elliptical',
 ];

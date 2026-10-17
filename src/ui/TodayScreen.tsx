@@ -9,7 +9,7 @@ import { fmtDay } from '../domain/format';
 import { ExerciseCard } from './ExerciseCard';
 import { SessionSummary } from './SessionSummary';
 import { Energy } from './Energy';
-import { plannedSets, suggest } from '../domain/suggest';
+import { plannedMinutes, plannedSets, suggest } from '../domain/suggest';
 import { isWorking, nextTarget } from '../domain/progression';
 import { activeProfileDb } from '../db/db';
 import { getDraft, saveDraft } from '../state/drafts';
@@ -117,7 +117,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
       )}
       {cards.length === 0 && <p className="muted">{date < today ? 'Nothing logged that day.' : 'Nothing logged yet today.'}</p>}
       {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} today={today} store={store} settings={settings} onOpen={onOpen}
-        plannedSets={plannedSets(programs.program, plan, n)} gym={gyms.active?.name} who={who} left={hasPlan ? left : []} onGo={goTo}
+        plannedSets={plannedSets(programs.program, plan, n)} plannedMinutes={plannedMinutes(programs.program, plan, n)} gym={gyms.active?.name} who={who} left={hasPlan ? left : []} onGo={goTo}
         swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
         openReq={openReq != null && sameExercise(openReq, n)} onOpenReq={() => setOpenReq(null)} />)}
       {/* Below the cards, so the card you're logging on never moves down. */}

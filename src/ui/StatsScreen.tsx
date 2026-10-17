@@ -1,3 +1,4 @@
+import { CARDIO_TARGETS, cardioTierOf, thisWeekCardio } from '../domain/cardio';
 import { useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { FittedProfileStore } from '../state/useFittedProfile';
@@ -45,7 +46,7 @@ function TierTarget({ t, profile }: { t: Tier; profile: FittedProfileStore }) {
   );
 }
 
-function Priorities({ profile, readOnly }: { profile: FittedProfileStore; readOnly?: boolean }) {
+function Priorities({ profile, readOnly, cardioMinutes }: { profile: FittedProfileStore; readOnly?: boolean; cardioMinutes: number }) {
   const p = profile.profile;
   const [goal, setGoal] = useState(String(p.weeklyGoal));
   return (
@@ -71,6 +72,15 @@ function Priorities({ profile, readOnly }: { profile: FittedProfileStore; readOn
             </select>
           </label>
         ))}
+      </div>
+      {/* Cardio is planned in minutes a week, not sets. */}
+      <div className="prio-grid cardio-prio">
+        <label>Cardio
+          <select aria-label="Cardio" value={cardioTierOf(p)} onChange={(e) => void profile.save({ ...p, cardioTier: Number(e.target.value) as Tier })}>
+            {([1, 2, 3, 4] as Tier[]).map((t) => <option key={t} value={t}>{t} · {CARDIO_TARGETS[t][0]}–{CARDIO_TARGETS[t][1]} min</option>)}
+          </select>
+        </label>
+        <p className="muted small" aria-label="Cardio this week">This week: {cardioMinutes} of {CARDIO_TARGETS[cardioTierOf(p)][0]}–{CARDIO_TARGETS[cardioTierOf(p)][1]} min</p>
       </div>
     </fieldset>
   );
@@ -129,7 +139,7 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
       <BodyCard body={body} today={today} />
       {photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}
       <CareCard entries={store.entries} today={today} />
-      <Priorities profile={profile} readOnly={readOnly} />
+      <Priorities profile={profile} readOnly={readOnly} cardioMinutes={thisWeekCardio(store.entries, today)} />
     </>
   );
 }

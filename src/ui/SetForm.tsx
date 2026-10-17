@@ -5,25 +5,12 @@ import { clearDraft, getDraft, saveDraft } from '../state/drafts';
 import { REGIONS, type Flag, type Region } from '../domain/types';
 import { derivedFlags } from '../domain/buildSet';
 import { isHold, likelyRegion, painDefaults } from '../domain/care';
+import { Stepper } from './Stepper';
 
 export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3; at?: string | null }
 const SEVERITY: [1 | 2 | 3, string][] = [[1, 'Mild'], [2, 'Moderate'], [3, 'Sharp']];
 const cap = (r: string) => r[0].toUpperCase() + r.slice(1);
 const TOGGLES: [Flag, string][] = [['pain', 'Pain'], ['unsure', 'Unsure'], ['warmup', 'Warm-up'], ['double_pulley', '2× pulley'], ['test', 'Test']];
-
-function Stepper({ label, value, onChange, step, mode }: { label: string; value: string; onChange: (v: string) => void; step: number; mode: 'decimal' | 'numeric' }) {
-  const bump = (d: number) => { const n = Number(value) || 0; onChange(String(Math.max(0, Math.round((n + d) * 100) / 100))); };
-  return (
-    <label className="stepper">
-      <span>{label}</span>
-      <div>
-        <button type="button" aria-label={`${label} down`} onClick={() => bump(-step)}>−</button>
-        <input aria-label={label} inputMode={mode} value={value} onChange={(e) => onChange(e.target.value.replace(',', '.'))} />
-        <button type="button" aria-label={`${label} up`} onClick={() => bump(step)}>+</button>
-      </div>
-    </label>
-  );
-}
 
 interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; note: string; region?: Region; severity?: 1 | 2 | 3; at?: string }
 

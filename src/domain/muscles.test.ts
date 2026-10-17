@@ -1,3 +1,4 @@
+import { isCardio } from './cardio';
 import { describe, expect, it } from 'vitest';
 import { muscleVector, MUSCLES } from './muscles';
 import { CATALOG } from './catalog';
@@ -21,8 +22,8 @@ describe('muscleVector', () => {
 });
 
 describe('catalog coverage', () => {
-  it('maps every catalog exercise', () => {
-    expect(CATALOG.filter((n) => muscleVector(n) == null)).toEqual([]);
+  it('maps every catalog exercise except cardio, which counts minutes', () => {
+    expect(CATALOG.filter((n) => muscleVector(n) == null && !isCardio(n))).toEqual([]);
   });
 });
 

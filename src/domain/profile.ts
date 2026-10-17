@@ -1,7 +1,8 @@
 import { MUSCLES, type Muscle } from './muscles';
 
 export type Tier = 1 | 2 | 3 | 4;
-export interface Profile { key: 'profile'; tiers: Record<Muscle, Tier>; weeklyGoal: number; targets: Record<Tier, [number, number]>; lowShare?: number; /** Tiers whose targets were set by hand; the rest fit the week (see domain/targets). */ custom?: Tier[] }
+export interface Profile { key: 'profile'; tiers: Record<Muscle, Tier>; weeklyGoal: number; targets: Record<Tier, [number, number]>; lowShare?: number; /** Tiers whose targets were set by hand; the rest fit the week (see domain/targets). */ custom?: Tier[];
+  /** Cardio's priority: weekly minutes from CARDIO_TARGETS. Unset means 4 (none planned). */ cardioTier?: Tier }
 /** Share of weekly sets the builder may spend on priority 3–4 muscles while priority 1–2 still need sets. */
 export const DEFAULT_LOW_SHARE = 0.2;
 
@@ -20,7 +21,7 @@ const isTier = (n: unknown): n is Tier => n === 1 || n === 2 || n === 3 || n ===
 export function parseProfileJson(text: string): { profile: Profile } | { error: string } {
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return { error: 'Not valid JSON' }; }
-  const o = raw as { type?: unknown; tiers?: Record<string, unknown>; weeklyGoal?: unknown; targets?: Record<string, unknown>; lowShare?: unknown };
+  const o = raw as { type?: unknown; tiers?: Record<string, unknown>; weeklyGoal?: unknown; targets?: Record<string, unknown>; lowShare?: unknown; cardioTier?: unknown };
   if (o?.type !== 'gym-tracker-profile') return { error: 'Not a gym-tracker profile file' };
   const p = defaultProfile();
   for (const [m, t] of Object.entries(o.tiers ?? {})) {
@@ -40,6 +41,10 @@ export function parseProfileJson(text: string): { profile: Profile } | { error: 
   if (o.lowShare != null) {
     if (typeof o.lowShare !== 'number' || o.lowShare < 0 || o.lowShare > 0.5) return { error: 'lowShare must be 0–0.5' };
     p.lowShare = o.lowShare;
+  }
+  if (o.cardioTier != null) {
+    if (!isTier(o.cardioTier)) return { error: 'cardioTier must be 1-4' };
+    p.cardioTier = o.cardioTier;
   }
   return { profile: p };
 }

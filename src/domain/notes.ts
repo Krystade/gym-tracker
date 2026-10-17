@@ -1,10 +1,12 @@
+import { machineFor, readCardio } from './cardio';
+import type { CardioData } from './types';
 import { normalizeName, setId } from './ids';
 import { sameExercise } from './stats';
 import type { Flag, Region, SetEntry } from './types';
 
 // Reads a free-text workout log as typed in a notes app. Generic rules only: personal name mappings live on the device.
 
-export interface NoteSet { weight: number; reps: number | null; flags: Flag[]; note?: string; rir?: number; painRegion?: Region }
+export interface NoteSet { weight: number; reps: number | null; flags: Flag[]; note?: string; rir?: number; painRegion?: Region; cardio?: CardioData }
 
 // weight×reps[×sets]: "-" = assisted, "bw" = bodyweight, "45s" = a pair of 45s, "40s" after reps = seconds, "?" = unsure.
 const SET_RE = /(?<![\w.:])(-)?(bw|\d+(?:\.\d+)?)(s)?\s*[x×*]\s*(\d+)?(s)?(?:\s*[x×*]\s*(\d+)(?!\s*s\b))?(\?)?(?![\w.])/gi;
@@ -226,6 +228,15 @@ export function parseNotes(text: string, today: string, isHold: (name: string) =
     const rawName = warmName ? tidy(split.name.replace(WARMUP_RE, ' ').replace(/\s+/g, ' ')) : split.name;
     if (SKIP_RE.test(rest) || (!sep && /\s(?:skip|skipped)$/i.test(line))) { push({ kind: 'skip', name: rawName.replace(/\s+(?:skip|skipped)$/i, '') }); current = undefined; return; }
     if (!sep && !/\d/.test(line)) { push({ kind: 'heading', name: line }); current = line; return; }
+    // A cardio machine: one session of time and machine numbers, not weight × reps.
+    const cardioName = machineFor(rawName);
+    if (cardioName) {
+      const c = readCardio(rest);
+      current = undefined;
+      if (!c) { push({ kind: 'unparsed', name: cardioName, reason: 'No time found — write it like "20 min" or "20:00"' }); return; }
+      push({ kind: 'sets', name: cardioName, sets: [{ weight: 0, reps: null, flags: ['cardio'], cardio: c.cardio, ...(c.note && { note: c.note }) }] });
+      return;
+    }
     const continuation = !/[a-z]/i.test(rawName) || WARMUP_ONLY.test(rawName);
     const name = continuation ? current : rawName;
     const body = continuation ? `${rawName} ${rest}`.trim() : rest;
@@ -286,6 +297,7 @@ export function toEntries(lines: NoteLine[], resolve: (name: string) => string, 
         weight: s.weight, reps: s.reps, flags, source: 'notes',
         ...(line.name !== g.exercise && { asWritten: line.name }),
         ...(s.rir != null && { rir: s.rir }), ...(s.note && { note: s.note }), ...(s.painRegion && { painRegion: s.painRegion }),
+        ...(s.cardio && { cardio: s.cardio }),
       });
     });
   }

@@ -13,7 +13,7 @@ export function SetRowContent({ s, estRir, no = s.setNo, pr = false }: { s: SetE
       {pr && <span className="tag pr-tag">PR</span>}
       {s.rir != null ? <span className="tag">RIR {s.rir}</span>
         : estRir != null && <span className="tag est" title="Estimated">~{estRir} RIR</span>}
-      {s.flags.filter((f) => f !== 'bodyweight').map((f) => <span key={f} className={`tag ${f}`}>{f === 'pain' && s.painRegion ? `pain · ${s.painRegion}${s.painSeverity ? ` · ${HOW_BAD[s.painSeverity]}` : ''}` : TAG[f] ?? f}</span>)}
+      {s.flags.filter((f) => f !== 'bodyweight' && f !== 'cardio').map((f) => <span key={f} className={`tag ${f}`}>{f === 'pain' && s.painRegion ? `pain · ${s.painRegion}${s.painSeverity ? ` · ${HOW_BAD[s.painSeverity]}` : ''}` : TAG[f] ?? f}</span>)}
       {s.note && <span className="note">{s.note}</span>}
     </>
   );

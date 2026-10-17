@@ -14,6 +14,8 @@ import { hhmm, paces, suggestTime } from '../domain/timing';
 import { localDate } from '../domain/ids';
 import { gearOf } from '../domain/equipment';
 import { prSetIds } from '../domain/summary';
+import { isCardio } from '../domain/cardio';
+import { CardioCard } from './CardioCard';
 
 const TargetIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -21,7 +23,15 @@ const TargetIcon = () => (
   </svg>
 );
 
-export function ExerciseCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = false, onOpenReq, who, swappedFrom, left = [], onGo }: {
+type CardProps = Parameters<typeof LiftCard>[0] & { plannedMinutes?: number | null };
+/** A cardio machine gets its own card: time and distance, not weight and reps. */
+export function ExerciseCard({ plannedMinutes, ...p }: CardProps) {
+  return isCardio(p.exercise)
+    ? <CardioCard exercise={p.exercise} date={p.date} today={p.today} store={p.store} onOpen={p.onOpen} plannedMinutes={plannedMinutes} gym={p.gym} who={p.who} openReq={p.openReq} onOpenReq={p.onOpenReq} />
+    : <LiftCard {...p} />;
+}
+
+function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = false, onOpenReq, who, swappedFrom, left = [], onGo }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
   openReq?: boolean; onOpenReq?: () => void;
   /** Named on Add set when several people share the phone. */

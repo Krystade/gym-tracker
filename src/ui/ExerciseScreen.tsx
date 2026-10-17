@@ -1,3 +1,5 @@
+import { cardioTarget, fmtClock, fmtCardio, isCardio, machine } from '../domain/cardio';
+import type { SetEntry } from '../domain/types';
 import { useState } from 'react';
 import { normalizeName } from '../domain/ids';
 import { sameExercise } from '../domain/stats';
@@ -20,6 +22,48 @@ import type { ProgramStore } from '../state/useProgram';
 import { nextTime, plannedSets } from '../domain/suggest';
 import { todayPlanFor } from './TodayPlan';
 import { SuggestionCard } from './SuggestionCard';
+
+/** A cardio machine: distance (or floors) per session over time, and each session's numbers with its pace. */
+function CardioScreen({ name, store, date, onLog, onBack, readOnly }: { name: string; store: SetsStore; date: string; onLog: () => void; onBack: () => void; readOnly?: boolean }) {
+  const today = localDate(new Date());
+  const m = machine(name)!;
+  const byFloors = !m.fields.includes('miles');
+  const sessions = sessionsFor(store.entries.filter((e) => e.cardio), name);
+  const amount = (e: SetEntry) => (byFloors ? e.cardio!.floors : e.cardio!.miles) ?? 0;
+  const series: SeriesPoint[] = [];
+  let top = -Infinity;
+  for (const s of [...sessions].reverse()) {
+    const v = Math.max(...s.sets.map(amount));
+    if (v <= 0) continue;
+    series.push({ date: s.date, e1rm: v, pr: v > top }); top = Math.max(top, v);
+  }
+  const target = cardioTarget(store.entries, name, null, date);
+  const loggedToday = sessions.some((s) => s.date === date);
+  const unit = byFloors ? 'floors' : 'mi';
+  const pace = (e: SetEntry) => (!byFloors && e.cardio!.miles ? ` · ${fmtClock(e.cardio!.seconds / e.cardio!.miles)} /mi` : '');
+  return (
+    <>
+      <button className="back" onClick={onBack}>‹ Back</button>
+      <h1>{name}</h1>
+      {!readOnly && <section className="card"><p className="target">{target.text}</p>{!loggedToday && <button className="wide primary" onClick={onLog}>Log it today</button>}</section>}
+      <div className="tiles">
+        <div className="tile"><span>Best {byFloors ? 'floors' : 'distance'}</span><b>{series.length ? `${Math.round(Math.max(...series.map((p) => p.e1rm)) * 100) / 100} ${unit}` : '—'}</b></div>
+        <div className="tile"><span>Sessions</span><b>{sessions.length}</b></div>
+      </div>
+      <section className="card">
+        <LineChart points={series} today={today} label={byFloors ? 'Floors over time' : 'Distance over time'} unit={unit} noun="" column={byFloors ? 'Floors' : 'Distance (mi)'} />
+        {series.length > 1 && <p className="muted small">Best per session · records filled</p>}
+      </section>
+      {sessions.length > 0 && <h2>History</h2>}
+      {sessions.slice(0, HISTORY_CAP).map((s) => (
+        <section className="card" key={s.date}>
+          <p><b>{fmtDay(s.date, today)}</b></p>
+          <ol className="sets">{s.sets.map((x, i) => <li key={x.id} className="set-row"><span className="set-no">{i + 1}</span><span>{fmtCardio(x.cardio!)}{pace(x)}</span>{x.note && <span className="note">{x.note}</span>}</li>)}</ol>
+        </section>
+      ))}
+    </>
+  );
+}
 
 const lb = (n: number) => `${fmtWeight(Math.round(n))} lb`;
 const HISTORY_CAP = 10;
@@ -116,6 +160,11 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
   name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void;
   onRenamed: (to: string) => void; readOnly?: boolean;
 }) {
+  if (isCardio(name)) return <CardioScreen name={name} store={store} date={date} onLog={onLog} onBack={onBack} readOnly={readOnly} />;
+  return <LiftScreen {...{ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, readOnly }} />;
+}
+
+function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, readOnly }: Parameters<typeof ExerciseScreen>[0]) {
   const hold = isHoldLift(name, store.entries);
   const { s: sug, trainedToday } = nextTime(store.entries, name, settings.get(name, hold), date, plannedSets(programs.program, todayPlanFor(programs, store.entries, date), name));
   const sessions = sessionsFor(store.entries, name);

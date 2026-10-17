@@ -1,10 +1,13 @@
-export const FLAGS = ['bodyweight', 'partial', 'unsure', 'pain', 'double_pulley', 'warmup', 'test', 'hold'] as const;
+export const FLAGS = ['bodyweight', 'partial', 'unsure', 'pain', 'double_pulley', 'warmup', 'test', 'hold', 'cardio'] as const;
 export type Flag = (typeof FLAGS)[number];
 export const isFlag = (s: string): s is Flag => (FLAGS as readonly string[]).includes(s);
 
 export const REGIONS = ['elbow', 'lower back', 'shoulder', 'wrist', 'knee', 'other'] as const;
 export type Region = (typeof REGIONS)[number];
 export const isRegion = (s: string): s is Region => (REGIONS as readonly string[]).includes(s);
+
+/** A cardio machine session. `aim`: the distance (mi) or floors suggested when it was logged, for "met the aim?". */
+export interface CardioData { seconds: number; miles?: number; incline?: number; level?: number; floors?: number; aim?: number }
 
 export interface SetEntry {
   /** Deterministic: `${source}|${date}|${exercise lowercased}|${setNo}` — re-imports overwrite rather than duplicate. */
@@ -31,4 +34,6 @@ export interface SetEntry {
   /** What the app suggested when this set was logged, and where: for comparing suggested with done. */
   target?: { weight: number | null; reps: number; sets: number }; // weight null: first session, no weight suggested
   gym?: string;
+  /** A cardio machine session: weight 0, reps null, the `cardio` flag. */
+  cardio?: CardioData;
 }

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { SetEntry } from '../domain/types';
 import type { ProfileStore } from '../state/useProfile';
 import type { ProgramStore } from '../state/useProgram';
-import { buildProgram, MAX_SETS_PER_DAY, programVolume, type Program } from '../domain/program';
+import { buildProgram, cardioSlot, MAX_SETS_PER_DAY, programVolume, type Program } from '../domain/program';
+import { isCardio } from '../domain/cardio';
 import { defaultSettings } from '../domain/progression';
 import { exerciseNames } from '../domain/stats';
 import { MuscleBars } from './charts/MuscleBars';
@@ -65,7 +66,8 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, onBack }:
   if (gymsOpen) return <GymsScreen gyms={gyms} logged={exerciseNames(entries)} fresh={!gym} uid={uid} onBack={() => { setGymsOpen(false); window.scrollTo(0, 0); }} />;
   if (addTo != null) return <ExercisePicker recent={exerciseNames(entries)} gym={gym} onCancel={() => setAddTo(null)} onPick={(name) => {
     const st = defaultSettings(name);
-    edit((x) => { if (!x.days[addTo].slots.some((sl) => sl.exercise === name)) x.days[addTo].slots.push({ exercise: name, sets: 3, repMin: st.repMin, repMax: st.repMax }); });
+    // A cardio machine goes in as a 15-minute slot, after the lifts.
+    edit((x) => { if (!x.days[addTo].slots.some((sl) => sl.exercise === name)) x.days[addTo].slots.push(isCardio(name) ? cardioSlot(name, 15) : { exercise: name, sets: 3, repMin: st.repMin, repMax: st.repMax }); });
     setAddTo(null);
   }} />;
 
@@ -126,11 +128,20 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, onBack }:
       {over.length > 0 && <p className="warn small" role="status">{over.map((x) => `${x.name} ≈ ${dayMinutes(x)} min`).join(', ')}: over your {budget}. Train fewer days a week or allow more minutes, then rebuild.</p>}
       {bare ? <p className="warn small">No gear ticked at {gym.name}: only bodyweight lifts are used.</p>
         : p?.unavailable?.length ? <p className="warn small">Nothing at this gym trains: {p.unavailable.join(', ')}.</p> : null}
+      {p?.cardioUnavailable && <p className="warn small">Cardio has a weekly goal, but no cardio machine is ticked at this gym.</p>}
       {p && p.days.map((day, di) => (
         <section className="card" key={day.name}>
-          <h2>{day.name} · {day.slots.reduce((a, x) => a + x.sets, 0)} sets · ≈ {dayMinutes(day)} min</h2>
+          <h2>{day.name} · {day.slots.reduce((a, x) => a + (x.minutes == null ? x.sets : 0), 0)} sets · ≈ {dayMinutes(day)} min</h2>
           <ol className="prog-slots" aria-label={`${day.name} exercises`}>
-            {day.slots.map((slot, si) => (
+            {day.slots.map((slot, si) => slot.minutes != null ? (
+              <li key={slot.exercise}>
+                <span className="prog-name"><b>{slot.exercise}</b><span className="muted small">cardio</span></span>
+                <button aria-label={`Less time on ${slot.exercise}`} disabled={slot.minutes <= 5} onClick={() => edit((x) => { x.days[di].slots[si].minutes! -= 5; })}>−</button>
+                <span className="prog-sets">{slot.minutes}<span className="muted small"> min</span></span>
+                <button aria-label={`More time on ${slot.exercise}`} disabled={slot.minutes >= 90} onClick={() => edit((x) => { x.days[di].slots[si].minutes! += 5; })}>+</button>
+                <button aria-label={`Remove ${slot.exercise}`} onClick={() => { const gone = slot; edit((x) => { x.days[di].slots.splice(si, 1); }); setRemoved({ day: di, at: si, slot: gone }); }}>×</button>
+              </li>
+            ) : (
               <li key={slot.exercise}>
                 <span className="prog-name"><b>{slot.exercise}</b>{p.newToYou?.includes(slot.exercise) && <span className="tag">new to you</span>}<span className="muted small">{slot.repMin}–{slot.repMax}{isHoldLift(slot.exercise, entries) ? ' s hold' : ' reps'}</span></span>
                 <button aria-label={`Fewer sets of ${slot.exercise}`} disabled={slot.sets <= 1} onClick={() => edit((x) => { x.days[di].slots[si].sets--; })}>−</button>

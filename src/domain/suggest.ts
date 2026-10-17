@@ -25,6 +25,16 @@ export function plannedSets(program: Program | null, plan: DayPlan | null, exerc
   return null;
 }
 
+/** Minutes planned today for this cardio machine (its own slot or the one it was swapped into); null when it has no cardio slot. */
+export function plannedMinutes(program: Program | null, plan: DayPlan | null, exercise: string): number | null {
+  if (!program || !plan) return null;
+  for (const slot of plan.slots ?? program.days[plan.day]?.slots ?? []) {
+    if (slot.minutes == null || plan.skips.some((x) => sameExercise(x, slot.exercise))) continue;
+    if (sameExercise(plan.swaps[slot.exercise] ?? slot.exercise, exercise)) return slot.minutes;
+  }
+  return null;
+}
+
 const ISOLATION = (name: string) => defaultSettings(name).repMin >= 10;
 const r5 = (w: number) => Math.round(w / 5) * 5;
 
