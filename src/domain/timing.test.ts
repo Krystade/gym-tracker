@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PACE, estimateSeconds, paces, perSessionForMinutes, perSetSeconds, sessionDay, sessionMinutes, suggestTime } from './timing';
+import { DEFAULT_PACE, estimateSeconds, paces, perSessionForMinutes, perSetSeconds, restSeconds, sessionDay, sessionMinutes, suggestTime } from './timing';
 import type { SetEntry } from './types';
 import type { Program } from './program';
 
@@ -20,6 +20,13 @@ describe('paces', () => {
     // Fewer than 3 samples: the default for the kind of lift.
     expect(perSetSeconds(p, 'Cable Curl')).toBe(DEFAULT_PACE.isolation);
     expect(perSetSeconds(p, 'Squat')).toBe(DEFAULT_PACE.compound);
+  });
+  it('rests for the lift’s learned set-to-set time, or 2:00 without one', () => {
+    // A set every 2:30.
+    const p = paces([0, 1, 2, 3].map((i) => ({ ...at('2026-09-28', '18:00'), loggedAt: new Date(Date.parse('2026-09-28T18:00:00') + i * 150_000).toISOString() })));
+    expect(restSeconds(p, 'Bench Press')).toBe(150);
+    expect(restSeconds(p, 'Cable Curl')).toBe(120);
+    expect(restSeconds(paces([]), 'Bench Press')).toBe(120); // not the 3 min a compound set is planned at
   });
   it('ignores gaps over 10 min within a lift and over 15 min between lifts', () => {
     const p = paces([at('2026-09-28', '18:00'), at('2026-09-28', '18:30'), at('2026-09-28', '19:00', 'Cable Curl')]);

@@ -125,6 +125,39 @@ test('a jump lands the card below the profile bar', async ({ page }) => {
   expect((await head.boundingBox())!.y).toBeGreaterThanOrEqual(barBottom);
 });
 
+test('cards keep the plan’s order, whatever order they were opened in', async ({ page }) => {
+  await buildProgram(page);
+  const plan = page.getByRole('button', { name: /^Today’s plan/ });
+  const row = (i: number) => page.getByRole('list', { name: 'Planned exercises' }).getByRole('listitem').nth(i).locator('.plan-name');
+  const names = [];
+  for (const i of [2, 0, 1]) {
+    if ((await plan.getAttribute('aria-expanded')) === 'false') await plan.click();
+    names[i] = (await row(i).getAttribute('data-exercise'))!.toLowerCase();
+    await row(i).click();
+  }
+  await expect.poll(() => page.locator('[data-card]').evaluateAll((els) => els.map((e) => e.getAttribute('data-card')))).toEqual(names);
+  // A lift that isn't in the plan keeps its place: last, where it was added.
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Zercher Carry');
+  await page.getByRole('button', { name: 'Add “Zercher Carry” as a new lift' }).click();
+  await expect.poll(() => page.locator('[data-card]').evaluateAll((els) => els.map((e) => e.getAttribute('data-card')))).toEqual([...names, 'zercher carry']);
+});
+
+test('a hold swapped in shows its own target on the plan row', async ({ page }) => {
+  await buildProgram(page);
+  const first = page.getByRole('list', { name: 'Planned exercises' }).getByRole('listitem').first();
+  await expect(first).toContainText(/\d+–\d+ reps/);
+  await first.getByRole('button', { name: /^Swap/ }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Plank');
+  await page.getByRole('button', { name: /^Plank/ }).first().click();
+  const plan = page.getByRole('button', { name: /^Today’s plan/ });
+  if ((await plan.getAttribute('aria-expanded')) === 'false') await plan.click();
+  await expect(first).toContainText('Plank');
+  await expect(first).toContainText('20–40 s hold');
+  await first.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'screenshots/r7-swapped-hold.png' });
+});
+
 test('the longest catalog name fits its plan row without being cut', async ({ page }) => {
   await buildProgram(page);
   const b = page.getByRole('list', { name: 'Planned exercises' }).locator('.plan-name b').first();

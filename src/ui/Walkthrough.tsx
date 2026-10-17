@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 const KEY = 'gym-tracker:walkthrough';
 const PAD = 6; // room between the target and the ring
+const EDGE = 8; // the least room between the ring and the screen's edge
 
 /** Each card names the `data-tour` targets it lights up; several targets light up as one box around them all. */
 const CARDS: { title: string; body: string; at: string[] }[] = [
@@ -27,9 +28,10 @@ function targetBox(at: string[]): { box: Box; fixed: boolean } | null {
   const els = at.flatMap((t) => [...document.querySelectorAll<HTMLElement>(`[data-tour="${t}"]`)]);
   if (!els.length) return null;
   const rs = els.map((e) => e.getBoundingClientRect());
-  // The ring stays on screen (the tabs touch its edges), 3px in so its glow shows.
-  const top = Math.min(...rs.map((r) => r.top)) - PAD, left = Math.max(3, Math.min(...rs.map((r) => r.left)) - PAD);
-  const right = Math.min(innerWidth - 3, Math.max(...rs.map((r) => r.right)) + PAD), bottom = Math.min(innerHeight - 3, Math.max(...rs.map((r) => r.bottom)) + PAD);
+  // The ring stays on screen (the tabs touch its edges), EDGE in so all of it and its glow show on an edge tab.
+  // The top isn't clamped: a target above the screen has to read as above it, to be scrolled into view.
+  const top = Math.min(...rs.map((r) => r.top)) - PAD, left = Math.max(EDGE, Math.min(...rs.map((r) => r.left)) - PAD);
+  const right = Math.min(innerWidth - EDGE, Math.max(...rs.map((r) => r.right)) + PAD), bottom = Math.min(innerHeight - EDGE, Math.max(...rs.map((r) => r.bottom)) + PAD);
   const box = { top, left, width: right - left, height: bottom - top };
   return { box, fixed: els.every((e) => e.closest('.tabs')) };
 }

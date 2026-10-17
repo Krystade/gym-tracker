@@ -57,8 +57,40 @@ describe('nextTarget', () => {
     expect(nextTarget([], 'Curl', S, '2026-01-08')).toBeNull();
   });
   it('caps rep targets at the top of the range', () => {
-    const e = [s('2026-01-01', 1, 30, 12), s('2026-01-01', 2, 30, 11)];
+    const e = [s('2026-01-01', 1, 30, 11), s('2026-01-01', 2, 30, 11), s('2026-01-01', 3, 30, 11)]; // 33: one short of going up
     expect(nextTarget(e, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', reps: 12 });
+  });
+  it('goes up once total reps at the top weight reach sets × top of range − 2', () => {
+    const day = (...reps: number[]) => reps.map((r, i) => s('2026-01-01', i + 1, 30, r));
+    expect(nextTarget(day(12, 12, 10), 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'increase', weight: 35, reps: 8 }); // 34 of 34
+    expect(nextTarget(day(12, 10, 10), 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 30, reps: 11 }); // 32
+    // Enough in total, but a set below the bottom of the range: stay.
+    expect(nextTarget(day(15, 15, 7), 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 30, reps: 8 });
+  });
+});
+
+describe('test sets', () => {
+  const test = (date: string, setNo: number, weight: number, reps: number, rir = 0) => s(date, setNo, weight, reps, { flags: ['test'], rir });
+  it('are not working sets for double progression', () => {
+    // A heavy single after the working sets: not the top weight, and not a set short of the range.
+    const e = [s('2026-01-01', 1, 30, 12), s('2026-01-01', 2, 30, 12), s('2026-01-01', 3, 30, 10), test('2026-01-01', 4, 50, 1)];
+    expect(nextTarget(e, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'increase', weight: 35, reps: 8 });
+    // An older test doesn't override working sets done since.
+    const later = [test('2025-12-20', 1, 60, 1), s('2026-01-01', 1, 30, 10), s('2026-01-01', 2, 30, 10)];
+    expect(nextTarget(later, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 30, reps: 11 });
+  });
+  it('a test newer than the last working session resets the weight to its e1RM at the top of the range', () => {
+    const base = [s('2026-01-01', 1, 30, 10), s('2026-01-01', 2, 30, 10)];
+    // A 50 lb single: e1RM 50, 50 / (1 + 12/30) ≈ 35.7, to the 5 lb step: 35.
+    expect(nextTarget([...base, test('2026-01-04', 1, 50, 1)], 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'test', weight: 35, reps: 8 });
+    // An AMRAP stopped 2 short counts its reps in reserve: 40 × (1 + 10/30) ≈ 53.3 → 38.1 → 40. The best test wins.
+    const amrap = [...base, test('2026-01-04', 1, 40, 8, 2), test('2026-01-04', 2, 40, 5)];
+    expect(nextTarget(amrap, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'test', weight: 40, reps: 8 });
+    // With no working session before it, too.
+    expect(nextTarget([test('2026-01-04', 1, 50, 1)], 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'test', weight: 35 });
+    // A lift on a 2.5 lb step rounds to it.
+    expect(nextTarget([...base, test('2026-01-04', 1, 50, 1)], 'Curl', { ...S, increment: 2.5 }, '2026-01-08')).toMatchObject({ weight: 35 });
+    expect(nextTarget([...base, test('2026-01-04', 1, 52, 1)], 'Curl', { ...S, increment: 2.5 }, '2026-01-08')).toMatchObject({ weight: 37.5 });
   });
 });
 

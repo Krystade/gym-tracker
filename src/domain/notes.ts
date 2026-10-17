@@ -262,7 +262,10 @@ export function matchExercise(name: string, known: string[], aliases: Record<str
   if (aliases[key]) return { exercise: aliases[key], how: 'alias', suggestions };
   const exact = known.find((k) => nameKey(k) === key) ?? (ABBR[key] && known.find((k) => nameKey(k) === nameKey(ABBR[key])));
   if (exact) return { exercise: exact, how: 'exact', suggestions };
-  if (ranked[0] && ranked[0][1] >= 0.5) return { exercise: ranked[0][0], how: 'fuzzy', suggestions };
+  // A bare name is not its more specific variant: "Deadlift" is not "Romanian Deadlift" (still offered as a suggestion).
+  const variant = (k: string) => { const w = nameKey(k); return w !== key && ` ${w} `.includes(` ${key} `); };
+  const close = ranked.find(([k, s]) => s >= 0.5 && !variant(k));
+  if (close) return { exercise: close[0], how: 'fuzzy', suggestions };
   return { exercise: normalizeName(name), how: 'new', suggestions };
 }
 

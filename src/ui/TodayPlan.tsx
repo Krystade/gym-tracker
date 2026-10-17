@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { SetEntry } from '../domain/types';
-import { isWorking } from '../domain/progression';
+import { defaultSettings, isWorking } from '../domain/progression';
 import { nextDay, type DayPlan, type Program, type Slot } from '../domain/program';
 import { sameExercise } from '../domain/stats';
 import { isHoldLift } from '../domain/care';
@@ -19,20 +19,34 @@ export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: str
     ?? { key: `day:${date}`, date, day: nextDay(store.program, store.plans, entries, date), skips: [], swaps: {} };
 };
 
+const daySlots = (program: Program, plan: DayPlan): Slot[] => (plan.quick != null ? plan.slots ?? [] : (program.days[plan.day] ?? program.days[0]).slots);
+
+/** The day's lifts in plan order, by the names they're done under (swaps applied). */
+export const plannedNames = (program: Program, plan: DayPlan): string[] => daySlots(program, plan).map((s) => plan.swaps[s.exercise] ?? s.exercise);
+
+/** Cards in plan order: planned lifts fill the places planned lifts hold, in the plan's order; any other card keeps its place. */
+export function inPlanOrder(cards: string[], planned: string[]): string[] {
+  const at = (n: string) => planned.findIndex((p) => sameExercise(p, n));
+  const queue = cards.filter((n) => at(n) >= 0).sort((a, b) => at(a) - at(b));
+  return cards.map((n) => (at(n) >= 0 ? queue.shift()! : n));
+}
+
 /** The day's lifts not yet done and not skipped, by the names they're done under (swaps applied). */
 export function leftToDo(program: Program, plan: DayPlan, entries: SetEntry[]): string[] {
-  const day = plan.quick != null ? { slots: plan.slots ?? [] } : program.days[plan.day] ?? program.days[0];
+  const day = { slots: daySlots(program, plan) };
   return day.slots.filter((s) => !plan.skips.includes(s.exercise)).map((s) => ({ ex: plan.swaps[s.exercise] ?? s.exercise, sets: s.sets }))
     .filter(({ ex, sets }) => entries.filter((e) => e.date === plan.date && sameExercise(e.exercise, ex) && doneEntry(e)).length < sets).map(({ ex }) => ex);
 }
 
 /** `buildQuick`: a one-off day of lifts that fits, for the Quick chip. */
-export function TodayPlan({ program, plan, entries, past, open, onToggle, onChange, onOpen, onSwap, buildQuick, loadFor }: {
+export function TodayPlan({ program, plan, entries, past, open, onToggle, onChange, onOpen, onSwap, buildQuick, loadFor, rangeFor }: {
   program: Program; plan: DayPlan; entries: SetEntry[]; past?: boolean; open: boolean; onToggle: () => void;
   onChange: (p: DayPlan) => void; onOpen: (exercise: string) => void; onSwap: (original: string) => void;
   buildQuick: (fits: (slots: Slot[]) => boolean) => Slot[];
   /** The weight the lift's card will suggest, if it has one. */
   loadFor?: (exercise: string, sets: number) => number | null;
+  /** A lift's rep range from its settings, for one swapped in. */
+  rangeFor?: (exercise: string, hold: boolean) => { repMin: number; repMax: number };
 }) {
   const quick = plan.quick != null;
   const day = quick ? { name: 'Quick', slots: plan.slots ?? [] } : program.days[plan.day] ?? program.days[0];
@@ -52,6 +66,12 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
   // Quick: as many pairs of sets as fit the minutes, from your own pace with warm-ups.
   const pickQuick = (mins: number) => onChange({ ...plan, quick: mins, skips: [], swaps: {},
     slots: buildQuick((slots) => estimateSeconds(slots, pace, warm) <= mins * 60) });
+  // A swapped-in lift's own range (a hold swapped for a lift counts seconds), as its card will show.
+  const range = (slot: Slot, target: string) => {
+    const hold = isHoldLift(target, entries);
+    const r = target === slot.exercise ? slot : rangeFor?.(target, hold) ?? defaultSettings(target, hold);
+    return `${r.repMin}–${r.repMax}${hold ? ' s hold' : ' reps'}`;
+  };
   const live = day.slots.filter((s) => !plan.skips.includes(s.exercise));
   const finished = live.filter((s) => doneOf(plan.swaps[s.exercise] ?? s.exercise) >= s.sets).length;
   // The second line of the header: how long it runs when open, how far along when folded. Inside the
@@ -100,7 +120,7 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
                 {/* The count rides under the name, so the name gets the width it needs. */}
                 <span className="muted small"><span className="plan-count">{skipped ? 'Skipped' : `${Math.min(done, slot.sets)}/${slot.sets}`}</span> · {slot.minutes != null
                   ? cardioTarget(entries, target, slot.minutes, plan.date).text
-                  : <>{slot.repMin}–{slot.repMax}{isHoldLift(slot.exercise, entries) ? ' s hold' : ' reps'}{!skipped && loadFor && fmtLoad(loadFor(target, slot.sets))}</>}</span>
+                  : <>{range(slot, target)}{!skipped && loadFor && fmtLoad(loadFor(target, slot.sets))}</>}</span>
               </button>
               <button type="button" onClick={() => onChange({ ...plan, skips: skipped ? plan.skips.filter((x) => x !== slot.exercise) : [...plan.skips, slot.exercise] })}>
                 {skipped ? 'Undo' : 'Skip'}

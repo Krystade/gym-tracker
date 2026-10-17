@@ -4,7 +4,7 @@ import type { SetEntry } from './types';
 import { CATALOG } from './catalog';
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
 import { defaultProfile, type Profile, type Tier } from './profile';
-import { PREFERENCE, adherence, buildProgram, DEFAULT_PICK, nextDay, primaryExercise, programVolume, type DayPlan, type Program } from './program';
+import { PREFERENCE, addSlot, adherence, buildProgram, cardioSlot, DEFAULT_PICK, nextDay, primaryExercise, programVolume, type DayPlan, type Program } from './program';
 
 let seq = 0;
 const s = (date: string, exercise: string, reps = 10, over: Partial<SetEntry> = {}): SetEntry => ({
@@ -187,6 +187,8 @@ describe('Phase 10: gym and priority share', () => {
     expect(p.newToYou).toContain('Overhead DB Triceps Extension');
     expect(p.newToYou).not.toContain('Hammer Curl');
     expect(p.unavailable).toContain('Side Delts');
+    // Only priority 1–2 muscles are worth a warning; Chest (3) and Quads (4) have no lift here either.
+    expect(p.unavailable).toEqual(['Side Delts', 'Rear Delts']);
   });
   it('lists only lifts that train the muscle directly as candidates', () => {
     for (const [m, list] of Object.entries(PREFERENCE) as [Muscle, string[]][]) if (m !== 'Traps') for (const ex of list) expect(muscleVector(ex)?.[m], `${m}: ${ex}`).toBe(1);
@@ -271,5 +273,19 @@ describe('varied days', () => {
     const before: Partial<Record<Muscle, number>> = { Chest: 2, Triceps: 13, Biceps: 12, 'Front Delts': 1, 'Side Delts': 2 };
     const v = programVolume(buildProgram(prof(), hist, { days: 2, perSession: 14 }, NOW));
     for (const m of MUSCLES) expect(Math.abs(v[m] - (before[m] ?? 0)), m).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('addSlot', () => {
+  const lift = (exercise: string) => ({ exercise, sets: 3, repMin: 8, repMax: 12 });
+  it('puts a lift before the day’s cardio, and cardio last', () => {
+    const day = { name: 'Day A', slots: [lift('Bench Press'), cardioSlot('Treadmill', 20)] };
+    addSlot(day, lift('Cable Curl'));
+    expect(day.slots.map((x) => x.exercise)).toEqual(['Bench Press', 'Cable Curl', 'Treadmill']);
+    addSlot(day, cardioSlot('Elliptical', 15));
+    expect(day.slots.map((x) => x.exercise)).toEqual(['Bench Press', 'Cable Curl', 'Treadmill', 'Elliptical']);
+    const empty: Program['days'][number] = { name: 'Day B', slots: [] };
+    addSlot(empty, lift('Plank'));
+    expect(empty.slots.map((x) => x.exercise)).toEqual(['Plank']);
   });
 });

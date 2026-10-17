@@ -10,7 +10,8 @@ import { isHoldLift } from '../domain/care';
 import { SetRowContent } from './SetRow';
 import { suggest } from '../domain/suggest';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
-import { hhmm, paces, suggestTime } from '../domain/timing';
+import { hhmm, paces, restSeconds, suggestTime } from '../domain/timing';
+import { startRest } from './RestTimer';
 import { localDate } from '../domain/ids';
 import { gearOf } from '../domain/equipment';
 import { prSetIds } from '../domain/summary';
@@ -96,6 +97,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     // A time for a late set is on the day being logged to.
     const e = await store.add({ date, exercise, ...rest, gym, ...(at !== undefined && { at: at ? new Date(`${date}T${at}:00`) : null }), target: { weight: sug.weight, reps: sug.reps, sets: sug.sets } });
     if (!e) return false;
+    // A set done just now starts the rest; one entered for an earlier time or day doesn't.
+    if (at === undefined && date === realToday) startRest(restSeconds(pace, exercise), exercise.toLowerCase());
     const r = prCheck([...store.entries, e], e);
     if (r.e1rm) setPr(`PR! New best e1RM ${Math.round(e1rm(e)!)} lb`);
     else if (r.reps) setPr(`Rep PR at ${fmtWeight(e.weight)} lb`);
@@ -154,7 +157,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       </header>
       {last && <p className="muted card-last">Last ({fmtDay(last.date, realToday)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
       {swappedFrom && <p className="muted card-last">For {swappedFrom}{from && <> · last {from.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</>}</p>}
-      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.sets} × {sug.reps}{sug.unit}{sug.kind !== 'maxed' && '+'}{fmtLoad(sug.weight)}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}</span></p>}
+      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.kind === 'test' && 'From your test: '}{sug.sets} × {sug.reps}{sug.unit}{sug.kind !== 'maxed' && '+'}{fmtLoad(sug.weight)}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}</span></p>}
       <ol className="sets" aria-label={`Sets for ${exercise}`}>
         {today.map((s, i) => (
           <li key={s.id}>

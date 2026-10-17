@@ -78,10 +78,10 @@ test.describe('the spotlight', () => {
       if (n) await sheet.getByRole('button', { name: 'Next' }).click();
       await expect(sheet).toContainText(`${n + 1} of 5`);
       const t = union(await target()), r = (await ring.boundingBox())!, s = (await sheet.boundingBox())!;
-      // Around the target, except where the screen's edge cuts it: the ring stays on screen.
-      const onScreen = { x: Math.max(t.x, 3), y: t.y, width: Math.min(t.x + t.width, 372) - Math.max(t.x, 3), height: Math.min(t.y + t.height, 809) - t.y };
+      // Around the target, except where the screen's edge cuts it: the ring stays on screen, inset so its glow shows on an edge tab.
+      const onScreen = { x: Math.max(t.x, 8), y: t.y, width: Math.min(t.x + t.width, 367) - Math.max(t.x, 8), height: Math.min(t.y + t.height, 804) - t.y };
       expect(around(r, onScreen), `card ${n + 1}: ring ${JSON.stringify(r)} around ${JSON.stringify(t)}`).toBe(true);
-      expect(r.x >= 0 && r.y >= 0 && r.x + r.width <= 375 && r.y + r.height <= 812, `card ${n + 1}: ring on screen`).toBe(true);
+      expect(r.x >= 8 && r.y >= 0 && r.x + r.width <= 367 && r.y + r.height <= 804, `card ${n + 1}: ring inset from the screen's edges`).toBe(true);
       expect(r.y + r.height <= s.y || r.y >= s.y + s.height, `card ${n + 1}: ring clear of the sheet`).toBe(true);
       expect(r.width * r.height, `card ${n + 1}: a ring, not the whole screen`).toBeLessThan(2 * (t.width + 16) * (t.height + 16));
       expect(t.y + t.height <= s.y || t.y >= s.y + s.height, `card ${n + 1}: the sheet covers its target`).toBe(true);

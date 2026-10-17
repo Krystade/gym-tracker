@@ -38,6 +38,9 @@ export function paces(entries: SetEntry[]): Paces {
 export const perSetSeconds = (p: Paces, exercise: string): number =>
   p.perSet.get(settingsKey(exercise)) ?? (defaultSettings(exercise).repMin >= 10 ? DEFAULT_PACE.isolation : DEFAULT_PACE.compound);
 
+/** The rest timer's length: the lift's learned set-to-set time, else 2:00. */
+export const restSeconds = (p: Paces, exercise: string): number => Math.round(p.perSet.get(settingsKey(exercise)) ?? 120);
+
 /** A list of lifts and sets, in seconds: every set, a switch between lifts, and the warm-up of the first lift that has one (`warmups(ex)` sets). */
 export function estimateSeconds(slots: { exercise: string; sets: number; minutes?: number }[], p: Paces, warmups: (ex: string) => number = () => 0): number {
   const warm = slots.filter((s) => s.minutes == null).map((s) => warmups(s.exercise)).find((n) => n > 0) ?? 0; // only the session's first compound warms up

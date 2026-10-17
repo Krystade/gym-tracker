@@ -16,6 +16,10 @@ describe('equipment', () => {
     expect(canDo(gym(['barbell', 'flat bench']), 'Bench Press')).toBe(true);
     expect(canDo(gym([]), 'Plank')).toBe(true);
   });
+  it('a deadlift needs a barbell', () => {
+    expect(canDo(gym(['barbell']), 'Deadlift')).toBe(true);
+    expect(canDo(gym(['dumbbells']), 'Deadlift')).toBe(false);
+  });
   it('a landmine needs a bar in it', () => {
     expect(canDo(gym(['landmine']), 'Landmine Press')).toBe(false);
     expect(canDo(gym(['landmine', 'barbell']), 'Landmine Press')).toBe(true);

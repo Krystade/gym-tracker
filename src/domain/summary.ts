@@ -1,9 +1,10 @@
 import { muscleVector, type Muscle } from './muscles';
 import { isWorking } from './progression';
 import { byOrderDone, e1rm, lastSession, sameExercise } from './stats';
+import { normalizeName } from './ids';
 import type { SetEntry } from './types';
 
-const key = (s: string) => s.trim().toLowerCase();
+const key = (s: string) => normalizeName(s).toLowerCase();
 const chrono = (a: SetEntry, b: SetEntry) => (a.date < b.date ? -1 : a.date > b.date ? 1 : byOrderDone(a, b));
 
 /** Every set that beat all earlier sets of its lift (by e1RM) when it was done. A lift's first set ever isn't one. One pass per lift. */
@@ -33,7 +34,8 @@ export const prSetIds = (entries: SetEntry[], date: string): Set<string> => {
 export const topSet = (sets: SetEntry[]) => sets.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && (b.reps ?? 0) > (a.reps ?? 0)) ? b : a));
 
 export interface DaySummary {
-  lifts: { exercise: string; top: SetEntry; last: SetEntry | null; pr: boolean }[];
+  /** `times`: working sets at the top set's weight and reps ("50 × 10 ×2"). */
+  lifts: { exercise: string; top: SetEntry; times: number; last: SetEntry | null; pr: boolean }[];
   /** Working sets per muscle (a secondary mover counts its share), most first. */
   muscles: [Muscle, number][];
 }
@@ -46,7 +48,9 @@ export function daySummary(entries: SetEntry[], date: string): DaySummary {
   const lifts = names.map((exercise) => {
     const sets = today.filter((e) => sameExercise(e.exercise, exercise));
     const prev = lastSession(entries, exercise, date)?.sets.filter(isWorking) ?? [];
-    return { exercise, top: topSet(sets), last: prev.length ? topSet(prev) : null, pr: sets.some((e) => prs.has(e.id)) };
+    const top = topSet(sets);
+    const times = sets.filter((e) => e.weight === top.weight && e.reps === top.reps).length;
+    return { exercise, top, times, last: prev.length ? topSet(prev) : null, pr: sets.some((e) => prs.has(e.id)) };
   });
   const per = new Map<Muscle, number>();
   for (const e of today) for (const [m, f] of Object.entries(muscleVector(e.exercise) ?? {}) as [Muscle, number][]) per.set(m, (per.get(m) ?? 0) + f);

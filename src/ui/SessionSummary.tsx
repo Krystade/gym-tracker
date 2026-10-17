@@ -22,7 +22,7 @@ export function SessionSummary({ entries, date, past = false }: { entries: SetEn
           return (
             <li key={l.exercise}>
               <b>{l.exercise}</b>
-              <span className="nw">{fmtSet(l.top)}</span>
+              <span className="nw">{fmtSet(l.top)}{l.times > 1 && ` ×${l.times}`}</span>
               {l.pr && <span className="tag pr-tag">PR</span>}
               {l.last && <span className={up ? 'small up' : 'muted small'}>{up ? '↑ ' : ''}last {fmtSet(l.last)}</span>}
             </li>

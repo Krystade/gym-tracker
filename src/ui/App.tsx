@@ -168,7 +168,8 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : pasteOpen ? <PasteScreen store={store} today={date} onBack={() => setPasteOpen(false)} onDone={() => { setPasteOpen(false); setTab('history'); window.scrollTo(0, 0); }} />
           : charsOpen ? <CharactersScreen onBack={() => setCharsOpen(false)} />
           : photosOpen ? <PhotosScreen photos={photos} body={body} today={date} onBack={() => setPhotosOpen(false)} />
-          : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} uid={cloud.mine ? cloud.link?.uid : null} onBack={() => setProgramOpen(false)} />
+          : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} uid={cloud.mine ? cloud.link?.uid : null} onBack={() => setProgramOpen(false)}
+            onOpenPriorities={() => { setProgramOpen(false); setTab('stats'); requestAnimationFrame(() => document.getElementById('priorities')?.scrollIntoView({ block: 'start' })); }} />
           : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={day} onBack={() => setExercise(null)}
             onRenamed={(to) => { renameToday(person.id, day, exercise, to); setExercise(to); window.scrollTo(0, 0); }}
             onLog={() => { logToday(person.id, day, exercise); setLogDay(null); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />

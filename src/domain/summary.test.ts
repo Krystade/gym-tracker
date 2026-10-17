@@ -24,6 +24,12 @@ describe('prSetIds', () => {
     expect(prSetIds([old, today], TODAY).has(today.id)).toBe(true);
   });
 
+  it('counts a name spelled with extra spaces as the same lift', () => {
+    const old = s('2026-09-28', 'Bench Press', 135, 8);
+    const today = s(TODAY, 'bench  press', 140, 8); // beats the old set, so not this spelling's first set ever
+    expect([...prSetIds([old, today], TODAY)]).toEqual([today.id]);
+  });
+
   it('ignores warm-ups, holds and other lifts', () => {
     const base = s('2026-09-28', 'Bench Press', 135, 8);
     const warm = s(TODAY, 'Bench Press', 200, 5, ['warmup']);
@@ -45,6 +51,9 @@ describe('daySummary', () => {
     expect([bench.top.weight, bench.top.reps]).toEqual([140, 8]);
     expect([bench.last?.weight, bench.last?.reps]).toEqual([135, 8]);
     expect(bench.pr).toBe(true);
+    expect(bench.times).toBe(1);
+    expect(d.lifts[1].times).toBe(1);
+    expect(daySummary([...entries, s(TODAY, 'Bench Press', 140, 8)], TODAY).lifts[0].times).toBe(2); // the top set, twice
     expect(d.lifts[1].last).toBeNull();
     // Warm-ups don't count; whole sets on the prime movers.
     expect(d.muscles.find(([m]) => m === 'Chest')?.[1]).toBe(2);
