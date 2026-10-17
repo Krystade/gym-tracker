@@ -230,6 +230,8 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   }, [uid, newsRev]);
   // Push: the reminder and recap numbers, for the person whose account this is (signed out: this phone's subscription goes).
   usePushSync(store.entries, programs.program, programs.plans, date, cloud.link === null ? false : cloud.mine ? true : null);
+  // A record tapped on a lift's screen: History opens at its day.
+  const [historyAt, setHistoryAt] = useState<string | null>(null);
   // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.
   const [carryOff, setCarryOff] = useState<string | null>(null);
   const day = carryOff === date ? date : sessionDay(store.entries, date, new Date());
@@ -251,12 +253,13 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
             onOpenPriorities={() => { setProgramOpen(false); setTab('stats'); requestAnimationFrame(() => document.getElementById('priorities')?.scrollIntoView({ block: 'start' })); }} />
           : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={day} onBack={() => setExercise(null)}
             onRenamed={(to) => { renameToday(person.id, day, exercise, to); setExercise(to); window.scrollTo(0, 0); }}
+            onDay={(d) => { setHistoryAt(d); setExercise(null); setTab('history'); }}
             onLog={() => { logToday(person.id, day, exercise); setLogDay(null); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'today' ? <TodayScreen key={logDay ?? day} who={people.people.length > 1 ? person.name : undefined} news={uid ? nav.news?.top ?? null : null}
             onOpenNews={(f) => nav.openThread(f)} store={store} settings={settings} programs={programs} body={body} gyms={gyms} profile={profile.profile} date={logDay ?? day} today={day}
             carried={day !== date && !logDay} onSplit={() => setCarryOff(date)}
             onDay={(d) => { setLogDay(d === day ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={top(() => setProgramOpen(true))} onOpenGym={top(() => setGymOpen(true))} />
-          : tab === 'history' ? <HistoryScreen store={store} onOpen={open} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
+          : tab === 'history' ? <HistoryScreen store={store} onOpen={open} focus={historyAt} onFocused={() => setHistoryAt(null)} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
           : tab === 'friends' ? <FriendsScreen cloud={cloud} gyms={gyms} pending={nav.pending} entries={store.entries} status={status} today={date} onPendingDone={nav.clearPending} onView={nav.view}
             news={nav.news} newsRev={nav.newsRev} onChanged={nav.bumpNews} onMessage={nav.openThread}

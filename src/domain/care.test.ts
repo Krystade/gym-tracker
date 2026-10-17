@@ -148,11 +148,11 @@ describe('pain fields on new sets', () => {
 });
 
 describe('Phase 5 review fixes', () => {
-  it('never calls a longer hold a rep PR', async () => {
-    const { prCheck } = await import('./progression');
+  it('never calls a longer hold a rep PR: it is a hold PR', async () => {
+    const { prKinds } = await import('./records');
     const a = s('2026-09-28', 'Side Plank', { weight: 0, reps: 30, flags: ['bodyweight', 'hold'] });
     const b = s('2026-09-29', 'Side Plank', { weight: 0, reps: 45, flags: ['bodyweight', 'hold'] });
-    expect(prCheck([a, b], b)).toEqual({ e1rm: false, reps: false });
+    expect(prKinds([a, b]).get(b.id)).toEqual(['hold']);
   });
   it('gives holds a seconds range and seconds in every target', async () => {
     const { defaultSettings } = await import('./progression');

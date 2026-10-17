@@ -5,7 +5,9 @@ import { normalizeName } from '../domain/ids';
 import { sameExercise } from '../domain/stats';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
-import { bestSet, e1rmSeries, exerciseNames, sessionsFor, type SeriesPoint } from '../domain/stats';
+import { e1rmSeries, exerciseNames, sessionsFor, type SeriesPoint } from '../domain/stats';
+import { records } from '../domain/records';
+import { Records } from './Records';
 import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
 import { CATALOG } from '../domain/catalog';
@@ -24,7 +26,7 @@ import { todayPlanFor } from './TodayPlan';
 import { SuggestionCard } from './SuggestionCard';
 
 /** A cardio machine: distance (or floors) per session over time, and each session's numbers with its pace. */
-function CardioScreen({ name, store, programs, date, onLog, onBack, readOnly }: { name: string; store: SetsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void; readOnly?: boolean }) {
+function CardioScreen({ name, store, programs, date, onLog, onBack, onDay, readOnly }: { name: string; store: SetsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void; onDay?: (date: string) => void; readOnly?: boolean }) {
   const today = localDate(new Date());
   const m = machine(name)!;
   const byFloors = !m.fields.includes('miles');
@@ -55,6 +57,7 @@ function CardioScreen({ name, store, programs, date, onLog, onBack, readOnly }: 
         <LineChart points={series} today={today} label={byFloors ? 'Floors over time' : 'Distance over time'} unit={unit} noun="" column={byFloors ? 'Floors' : 'Distance (mi)'} what="this" tenths={!byFloors} />
         {series.length > 1 && <p className="muted small">Best per session · records filled</p>}
       </section>
+      <Records entries={store.entries} name={name} today={today} onDay={onDay} />
       {sessions.length > 0 && <h2>History</h2>}
       {sessions.slice(0, HISTORY_CAP).map((s) => (
         <section className="card" key={s.date}>
@@ -156,23 +159,24 @@ function RenameLift({ name, store, settings, gyms, programs, onRenamed }: {
   );
 }
 
-/** `readOnly`: a friend's lift, charts and history only. */
-export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, readOnly }: {
+/** `readOnly`: a friend's lift, charts and history only. `onDay`: a record tapped opens its day in History. */
+export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly }: {
   name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void;
-  onRenamed: (to: string) => void; readOnly?: boolean;
+  onRenamed: (to: string) => void; onDay?: (date: string) => void; readOnly?: boolean;
 }) {
-  if (isCardio(name)) return <CardioScreen name={name} store={store} programs={programs} date={date} onLog={onLog} onBack={onBack} readOnly={readOnly} />;
-  return <LiftScreen {...{ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, readOnly }} />;
+  if (isCardio(name)) return <CardioScreen name={name} store={store} programs={programs} date={date} onLog={onLog} onBack={onBack} onDay={onDay} readOnly={readOnly} />;
+  return <LiftScreen {...{ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly }} />;
 }
 
-function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, readOnly }: Parameters<typeof ExerciseScreen>[0]) {
+function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly }: Parameters<typeof ExerciseScreen>[0]) {
   const hold = isHoldLift(name, store.entries);
   const { s: sug, trainedToday } = nextTime(store.entries, name, settings.get(name, hold), date, plannedSets(programs.program, todayPlanFor(programs, store.entries, date), name));
   const sessions = sessionsFor(store.entries, name);
   // A hold has no 1RM: its trend is the longest hold of each session, in seconds.
   const series = hold ? holdSeries(sessions) : e1rmSeries(store.entries, name);
   const longest = hold ? Math.max(0, ...series.map((p) => p.e1rm)) : 0;
-  const best = bestSet(store.entries, name);
+  // The best e1RM set, as Records holds it: the earliest one on a tie.
+  const best = records(store.entries, name).get('e1rm');
   const cal = calibrate(store.entries, name);
   const current = calibratedE1rm(store.entries, name);
   const [n, setN] = useState(6);
@@ -200,13 +204,14 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
       <div className="tiles">
         {hold
           ? <div className="tile"><span>Best hold</span><b>{longest ? `${longest} s` : '—'}</b></div>
-          : <div className="tile"><span>Best set{best ? ` · ${fmtDay(best.set.date, today)}` : ''}</span><b>{best ? fmtSet(best.set).replace(/^(\d\S*) ×/, '$1 lb ×') : '—'}</b></div>}
+          : <div className="tile"><span>Best set{best ? ` · ${fmtDay(best.date, today)}` : ''}</span><b>{best?.set ? fmtSet(best.set).replace(/^(\d\S*) ×/, '$1 lb ×') : '—'}</b></div>}
         <div className="tile"><span>Sessions</span><b>{sessions.length}</b></div>
       </div>
       <section className="card">
         <LineChart points={series} today={today} {...(hold ? { label: 'Longest hold over time', unit: 's', noun: '', column: 'Longest hold (s)' } : {})} />
-        {series.length > 1 && <p className="muted small">{hold ? 'Longest hold per session · PRs filled' : 'Best estimated 1RM per session · PRs filled'}</p>}
+        {series.length > 1 && <p className="muted small">{hold ? 'Longest hold per session · records filled' : 'Best estimated 1RM per session · records filled'}</p>}
       </section>
+      <Records entries={store.entries} name={name} today={today} onDay={onDay} />
       {!readOnly && !hold && due && !(snoozed && today < snoozed) && (
         <p className="card note-card test-due">
           <span>Time for a test: pick a weight you can do about 8–12 times, go to failure with good form, and tick <b>Test</b>. It tunes these estimates.</span>

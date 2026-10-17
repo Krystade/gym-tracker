@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { CardioData, SetEntry } from '../domain/types';
 import { byOrderDone, lastSession, sameExercise } from '../domain/stats';
@@ -8,6 +8,8 @@ import { localDate } from '../domain/ids';
 import { activeProfileDb } from '../db/db';
 import { clearDraft, getDraft, markDirty, saveDraft } from '../state/drafts';
 import { Stepper } from './Stepper';
+import { prToast } from '../domain/records';
+import { prSetIds } from '../domain/summary';
 
 const LABEL: Record<CardioField, string> = { miles: 'Distance (mi)', incline: 'Incline %', level: 'Level', floors: 'Floors' };
 const STEP: Record<CardioField, number> = { miles: 0.05, incline: 0.5, level: 1, floors: 1 };
@@ -97,6 +99,10 @@ export function CardioCard({ exercise, date, today: realToday = date, store, onO
   const [opened, setOpened] = useState(false);
   const [gone, setGone] = useState<SetEntry | null>(null);
   useLayoutEffect(() => { if (!gone) return; const t = setTimeout(() => setGone(null), 8000); return () => clearTimeout(t); }, [gone]);
+  // A record broken: the same rule and banner as a lift's card, and the bout keeps its PR mark.
+  const [pr, setPr] = useState<string | null>(null);
+  useEffect(() => { if (!pr) return; const t = setTimeout(() => setPr(null), 6000); return () => clearTimeout(t); }, [pr]);
+  const prs = useMemo(() => prSetIds(store.entries, date), [store.entries, date]);
   const bouts = store.entries.filter((e) => e.date === date && e.cardio && sameExercise(e.exercise, exercise)).sort(byOrderDone);
   if (editing && !bouts.some((x) => x.id === editing.id)) setEditing(null);
   const last = lastSession(store.entries.filter((e) => e.cardio), exercise, date);
@@ -113,14 +119,17 @@ export function CardioCard({ exercise, date, today: realToday = date, store, onO
     return (
       <section className="card folded" data-card={exercise.toLowerCase()}>
         <button className="fold-line" aria-expanded="false" aria-label={`Show ${exercise}`} onClick={() => setOpened(true)}>
-          <b>{exercise}</b><span className="ok">✓</span><span className="muted nw">{fmtCardio(bouts.at(-1)!.cardio!)}</span>
+          <b>{exercise}</b><span className="ok">✓</span>{bouts.some((x) => prs.has(x.id)) && <span className="tag pr-tag">PR</span>}<span className="muted nw">{fmtCardio(bouts.at(-1)!.cardio!)}</span>
         </button>
+        {pr && <p role="status" className="pr">{pr}</p>}
       </section>
     );
   }
   async function add(c: CardioData, note: string | undefined, at: string | null | undefined) {
+    setPr(null);
     const e = await store.add({ date, exercise, weight: 0, reps: null, flags: ['cardio'], gym, note,
       cardio: { ...c, ...(target.aim != null && { aim: target.aim }) }, ...(at !== undefined && { at: at ? new Date(`${date}T${at}:00`) : null }) });
+    if (e) setPr(prToast(store.entries, e));
     return !!e;
   }
   return (
@@ -134,10 +143,11 @@ export function CardioCard({ exercise, date, today: realToday = date, store, onO
       <ol className="sets" aria-label={`Sessions for ${exercise}`}>
         {bouts.map((s, i) => (
           <li key={s.id}><button className={editing?.id === s.id ? 'set-row editing' : 'set-row'} onClick={() => setEditing(s)}>
-            <span className="muted">{i + 1}</span> <span className="nw">{fmtCardio(s.cardio!)}</span>{s.note && <span className="muted small"> · {s.note}</span>}
+            <span className="muted">{i + 1}</span> <span className="nw">{fmtCardio(s.cardio!)}</span>{prs.has(s.id) && <span className="tag pr-tag">PR</span>}{s.note && <span className="muted small"> · {s.note}</span>}
           </button></li>
         ))}
       </ol>
+      {pr && <p role="status" className="pr">{pr}</p>}
       {gone && <p className="undo-note" role="status">Session deleted. <button className="mini" onClick={async () => { if (await store.restore(gone)) setGone(null); }}>Undo</button></p>}
       {editing ? (
         <div className="edit-box">
