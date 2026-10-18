@@ -9,16 +9,16 @@ import { addDays } from '../domain/analytics';
 import type { Invite } from '../domain/invite';
 import type { ThreadItem } from '../domain/messages';
 
-// Friends as last read, for one account, kept on the phone: Friends, Orbit, the threads and the Friends tab's dot show
+// Friends as last read, for one account, kept on the phone: Friends, Crew, the threads and the Friends tab's dot show
 // it at once and read Firestore again quietly behind it (stale-while-revalidate). It's read in the background after the
 // app's first sync, again when the app comes back after 5 minutes, and a friend's thread after a push about them.
 // Friends opened, pulled down or acted on reads again whatever the age.
 
-/** How long a friend's Orbit line, a thread, or the whole background read counts as fresh. */
+/** How long a friend's Crew line, a thread, or the whole background read counts as fresh. */
 export const STALE_MS = 5 * 60_000;
-/** Orbit's span: eight weeks back, today included. */
-export const ORBIT_SPAN = 56;
-export const orbitRange = (today: string) => ({ from: addDays(today, -(ORBIT_SPAN - 1)), to: today });
+/** Crew's span: eight weeks back, today included. */
+export const CREW_SPAN = 56;
+export const crewRange = (today: string) => ({ from: addDays(today, -(CREW_SPAN - 1)), to: today });
 
 export interface Lists {
   at: number;
@@ -188,7 +188,7 @@ export function refreshNews(c: Cloud, uid: string, join = false): Promise<Friend
   }, join);
 }
 
-/** One friend's Orbit line: their sets over Orbit's span, and their status. */
+/** One friend's Crew line: their sets over Crew's span, and their status. */
 export function refreshWindow(c: Cloud, uid: string, f: string, from: string, to: string, join = false): Promise<FriendWindow> {
   return once(`window:${uid}:${f}:${from}`, async () => {
     const win = await readFriendWindow(c, f, from, to);
@@ -214,11 +214,11 @@ export async function refreshChangedThreads(c: Cloud, uid: string): Promise<void
   await Promise.all(threadsBehind(cache).filter((f) => friends.has(f)).map((f) => refreshThread(c, uid, f, true).catch(() => {})));
 }
 
-/** Everything Friends shows, read again: lists and news always; Orbit lines and threads when stale (or `force`). */
+/** Everything Friends shows, read again: lists and news always; Crew lines and threads when stale (or `force`). */
 export async function prefetchFriends(uid: string, today: string, force = false): Promise<void> {
   const c = await loadCloud();
   const [lists] = await Promise.all([refreshLists(c, uid, !force), refreshNews(c, uid, !force)]);
-  const { from, to } = orbitRange(today), now = Date.now(), cache = peekFriendCache(uid);
+  const { from, to } = crewRange(today), now = Date.now(), cache = peekFriendCache(uid);
   await Promise.all(lists.friends.flatMap((f) => [
     force || staleWindow(cache?.windows[f.uid], from, to, now) ? refreshWindow(c, uid, f.uid, from, to, !force).catch(() => {}) : null,
     force || !cache?.threads[f.uid] || now - cache.threads[f.uid].at > STALE_MS ? refreshThread(c, uid, f.uid, !force).catch(() => {}) : null,

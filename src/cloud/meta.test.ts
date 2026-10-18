@@ -24,7 +24,7 @@ describe('tags in the synced settings', () => {
   });
 });
 
-describe('the Orbit status phrase in the synced settings', () => {
+describe('the Crew status phrase in the synced settings', () => {
   it('goes up once set, cleared as an empty phrase, per profile', async () => {
     expect(await readMeta(boundDb('main'))).not.toHaveProperty('status');
     await boundDb('main').putStatus('deload week');

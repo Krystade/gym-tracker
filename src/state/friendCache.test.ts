@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { resetDbForTests } from '../db/db';
 import type { FriendNews } from '../cloud/friends';
 import {
-  flushFriendCache, forgetFriendCaches, hydrateFriendCache, orbitRange, patchFriendCache, peekFriendCache, pruneTo, readLocally, resetFriendCacheForTests,
+  flushFriendCache, forgetFriendCaches, hydrateFriendCache, crewRange, patchFriendCache, peekFriendCache, pruneTo, readLocally, resetFriendCacheForTests,
   STALE_MS, staleWindow, threadsBehind, type FriendCache,
 } from './friendCache';
 
@@ -17,14 +17,14 @@ const news = (over: Partial<FriendNews> = {}): FriendNews & { at: number } => ({
 beforeEach(() => { globalThis.indexedDB = new IDBFactory(); resetDbForTests(); resetFriendCacheForTests(); });
 
 describe('friend cache: what counts as stale', () => {
-  it('reads a friend’s Orbit line again when it’s missing, 5 minutes old, or for another span of days', () => {
-    const { from, to } = orbitRange('2026-10-17');
+  it('reads a friend’s Crew line again when it’s missing, 5 minutes old, or for another span of days', () => {
+    const { from, to } = crewRange('2026-10-17');
     expect([from, to]).toEqual(['2026-08-23', '2026-10-17']); // 56 days, today included
     const w = { at: NOW - 60_000, from, to, win: { sets: [], status: '' } };
     expect(staleWindow(undefined, from, to, NOW)).toBe(true);
     expect(staleWindow(w, from, to, NOW)).toBe(false);
     expect(staleWindow({ ...w, at: NOW - STALE_MS - 1 }, from, to, NOW)).toBe(true);
-    expect(staleWindow(w, orbitRange('2026-10-18').from, '2026-10-18', NOW)).toBe(true); // a new day
+    expect(staleWindow(w, crewRange('2026-10-18').from, '2026-10-18', NOW)).toBe(true); // a new day
   });
 
   it('reads a thread again when its friend sent something newer than the newest of theirs it holds', () => {

@@ -3,7 +3,7 @@ import { isCardioEntry } from './cardio';
 import { muscleVector, type Muscle } from './muscles';
 import type { SetEntry } from './types';
 
-/** What a day was for, on Orbit: five kinds, each with its own colour. */
+/** What a day was for, on Crew: five kinds, each with its own colour. */
 export const KINDS = ['legs', 'push', 'pull', 'core', 'cardio'] as const;
 export type Kind = (typeof KINDS)[number];
 export const KIND_LABEL: Record<Kind, string> = { legs: 'Legs', push: 'Push', pull: 'Pull', core: 'Arms and core', cardio: 'Cardio' };
@@ -20,7 +20,7 @@ const CARDIO_MIN_PER_SET = 3;
 const CLOSE = 0.8;
 
 /**
- * A day on Orbit. `kinds` empty with `training` true: a training day of lifts nothing maps (shown neutral).
+ * A day on Crew. `kinds` empty with `training` true: a training day of lifts nothing maps (shown neutral).
  * Training false: a rest day (nothing logged, or warm-ups only).
  */
 export interface Day { date: string; training: boolean; kinds: Kind[] }
@@ -48,7 +48,7 @@ export function dayKinds(sets: SetEntry[]): Omit<Day, 'date'> {
 }
 
 /** Every day from `from` to `to` (inclusive), oldest first. */
-export function orbitDays(entries: SetEntry[], from: string, to: string): Day[] {
+export function crewDays(entries: SetEntry[], from: string, to: string): Day[] {
   const byDate = new Map<string, SetEntry[]>();
   for (const e of entries) if (e.date >= from && e.date <= to) (byDate.get(e.date) ?? byDate.set(e.date, []).get(e.date)!).push(e);
   const out: Day[] = [];

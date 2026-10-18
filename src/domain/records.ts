@@ -9,7 +9,7 @@ import type { SetEntry } from './types';
 // a set that beat a record that stood before its day (a lift's first day beats nothing). Nothing is stored, so an edit, a
 // delete, a rename or a sync changes the records with the log. The History badge, the banner on saving a set, the day
 // summary and the weekly recap all read prKinds; the Records section reads the same pass's holders. A warm-up was lifted, so it
-// counts for every record like any set; it never counts toward a set or session goal (domain/analytics, domain/orbit).
+// counts for every record like any set; it never counts toward a set or session goal (domain/analytics, domain/crew).
 
 /** "At least N reps": a 10-rep set stands as the 8-rep max too. */
 export const REP_MAXES = [1, 3, 5, 8, 10, 12] as const;

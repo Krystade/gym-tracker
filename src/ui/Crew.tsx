@@ -2,8 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { cloudError, loadCloud } from '../cloud/firebase';
 import type { Friend, FriendNews } from '../cloud/friends';
 import { addDays, weekStart } from '../domain/analytics';
-import { ORBIT_SPAN, orbitRange, peekFriendCache, refreshWindow, staleWindow, useFriendCache } from '../state/friendCache';
-import { fmtWeek, KIND_LABEL, KINDS, lastTraining, orbitDays, statusLength, STATUS_MAX, weekNumbers, type Day, type Kind } from '../domain/orbit';
+import { CREW_SPAN, crewRange, peekFriendCache, refreshWindow, staleWindow, useFriendCache } from '../state/friendCache';
+import { fmtWeek, KIND_LABEL, KINDS, lastTraining, crewDays, statusLength, STATUS_MAX, weekNumbers, type Day, type Kind } from '../domain/crew';
 import type { SetEntry } from '../domain/types';
 import type { StatusStore } from '../state/useStatus';
 import { ChartTable } from './charts/ChartTable';
@@ -12,21 +12,21 @@ import { Latest, MessageButton } from './MessageButton';
 // Every friend on one screen: a line each across the days, coloured by what they trained. Cycle data never comes here:
 // friends' rows read only their months and status phrase, and your own row only your log.
 
-const SPAN = ORBIT_SPAN; // eight weeks back, today included
+const SPAN = CREW_SPAN; // eight weeks back, today included
 const SHOWN = 14; // days across a phone
 const MAX_OFF = SPAN - SHOWN;
 const LINE_H = 20;
-const colour = (k: Kind | undefined) => (k ? `var(--orbit-${k})` : 'var(--orbit-other)');
-const KEY_SEEN = 'gym-tracker:orbit-key';
+const colour = (k: Kind | undefined) => (k ? `var(--crew-${k})` : 'var(--crew-other)');
+const KEY_SEEN = 'gym-tracker:crew-key';
 
 interface Row { id: string; name: string; label: string; status: string; days: Day[]; sets: SetEntry[]; me: boolean; friend?: Friend; error?: string; loading?: boolean }
 
-export function Orbit({ uid, friends, entries, today, status, news, pulled = 0, onOpenFriend, onOpenMine, onInvite, onMessage }: {
+export function Crew({ uid, friends, entries, today, status, news, pulled = 0, onOpenFriend, onOpenMine, onInvite, onMessage }: {
   uid: string; friends: Friend[] | null; entries: SetEntry[]; today: string; status: StatusStore; news?: FriendNews | null;
   /** Moves on each pull-down or Refresh: every line is read again. */ pulled?: number;
   onOpenFriend: (f: Friend) => void; onOpenMine: () => void; onInvite: () => void; /** A friend's thread: pings and messages. */ onMessage?: (f: Friend) => void;
 }) {
-  const { from } = orbitRange(today);
+  const { from } = crewRange(today);
   // Each friend's line as the phone kept it (state/friendCache), read again quietly when 5 minutes old or for a new day.
   // A failed read shows only where nothing was kept; a kept line stays as it was.
   const windows = useFriendCache(uid)?.windows;
@@ -57,10 +57,10 @@ export function Orbit({ uid, friends, entries, today, status, news, pulled = 0, 
 
   const rows = useMemo((): Row[] => {
     const mine = entries.filter((e) => e.date >= from && e.date <= today);
-    const me: Row = { id: 'me', name: 'You', label: 'You', status: status.status, days: orbitDays(mine, from, today), sets: mine, me: true };
+    const me: Row = { id: 'me', name: 'You', label: 'You', status: status.status, days: crewDays(mine, from, today), sets: mine, me: true };
     const theirs = (friends ?? []).map((f): Row => {
       const w = windows?.[f.uid], sets = (w?.win.sets ?? []).filter((x) => x.date >= from && x.date <= today), error = w ? undefined : errors[f.uid];
-      return { id: f.uid, name: `@${f.name}`, label: `@${f.name}`, status: w?.win.status ?? '', days: orbitDays(sets, from, today), sets, me: false, friend: f, error, loading: !w && !error };
+      return { id: f.uid, name: `@${f.name}`, label: `@${f.name}`, status: w?.win.status ?? '', days: crewDays(sets, from, today), sets, me: false, friend: f, error, loading: !w && !error };
     });
     const last = (r: Row) => lastTraining(r.days)?.date ?? '';
     theirs.sort((a, b) => (last(b) > last(a) ? 1 : last(b) < last(a) ? -1 : a.name.localeCompare(b.name)));
@@ -96,13 +96,13 @@ export function Orbit({ uid, friends, entries, today, status, news, pulled = 0, 
   const first = visible(rows[0].days)[0]?.date ?? from, lastShown = visible(rows[0].days).at(-1)?.date ?? today;
 
   return (
-    <section className="orbit" aria-label="Orbit">
-      <div className="orbit-top">
-        <h2>Orbit</h2>
-        {shown > 0 && <button className="chip orbit-today" onClick={() => setOff(0)}>Today</button>}
+    <section className="crew" aria-label="Crew">
+      <div className="crew-top">
+        <h2>Crew</h2>
+        {shown > 0 && <button className="chip crew-today" onClick={() => setOff(0)}>Today</button>}
       </div>
-      <OrbitKey />
-      <div ref={box} className="orbit-rows" style={{ touchAction: 'pan-y' }} tabIndex={0} aria-label={`Days ${first} to ${lastShown}. Arrow keys move a week.`}
+      <CrewKey />
+      <div ref={box} className="crew-rows" style={{ touchAction: 'pan-y' }} tabIndex={0} aria-label={`Days ${first} to ${lastShown}. Arrow keys move a week.`}
         onKeyDown={(e) => {
           if (e.key === 'ArrowLeft') { e.preventDefault(); setOff((o) => clamp(Math.round(o) + 7)); }
           if (e.key === 'ArrowRight') { e.preventDefault(); setOff((o) => clamp(Math.round(o) - 7)); }
@@ -123,7 +123,7 @@ export function Orbit({ uid, friends, entries, today, status, news, pulled = 0, 
         onPointerUp={() => { if (drag.current?.on) setOff((o) => Math.round(o)); drag.current = null; }}
         onPointerCancel={() => { setOff((o) => Math.round(o)); drag.current = null; }}
         onClickCapture={(e) => { if (dragged.current) { e.stopPropagation(); e.preventDefault(); dragged.current = false; } }}>
-        <svg className="orbit-days" width={width} height={32} aria-hidden="true">
+        <svg className="crew-days" width={width} height={32} aria-hidden="true">
           {rows[0].days.map((d, i) => {
             const x = (i - (SPAN - SHOWN) + off) * col;
             if (x < -col || x > width) return null;
@@ -138,18 +138,18 @@ export function Orbit({ uid, friends, entries, today, status, news, pulled = 0, 
           })}
         </svg>
         <svg width={0} height={0} aria-hidden="true" style={{ position: 'absolute' }}>
-          <filter id="orbit-glow" x="-50%" y="-150%" width="200%" height="400%"><feGaussianBlur stdDeviation="2.5" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+          <filter id="crew-glow" x="-50%" y="-150%" width="200%" height="400%"><feGaussianBlur stdDeviation="2.5" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </svg>
-        <ul className="orbit-list">
+        <ul className="crew-list">
           {rows.map((r) => {
             const latest = lastTraining(r.days);
             const quiet = !r.loading && !r.error && !r.days.some((d) => d.training && d.date >= recent);
             const open = () => (r.friend ? onOpenFriend(r.friend) : onOpenMine());
             return (
-              <li key={r.id} className={`orbit-row${quiet ? ' quiet' : ''}`} style={{ '--k': colour(latest?.kinds[0]) } as CSSProperties} data-testid={r.me ? 'orbit-me' : `orbit-${r.friend!.name}`}>
-                <div className="orbit-head">
-                  <button className="link orbit-name" onClick={open}>{r.label}</button>
-                  {r.me ? <StatusEdit status={status} /> : r.status && <span className="orbit-bubble">{r.status}</span>}
+              <li key={r.id} className={`crew-row${quiet ? ' quiet' : ''}`} style={{ '--k': colour(latest?.kinds[0]) } as CSSProperties} data-testid={r.me ? 'crew-me' : `crew-${r.friend!.name}`}>
+                <div className="crew-head">
+                  <button className="link crew-name" onClick={open}>{r.label}</button>
+                  {r.me ? <StatusEdit status={status} /> : r.status && <span className="crew-bubble">{r.status}</span>}
                   {r.friend && onMessage && (
                     <span className="msg-end">
                       <Latest news={news} uid={r.friend.uid} />
@@ -157,14 +157,14 @@ export function Orbit({ uid, friends, entries, today, status, news, pulled = 0, 
                     </span>
                   )}
                 </div>
-                <svg className="orbit-line" width={width} height={LINE_H} aria-hidden="true" onClick={open}>
-                  <line x1={0} x2={width} y1={LINE_H / 2} y2={LINE_H / 2} className="orbit-rest" />
+                <svg className="crew-line" width={width} height={LINE_H} aria-hidden="true" onClick={open}>
+                  <line x1={0} x2={width} y1={LINE_H / 2} y2={LINE_H / 2} className="crew-rest" />
                   {r.days.map((d, i) => {
                     const x = (i - (SPAN - SHOWN) + off) * col;
                     if (!d.training || x < -col || x > width) return null;
                     const [a, b] = d.kinds, y = LINE_H / 2 - 5, w = Math.max(2, col - 4);
                     return (
-                      <g key={d.date} data-date={d.date} data-kind={d.kinds.join('+') || 'other'} filter="url(#orbit-glow)">
+                      <g key={d.date} data-date={d.date} data-kind={d.kinds.join('+') || 'other'} filter="url(#crew-glow)">
                         {b ? (<>
                           <rect x={x + 2} y={y} width={w} height={4} rx={2} fill={colour(a)} />
                           <rect x={x + 2} y={y + 6} width={w} height={4} rx={2} fill={colour(b)} />
@@ -172,9 +172,9 @@ export function Orbit({ uid, friends, entries, today, status, news, pulled = 0, 
                       </g>
                     );
                   })}
-                  {(() => { const x = (SPAN - 1 - (SPAN - SHOWN) + off) * col + col / 2; return x <= width ? <circle className="orbit-now" cx={x} cy={LINE_H / 2} r={3} /> : null; })()}
+                  {(() => { const x = (SPAN - 1 - (SPAN - SHOWN) + off) * col + col / 2; return x <= width ? <circle className="crew-now" cx={x} cy={LINE_H / 2} r={3} /> : null; })()}
                 </svg>
-                <p className="orbit-week muted small">
+                <p className="crew-week muted small">
                   {r.error ? <span className="warn">{r.error}</span> : r.loading ? 'Loading…' : quiet ? 'No sessions in 2 weeks' : fmtWeek(weekNumbers(r.sets, week))}
                 </p>
               </li>
@@ -184,7 +184,7 @@ export function Orbit({ uid, friends, entries, today, status, news, pulled = 0, 
       </div>
       {friends && !friends.length && <p className="muted small">No friends here yet. Invite one and their line shows up under yours.</p>}
       {/* In the page, under the lines, while you have fewer than three friends: floating, it covered what scrolled under it. */}
-      {friends && friends.length < 3 && <button className="primary orbit-invite" onClick={onInvite}>Invite a friend</button>}
+      {friends && friends.length < 3 && <button className="primary crew-invite" onClick={onInvite}>Invite a friend</button>}
       <ChartTable caption={`What each person trained, ${dayName(first)} to ${dayName(lastShown)}`} head={['Who', 'Days trained']} rows={table} />
     </section>
   );
@@ -193,16 +193,16 @@ export function Orbit({ uid, friends, entries, today, status, news, pulled = 0, 
 const dayName = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
 /** The colour key: open on the first visit, folded after. */
-function OrbitKey() {
+function CrewKey() {
   const [first] = useState(() => { try { return !localStorage.getItem(KEY_SEEN); } catch { return false; } });
   useEffect(() => { try { localStorage.setItem(KEY_SEEN, '1'); } catch { /* not kept */ } }, []);
   return (
-    <details className="orbit-key" open={first}>
+    <details className="crew-key" open={first}>
       <summary>Colour key</summary>
       <ul>
-        {KINDS.map((k) => <li key={k}><span className="orbit-dot" style={{ background: colour(k) }} />{KIND_LABEL[k]}</li>)}
-        <li><span className="orbit-dot" style={{ background: colour(undefined) }} />Other lifts</li>
-        <li><span className="orbit-dot rest" />Rest</li>
+        {KINDS.map((k) => <li key={k}><span className="crew-dot" style={{ background: colour(k) }} />{KIND_LABEL[k]}</li>)}
+        <li><span className="crew-dot" style={{ background: colour(undefined) }} />Other lifts</li>
+        <li><span className="crew-dot rest" />Rest</li>
       </ul>
     </details>
   );
@@ -213,12 +213,12 @@ function StatusEdit({ status }: { status: StatusStore }) {
   const [text, setText] = useState<string | null>(null);
   if (text == null) {
     return status.status
-      ? <button className="orbit-tap" aria-label={`Your status: ${status.status}. Change it`} onClick={() => setText(status.status)}><span className="orbit-bubble">{status.status}</span></button>
-      : <button className="orbit-tap" onClick={() => setText('')}><span className="orbit-bubble add">+ Status</span></button>;
+      ? <button className="crew-tap" aria-label={`Your status: ${status.status}. Change it`} onClick={() => setText(status.status)}><span className="crew-bubble">{status.status}</span></button>
+      : <button className="crew-tap" onClick={() => setText('')}><span className="crew-bubble add">+ Status</span></button>;
   }
   const n = statusLength(text), over = n > STATUS_MAX;
   return (
-    <form className="orbit-status" onSubmit={(e) => { e.preventDefault(); if (!over) void status.save(text).then(() => setText(null)); }}>
+    <form className="crew-status" onSubmit={(e) => { e.preventDefault(); if (!over) void status.save(text).then(() => setText(null)); }}>
       <input aria-label="Your status" value={text} autoFocus placeholder="Deload week" enterKeyHint="done"
         onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setText(null); }} />
       <span className={`small ${over ? 'err' : 'muted'}`} aria-live="polite">{n}/{STATUS_MAX}</span>

@@ -9,10 +9,10 @@ const SHOTS = 'screenshots/messages';
 mkdirSync(SHOTS, { recursive: true });
 const rand = () => Math.random().toString(36).slice(2, 10);
 const friends = (page: Page) => page.getByRole('region', { name: 'Friends', exact: true });
-const orbit = (page: Page) => page.getByRole('region', { name: 'Orbit' });
+const crew = (page: Page) => page.getByRole('region', { name: 'Crew' });
 const sheetOf = (page: Page, name: string) => page.getByRole('dialog', { name: `Messages with @${name}` });
 const TOP = 47, BOTTOM = 34;
-// A message near the 140 limit: it has to fit Orbit's row, the friends list and Today's one line without scrolling sideways.
+// A message near the 140 limit: it has to fit Crew's row, the friends list and Today's one line without scrolling sideways.
 const LONG = 'See you at 6? Bring chalk, deadlifts first and then heavy rows after if the rack by the window is free';
 
 test.use({ serviceWorkers: 'block' });
@@ -63,12 +63,12 @@ async function befriend(from: { page: Page }, to: { page: Page; name: string }, 
 const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth);
 const fontPx = (l: ReturnType<Page['locator']>) => l.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
 
-test('a ping from an Orbit row and a message from the friend view land in the other’s thread, with the dot and the Today line', async ({ browser }, info) => {
+test('a ping from a Crew row and a message from the friend view land in the other’s thread, with the dot and the Today line', async ({ browser }, info) => {
   const [a, b] = await Promise.all([person(browser), person(browser)]);
   await befriend(b, a, b.name);
 
-  // A: B's Orbit row has a message button; it opens the thread as a sheet from the bottom.
-  const row = orbit(a.page).getByTestId(`orbit-${b.name}`);
+  // A: B's Crew row has a message button; it opens the thread as a sheet from the bottom.
+  const row = crew(a.page).getByTestId(`crew-${b.name}`);
   await row.getByRole('button', { name: `Message @${b.name}` }).click();
   const sheet = sheetOf(a.page, b.name);
   await expect(sheet).toBeVisible();
@@ -128,7 +128,7 @@ test('a ping from an Orbit row and a message from the friend view land in the ot
   await info.attach('today-news', { path: `${SHOTS}/today-news.png`, contentType: 'image/png' });
   // On Friends, A's row has the dot and says how many.
   await goto(b.page, 'Friends');
-  const aRow = orbit(b.page).getByTestId(`orbit-${a.name}`);
+  const aRow = crew(b.page).getByTestId(`crew-${a.name}`);
   await expect(aRow.getByRole('button', { name: `Message @${a.name}, 2 unread` })).toBeVisible();
   await expect(aRow.locator('.unread-dot')).toHaveCount(1);
   await expect(aRow).toContainText('See you at 6?');
@@ -136,8 +136,8 @@ test('a ping from an Orbit row and a message from the friend view land in the ot
   // The row's line is cut with an ellipsis, inside the screen.
   const latest = (await aRow.locator('.msg-latest').boundingBox())!;
   expect(latest.x + latest.width).toBeLessThanOrEqual(375);
-  await b.page.screenshot({ path: `${SHOTS}/orbit-unread.png` });
-  await info.attach('orbit-unread', { path: `${SHOTS}/orbit-unread.png`, contentType: 'image/png' });
+  await b.page.screenshot({ path: `${SHOTS}/crew-unread.png` });
+  await info.attach('crew-unread', { path: `${SHOTS}/crew-unread.png`, contentType: 'image/png' });
 
   // Opening the thread reads them: both of A's, oldest first; the dots go.
   await aRow.getByRole('button', { name: `Message @${a.name}, 2 unread` }).click();
@@ -172,7 +172,7 @@ test('mute is quiet and private; block stops the sender and lists them to unbloc
   await befriend(b, a, b.name);
 
   // B mutes A: the bell says so, and Friends marks A muted. A sees nothing different.
-  await orbit(b.page).getByTestId(`orbit-${a.name}`).getByRole('button', { name: `Message @${a.name}` }).click();
+  await crew(b.page).getByTestId(`crew-${a.name}`).getByRole('button', { name: `Message @${a.name}` }).click();
   const bSheet = sheetOf(b.page, a.name);
   await bSheet.getByRole('button', { name: `Mute @${a.name}` }).click();
   await expect(bSheet.getByRole('button', { name: `Unmute @${a.name}` })).toHaveAttribute('aria-pressed', 'true');
@@ -187,7 +187,7 @@ test('mute is quiet and private; block stops the sender and lists them to unbloc
 
   // A's ping still arrives in the thread (mute only keeps the phone quiet).
   await goto(a.page, 'Friends');
-  await orbit(a.page).getByTestId(`orbit-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
+  await crew(a.page).getByTestId(`crew-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
   const aSheet = sheetOf(a.page, b.name);
   await expect(aSheet.getByRole('button', { name: /^Mute|^Unmute/ })).toHaveAttribute('aria-pressed', 'false');
   await aSheet.getByRole('button', { name: 'Send 🔥 On fire' }).click();
@@ -195,10 +195,10 @@ test('mute is quiet and private; block stops the sender and lists them to unbloc
   await bSheet.getByRole('button', { name: 'Close' }).click();
   await b.page.reload();
   await goto(b.page, 'Friends');
-  await expect(orbit(b.page).getByTestId(`orbit-${a.name}`).getByRole('button', { name: `Message @${a.name}, 1 unread` })).toBeVisible();
+  await expect(crew(b.page).getByTestId(`crew-${a.name}`).getByRole('button', { name: `Message @${a.name}, 1 unread` })).toBeVisible();
 
   // B blocks A, from the thread's More, asked twice.
-  await orbit(b.page).getByTestId(`orbit-${a.name}`).getByRole('button', { name: `Message @${a.name}, 1 unread` }).click();
+  await crew(b.page).getByTestId(`crew-${a.name}`).getByRole('button', { name: `Message @${a.name}, 1 unread` }).click();
   await bSheet.getByRole('button', { name: 'More' }).click();
   await bSheet.getByRole('button', { name: 'Block' }).click();
   await bSheet.getByRole('button', { name: 'Tap again to block' }).click();
@@ -215,7 +215,7 @@ test('mute is quiet and private; block stops the sender and lists them to unbloc
   await aSheet.getByRole('button', { name: 'Close' }).click();
   await a.page.reload();
   await goto(a.page, 'Friends');
-  await expect(orbit(a.page).getByTestId(`orbit-${b.name}`)).toHaveCount(0);
+  await expect(crew(a.page).getByTestId(`crew-${b.name}`)).toHaveCount(0);
   // Nor can A ask again while blocked.
   await friends(a.page).getByRole('textbox', { name: 'Their username' }).fill(b.name);
   await friends(a.page).getByRole('button', { name: 'Send request' }).click();
@@ -254,7 +254,7 @@ test('a full thread sheet starts below the status bar, and stays on the visible 
   const [a, b] = await Promise.all([person(browser), person(browser)]);
   await befriend(b, a, b.name);
   await seedThread(a.page, await uidOf(b.page), await uidOf(a.page), 10);
-  await orbit(a.page).getByTestId(`orbit-${b.name}`).getByRole('button', { name: new RegExp(`^Message @${b.name}`) }).click();
+  await crew(a.page).getByTestId(`crew-${b.name}`).getByRole('button', { name: new RegExp(`^Message @${b.name}`) }).click();
   const sheet = sheetOf(a.page, b.name);
   await expect(sheet.getByRole('list', { name: 'Messages' }).locator('.bubble.theirs')).toHaveCount(10);
   const head = sheet.locator('.sheet-head');
@@ -273,7 +273,7 @@ test('a full thread sheet starts below the status bar, and stays on the visible 
 test('the message box wraps a long message onto lines it grows to fit; Enter is a new line, Send sends; the count shows near the limit', async ({ browser }) => {
   const [a, b] = await Promise.all([person(browser), person(browser)]);
   await befriend(b, a, b.name);
-  await orbit(a.page).getByTestId(`orbit-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
+  await crew(a.page).getByTestId(`crew-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
   const sheet = sheetOf(a.page, b.name);
   await expect(sheet.getByRole('button', { name: 'Send 💪 Strong' })).toBeEnabled(); // read: the box is live
   const field = sheet.getByRole('textbox', { name: `Message @${b.name}` });

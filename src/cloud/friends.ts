@@ -2,7 +2,7 @@ import type { BodyDay } from '../domain/body';
 import type { Gym } from '../domain/equipment';
 import { monthOf, type CloudMonth, type MetaItems } from '../domain/cloud';
 import { itemShort, latestOf, messageOk, thread, toClear, unreadOf, type InboxDoc, type PresetKey, type ThreadItem } from '../domain/messages';
-import { cleanStatus } from '../domain/orbit';
+import { cleanStatus } from '../domain/crew';
 import { newToken, type Invite } from '../domain/invite';
 import type { SetEntry } from '../domain/types';
 import { notifyFriend } from '../push/client';
@@ -147,7 +147,7 @@ export async function readFriend({ F, db }: Cloud, uid: string): Promise<FriendD
 }
 
 /**
- * What Orbit needs of a friend: their sets from `from` to `to` and their status phrase. Only the months that window touches are
+ * What Crew needs of a friend: their sets from `from` to `to` and their status phrase. Only the months that window touches are
  * read, never the whole history; nothing else in their settings is kept (and cycle data is never in what a friend can read).
  */
 export interface FriendWindow { sets: SetEntry[]; status: string }

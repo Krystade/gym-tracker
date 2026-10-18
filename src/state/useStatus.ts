@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useDb } from './profileDb';
-import { cleanStatus } from '../domain/orbit';
+import { cleanStatus } from '../domain/crew';
 
-/** Your Orbit status phrase: optional, set from your own row, synced with your settings so friends see it. */
+/** Your Crew status phrase: optional, set from your own row, synced with your settings so friends see it. */
 export function useStatus() {
   const db = useDb();
   const [status, setStatus] = useState('');

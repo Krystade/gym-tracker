@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { cleanStatus, dayKinds, fmtWeek, lastTraining, orbitDays, statusLength, weekNumbers } from './orbit';
+import { cleanStatus, dayKinds, fmtWeek, lastTraining, crewDays, statusLength, weekNumbers } from './crew';
 
 let seq = 0;
 const s = (exercise: string, n = 1, over: Partial<SetEntry> = {}, date = '2026-10-14'): SetEntry[] =>
@@ -39,14 +39,14 @@ describe('dayKinds', () => {
   });
 });
 
-describe('orbitDays', () => {
+describe('crewDays', () => {
   it('has every day in the window, oldest first, rest days included', () => {
     const e = [...s('Barbell Squat', 2, {}, '2026-10-12'), ...s('Bench Press', 2, {}, '2026-10-14'), ...s('Bench Press', 2, {}, '2026-10-20')];
-    const d = orbitDays(e, '2026-10-11', '2026-10-14');
+    const d = crewDays(e, '2026-10-11', '2026-10-14');
     expect(d.map((x) => x.date)).toEqual(['2026-10-11', '2026-10-12', '2026-10-13', '2026-10-14']);
     expect(d.map((x) => x.kinds)).toEqual([[], ['legs'], [], ['push']]);
     expect(lastTraining(d)?.date).toBe('2026-10-14');
-    expect(lastTraining(orbitDays([], '2026-10-11', '2026-10-14'))).toBeNull();
+    expect(lastTraining(crewDays([], '2026-10-11', '2026-10-14'))).toBeNull();
   });
 });
 

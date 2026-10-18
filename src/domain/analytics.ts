@@ -29,7 +29,7 @@ export function weeklyMuscleSets(entries: SetEntry[], week: string): { sets: Rec
 
 /**
  * `sessions`: days with a working lift set, the days the weekly goal and streak count. `cardioDays`: days with cardio and no
- * working lift set, shown beside the sessions but never toward the goal (round 7's decision). Orbit counts both (domain/orbit).
+ * working lift set, shown beside the sessions but never toward the goal (round 7's decision). Crew counts both (domain/crew).
  */
 export interface WeekSummary { week: string; sessions: number; cardioDays: number; sets: number; tonnage: number }
 

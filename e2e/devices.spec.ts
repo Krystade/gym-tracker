@@ -335,7 +335,7 @@ test('Friends and a friend’s view fit each phone', async ({ browser }) => {
   for (const [width, height] of SIZES) {
     await b.page.setViewportSize({ width, height });
     await frames(b.page);
-    expect(await b.page.evaluate(coveredAtAnyScroll, '.orbit-invite, .orbit-fab'), `under Invite at ${width}×${height}`).toEqual([]);
+    expect(await b.page.evaluate(coveredAtAnyScroll, '.crew-invite, .crew-fab'), `under Invite at ${width}×${height}`).toEqual([]);
   }
   await b.page.setViewportSize({ width: 375, height: 812 });
   await b.friends.getByRole('button', { name: `@${a.name}`, exact: true }).click();

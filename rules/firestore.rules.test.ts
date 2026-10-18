@@ -396,7 +396,7 @@ describe('private (cycle phase)', () => {
     await assertFails(setDoc(doc(as('eve'), 'users/alice/private/cycle'), cycle));
   });
 });
-describe('Orbit status phrase (in the synced settings)', () => {
+describe('Crew status phrase (in the synced settings)', () => {
   const settings = (status: string) => ({ items: { status: JSON.stringify(status) }, updatedAt: 1 });
   it('is yours to set; a friend can read it but not write it; a stranger can do neither', async () => {
     await assertSucceeds(setDoc(doc(as('alice'), 'users/alice/meta/profile'), settings('deload week')));

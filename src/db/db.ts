@@ -13,7 +13,7 @@ import { settingsKey } from '../domain/progression';
 import type { TagPrefs } from '../domain/tags';
 import type { CycleDay } from '../domain/cycle';
 import { replacements, stillTaken, type Replaced, type Taken } from '../domain/replaced';
-import { cleanStatus } from '../domain/orbit';
+import { cleanStatus } from '../domain/crew';
 
 const STORE = 'sets';
 /** The first profile: it keeps the original database, so existing data needs no migration. */
@@ -195,7 +195,7 @@ export const deleteSettings = async (key: string): Promise<void> => { await (awa
 /** The tag row: hidden built-ins and their own tags. Absent until first changed. */
 export const getTags = async (): Promise<TagPrefs | undefined> => (await db()).get('config', 'tags');
 export const putTags = async (t: TagPrefs): Promise<void> => { await (await db()).put('config', t); };
-/** Your Orbit status phrase (domain/orbit): '' once cleared, absent until first set. */
+/** Your Crew status phrase (domain/crew): '' once cleared, absent until first set. */
 export const getStatus = async (): Promise<string | undefined> => ((await (await db()).get('config', 'status')) as { text: string } | undefined)?.text;
 export const putStatus = async (text: string): Promise<void> => { await (await db()).put('config', { key: 'status', text }); };
 
@@ -309,7 +309,7 @@ export const getCloudLink = async (): Promise<CloudLink | undefined> => (await s
 export const putCloudLink = async (c: CloudLink): Promise<void> => { await (await shared()).put('kv', c); };
 export const deleteCloudLink = async (): Promise<void> => { await (await shared()).delete('kv', 'cloud'); };
 /**
- * Friends as last read for one account (src/state/friendCache.ts): their lists, Orbit lines, news and threads, so Friends opens
+ * Friends as last read for one account (src/state/friendCache.ts): their lists, Crew lines, news and threads, so Friends opens
  * from the phone and refreshes quietly. Only what the account may read anyway; forgotten on sign-out.
  */
 export const getFriendCache = async <T>(uid: string): Promise<T | undefined> => {

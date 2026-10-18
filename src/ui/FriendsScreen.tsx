@@ -6,7 +6,7 @@ import type { Invite } from '../domain/invite';
 import type { SetEntry } from '../domain/types';
 import type { StatusStore } from '../state/useStatus';
 import { FriendsCard } from './FriendsCard';
-import { Orbit } from './Orbit';
+import { Crew } from './Crew';
 import type { GymsStore } from '../state/useGyms';
 import { loadCloud } from '../cloud/firebase';
 import { refreshLists, refreshNews, useFriendCache } from '../state/friendCache';
@@ -25,7 +25,7 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
 }) {
   const uid = cloud.link && cloud.mine ? cloud.link.uid : null;
   const friends = useFriendCache(uid)?.lists?.friends ?? null;
-  // Each pull or Refresh moves this: Orbit reads every line again.
+  // Each pull or Refresh moves this: Crew reads every line again.
   const [pulled, setPulled] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -36,10 +36,10 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
     catch { setNote('Couldn’t refresh: showing what this phone saved.'); }
     finally { setRefreshing(false); }
   };
-  // Pull down at the top of the page: mostly down, so a sideways drag on Orbit's lines never counts.
+  // Pull down at the top of the page: mostly down, so a sideways drag on Crew's lines never counts.
   const [pull, setPull] = useState(0);
   const start = useRef<{ x: number; y: number } | null>(null);
-  // The invite controls sit in the list below; Orbit's Invite button brings them up.
+  // The invite controls sit in the list below; Crew's Invite button brings them up.
   const invite = () => document.getElementById('add-friend')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   return (
     <div className="friends-page"
@@ -66,7 +66,7 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
           </section>
         ) : !cloud.mine ? <p className="muted">The account on this phone belongs to another person here; switch to them to see friends.</p>
         : (<>
-          <Orbit uid={cloud.link.uid} friends={friends} entries={entries} today={today} status={status} news={news} pulled={pulled} onOpenFriend={onView} onOpenMine={onOpenMine} onInvite={invite} onMessage={onMessage} />
+          <Crew uid={cloud.link.uid} friends={friends} entries={entries} today={today} status={status} news={news} pulled={pulled} onOpenFriend={onView} onOpenMine={onOpenMine} onInvite={invite} onMessage={onMessage} />
           <FriendsCard uid={cloud.link.uid} gyms={gyms} pending={pending} news={news} newsRev={newsRev} onPendingDone={onPendingDone} onView={onView} onChanged={onChanged} onMessage={onMessage} />
         </>)}
     </div>

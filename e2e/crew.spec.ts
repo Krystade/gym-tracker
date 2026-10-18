@@ -2,18 +2,18 @@ import { mkdirSync } from 'node:fs';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { goto } from './nav';
 
-// Orbit against the local Auth and Firestore emulators. Synthetic users only.
+// Crew against the local Auth and Firestore emulators. Synthetic users only.
 // Today at 18:00 (Sunday when today is a Monday, so the day before is in the same week); the emulator's tokens use the real clock.
 const now = new Date(new Date().setHours(18, 0, 0, 0));
 const T = new Date(now.getDay() === 1 ? now.getTime() - 864e5 : now.getTime());
 const Y = new Date(T.getTime() - 864e5);
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const PASSWORD = 'synthetic-pass-1';
-const SHOTS = 'screenshots/orbit';
+const SHOTS = 'screenshots/crew';
 mkdirSync(SHOTS, { recursive: true });
 const rand = () => Math.random().toString(36).slice(2, 10);
 const friends = (page: Page) => page.getByRole('region', { name: 'Friends', exact: true });
-const orbit = (page: Page) => page.getByRole('region', { name: 'Orbit' });
+const crew = (page: Page) => page.getByRole('region', { name: 'Crew' });
 const TOP = 47, BOTTOM = 34;
 
 // The notched phone's insets, served into the CSS (headless browsers report 0); a service worker would answer past the rewrite.
@@ -70,18 +70,18 @@ async function person(browser: Browser, days: { at: Date; lift: string; sets: [n
 }
 
 async function setStatus(page: Page, text: string) {
-  await orbit(page).getByTestId('orbit-me').getByRole('button', { name: '+ Status' }).click();
-  const input = orbit(page).getByRole('textbox', { name: 'Your status' });
+  await crew(page).getByTestId('crew-me').getByRole('button', { name: '+ Status' }).click();
+  const input = crew(page).getByRole('textbox', { name: 'Your status' });
   // 16px or more, so iOS doesn't zoom the page when it's focused.
   expect(parseFloat(await input.evaluate((el) => getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
   await input.fill(text);
-  await orbit(page).getByRole('button', { name: 'Save' }).click();
-  await expect(orbit(page).getByTestId('orbit-me').getByRole('button', { name: `Your status: ${text}. Change it` })).toBeVisible();
+  await crew(page).getByRole('button', { name: 'Save' }).click();
+  await expect(crew(page).getByTestId('crew-me').getByRole('button', { name: `Your status: ${text}. Change it` })).toBeVisible();
 }
 
 const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth);
 
-test('Orbit shows a friend’s week as kinds, their status and numbers, at 375×812; a stranger never appears', async ({ browser }, info) => {
+test('Crew shows a friend’s week as kinds, their status and numbers, at 375×812; a stranger never appears', async ({ browser }, info) => {
   // Three phones at once: each is independent until B asks A.
   const [b, a, c] = await Promise.all([
     person(browser, [
@@ -93,12 +93,12 @@ test('Orbit shows a friend’s week as kinds, their status and numbers, at 375×
   ]);
 
   // B: their own row first, with this week's numbers; a status phrase set inline, capped at 24 characters.
-  await expect(orbit(b.page).getByTestId('orbit-me')).toContainText('2 sessions · 5 sets');
-  await orbit(b.page).getByTestId('orbit-me').getByRole('button', { name: '+ Status' }).click();
-  await orbit(b.page).getByRole('textbox', { name: 'Your status' }).fill('x'.repeat(25));
-  await expect(orbit(b.page).getByRole('button', { name: 'Save' })).toBeDisabled();
-  await expect(orbit(b.page)).toContainText('25/24');
-  await orbit(b.page).getByRole('textbox', { name: 'Your status' }).press('Escape');
+  await expect(crew(b.page).getByTestId('crew-me')).toContainText('2 sessions · 5 sets');
+  await crew(b.page).getByTestId('crew-me').getByRole('button', { name: '+ Status' }).click();
+  await crew(b.page).getByRole('textbox', { name: 'Your status' }).fill('x'.repeat(25));
+  await expect(crew(b.page).getByRole('button', { name: 'Save' })).toBeDisabled();
+  await expect(crew(b.page)).toContainText('25/24');
+  await crew(b.page).getByRole('textbox', { name: 'Your status' }).press('Escape');
   await setStatus(b.page, 'Leg day survivor 🦵');
   await setStatus(c.page, 'stranger danger');
 
@@ -110,12 +110,12 @@ test('Orbit shows a friend’s week as kinds, their status and numbers, at 375×
   await friends(a.page).getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
   await expect(friends(a.page).getByRole('status')).toHaveText(`You and @${b.name} are now friends.`);
 
-  const row = orbit(a.page).getByTestId(`orbit-${b.name}`);
+  const row = crew(a.page).getByTestId(`crew-${b.name}`);
   // B's status syncs a few seconds after it's saved: refresh until it's there, by the keyboard's Refresh (touch pulls down).
   await expect(async () => {
     await a.page.getByRole('button', { name: 'Refresh friends' }).focus();
     await a.page.keyboard.press('Enter');
-    await expect(row.locator('.orbit-bubble')).toHaveText('Leg day survivor 🦵', { timeout: 1000 });
+    await expect(row.locator('.crew-bubble')).toHaveText('Leg day survivor 🦵', { timeout: 1000 });
   }).toPass({ timeout: 20_000 });
   await expect(row.getByRole('button', { name: `@${b.name}`, exact: true })).toBeVisible();
   await expect(row).toContainText('2 sessions · 5 sets');
@@ -123,25 +123,25 @@ test('Orbit shows a friend’s week as kinds, their status and numbers, at 375×
   await expect(row.locator(`[data-date="${iso(T)}"]`)).toHaveAttribute('data-kind', 'push');
   await expect(row.locator('[data-date]')).toHaveCount(2);
   // The same, not by colour: the table names each day's kind.
-  await orbit(a.page).getByText('Table').click();
-  const tableRow = orbit(a.page).getByRole('row', { name: new RegExp(`@${b.name}`) });
+  await crew(a.page).getByText('Table').click();
+  const tableRow = crew(a.page).getByRole('row', { name: new RegExp(`@${b.name}`) });
   await expect(tableRow).toContainText(/Legs, .* Push$/);
   // You first, then B; never C, who isn't a friend.
-  await expect(orbit(a.page).locator('.orbit-row')).toHaveCount(2);
-  await expect(orbit(a.page).locator('.orbit-row').first()).toHaveAttribute('data-testid', 'orbit-me');
-  await expect(orbit(a.page)).not.toContainText(c.name);
-  await expect(orbit(a.page)).not.toContainText('stranger danger');
+  await expect(crew(a.page).locator('.crew-row')).toHaveCount(2);
+  await expect(crew(a.page).locator('.crew-row').first()).toHaveAttribute('data-testid', 'crew-me');
+  await expect(crew(a.page)).not.toContainText(c.name);
+  await expect(crew(a.page)).not.toContainText('stranger danger');
   // Fewer than three friends: an Invite button in the page, under the lines (not floating: devices.spec checks what's under it).
-  const fab = orbit(a.page).getByRole('button', { name: 'Invite a friend' });
+  const fab = crew(a.page).getByRole('button', { name: 'Invite a friend' });
   await fab.scrollIntoViewIfNeeded();
   const [fb, tabs] = [await fab.boundingBox(), await a.page.getByRole('navigation', { name: 'Sections' }).boundingBox()];
   expect(fb!.y + fb!.height).toBeLessThanOrEqual(tabs!.y);
   expect(await noSideScroll(a.page)).toBe(true);
   // The heading starts below the notch.
   expect((await a.page.getByRole('heading', { name: 'Friends', level: 1 }).boundingBox())!.y).toBeGreaterThanOrEqual(TOP);
-  await orbit(a.page).getByText('Table').click();
-  await a.page.screenshot({ path: `${SHOTS}/orbit-a.png` });
-  await info.attach('orbit-a', { path: `${SHOTS}/orbit-a.png`, contentType: 'image/png' });
+  await crew(a.page).getByText('Table').click();
+  await a.page.screenshot({ path: `${SHOTS}/crew-a.png` });
+  await info.attach('crew-a', { path: `${SHOTS}/crew-a.png`, contentType: 'image/png' });
 
   // Invite brings the invite controls up.
   await fab.click();
@@ -151,28 +151,28 @@ test('Orbit shows a friend’s week as kinds, their status and numbers, at 375×
   await row.getByRole('button', { name: `@${b.name}`, exact: true }).click();
   await expect(a.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing @${b.name}`);
   await a.page.getByRole('button', { name: 'Back to you' }).click();
-  await orbit(a.page).getByTestId('orbit-me').getByRole('button', { name: 'You', exact: true }).click();
+  await crew(a.page).getByTestId('crew-me').getByRole('button', { name: 'You', exact: true }).click();
   await expect(a.page.getByRole('heading', { name: 'History', level: 1 })).toBeVisible();
 
-  // B's own Orbit: their bubble, editable and clearable.
+  // B's own Crew: their bubble, editable and clearable.
   await b.page.reload();
   await goto(b.page, 'Friends');
-  await b.page.screenshot({ path: `${SHOTS}/orbit-b-status.png` });
-  await orbit(b.page).getByRole('button', { name: 'Your status: Leg day survivor 🦵. Change it' }).click();
-  await b.page.screenshot({ path: `${SHOTS}/orbit-b-editing.png` });
-  await orbit(b.page).getByRole('button', { name: 'Clear' }).click();
-  await expect(orbit(b.page).getByTestId('orbit-me').getByRole('button', { name: '+ Status' })).toBeVisible();
-  await b.page.screenshot({ path: `${SHOTS}/orbit-b.png` });
+  await b.page.screenshot({ path: `${SHOTS}/crew-b-status.png` });
+  await crew(b.page).getByRole('button', { name: 'Your status: Leg day survivor 🦵. Change it' }).click();
+  await b.page.screenshot({ path: `${SHOTS}/crew-b-editing.png` });
+  await crew(b.page).getByRole('button', { name: 'Clear' }).click();
+  await expect(crew(b.page).getByTestId('crew-me').getByRole('button', { name: '+ Status' })).toBeVisible();
+  await b.page.screenshot({ path: `${SHOTS}/crew-b.png` });
 });
 
 test('the lines scroll back together by dragging, up to 8 weeks, and Today jumps back', async ({ browser }) => {
   const b = await person(browser, [{ at: T, lift: 'Bench Press', sets: [[135, 8]] }]);
   const page = b.page;
-  const me = orbit(page).getByTestId('orbit-me');
+  const me = crew(page).getByTestId('crew-me');
   const seg = me.locator(`[data-date="${iso(T)}"]`);
   await expect(seg).toHaveCount(1);
-  await expect(orbit(page).getByRole('button', { name: 'Today' })).toHaveCount(0);
-  const box = (await orbit(page).locator('.orbit-rows').boundingBox())!;
+  await expect(crew(page).getByRole('button', { name: 'Today' })).toHaveCount(0);
+  const box = (await crew(page).locator('.crew-rows').boundingBox())!;
   const x0 = (await seg.boundingBox())!.x;
   const col = box.width / 14;
 
@@ -182,8 +182,8 @@ test('the lines scroll back together by dragging, up to 8 weeks, and Today jumps
   await page.mouse.move(box.x + 40 + col * 1.5, box.y + 62, { steps: 4 });
   await page.mouse.move(box.x + 40 + col * 3, box.y + 62, { steps: 4 });
   await page.mouse.up();
-  await expect(orbit(page).getByRole('button', { name: 'Today' })).toBeVisible();
-  await page.screenshot({ path: `${SHOTS}/orbit-dragged.png` });
+  await expect(crew(page).getByRole('button', { name: 'Today' })).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}/crew-dragged.png` });
   // Today's segment is now off the right edge.
   await expect(seg).toHaveCount(0);
   // Dragging never scrolls the page sideways, and a drag isn't a tap: still on Friends.
@@ -198,20 +198,20 @@ test('the lines scroll back together by dragging, up to 8 weeks, and Today jumps
     await page.mouse.up();
   }
   const oldest = new Date(T.getTime() - 55 * 864e5);
-  await orbit(page).getByText('Table').click();
-  await expect(orbit(page).locator('caption')).toContainText(oldest.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }));
+  await crew(page).getByText('Table').click();
+  await expect(crew(page).locator('caption')).toContainText(oldest.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }));
 
-  await orbit(page).getByRole('button', { name: 'Today' }).click();
-  await expect(orbit(page).getByRole('button', { name: 'Today' })).toHaveCount(0);
+  await crew(page).getByRole('button', { name: 'Today' }).click();
+  await expect(crew(page).getByRole('button', { name: 'Today' })).toHaveCount(0);
   await expect(seg).toHaveCount(1);
   expect(Math.abs((await seg.boundingBox())!.x - x0)).toBeLessThan(1);
 
   // The keyboard moves a week at a time.
-  await orbit(page).locator('.orbit-rows').focus();
+  await crew(page).locator('.crew-rows').focus();
   await page.keyboard.press('ArrowLeft');
-  await expect(orbit(page).getByRole('button', { name: 'Today' })).toBeVisible();
+  await expect(crew(page).getByRole('button', { name: 'Today' })).toBeVisible();
   await page.keyboard.press('ArrowRight');
-  await expect(orbit(page).getByRole('button', { name: 'Today' })).toHaveCount(0);
+  await expect(crew(page).getByRole('button', { name: 'Today' })).toHaveCount(0);
 });
 
 /** Whether this phone has saved Friends for its account (friends' lists, lines and news), as src/state/friendCache.ts keeps them. */
@@ -229,7 +229,7 @@ test('Friends opens from what the phone saved: with Firestore unreachable, frien
   await a.page.reload();
   await goto(a.page, 'Friends');
   await friends(a.page).getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
-  const row = orbit(a.page).getByTestId(`orbit-${b.name}`);
+  const row = crew(a.page).getByTestId(`crew-${b.name}`);
   await expect(row.locator(`[data-date="${iso(T)}"]`)).toHaveAttribute('data-kind', 'push');
   await expect.poll(() => saved(a.page, b.name), { message: 'Friends saved on the phone' }).toBe(true);
 
@@ -253,6 +253,6 @@ test('Friends opens from what the phone saved: with Firestore unreachable, frien
   await expect(a.page.locator('main.screen')).not.toContainText('Couldn’t load');
   expect(await a.page.evaluate(() => (window as unknown as { sawLoading: boolean }).sawLoading), 'Loading… showed').toBe(false);
   // No Refresh button: a pull at the top reads again. A screen reader or keyboard still has one.
-  await expect(orbit(a.page).getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(0);
+  await expect(crew(a.page).getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(0);
   await expect(a.page.getByRole('button', { name: 'Refresh friends' })).toHaveCount(1);
 });
