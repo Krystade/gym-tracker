@@ -67,7 +67,11 @@ describe('prioritySuggestion: priorities from what you train', () => {
     expect(sug.tiers.Abs).toBe(4);
     // Every muscle has one, and the changes list exactly the ones that differ from now (all 3 by default).
     expect(Object.keys(sug.tiers).sort()).toEqual([...MUSCLES].sort());
-    expect(sug.changes).toEqual(MUSCLES.filter((m) => sug.tiers[m] !== 3).map((m) => ({ muscle: m, from: 3, to: sug.tiers[m] })));
+    expect(sug.changes.map(({ muscle, from, to }) => ({ muscle, from, to })))
+      .toEqual(MUSCLES.filter((m) => sug.tiers[m] !== 3).map((m) => ({ muscle: m, from: 3, to: sug.tiers[m] })));
+    // Each change carries its weekly sets, the reason it moved.
+    const perWeek = Object.fromEntries(sug.changes.map((c) => [c.muscle, c.perWeek]));
+    expect(perWeek).toMatchObject({ Chest: 6, Lats: 6, Biceps: 6, Calves: 1, Hamstrings: 0 });
   });
 
   it('is null when the priorities already match, and with under 4 sessions to go by', () => {

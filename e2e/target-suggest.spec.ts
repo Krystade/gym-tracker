@@ -89,7 +89,7 @@ test('the weekly goal: suggested from the last 8 weeks, dismissed until it chang
   await expect(goal).toHaveValue('5');
 });
 
-test('priorities: previewed from what was trained, applied with a tap, or dismissed until the suggestion changes', async ({ page }) => {
+test('priorities: listed from what was trained, applied with a tap, or dismissed until the suggestion changes', async ({ page }) => {
   await notched(page);
   await page.clock.install({ time: new Date('2026-10-14T18:00:00') });
   await page.goto('/');
@@ -98,21 +98,16 @@ test('priorities: previewed from what was trained, applied with a tap, or dismis
   await expect(sug).toContainText(/priorities would change/);
   await expect(page.getByRole('combobox', { name: 'Chest', exact: true })).toHaveValue('3');
 
-  // Preview first: the changes, and nothing applied yet.
-  await sug.getByRole('button', { name: 'Fill from my history' }).click();
+  // Each change is listed up front, with its weekly sets; nothing is applied until the tap.
   const changes = sug.getByRole('list', { name: 'Priority changes' }).getByRole('listitem');
-  await expect(changes.filter({ hasText: 'Chest' })).toHaveText(/Chest\s*3 → 1/);
-  await expect(changes.filter({ hasText: 'Hamstrings' })).toHaveText(/Hamstrings\s*3 → 4/);
+  await expect(changes.filter({ hasText: 'Chest' })).toHaveText(/Chest\s*[\d.]+ sets\/wk\s*3 → 1/);
+  await expect(changes.filter({ hasText: 'Hamstrings' })).toHaveText(/Hamstrings\s*0 sets\/wk\s*3 → 4/);
   await expect(page.getByRole('combobox', { name: 'Chest', exact: true })).toHaveValue('3');
   await sug.scrollIntoViewIfNeeded();
   await fits(page);
   await page.screenshot({ path: `${SHOTS}/2-priorities-preview.png` });
-  await sug.getByRole('button', { name: 'Cancel' }).click();
-  await expect(changes).toHaveCount(0);
-  await expect(page.getByRole('combobox', { name: 'Chest', exact: true })).toHaveValue('3');
 
-  await sug.getByRole('button', { name: 'Fill from my history' }).click();
-  await sug.getByRole('button', { name: 'Apply' }).click();
+  await sug.getByRole('button', { name: 'Apply all' }).click();
   await expect(page.getByRole('combobox', { name: 'Chest', exact: true })).toHaveValue('1');
   await expect(page.getByRole('combobox', { name: 'Hamstrings' })).toHaveValue('4');
   await expect(sug).toHaveCount(0); // nothing left to suggest

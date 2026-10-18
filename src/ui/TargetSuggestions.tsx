@@ -28,29 +28,26 @@ export function GoalSuggestion({ owner, entries, profile, today, onAccept }: {
   );
 }
 
-/** Above the priority list: priorities from what you've trained, previewed before they're applied. */
+/** Above the priority list: priorities from what you've trained, each change listed before one tap applies them. */
 export function PrioritySuggestion({ owner, entries, profile, today, onApply }: {
   owner: string; entries: SetEntry[]; profile: Profile; today: string; onApply: (tiers: Profile['tiers']) => void;
 }) {
   const [, bump] = useState(0);
-  const [preview, setPreview] = useState(false);
   const sug = prioritySuggestion(entries, profile, today);
   const sig = sug ? MUSCLES.map((m) => sug.tiers[m]).join('') : '';
   if (!sug || getPref<string>(owner, 'suggest:tiers') === sig) return null;
   return (
     <div className="target-suggest" role="group" aria-label="Suggested priorities">
       <p>From what you’ve trained the last 8 weeks, {sug.changes.length === 1 ? '1 priority' : `${sug.changes.length} priorities`} would change.</p>
-      {preview && (
-        <ul className="target-suggest-changes" aria-label="Priority changes">
-          {sug.changes.map((c) => <li key={c.muscle}><span>{c.muscle}</span><span>{c.from} → <b>{c.to}</b></span></li>)}
-        </ul>
-      )}
+      <ul className="target-suggest-changes" aria-label="Priority changes">
+        {/* Most-trained first, so the list reads as the ranking it came from. */}
+        {[...sug.changes].sort((a, b) => b.perWeek - a.perWeek).map((c) => (
+          <li key={c.muscle}><span>{c.muscle}</span><span>{fmt(Math.round(c.perWeek * 2) / 2)} sets/wk</span><span>{c.from} → <b>{c.to}</b></span></li>
+        ))}
+      </ul>
       <div className="target-suggest-actions">
-        {preview
-          ? <><button type="button" className="primary" onClick={() => { onApply(sug.tiers); setPreview(false); }}>Apply</button>
-            <button type="button" onClick={() => setPreview(false)}>Cancel</button></>
-          : <><button type="button" className="primary" onClick={() => setPreview(true)}>Fill from my history</button>
-            <button type="button" onClick={() => { setPref(owner, 'suggest:tiers', sig); bump((n) => n + 1); }}>Dismiss</button></>}
+        <button type="button" className="primary" onClick={() => onApply(sug.tiers)}>{sug.changes.length === 1 ? 'Apply' : 'Apply all'}</button>
+        <button type="button" onClick={() => { setPref(owner, 'suggest:tiers', sig); bump((n) => n + 1); }}>Dismiss</button>
       </div>
     </div>
   );

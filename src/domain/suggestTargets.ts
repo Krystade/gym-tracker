@@ -28,7 +28,7 @@ export function goalSuggestion(entries: SetEntry[], profile: Profile, today: str
   return { goal: Math.min(7, Math.max(1, Math.round(average))), average };
 }
 
-export interface PrioritySuggestion { tiers: Record<Muscle, Tier>; changes: { muscle: Muscle; from: Tier; to: Tier }[] }
+export interface PrioritySuggestion { tiers: Record<Muscle, Tier>; changes: { muscle: Muscle; from: Tier; to: Tier; perWeek: number }[] }
 
 /**
  * Priorities from what you've trained over the last 8 whole weeks: the trained muscles ranked by sets (direct 1, indirect
@@ -45,6 +45,6 @@ export function prioritySuggestion(entries: SetEntry[], profile: Profile, today:
   trained.forEach((m, i) => { tiers[m] = (1 + Math.floor((4 * i) / trained.length)) as Tier; });
   // Muscles with as many sets share the higher priority.
   trained.forEach((m, i) => { if (i && total[m] === total[trained[i - 1]]) tiers[m] = tiers[trained[i - 1]]; });
-  const changes = MUSCLES.filter((m) => tiers[m] !== profile.tiers[m]).map((m) => ({ muscle: m, from: profile.tiers[m], to: tiers[m] }));
+  const changes = MUSCLES.filter((m) => tiers[m] !== profile.tiers[m]).map((m) => ({ muscle: m, from: profile.tiers[m], to: tiers[m], perWeek: total[m] / weeks.length }));
   return changes.length ? { tiers, changes } : null;
 }
