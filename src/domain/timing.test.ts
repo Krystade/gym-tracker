@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PACE, estimateSeconds, paces, perSessionForMinutes, perSetSeconds, restSeconds, sessionDay, sessionMinutes, suggestTime, usualMinutes } from './timing';
+import { DEFAULT_PACE, estimateSeconds, paces, perSessionForMinutes, perSetSeconds, restAfter, restSeconds, sessionDay, sessionMinutes, suggestTime, usualGap, usualMinutes } from './timing';
 import type { SetEntry } from './types';
 import type { Program } from './program';
 
@@ -113,5 +113,61 @@ describe('usualMinutes', () => {
     expect(usualMinutes(two, TODAY, paces(two))).toBe(45);
     const short = ['2026-10-01', '2026-10-03', '2026-10-05'].flatMap((d) => day(d, 2));
     expect(usualMinutes(short, TODAY, paces(short))).toBe(15);
+  });
+});
+
+describe('supersets in the pace', () => {
+  // Seconds after 18:00 on `date`, one set each.
+  const t = (date: string, s: number, exercise: string): SetEntry => ({ ...at(date, '18:00', exercise), loggedAt: new Date(Date.parse(`${date}T18:00:00`) + s * 1000).toISOString() });
+  // Three days of straight sets: bench every 2:30, then 4:00 to squats.
+  const straight = ['2026-09-21', '2026-09-22', '2026-09-23'].flatMap((d) => [...[0, 150, 300, 450].map((s) => t(d, s, 'Bench Press')), t(d, 690, 'Squat')]);
+  // Three days of curls and pushdowns as a superset, 70 s from one to the other and 2:30 rest after the round. The third
+  // round goes pushdown first, so a pushdown follows a pushdown across the round's rest.
+  const superset = ['2026-09-24', '2026-09-25', '2026-09-26'].flatMap((d) => [
+    t(d, 0, 'Cable Curl'), t(d, 70, 'Cable Pushdown'), t(d, 220, 'Cable Curl'), t(d, 290, 'Cable Pushdown'), t(d, 440, 'Cable Pushdown'), t(d, 510, 'Cable Curl'),
+  ]);
+
+  it('leaves a superset’s gaps out of each lift’s rest and the switch between lifts, and learns its switch apart', () => {
+    const before = paces(straight), p = paces([...straight, ...superset]);
+    expect(p.transition).toBe(240);
+    expect(p.transition).toBe(before.transition);
+    expect(p.perSet).toEqual(before.perSet);
+    expect(restSeconds(p, 'Cable Pushdown')).toBe(120); // the round's rest isn't the pushdown's own
+    expect(restSeconds(p, 'Bench Press')).toBe(110);
+    expect(p.superSwitch).toBe(70);
+    expect(before.superSwitch).toBeUndefined();
+  });
+
+  it('learns no switch from a warm-up on the way to the next lift', () => {
+    // Each switch to the pushdown goes through a warm-up set of it first.
+    const warm = (d: string, s: number) => ({ ...t(d, s, 'Cable Pushdown'), flags: ['warmup' as const] });
+    const days = ['2026-09-24', '2026-09-25', '2026-09-26'].flatMap((d) => [
+      t(d, 0, 'Cable Curl'), warm(d, 20), t(d, 60, 'Cable Pushdown'), t(d, 210, 'Cable Curl'), warm(d, 230), t(d, 280, 'Cable Pushdown'),
+    ]);
+    expect(paces(days).superSwitch).toBeUndefined();
+    // Two switches are too few to go by.
+    expect(paces(superset.slice(0, 4)).superSwitch).toBeUndefined();
+  });
+
+  it('counts two lifts alternated with a full rest each way as plain switches', () => {
+    const alt = ['2026-09-24', '2026-09-25', '2026-09-26'].flatMap((d) => [t(d, 0, 'Cable Curl'), t(d, 150, 'Cable Pushdown'), t(d, 300, 'Cable Curl')]);
+    const p = paces(alt);
+    expect(p.transition).toBe(150);
+    expect(p.superSwitch).toBeUndefined();
+  });
+
+  it('runs a short switch after a lift with another to go in the round, the lift’s full rest after the last', () => {
+    const none = paces(straight), learned = paces([...straight, ...superset]);
+    expect(restAfter(none, 'Cable Curl', 'Cable Pushdown')).toEqual({ seconds: 20, switchTo: 'Cable Pushdown' });
+    expect(restAfter(learned, 'Cable Curl', 'Cable Pushdown')).toEqual({ seconds: 30, switchTo: 'Cable Pushdown' }); // 70 s less the set
+    expect(restAfter(learned, 'Cable Pushdown', null)).toEqual({ seconds: 120 });
+    expect(restAfter(learned, 'Bench Press', null)).toEqual({ seconds: 110 });
+    expect(restAfter(learned, 'Bench Press', undefined)).toEqual({ seconds: 110 });
+  });
+
+  it('measures "well inside the rest" against the lift’s usual time between sets', () => {
+    const p = paces(straight);
+    expect(usualGap(p, 'Bench Press')).toBe(150);
+    expect(usualGap(p, 'Cable Curl')).toBe(160); // 2:00 rest and the set
   });
 });

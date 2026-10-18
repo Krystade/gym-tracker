@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Profile } from '../domain/profile';
 import { planToRecord, quickDay } from '../domain/program';
 import type { SetsStore } from '../state/useSets';
@@ -20,7 +20,7 @@ import { ExercisePicker } from './ExercisePicker';
 import { isHoldLift, swapSuggestions } from '../domain/care';
 import { inPlanOrder, leftToDo, plannedNames, TodayPlan, todayPlanFor } from './TodayPlan';
 import { WeighIn } from './WeighIn';
-import { RestTimer } from './RestTimer';
+import { RestTimer, revertSwitch } from './RestTimer';
 import type { BodyStore } from '../state/useBody';
 import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
@@ -29,6 +29,10 @@ import { addDays } from '../domain/analytics';
 import type { ThreadWith } from './ThreadSheet';
 import { TodayDigest } from './WeekDigest';
 import { SuggestedToday } from './SuggestedToday';
+import type { SetEntry } from '../domain/types';
+import { paces, usualGap } from '../domain/timing';
+import { nextAfter, supersets, type Superset } from '../domain/superset';
+import { markNotSuperset, notSupersets } from '../state/notSuperset';
 
 export function TodayScreen({ who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews }: {
   /** Whose sets these are, named only when several people share the phone. */
@@ -81,6 +85,27 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
   const done = !!programs.program && !!plan && left.length === 0 && store.entries.some((e) => e.date === date && isWorking(e));
   const open = planOpen ?? !done;
   const hasPlan = date >= today || programs.plans.some((p) => p.date === date) || logged.length > 0;
+
+  // Supersets, noticed from the day's log: lifts gone round with short switches. "Not a superset" holds for the day.
+  const pace = useMemo(() => paces(store.entries), [store.entries]);
+  const [notSuper, setNotSuper] = useState(() => notSupersets(owner, date));
+  const groupsIn = (entries: SetEntry[]) => supersets(entries, date, (ex) => usualGap(pace, ex), { dismissed: notSuper, planned: (ex) => plannedSets(programs.program, plan, ex) });
+  const groups = groupsIn(store.entries);
+  const groupOf = (n: string) => groups.find((g) => g.live && g.lifts.some((x) => sameExercise(x, n)));
+  const dismiss = (g: Superset) => { markNotSuperset(owner, date, g.keys); setNotSuper(notSupersets(owner, date)); revertSwitch(); };
+  // After a set with another lift to go in the round, that lift's card comes up, ready for its set.
+  const [switchTo, setSwitchTo] = useState<string | null>(null);
+  useEffect(() => {
+    if (!switchTo) return;
+    setSwitchTo(null);
+    const card = document.querySelector<HTMLElement>(`[data-card="${CSS.escape(switchTo.toLowerCase())}"]`);
+    if (!card) return;
+    card.scrollIntoView({ block: 'start' });
+    card.querySelector<HTMLElement>('.card-head button')?.focus({ preventScroll: true });
+    // Its form stays clear of the timer's bar.
+    const form = card.querySelector<HTMLElement>('.set-form'), bar = document.querySelector('.rest-timer');
+    if (form && bar && form.getBoundingClientRect().bottom > bar.getBoundingClientRect().top) form.scrollIntoView({ block: 'nearest' });
+  }, [switchTo]);
 
   // A card folding shrinks the page; near the bottom the browser then clamps the scroll and the page jumps. The screen
   // keeps the tallest height it has had, letting the extra go once it is below the viewport, where losing it moves nothing.
@@ -142,7 +167,9 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
       {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} today={today} store={store} settings={settings} onOpen={onOpen}
         plannedSets={plannedSets(programs.program, plan, n)} plannedMinutes={plannedMinutes(programs.program, plan, n)} gym={gyms.active?.name} who={who} left={hasPlan ? left : []} onGo={goTo}
         swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
-        openReq={openReq != null && sameExercise(openReq, n)} onOpenReq={() => setOpenReq(null)} />)}
+        openReq={openReq != null && sameExercise(openReq, n)} onOpenReq={() => setOpenReq(null)}
+        supersetWith={groupOf(n)?.lifts.filter((x) => !sameExercise(x, n))} onNotSuperset={() => { const g = groupOf(n); if (g) dismiss(g); }}
+        switchAfter={(entries, id) => nextAfter(groupsIn(entries), id)} onSwitch={setSwitchTo} />)}
       {/* Below the cards, so the card you're logging on never moves down. */}
       <SessionSummary entries={store.entries} date={date} past={date < today} />
       <button className="primary wide" data-tour="add" onClick={() => setPicking(true)}>Add exercise</button>

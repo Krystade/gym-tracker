@@ -4,7 +4,8 @@ import { PUSH_ON } from '../push/config';
 
 // One rest at a time, kept outside the screens so leaving Today and coming back doesn't lose it. `card`: the lift's card.
 // `label`: what the lock-screen alert says ("Bench Press · set 4 next"), where push notifications are on.
-interface Rest { until: number; card: string; label?: string }
+// `full`: inside a superset, the short switch to the next lift's card stands in for this rest, should it turn out not to be one.
+interface Rest { until: number; card: string; label?: string; full?: Rest }
 let rest: Rest | null = null;
 const subs = new Set<() => void>();
 const set = (r: Rest | null) => { rest = r; for (const f of subs) f(); };
@@ -12,8 +13,13 @@ const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f
 /** A rest that changes when it ends also changes when the lock-screen alert goes out (or that it doesn't). */
 const setRest = (r: Rest | null) => { set(r); restPush(r ? r.until : null, r?.label); };
 
-/** Starts (or starts over) the rest after a set. */
-export const startRest = (seconds: number, card: string, label?: string) => setRest({ until: Date.now() + seconds * 1000, card, label });
+/** Starts (or starts over) the rest after a set; with `full`, a superset's switch instead of that rest. */
+export const startRest = (seconds: number, card: string, label?: string, full?: { seconds: number; card: string; label?: string }) => {
+  const now = Date.now();
+  setRest({ until: now + seconds * 1000, card, label, ...(full && { full: { until: now + full.seconds * 1000, card: full.card, label: full.label } }) });
+};
+/** "Not a superset": a switch running becomes the full rest it stood in for. */
+export const revertSwitch = () => { if (rest?.full) setRest(rest.full); };
 
 /** How long "Rest done" stays up before the bar goes. */
 const DONE_FOR = 30_000;
@@ -71,10 +77,11 @@ export function RestTimer() {
   }, [r?.until, r?.card]);
 
   if (gone) return null;
+  const what = r?.full ? 'Switch' : 'Rest';
   return (
-    <div ref={bar} className={left > 0 ? 'rest-timer' : 'rest-timer done'} role="timer" aria-label="Rest">
+    <div ref={bar} className={left > 0 ? 'rest-timer' : 'rest-timer done'} role="timer" aria-label={what}>
       <button type="button" className="rest-main" aria-label="Dismiss rest timer" onClick={() => setRest(null)}>
-        {left > 0 ? <><span>Rest</span><b>{mss(left)}</b></> : <b>Rest done</b>}
+        {left > 0 ? <><span>{what}</span><b>{mss(left)}</b></> : <b>{what} done</b>}
         <span className="muted small">{PUSH_ON && left > 0 && alert === 'failed' ? 'No lock-screen alert' : 'Tap to close'}</span>
       </button>
       <button type="button" className="mini" onClick={() => setRest({ ...r!, until: Math.max(r!.until, Date.now()) + 30_000 })}>+30 s</button>

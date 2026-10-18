@@ -741,3 +741,9 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 .target-suggest-changes { list-style: none; margin: 0 0 10px; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 16px; }
 .target-suggest-changes li { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); padding: 3px 0; border-bottom: 1px solid var(--line); }
 .target-suggest-changes li span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Supersets (noticed from the log, src/domain/superset.ts): self-contained, for the coming redesign. */
+.superset-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px; margin: 4px 0 6px; padding-left: 8px; border-left: 3px solid var(--accent); font-size: var(--fs-sm); color: var(--muted); }
+.superset-line span { overflow-wrap: anywhere; }
+.superset-line .mini { flex: none; margin-left: auto; }
+.superset-mark { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); padding-left: 6px; border-left: 3px solid var(--accent); overflow-wrap: anywhere; }

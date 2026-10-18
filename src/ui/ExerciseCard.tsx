@@ -11,7 +11,8 @@ import { isHoldLift } from '../domain/care';
 import { SetRowContent } from './SetRow';
 import { suggest } from '../domain/suggest';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
-import { hhmm, paces, restSeconds, suggestTime } from '../domain/timing';
+import { hhmm, paces, restAfter, restSeconds, suggestTime } from '../domain/timing';
+import { andList } from '../domain/superset';
 import { startRest } from './RestTimer';
 import { localDate } from '../domain/ids';
 import { gearOf } from '../domain/equipment';
@@ -34,7 +35,8 @@ export function ExerciseCard({ plannedMinutes, ...p }: CardProps) {
     : <LiftCard {...p} />;
 }
 
-function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = false, onOpenReq, who, swappedFrom, left = [], onGo }: {
+function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = false, onOpenReq, who, swappedFrom, left = [], onGo,
+  supersetWith, onNotSuperset, switchAfter, onSwitch }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
   openReq?: boolean; onOpenReq?: () => void;
   /** Named on Add set when several people share the phone. */
@@ -43,6 +45,11 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   swappedFrom?: string;
   /** The plan's lifts still to do, offered on the card you just finished so you can take whichever machine is free. */
   left?: string[]; onGo?: (exercise: string) => void;
+  /** The other lifts of its superset today, and the tap that says it isn't one. */
+  supersetWith?: string[]; onNotSuperset?: () => void;
+  /** With the log as it is after the set `id`: the superset's next lift to switch to, null for its full rest, undefined if in none. */
+  switchAfter?: (entries: SetEntry[], id: string) => string | null | undefined;
+  onSwitch?: (exercise: string) => void;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
   // Once the user has opened a finished card it stays open (more sets are theirs to add); a reload starts it folded again.
@@ -99,8 +106,16 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     // A time for a late set is on the day being logged to.
     const e = await store.add({ date, exercise, ...rest, gym, ...(at !== undefined && { at: at ? new Date(`${date}T${at}:00`) : null }), target: { weight: sug.weight, reps: sug.reps, sets: sug.sets } });
     if (!e) return false;
-    // A set done just now starts the rest; one entered for an earlier time or day doesn't.
-    if (at === undefined && date === realToday) startRest(restSeconds(pace, exercise), exercise.toLowerCase(), `${exercise} · set ${working.length + (isWorking(e) ? 1 : 0) + 1} next`);
+    // A set done just now starts the rest; one entered for an earlier time or day doesn't. Inside a superset with a lift still to
+    // go in the round, a short switch instead, and that lift's card comes up.
+    if (at === undefined && date === realToday) {
+      const label = `${exercise} · set ${working.length + (isWorking(e) ? 1 : 0) + 1} next`;
+      const { seconds, switchTo } = restAfter(pace, exercise, switchAfter?.([...store.entries.filter((x) => x.id !== e.id), e], e.id));
+      if (switchTo) {
+        startRest(seconds, switchTo.toLowerCase(), `Switch to ${switchTo}`, { seconds: restSeconds(pace, exercise), card: exercise.toLowerCase(), label });
+        onSwitch?.(switchTo);
+      } else startRest(seconds, exercise.toLowerCase(), label);
+    }
     // The same rule as the PR badge; a set that broke several records names the best one.
     setPr(prToast(store.entries, e));
     return true;
@@ -156,6 +171,10 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
         {complete && <button className="mini" aria-expanded="true" onClick={() => setOpened(false)}>Fold</button>}
         {best?.set && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.value))} lb</span>}
       </header>
+      {supersetWith && supersetWith.length > 0 && (
+        <p className="superset-line"><span>Superset with {andList(supersetWith)}</span>
+          {onNotSuperset && <button type="button" className="mini" onClick={onNotSuperset}>Not a superset</button>}</p>
+      )}
       {last && <p className="muted card-last">Last ({fmtDay(last.date, realToday)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
       {swappedFrom && <p className="muted card-last">For {swappedFrom}{from && <> · last {from.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</>}</p>}
       {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.kind === 'test' && 'From your test: '}{sug.sets} × {sug.reps}{sug.unit}{sug.kind !== 'maxed' && '+'}{fmtLoad(sug.weight)}{fmtPerSide(sug.weight ?? 0, exercise) && <span className="target-warm muted">{fmtPerSide(sug.weight ?? 0, exercise)}</span>}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}</span></p>}
