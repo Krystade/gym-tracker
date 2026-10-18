@@ -29,13 +29,14 @@ export function useSync(store: SetsStore, body: BodyStore, person: Person) {
       // The log as the database has it; what the pull takes lands only where it's still that (db applySynced).
       const log = await db.getSyncSnapshot();
       const r = await sync({
-        client: repoClient(config, (u, i) => fetch(u, i)), sets: log.sets, body: log.body, deleted: log.tombstones, now: new Date(),
+        client: repoClient(config, (u, i) => fetch(u, i)), sets: log.sets, body: log.body, deleted: log.tombstones, tombAt: log.tombAt, now: new Date(),
         paths: pathsFor(person.id === MAIN ? null : person.slug),
         apply: phoneApply(db, { log: async () => { await store.synced(); await body.reload(); }, replaced: replacedChanged }).applyMonth,
       });
       const next = { ...config, lastSync: new Date().toISOString() };
       await putSyncConfig(next); setConfig(next);
-      setStatus({ kind: 'done', text: `Synced: ${r.pulledSets} sets and ${r.pulledBody} body days pulled in; backup holds ${r.pushedSets} sets and ${r.pushedBody} body days.` });
+      const removed = r.removedSets ? `; ${r.removedSets} set${r.removedSets === 1 ? '' : 's'} deleted on another device removed` : '';
+      setStatus({ kind: 'done', text: `Synced: ${r.pulledSets} sets and ${r.pulledBody} body days pulled in${removed}; backup holds ${r.pushedSets} sets and ${r.pushedBody} body days.` });
     } catch (e) {
       setStatus({ kind: 'error', text: e instanceof SyncError ? e.message : `Sync failed: ${String(e)}` });
     }

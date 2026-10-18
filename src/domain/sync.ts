@@ -1,7 +1,7 @@
-import { parseCsv, toCsv } from './csv';
+import { parseCsv, parseRows, toCsv, type CsvError } from './csv';
 import { BODY_FIELDS, mergeBody, parseBodyFile, toBodyCsv, type BodyDay } from './body';
 import type { SetEntry } from './types';
-import { editStamp } from './cloud';
+import { editStamp, lifeStamp } from './cloud';
 import type { Replaced, Taken } from './replaced';
 
 // The spec's one deliberate network exception: sets and body data to the user's own private repo,
@@ -12,7 +12,7 @@ type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export class SyncError extends Error {
   /** Set on a push conflict: the merged state, so a retry doesn't pull the same rows in twice. */
-  pulled?: { sets: SetEntry[]; body: BodyDay[]; counts: [number, number] };
+  pulled?: { sets: SetEntry[]; body: BodyDay[]; counts: [number, number, number] };
   constructor(public kind: 'auth' | 'access' | 'network' | 'conflict' | 'other', message: string) { super(message); }
 }
 
@@ -79,10 +79,49 @@ export function repoClient(cfg: SyncConfig, fetchFn: Fetch) {
   return { get, put, upsert };
 }
 
-export interface SyncPaths { sets: string; body: string; history?: string }
+export interface SyncPaths { sets: string; body: string; deleted: string; history?: string }
 /** The first profile keeps app/ and reads history.csv (its imported notes); every other profile has its own folder and no history. */
 export const pathsFor = (slug: string | null): SyncPaths =>
-  slug == null ? { sets: 'app/sets.csv', body: 'app/body.csv', history: 'history.csv' } : { sets: `profiles/${slug}/sets.csv`, body: `profiles/${slug}/body.csv` };
+  slug == null ? { sets: 'app/sets.csv', body: 'app/body.csv', deleted: 'app/deleted.csv', history: 'history.csv' }
+    : { sets: `profiles/${slug}/sets.csv`, body: `profiles/${slug}/body.csv`, deleted: `profiles/${slug}/deleted.csv` };
+
+/**
+ * deleted.csv: the sets deleted from a profile's log, one row each (`id,deleted_at`, an ISO time), so a restore or another
+ * device doesn't bring them back from sets.csv or history.csv. A backup from before it has none, which reads as no deletes.
+ */
+const DELETED_HEADER = ['id', 'deleted_at'];
+const csvField = (v: string): string => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+export function toDeletedCsv(deleted: Record<string, number>): string {
+  const rows = Object.entries(deleted).sort(([a, x], [b, y]) => x - y || (a < b ? -1 : a > b ? 1 : 0));
+  return [DELETED_HEADER.join(','), ...rows.map(([id, at]) => `${csvField(id)},${new Date(at).toISOString()}`)].join('\r\n') + '\r\n';
+}
+/** An id listed twice keeps its latest time. */
+export function parseDeletedCsv(text: string): { deleted: Record<string, number>; errors: CsvError[] } {
+  const rows = parseRows(text).filter((r) => r.some((c) => c.trim() !== ''));
+  const deleted: Record<string, number> = {}, errors: CsvError[] = [];
+  if (!rows.length) return { deleted, errors };
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const missing = DELETED_HEADER.find((c) => !header.includes(c));
+  if (missing) return { deleted, errors: [{ row: 1, message: `Missing column ${missing}` }] };
+  const [ic, tc] = DELETED_HEADER.map((c) => header.indexOf(c));
+  rows.slice(1).forEach((r, i) => {
+    const id = (r[ic] ?? '').trim(), raw = (r[tc] ?? '').trim(), at = Date.parse(raw);
+    if (!id) errors.push({ row: i + 2, message: 'Missing id' });
+    else if (!Number.isFinite(at)) errors.push({ row: i + 2, message: `Bad deleted_at "${raw}"` });
+    else deleted[id] = Math.max(deleted[id] ?? 0, at);
+  });
+  return { deleted, errors };
+}
+
+const ms = (iso: string | undefined) => (iso ? Date.parse(iso) || 0 : 0);
+/**
+ * The newest thing known to have happened to a set, for a delete to beat: logged, edited or put back (cloud lifeStamp). A row
+ * read from a file has its row number for a seq, so when it was logged or entered stands in: a set logged again under a deleted
+ * set's id is newer than that delete.
+ */
+const setStamp = (s: SetEntry) => Math.max(lifeStamp(s), ms(s.loggedAt), ms(s.enteredAt));
+/** sets.csv has no restored_at: a set Undo put back goes up as edited then, so it beats the delete it undid on other devices too. */
+const forFile = (s: SetEntry): SetEntry => ((s.restoredAt ?? 0) > (s.editedAt ?? 0) ? { ...s, editedAt: s.restoredAt } : s);
 /** Why a profile's backup folder name can't be used, or null. `taken`: the other profiles' slugs; `retired`: deleted profiles', whose files stay in the repo. */
 export function slugError(slug: string, taken: string[], retired: string[] = []): string | null {
   if (!/^[a-z0-9-]{1,30}$/.test(slug)) return 'Use 1–30 lower-case letters, digits or dashes.';
@@ -99,7 +138,9 @@ function unreadable(path: string, errors: { row: number; message: string }[]): n
 }
 
 type SyncDeps = {
-  client: ReturnType<typeof repoClient>; sets: SetEntry[]; body: BodyDay[]; deleted: Set<string>;
+  client: ReturnType<typeof repoClient>; sets: SetEntry[]; body: BodyDay[];
+  /** This phone's tombstones, and when each delete made here went, where known (db getSyncSnapshot). */
+  deleted: Set<string>; tombAt?: Record<string, number>;
   now: Date; paths?: SyncPaths;
   /**
    * Saves what the pull takes onto this phone, keeping first this phone's values it replaces (domain/replaced): only what's still
@@ -107,24 +148,27 @@ type SyncDeps = {
    */
   apply: (base: { sets: SetEntry[]; body: BodyDay[] }, taken: Taken, now: number) => Promise<{ taken: Taken; replaced: Replaced[]; skipped: number }>;
 };
-type SyncResult = { pulledSets: number; pulledBody: number; pushedSets: number; pushedBody: number };
+type SyncResult = { pulledSets: number; pulledBody: number; removedSets: number; pushedSets: number; pushedBody: number };
 
-/** Pull everything first (a failed pull pushes nothing), merge — the phone wins where both sides have a value — then push.
+/** Pull everything first (a failed pull pushes nothing), merge — the newer edit or delete wins — then push.
  *  If the backup moves underneath us, the whole pull→merge→push runs once more, so the other writer's rows are kept. */
 export async function sync(deps: SyncDeps): Promise<SyncResult> {
   try { return await syncOnce(deps); }
   catch (e) {
     if (!(e instanceof SyncError && e.kind === 'conflict' && e.pulled)) throw e;
-    const again = await syncOnce({ ...deps, sets: e.pulled.sets, body: e.pulled.body });
-    return { ...again, pulledSets: again.pulledSets + e.pulled.counts[0], pulledBody: again.pulledBody + e.pulled.counts[1] };
+    // The deletes it took are in deleted.csv still (the file only grows), so the retry finds them there again.
+    const { sets, body, counts } = e.pulled;
+    const again = await syncOnce({ ...deps, sets, body });
+    return { ...again, pulledSets: again.pulledSets + counts[0], pulledBody: again.pulledBody + counts[1], removedSets: again.removedSets + counts[2] };
   }
 }
 
 async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
   const { client } = deps;
-  const { sets: SETS_PATH, body: BODY_PATH, history: HISTORY_PATH } = deps.paths ?? pathsFor(null);
+  const { sets: SETS_PATH, body: BODY_PATH, deleted: DELETED_PATH, history: HISTORY_PATH } = deps.paths ?? pathsFor(null);
   const history = HISTORY_PATH ? await client.get(HISTORY_PATH) : null;
   const remoteSets = await client.get(SETS_PATH);
+  const remoteDeleted = await client.get(DELETED_PATH);
   const remoteBody = await client.get(BODY_PATH);
 
   const parsedSets = remoteSets ? parseCsv(remoteSets.text, 'backup') : null;
@@ -132,18 +176,33 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
   const parsedBody = remoteBody?.text.trim() ? parseBodyFile(remoteBody.text) : null;
   if (parsedBody && parsedBody.kind !== 'body') unreadable(BODY_PATH, [{ row: 1, message: 'the header isn’t date,weight_lb,calories,protein_g' }]);
   if (parsedBody?.errors.length) unreadable(BODY_PATH, parsedBody.errors);
+  const parsedDeleted = remoteDeleted ? parseDeletedCsv(remoteDeleted.text) : null;
+  if (parsedDeleted?.errors.length) unreadable(DELETED_PATH, parsedDeleted.errors);
 
   const have = new Map(deps.sets.map((e) => [e.id, e]));
+  // Deletes as the account's months keep them (cloud mergeMonth): the backup's and this phone's, the later time for each. A
+  // tombstone under a set that's on the phone is an old delete of a reused id; one without a time is either the backup's
+  // delete (that time) or one from before delete times (now). A delete beats a set only if it's newer than all that happened to it.
+  const deleted: Record<string, number> = { ...parsedDeleted?.deleted };
+  for (const id of deps.deleted) {
+    if (have.has(id)) continue;
+    deleted[id] = Math.max(deleted[id] ?? 0, deps.tombAt?.[id] ?? deleted[id] ?? deps.now.getTime());
+  }
+  const gone = (id: string, stamp: number) => id in deleted && stamp <= deleted[id];
+
   const incoming = new Map<string, SetEntry>();
   // history.csv is only read, never written, so rows it can't parse are skipped rather than blocking the sync.
   for (const entries of [history ? parseCsv(history.text, 'backup').entries : [], parsedSets?.entries ?? []]) {
     for (const e of entries) {
       const mine = have.get(e.id);
-      if (!mine) { if (!deps.deleted.has(e.id)) incoming.set(e.id, e); continue; }
+      if (!mine) { if (!gone(e.id, setStamp(e))) incoming.set(e.id, e); continue; }
       // Edited on another device since this phone's last change: theirs, in this phone's place in the day (a CSV row has no seq).
       if ((e.editedAt ?? 0) > editStamp(mine)) incoming.set(e.id, { ...e, seq: mine.seq, ...(mine.restoredAt != null && { restoredAt: mine.restoredAt }) });
     }
   }
+  // A set on this phone that another device deleted later than anything done to it, here or in the backup's copy.
+  const deleteIds = deps.sets.filter((s) => { const t = incoming.get(s.id); return gone(s.id, Math.max(setStamp(s), t ? setStamp(t) : 0)); }).map((s) => s.id);
+  for (const id of deleteIds) incoming.delete(id);
   const bodyBy = new Map(deps.body.map((d) => [d.date, d]));
   const bodyIn: BodyDay[] = [];
   for (const d of parsedBody?.days ?? []) {
@@ -160,24 +219,30 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
   const saveFailed = () => new SyncError('other', 'Saving the pulled data on this phone failed — nothing was pushed. Try again.');
   // What the pull replaces of the phone's is kept first, so nothing is overwritten without a copy. A row the push below sends up
   // that the phone changed meanwhile goes up as the backup already had it; the phone's newer copy wins at the next sync.
+  // A set another device deleted goes the same way (a copy kept, theirs: deleted).
   const none = { importSets: [], deleteIds: [], importBody: [] };
-  const { taken } = incoming.size || bodyIn.length
-    ? await deps.apply({ sets: deps.sets, body: deps.body }, { importSets: [...incoming.values()], deleteIds: [], importBody: bodyIn }, deps.now.getTime()).catch(() => { throw saveFailed(); })
+  const { taken } = incoming.size || bodyIn.length || deleteIds.length
+    ? await deps.apply({ sets: deps.sets, body: deps.body }, { importSets: [...incoming.values()], deleteIds, importBody: bodyIn }, deps.now.getTime()).catch(() => { throw saveFailed(); })
     : { taken: none as Taken };
 
-  // Tombstones only stop sets coming back in; anything still on the phone is live, even under a reused id.
-  const sets = [...deps.sets.filter((e) => !incoming.has(e.id)), ...incoming.values()];
+  // A delete skipped because the set changed here meanwhile still goes: deleted.csv has it, and the newer set wins it next sync.
+  const dropped = new Set(deleteIds);
+  const sets = [...deps.sets.filter((e) => !incoming.has(e.id) && !dropped.has(e.id)), ...incoming.values()];
   const body = mergeBody(deps.body, bodyIn);
   const message = `Backup from phone ${deps.now.toISOString()}`;
   try {
-    await client.put(SETS_PATH, toCsv(sets), remoteSets?.sha, message);
+    // Deletes first: should a later write fail, sets.csv still holding a deleted set can't bring it back. A backup that never
+    // had a delete gets no file.
+    const deletedText = toDeletedCsv(deleted);
+    if (deletedText !== toDeletedCsv(parsedDeleted?.deleted ?? {})) await client.put(DELETED_PATH, deletedText, remoteDeleted?.sha, message);
+    await client.put(SETS_PATH, toCsv(sets.map(forFile)), remoteSets?.sha, message);
     await client.put(BODY_PATH, toBodyCsv(body), remoteBody?.sha, message);
   } catch (e) {
     // What was pulled is already on the phone; the retry starts from there.
-    if (e instanceof SyncError && e.kind === 'conflict') e.pulled = { sets, body, counts: [taken.importSets.length, taken.importBody.length] };
+    if (e instanceof SyncError && e.kind === 'conflict') e.pulled = { sets, body, counts: [taken.importSets.length, taken.importBody.length, taken.deleteIds.length] };
     throw e;
   }
-  return { pulledSets: taken.importSets.length, pulledBody: taken.importBody.length, pushedSets: sets.length, pushedBody: body.length };
+  return { pulledSets: taken.importSets.length, pulledBody: taken.importBody.length, removedSets: taken.deleteIds.length, pushedSets: sets.length, pushedBody: body.length };
 }
 
 /** GitHub's new-token form, pre-filled (template URL). The repository still has to be picked there: GitHub doesn't take it as a parameter. */

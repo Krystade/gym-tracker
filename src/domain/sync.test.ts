@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fromB64, pathsFor, repoClient, slugError, sync, SyncError, toB64, TOKEN_URL, type SyncConfig } from './sync';
+import { fromB64, parseDeletedCsv, pathsFor, repoClient, slugError, sync, SyncError, toB64, toDeletedCsv, TOKEN_URL, type SyncConfig } from './sync';
 import { parseCsv, toCsv } from './csv';
 import { parseBodyFile, toBodyCsv, type BodyDay } from './body';
 import type { SetEntry } from './types';
@@ -232,7 +232,7 @@ describe('token link', () => {
 
 describe('sync per profile', () => {
   it('keeps the first profile on app/ with history.csv', () => {
-    expect(pathsFor(null)).toEqual({ sets: 'app/sets.csv', body: 'app/body.csv', history: 'history.csv' });
+    expect(pathsFor(null)).toEqual({ sets: 'app/sets.csv', body: 'app/body.csv', deleted: 'app/deleted.csv', history: 'history.csv' });
   });
   it('backs another profile up under profiles/<slug>/ and never reads history.csv', async () => {
     const gh = fakeGitHub({ 'history.csv': toCsv([set('2025-01-01', 'notes')]), 'app/sets.csv': toCsv([set('2026-09-01')]) });
@@ -314,5 +314,192 @@ describe('the backup’s copies replacing this phone’s (round 10)', () => {
       // As db applySynced does it, with nothing changed on the phone meanwhile.
       apply: async (base, taken, now) => { const replaced = replacements(base, taken, now); kept.push(...replaced); return { taken, replaced, skipped: 0 }; } });
     expect(kept.map((r) => [r.kind, r.mine])).toEqual([['set', mine], ['body', { weight: 182 }]]);
+  });
+});
+
+describe('deleted.csv', () => {
+  const T = Date.parse;
+  it('holds each deleted set’s id and when it went, whatever the id’s text, oldest first', () => {
+    const d = { 'notes|2025-01-01|curl, hammer|1': T('2026-09-02T10:00:00.123Z'), 'app|2026-09-02|bench "wide"|2': T('2026-09-01T10:00:00Z') };
+    const text = toDeletedCsv(d);
+    expect(text).toBe('id,deleted_at\r\n"app|2026-09-02|bench ""wide""|2",2026-09-01T10:00:00.000Z\r\n"notes|2025-01-01|curl, hammer|1",2026-09-02T10:00:00.123Z\r\n');
+    expect(parseDeletedCsv(text)).toEqual({ deleted: d, errors: [] });
+    expect(toDeletedCsv({})).toBe('id,deleted_at\r\n');
+  });
+  it('reads an id listed twice as its latest delete, and a file with nothing in it as no deletes', () => {
+    expect(parseDeletedCsv('id,deleted_at\nx|1,2026-09-03T00:00:00Z\nx|1,2026-09-01T00:00:00Z\ny|1,2026-09-01T00:00:00Z\ny|1,2026-09-03T00:00:00Z\n').deleted)
+      .toEqual({ 'x|1': T('2026-09-03T00:00:00Z'), 'y|1': T('2026-09-03T00:00:00Z') });
+    expect(parseDeletedCsv('')).toEqual({ deleted: {}, errors: [] });
+    expect(parseDeletedCsv('id,deleted_at\r\n')).toEqual({ deleted: {}, errors: [] });
+  });
+  it('reports a row it can’t read, and a header without both columns', () => {
+    expect(parseDeletedCsv('id,deleted_at\nx|1,yesterday\n').errors).toEqual([{ row: 2, message: 'Bad deleted_at "yesterday"' }]);
+    expect(parseDeletedCsv('id,deleted_at\n,2026-09-01T00:00:00Z\n').errors).toEqual([{ row: 2, message: 'Missing id' }]);
+    expect(parseDeletedCsv('id,when\nx|1,2026-09-01T00:00:00Z\n').errors).toEqual([{ row: 1, message: 'Missing column deleted_at' }]);
+  });
+});
+
+describe('deletes in the backup (round 10, 2b)', () => {
+  const NOW = new Date('2026-09-30T12:00:00Z');
+  const T1 = Date.parse('2026-09-10T08:00:00Z'), T2 = Date.parse('2026-09-20T08:00:00Z');
+  type Opts = { deleted?: string[]; tombAt?: Record<string, number>; paths?: ReturnType<typeof pathsFor> };
+  /** A sync whose phone side takes everything, keeping what it replaces as db applySynced does. */
+  const run = async (gh: ReturnType<typeof fakeGitHub>, sets: SetEntry[], o: Opts = {}) => {
+    const got = { sets: [] as SetEntry[], deleted: [] as string[], replaced: [] as Replaced[] };
+    const r = await sync({
+      client: repoClient(CFG, gh.fetchFn), sets, body: [], deleted: new Set(o.deleted ?? []), tombAt: o.tombAt, now: NOW, paths: o.paths,
+      apply: async (base, taken, now) => {
+        const replaced = replacements(base, taken, now);
+        got.sets.push(...taken.importSets); got.deleted.push(...taken.deleteIds); got.replaced.push(...replaced);
+        return { taken, replaced, skipped: 0 };
+      },
+    });
+    return { r, got };
+  };
+  const inBackup = (gh: ReturnType<typeof fakeGitHub>, path = 'app/sets.csv') => ids(parseCsv(gh.store.get(path)!.text).entries);
+  const deletesIn = (gh: ReturnType<typeof fakeGitHub>, path = 'app/deleted.csv') => { const f = gh.store.get(path); return f ? parseDeletedCsv(f.text).deleted : null; };
+  const putsTo = (gh: ReturnType<typeof fakeGitHub>, path: string) => gh.calls.filter((x) => x.method === 'PUT' && x.url.includes(`/contents/${path}`)).length;
+
+  it('a backup with no deleted.csv syncs as before, and gets none while nothing was deleted', async () => {
+    const history = [set('2025-01-01', 'notes')], other = set('2026-09-01'), mine = set('2026-09-29');
+    const gh = fakeGitHub({ 'history.csv': toCsv(history), 'app/sets.csv': toCsv([other]) });
+    const { r, got } = await run(gh, [mine]);
+    expect(ids(got.sets)).toEqual(ids([...history, other]));
+    expect(r).toMatchObject({ pulledSets: 2, removedSets: 0, pushedSets: 3 });
+    expect(gh.store.has('app/deleted.csv')).toBe(false);
+    expect(putsTo(gh, 'app/deleted.csv')).toBe(0);
+  });
+
+  it('a set deleted on this phone goes into deleted.csv at the time it went, next to the deletes already there, and not twice', async () => {
+    const gone = set('2026-09-20'), kept = set('2026-09-21'), before = set('2025-03-01', 'notes');
+    const gh = fakeGitHub({ 'app/sets.csv': toCsv([gone, kept]), 'app/deleted.csv': toDeletedCsv({ [before.id]: T1 }) });
+    const { got } = await run(gh, [kept], { deleted: [gone.id], tombAt: { [gone.id]: T2 } });
+    expect(got.sets).toEqual([]);
+    expect(inBackup(gh)).toEqual([kept.id]);
+    expect(deletesIn(gh)).toEqual({ [before.id]: T1, [gone.id]: T2 });
+    const puts = putsTo(gh, 'app/deleted.csv');
+    await run(gh, [kept], { deleted: [gone.id], tombAt: { [gone.id]: T2 } });
+    expect(putsTo(gh, 'app/deleted.csv')).toBe(puts); // nothing new: the file stays as it is
+  });
+
+  it('a restore onto a fresh phone leaves out every set deleted elsewhere, from history.csv and sets.csv alike, and doesn’t push them back', async () => {
+    const [h1, h2, h3] = [set('2025-01-01', 'notes'), set('2025-01-02', 'notes'), set('2025-01-03', 'notes')];
+    const [s1, s2] = [set('2026-09-01'), set('2026-09-02')];
+    const gh = fakeGitHub({ 'history.csv': toCsv([h1, h2, h3]), 'app/sets.csv': toCsv([h2, h3, s1, s2]), 'app/deleted.csv': toDeletedCsv({ [h1.id]: T1, [h2.id]: T1, [s1.id]: T2 }) });
+    const { r, got } = await run(gh, []);
+    expect(ids(got.sets)).toEqual(ids([h3, s2]));
+    expect(r).toMatchObject({ pulledSets: 2, pushedSets: 2 });
+    expect(inBackup(gh)).toEqual(ids([h3, s2]));
+    expect(deletesIn(gh)).toEqual({ [h1.id]: T1, [h2.id]: T1, [s1.id]: T2 });
+  });
+
+  it('a set another device deleted goes from this phone, kept under Replaced by sync, and isn’t pushed back', async () => {
+    const gone = set('2026-09-05'), kept = set('2026-09-06');
+    const gh = fakeGitHub({ 'app/sets.csv': toCsv([kept]), 'app/deleted.csv': toDeletedCsv({ [gone.id]: T1 }) });
+    const { r, got } = await run(gh, [gone, kept]);
+    expect(got.deleted).toEqual([gone.id]);
+    expect(got.replaced.map((x) => [x.kind, x.kind === 'set' && x.mine, x.kind === 'set' && x.theirs])).toEqual([['set', gone, null]]);
+    expect(r).toMatchObject({ pulledSets: 0, removedSets: 1, pushedSets: 1 });
+    expect(inBackup(gh)).toEqual([kept.id]);
+  });
+
+  it('an edit made on this phone after another device deleted the set wins: the set stays and goes back up', async () => {
+    const x = { ...set('2026-09-05'), weight: 60, editedAt: T2 };
+    const gh = fakeGitHub({ 'app/deleted.csv': toDeletedCsv({ [x.id]: T1 }) });
+    const { got } = await run(gh, [x]);
+    expect(got.deleted).toEqual([]);
+    expect(inBackup(gh)).toEqual([x.id]);
+    expect(deletesIn(gh)).toEqual({ [x.id]: T1 }); // kept, so a device still holding the delete sees the edit is newer
+    // That device, deleted at T1 with the set gone, takes the edited set back.
+    const { got: other } = await run(gh, [], { deleted: [x.id], tombAt: { [x.id]: T1 } });
+    expect(other.sets.map((s) => [s.id, s.weight])).toEqual([[x.id, 60]]);
+  });
+
+  it('a delete made on this phone after the backup’s last edit of the set wins over that edit', async () => {
+    const x = { ...set('2026-09-05'), weight: 60, editedAt: T1 };
+    const gh = fakeGitHub({ 'app/sets.csv': toCsv([x]) });
+    const { got } = await run(gh, [], { deleted: [x.id], tombAt: { [x.id]: T2 } });
+    expect(got.sets).toEqual([]);
+    expect(inBackup(gh)).toEqual([]);
+    expect(deletesIn(gh)).toEqual({ [x.id]: T2 });
+  });
+
+  it('a set this phone still has in its old copy takes the backup’s edit made after another device’s delete, not the delete', async () => {
+    const x = set('2026-09-05');
+    const gh = fakeGitHub({ 'app/sets.csv': toCsv([{ ...x, weight: 65, editedAt: T2 }]), 'app/deleted.csv': toDeletedCsv({ [x.id]: T1 }) });
+    const { got } = await run(gh, [x]);
+    expect(got.deleted).toEqual([]);
+    expect(got.sets.map((s) => [s.id, s.weight])).toEqual([[x.id, 65]]);
+  });
+
+  it('a restore takes the edited copy of a set edited after its delete, over history.csv’s', async () => {
+    const h = set('2025-01-01', 'notes');
+    const gh = fakeGitHub({ 'history.csv': toCsv([h]), 'app/sets.csv': toCsv([{ ...h, weight: 65, editedAt: T2 }]), 'app/deleted.csv': toDeletedCsv({ [h.id]: T1 }) });
+    const { got } = await run(gh, []);
+    expect(got.sets.map((s) => [s.id, s.weight])).toEqual([[h.id, 65]]);
+  });
+
+  it('a set logged again under a deleted set’s id survives the old delete, on a fresh phone and on the phone that logged it', async () => {
+    const relogged = { ...set('2026-09-15'), loggedAt: new Date(T2).toISOString(), seq: T2 };
+    const gh = fakeGitHub({ 'app/sets.csv': toCsv([relogged]), 'app/deleted.csv': toDeletedCsv({ [relogged.id]: T1 }) });
+    expect((await run(gh, [])).got.sets.map((s) => s.id)).toEqual([relogged.id]); // the file has no seq: logged_at tells
+    const { got } = await run(gh, [relogged], { deleted: [relogged.id], tombAt: { [relogged.id]: T1 } });
+    expect(got.deleted).toEqual([]);
+    expect(inBackup(gh)).toEqual([relogged.id]);
+  });
+
+  it('a set pulled from the backup and logged again under a deleted id keeps its logged time against the old delete', async () => {
+    // Pulled earlier from another device's sets.csv, so its seq is a row number, not a time.
+    const pulled = { ...set('2026-09-15'), loggedAt: new Date(T2).toISOString(), seq: 3 };
+    const gh = fakeGitHub({ 'app/sets.csv': toCsv([pulled]), 'app/deleted.csv': toDeletedCsv({ [pulled.id]: T1 }) });
+    expect((await run(gh, [pulled])).got.deleted).toEqual([]);
+  });
+
+  it('a set Undo put back after its delete reached the backup goes up newer than that delete', async () => {
+    const back = { ...set('2026-09-05'), restoredAt: T2 };
+    const gh = fakeGitHub({ 'app/deleted.csv': toDeletedCsv({ [back.id]: T1 }) });
+    expect((await run(gh, [back])).got.deleted).toEqual([]);
+    expect(parseCsv(gh.store.get('app/sets.csv')!.text).entries.map((s) => [s.id, s.editedAt])).toEqual([[back.id, T2]]);
+    expect((await run(gh, [])).got.sets.map((s) => s.id)).toEqual([back.id]);
+  });
+
+  it('a delete from before delete times goes up at the backup’s time for it, or else this sync’s', async () => {
+    const a = set('2025-01-01', 'notes'), b = set('2025-01-02', 'notes');
+    const gh = fakeGitHub({ 'history.csv': toCsv([a, b]), 'app/deleted.csv': toDeletedCsv({ [b.id]: T1 }) });
+    const { got } = await run(gh, [], { deleted: [a.id, b.id] });
+    expect(got.sets).toEqual([]);
+    expect(deletesIn(gh)).toEqual({ [a.id]: NOW.getTime(), [b.id]: T1 });
+  });
+
+  it('refuses to overwrite a deleted.csv it can’t fully read', async () => {
+    for (const text of ['id,deleted_at\r\nx|1,soon\r\n', 'id,when\r\nx|1,2026-09-01T00:00:00Z\r\n']) {
+      const gh = fakeGitHub({ 'app/deleted.csv': text });
+      await expect(run(gh, [set('2026-09-29')], { deleted: ['x|2'] })).rejects.toThrow(/app\/deleted\.csv/);
+      expect(gh.calls.some((x) => x.method === 'PUT')).toBe(false);
+    }
+  });
+
+  it('another profile keeps its own deleted.csv under profiles/<slug>/', async () => {
+    const gone = set('2026-09-20');
+    const gh = fakeGitHub({ 'app/deleted.csv': toDeletedCsv({ 'app|2026-01-01|squat|1': T1 }), 'profiles/sam/deleted.csv': toDeletedCsv({ [gone.id]: T1 }) });
+    const { got } = await run(gh, [gone, set('2026-09-21')], { paths: pathsFor('sam') });
+    expect(got.deleted).toEqual([gone.id]);
+    expect(pathsFor('sam').deleted).toBe('profiles/sam/deleted.csv');
+    expect(deletesIn(gh)).toEqual({ 'app|2026-01-01|squat|1': T1 });
+    expect(gh.calls.some((x) => x.url.includes('/app/'))).toBe(false);
+  });
+
+  it('on a conflict, pulls again and keeps both the other writer’s deletes and this phone’s', async () => {
+    const mineGone = set('2026-09-20'), theirsGone = set('2026-09-21'), kept = set('2026-09-22');
+    const gh = fakeGitHub({ 'app/sets.csv': toCsv([mineGone, theirsGone, kept]) }, {}, (store) => {
+      // Another device's sync lands between this one's read and its first write.
+      store.set('app/deleted.csv', { text: toDeletedCsv({ [theirsGone.id]: T1 }), sha: 'other-1' });
+      store.set('app/sets.csv', { text: toCsv([mineGone, kept]), sha: 'other-2' });
+    });
+    const { r, got } = await run(gh, [theirsGone, kept], { deleted: [mineGone.id], tombAt: { [mineGone.id]: T2 } });
+    expect(got.deleted).toEqual([theirsGone.id]);
+    expect(r).toMatchObject({ removedSets: 1, pushedSets: 1 });
+    expect(inBackup(gh)).toEqual([kept.id]);
+    expect(deletesIn(gh)).toEqual({ [theirsGone.id]: T1, [mineGone.id]: T2 });
   });
 });

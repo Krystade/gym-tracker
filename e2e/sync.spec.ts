@@ -101,3 +101,63 @@ test('switching profile while a sync is pulling keeps what it pulled with the pe
   await bar.getByRole('button', { name: /Me/ }).click();
   await expect(page.getByText(/^6 sets/)).toBeVisible();
 });
+
+test('deleted.csv: a restore leaves out sets deleted elsewhere, another device’s delete is kept under Replaced by sync, and a delete here goes up', async ({ page }) => {
+  // Synthetic sample history; the first Cable Curl set of 2026-01-05 was deleted on another device before this phone existed.
+  const files = new Map<string, string>([['history.csv', HISTORY], ['app/deleted.csv', 'id,deleted_at\r\nsample|2026-01-05|cable curl|1,2026-02-01T00:00:00.000Z\r\n']]);
+  await page.route('https://api.github.com/**', async (route) => {
+    const req = route.request();
+    const p = decodeURIComponent(new URL(req.url()).pathname.replace(/^\/repos\/someone\/backup\/contents\//, ''));
+    if (req.method() === 'GET') {
+      const f = files.get(p);
+      return f != null ? route.fulfill({ json: { encoding: 'base64', content: Buffer.from(f).toString('base64'), sha: `${p}:${f.length}` } }) : route.fulfill({ status: 404, json: {} });
+    }
+    files.set(p, Buffer.from((req.postDataJSON() as { content: string }).content, 'base64').toString('utf8'));
+    return route.fulfill({ status: 201, json: {} });
+  });
+  await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
+  await page.goto('/');
+  await goto(page, 'More');
+  await dataSettled(page);
+  const card = page.getByRole('region', { name: 'Private backup' });
+  await card.getByRole('textbox', { name: 'Repository' }).fill('someone/backup');
+  await card.getByLabel('Access token').fill(TOKEN);
+  await card.getByRole('button', { name: 'Save' }).click();
+
+  await card.getByRole('button', { name: 'Sync now' }).click();
+  await expect(card.getByRole('status')).toContainText('Synced: 5 sets');
+  await expect(page.getByText(/^5 sets/)).toBeVisible();
+  expect(files.get('app/sets.csv')).not.toContain('2026-01-05,Cable Curl,,1,');
+
+  // Another device deletes the partial set from 2026-01-12.
+  files.set('app/deleted.csv', `${files.get('app/deleted.csv')}sample|2026-01-12|cable curl|3,2026-09-01T00:00:00.000Z\r\n`);
+  await card.getByRole('button', { name: 'Sync now' }).click();
+  await expect(card.getByRole('status')).toContainText('1 set deleted on another device removed');
+  await expect(page.getByText(/^4 sets/)).toBeVisible();
+  await expect(card.getByRole('heading', { name: 'Replaced by sync (1)' })).toBeVisible();
+  expect(files.get('app/sets.csv')!.split(/\r?\n/).filter(Boolean)).toHaveLength(5);
+
+  // A set logged and deleted here goes into deleted.csv, so a restore won't bring it back either.
+  await goto(page, 'Today');
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
+  await page.getByRole('button', { name: 'Bench Press', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Weight' }).first().fill('135');
+  await page.getByRole('textbox', { name: 'Reps' }).first().fill('8');
+  await page.getByRole('button', { name: 'Add set' }).first().click();
+  const sets = page.getByRole('list', { name: 'Sets for Bench Press' });
+  await expect(sets.getByRole('listitem')).toHaveCount(1);
+  page.on('dialog', (d) => void d.accept());
+  await sets.getByRole('button').first().click();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(sets.getByRole('listitem')).toHaveCount(0);
+  await page.clock.fastForward('10:00'); // the sync comes later: deleted.csv gets the delete's time, not the sync's
+  await goto(page, 'More');
+  await card.getByRole('button', { name: 'Sync now' }).click();
+  await expect(card.getByRole('status')).toContainText('backup holds 4 sets');
+  // At the time it was deleted here: the clock started at 18:00 local and the spec takes seconds.
+  const at = Date.parse(/^app\|2026-10-02\|bench press\|1,(.+)$/m.exec(files.get('app/deleted.csv')!)![1]);
+  expect(at - new Date('2026-10-02T18:00:00').getTime()).toBeGreaterThan(0);
+  expect(at - new Date('2026-10-02T18:00:00').getTime()).toBeLessThan(120_000);
+  expect(files.get('app/deleted.csv')).toContain('sample|2026-01-12|cable curl|3,2026-09-01T00:00:00.000Z');
+});
