@@ -73,7 +73,7 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
         ) : !cloud.mine ? <p className="muted">The account on this phone belongs to another person here; switch to them to see friends.</p>
         : (<>
           <Crew uid={cloud.link.uid} myName={myName} friends={friends} entries={entries} today={today} status={status} news={news} pulled={pulled} onOpenFriend={onView} onOpenMine={onOpenMine} onInvite={invite} onMessage={onMessage} />
-          <FriendsCard uid={cloud.link.uid} gyms={gyms} pending={pending} news={news} newsRev={newsRev} onPendingDone={onPendingDone} onView={onView} onChanged={onChanged} onMessage={onMessage} />
+          <FriendsCard uid={cloud.link.uid} gyms={gyms} pending={pending} newsRev={newsRev} onPendingDone={onPendingDone} onChanged={onChanged} />
         </>)}
     </div>
   );

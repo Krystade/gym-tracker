@@ -12,7 +12,7 @@ const friends = (page: Page) => page.getByRole('region', { name: 'Friends', exac
 const crew = (page: Page) => page.getByRole('region', { name: 'Crew' });
 const sheetOf = (page: Page, name: string) => page.getByRole('dialog', { name: `Messages with @${name}` });
 const TOP = 47, BOTTOM = 34;
-// A message near the 140 limit: it has to fit Crew's row, the friends list and Today's one line without scrolling sideways.
+// A message near the 140 limit: it has to fit Crew's row and Today's one line without scrolling sideways.
 const LONG = 'See you at 6? Bring chalk, deadlifts first and then heavy rows after if the rack by the window is free';
 
 // Where the thread sheet sits, not where it is mid-slide (its 240ms rise; e2e/design.spec checks the motion itself).
@@ -179,11 +179,11 @@ test('mute is quiet and private; block stops the sender and lists them to unbloc
   await expect(bSheet.getByRole('button', { name: `Unmute @${a.name}` })).toHaveAttribute('aria-pressed', 'true');
   await expect(bSheet.getByRole('status')).toContainText('won’t ring your phone');
   await bSheet.getByRole('button', { name: 'Close' }).click();
-  await expect(friends(b.page).getByRole('region', { name: 'Your friends' })).toContainText(`@${a.name} 🔕`);
+  await expect(crew(b.page).getByTestId(`crew-${a.name}`).getByRole('img', { name: 'Muted' })).toBeVisible();
   // Still muted after a reload: it's on the account, not the phone.
   await b.page.reload();
   await goto(b.page, 'Friends');
-  await friends(b.page).getByRole('region', { name: 'Your friends' }).getByRole('button', { name: `Message @${a.name}` }).click();
+  await crew(b.page).getByTestId(`crew-${a.name}`).getByRole('button', { name: `Message @${a.name}` }).click();
   await expect(bSheet.getByRole('button', { name: `Unmute @${a.name}` })).toBeVisible();
 
   // A's ping still arrives in the thread (mute only keeps the phone quiet).
@@ -207,7 +207,7 @@ test('mute is quiet and private; block stops the sender and lists them to unbloc
   await bSheet.getByRole('button', { name: 'Close' }).click();
   const blocked = friends(b.page).getByRole('region', { name: 'Blocked' });
   await expect(blocked).toContainText(`@${a.name}`);
-  await expect(friends(b.page).getByRole('region', { name: 'Your friends' })).toContainText('None yet');
+  await expect(crew(b.page)).toContainText('No friends here yet');
 
   // A's open thread can't send now; the next time it opens, it says they're not friends.
   await expect(aSheet.getByRole('button', { name: 'Send 👀 Did you lift?' })).toBeEnabled();

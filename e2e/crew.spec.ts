@@ -70,7 +70,7 @@ async function person(browser: Browser, days: { at: Date; lift: string; sets: [n
 }
 
 async function setStatus(page: Page, text: string) {
-  await crew(page).getByTestId('crew-me').getByRole('button', { name: '+ Status' }).click();
+  await crew(page).getByTestId('crew-me').getByRole('button', { name: 'Status', exact: true }).click();
   const input = crew(page).getByRole('textbox', { name: 'Your status' });
   // 16px or more, so iOS doesn't zoom the page when it's focused.
   expect(parseFloat(await input.evaluate((el) => getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
@@ -94,7 +94,7 @@ test('Crew shows a friend’s week as kinds, their status and numbers, at 375×8
 
   // B: their own row first, with this week's numbers; a status phrase set inline, capped at 24 characters.
   await expect(crew(b.page).getByTestId('crew-me')).toContainText('2 sessions · 5 sets');
-  await crew(b.page).getByTestId('crew-me').getByRole('button', { name: '+ Status' }).click();
+  await crew(b.page).getByTestId('crew-me').getByRole('button', { name: 'Status', exact: true }).click();
   await crew(b.page).getByRole('textbox', { name: 'Your status' }).fill('x'.repeat(25));
   await expect(crew(b.page).getByRole('button', { name: 'Save' })).toBeDisabled();
   await expect(crew(b.page)).toContainText('25/24');
@@ -161,7 +161,7 @@ test('Crew shows a friend’s week as kinds, their status and numbers, at 375×8
   await crew(b.page).getByRole('button', { name: 'Your status: Leg day survivor 🦵. Change it' }).click();
   await b.page.screenshot({ path: `${SHOTS}/crew-b-editing.png` });
   await crew(b.page).getByRole('button', { name: 'Clear' }).click();
-  await expect(crew(b.page).getByTestId('crew-me').getByRole('button', { name: '+ Status' })).toBeVisible();
+  await expect(crew(b.page).getByTestId('crew-me').getByRole('button', { name: 'Status', exact: true })).toBeVisible();
   await b.page.screenshot({ path: `${SHOTS}/crew-b.png` });
 });
 
@@ -247,7 +247,7 @@ test('Friends opens from what the phone saved: with Firestore unreachable, frien
   await expect(row.locator(`[data-date="${iso(T)}"]`)).toHaveAttribute('data-kind', 'push');
   await expect(row).toContainText('1 session · 1 set');
   await expect(friends(a.page)).toContainText(`You’re @${a.name}`);
-  await expect(friends(a.page).getByRole('region', { name: 'Your friends' }).getByRole('button', { name: `@${b.name}`, exact: true })).toBeVisible();
+  await expect(crew(a.page).getByRole('button', { name: `@${b.name}`, exact: true })).toBeVisible();
   await a.page.waitForTimeout(500); // the quiet refresh fails meanwhile; what was saved stays
   await expect(row.locator(`[data-date="${iso(T)}"]`)).toHaveAttribute('data-kind', 'push');
   await expect(a.page.locator('main.screen')).not.toContainText('Couldn’t load');

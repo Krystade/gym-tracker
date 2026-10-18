@@ -36,7 +36,8 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   const sentGyms = kept?.gyms ?? [];
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  /** `fades`: a send's "Sent", which the new bubble already shows; it goes after 2 s (still read out, then gone from view). */
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; fades?: boolean } | null>(null);
   const [menu, setMenu] = useState(false);
   const [armed, setArmed] = useState<'remove' | 'block' | null>(null);
   const list = useRef<HTMLOListElement>(null);
@@ -87,7 +88,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   const send = async (f: () => Promise<unknown>, done: string) => {
     setBusy(true); setMsg(null);
     const t0 = Date.now();
-    try { await f(); setMsg({ ok: true, text: done }); await load(); }
+    try { await f(); setMsg({ ok: true, text: done, fades: true }); await load(); }
     catch (e) { setMsg({ ok: false, text: (e as { plain?: boolean }).plain ? (e as Error).message : 'Couldn’t send.' }); }
     finally { setTimeout(() => setBusy(false), Math.max(0, GAP_MS - (Date.now() - t0))); }
   };
@@ -172,7 +173,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
             </span>
           </form>
         </>) : state && <p className="muted small">You’re not friends with {who} now, so you can’t message them.</p>}
-        {msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? 'ok small' : 'warn small'}>{msg.text}</p>}
+        {msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? `ok small${msg.fades ? ' fades' : ''}` : 'warn small'}>{msg.text}</p>}
       </section>
     </>
   );

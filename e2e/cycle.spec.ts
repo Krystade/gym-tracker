@@ -199,7 +199,7 @@ test('a friend’s view shows no cycle data and never asks for it', async ({ bro
 
   await tab(b.page, 'Today');
   await tab(b.page, 'Friends');
-  await friends(b.page).getByRole('button', { name: `@${a.name}`, exact: true }).click();
+  await b.page.getByRole('region', { name: 'Crew' }).getByRole('button', { name: `@${a.name}`, exact: true }).click();
   await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing @${a.name}`);
   for (const t of ['Stats', 'History', 'Lifts'] as const) {
     await tab(b.page, t);

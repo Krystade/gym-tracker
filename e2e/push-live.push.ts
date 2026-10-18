@@ -277,7 +277,7 @@ test('pings and messages: a friend’s ping rings with their name and the badge,
   // B mutes C from C's thread; the Worker gets C in the prefs' muted list.
   await goto(b.page, 'Friends');
   const thread = (p: Page, n: string) => p.getByRole('dialog', { name: `Messages with @${n}` });
-  await b.friends.getByRole('region', { name: 'Your friends' }).getByRole('button', { name: `Message @${c.name}` }).click();
+  await b.page.getByRole('region', { name: 'Crew' }).getByRole('button', { name: `Message @${c.name}` }).click();
   await thread(b.page, c.name).getByRole('button', { name: `Mute @${c.name}` }).click();
   await expect(thread(b.page, c.name).getByRole('button', { name: `Unmute @${c.name}` })).toBeVisible();
   await thread(b.page, c.name).getByRole('button', { name: 'Close' }).click();
@@ -285,7 +285,7 @@ test('pings and messages: a friend’s ping rings with their name and the badge,
 
   // C messages B, then A pings B. Only A's rings: C is muted. A's badge is 2, so C's message did reach B's Worker first.
   const send = async (f: typeof a, what: () => Promise<void>, sent: string) => {
-    await f.friends.getByRole('region', { name: 'Your friends' }).getByRole('button', { name: `Message @${b.name}` }).click();
+    await f.page.getByRole('region', { name: 'Crew' }).getByRole('button', { name: `Message @${b.name}` }).click();
     await what();
     await expect(thread(f.page, b.name).getByRole('status')).toHaveText(sent);
   };

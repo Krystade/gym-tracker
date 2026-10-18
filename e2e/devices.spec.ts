@@ -338,7 +338,7 @@ test('Friends and a friend’s view fit each phone', async ({ browser }) => {
     expect(await b.page.evaluate(coveredAtAnyScroll, '.crew-invite, .crew-fab'), `under Invite at ${width}×${height}`).toEqual([]);
   }
   await b.page.setViewportSize({ width: 375, height: 812 });
-  await b.friends.getByRole('button', { name: `@${a.name}`, exact: true }).click();
+  await b.page.getByRole('region', { name: 'Crew' }).getByRole('button', { name: `@${a.name}`, exact: true }).click();
   await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toBeVisible();
   await check(b.page, 'friend-stats');
   await goto(b.page, 'History');

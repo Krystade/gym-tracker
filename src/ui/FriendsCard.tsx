@@ -2,11 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { cloudError, loadCloud, type Cloud } from '../cloud/firebase';
 import {
   acceptInvite, acceptRequest, claimUsername, clearSentGym, declineRequest, makeInvite, peekInvite, revokeInvites, sendRequest, unblock,
-  type Friend, type FriendNews,
 } from '../cloud/friends';
 import { hydrateFriendCache, patchFriendCache, refreshLists, useFriendCache } from '../state/friendCache';
-import { Latest, MessageButton } from './MessageButton';
-import type { ThreadWith } from './ThreadSheet';
 import type { GymsStore } from '../state/useGyms';
 import { copyGym } from '../domain/share';
 import { cleanUsername, inviteUrl, parseInvite, USERNAME, type Invite } from '../domain/invite';
@@ -15,20 +12,21 @@ type Msg = { ok: boolean; text: string } | null;
 const base = () => `${location.origin}${location.pathname}`;
 
 /**
- * Find friends by username or an invite link; tap one to see their log. Only while signed in. The lists show from what the
- * phone kept (state/friendCache) and are read again on opening, after anything done here, and when news comes in.
+ * Find friends by username or an invite link, answer requests and sent gyms, unblock. Only while signed in. Your friends
+ * themselves are Crew's rows above (a tap on a name opens their log, the bubble their thread, where Remove and Block are).
+ * The lists show from what the phone kept (state/friendCache) and are read again on opening, after anything done here, and
+ * when news comes in.
  */
-export function FriendsCard({ uid, gyms, pending, news, newsRev, onPendingDone, onView, onChanged, onMessage }: {
-  uid: string; gyms: GymsStore; pending: Invite | null; news?: FriendNews | null; newsRev?: number; onPendingDone: () => void; onView: (f: Friend) => void;
+export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChanged }: {
+  uid: string; gyms: GymsStore; pending: Invite | null; newsRev?: number; onPendingDone: () => void;
   /** After anything done here: the Friends tab's dot and the badge count again. */ onChanged: () => void;
-  /** A friend's thread: pings, messages, mute, remove and block. */ onMessage: (f: ThreadWith) => void;
 }) {
   const cache = useFriendCache(uid);
   const lists = cache?.lists;
   // Nothing kept and the first read failed: the username form, with the error, as before.
   const [failed, setFailed] = useState(false);
   const me = lists ? lists.me : failed ? null : undefined;
-  const { friends = [], requests = [], sentGyms = [], blocked = [], invite = null } = lists ?? {};
+  const { requests = [], sentGyms = [], blocked = [], invite = null } = lists ?? {};
   const setMe = (n: string) => void patchFriendCache(uid, (c) => (c.lists ? { ...c, lists: { ...c.lists, me: n } } : c));
   const [name, setName] = useState('');
   const [find, setFind] = useState('');
@@ -154,22 +152,6 @@ export function FriendsCard({ uid, gyms, pending, news, newsRev, onPendingDone, 
           </ul>
         </section>
       )}
-      <section className="sub" aria-label="Your friends">
-        <h3>Your friends</h3>
-        {!friends.length ? <p className="muted small">None yet. Add someone below.</p> : (
-          <ul className="friend-list">
-            {friends.map((f) => (
-              <li key={f.uid}>
-                <button className="link" onClick={() => onView(f)}>@{f.name}{f.muted && <span className="muted small" aria-label=" (muted)"> 🔕</span>}</button>
-                <span className="friend-actions">
-                  <Latest news={news} uid={f.uid} />
-                  <MessageButton name={f.name} unread={news?.unread[f.uid] ?? 0} onClick={() => onMessage({ uid: f.uid, name: f.name })} />
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
       <section className="sub" id="add-friend" aria-label="Add a friend">
         <h3>Add a friend</h3>
         <form className="sync-form" onSubmit={(e) => {

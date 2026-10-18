@@ -149,6 +149,7 @@ export function Crew({ uid, myName, friends, entries, today, status, news, pulle
                   <div className="crew-who">
                     <div className="crew-name-line">
                       <button className="link crew-name" onClick={open}>{r.label}</button>
+                      {r.friend?.muted && <span className="crew-muted" role="img" aria-label="Muted"><Icon name="bell-off" size={15} /></span>}
                       {r.me ? <StatusEdit status={status} /> : r.status && <span className="crew-bubble">{r.status}</span>}
                     </div>
                     {r.friend && onMessage && <Latest news={news} uid={r.friend.uid} />}
@@ -201,13 +202,13 @@ function CrewKey() {
   );
 }
 
-/** Your own phrase: tap it to change it. Empty shows only a quiet "+ Status"; nothing ever asks for one. */
+/** Your own phrase: tap it to change it. Empty shows only a quiet pencil and "Status"; nothing ever asks for one. */
 function StatusEdit({ status }: { status: StatusStore }) {
   const [text, setText] = useState<string | null>(null);
   if (text == null) {
     return status.status
       ? <button className="crew-tap" aria-label={`Your status: ${status.status}. Change it`} onClick={() => setText(status.status)}><span className="crew-bubble">{status.status}</span><Icon name="pencil" size={16} /></button>
-      : <button className="crew-tap" onClick={() => setText('')}><Icon name="pencil" size={16} /><span className="crew-bubble add">+ Status</span></button>;
+      : <button className="crew-tap" onClick={() => setText('')}><Icon name="pencil" size={16} /><span className="crew-bubble add">Status</span></button>;
   }
   const n = statusLength(text), over = n > STATUS_MAX;
   return (
