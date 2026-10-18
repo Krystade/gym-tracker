@@ -53,12 +53,17 @@ describe('one PR rule: History, Today, the banner and the recap agree', () => {
     expect(daySummary(entries, THIS).lifts[0].pr).toBe(false);
   });
 
-  it('a warm-up breaks nothing anywhere, however heavy', () => {
+  it('a warm-up that beats a record is a PR everywhere, but never a set or a session toward the goals', () => {
     const set = s(THIS, 'Bench Press', 225, 5, { flags: ['warmup'] });
     const entries = [s(LAST, 'Bench Press', 135, 8), set, s(THIS, 'Bench Press', 100, 5)];
-    expect(prIds(entries).has(set.id)).toBe(false);
-    expect(prToast(entries, set)).toBeNull();
-    expect(activityOf(entries, null, [], TODAY).week.prs).toBe(0);
-    expect(daySummary(entries, THIS).lifts[0].pr).toBe(false);
+    expect(prIds(entries).has(set.id)).toBe(true);
+    expect(prToast(entries, set)).toMatch(/^PR! /);
+    const week = activityOf(entries, null, [], TODAY).week;
+    expect(week.prs).toBe(1);
+    expect(daySummary(entries, THIS).lifts[0].pr).toBe(true);
+    expect([week.sets, week.sessions]).toEqual([1, 1]); // the warm-up isn't a set toward the week
+    // A day of warm-ups alone is no session, whatever PRs it holds.
+    const only = [s(LAST, 'Bench Press', 135, 8), s(THIS, 'Bench Press', 225, 5, { flags: ['warmup'] })];
+    expect(activityOf(only, null, [], TODAY).week).toMatchObject({ sessions: 0, sets: 0, prs: 1 });
   });
 });

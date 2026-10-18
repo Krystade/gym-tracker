@@ -6,9 +6,10 @@ import { byOrderDone, e1rm, sameExercise } from './stats';
 import type { SetEntry } from './types';
 
 // Records and PRs: one pass over a lift's log, oldest set first. A record is the best value of its kind so far; a PR is
-// a set that beat a record that already stood (a lift's first set beats nothing). Nothing is stored, so an edit, a
+// a set that beat a record that stood before its day (a lift's first day beats nothing). Nothing is stored, so an edit, a
 // delete, a rename or a sync changes the records with the log. The History badge, the banner on saving a set, the day
-// summary and the weekly recap all read prKinds; the Records section reads the same pass's holders.
+// summary and the weekly recap all read prKinds; the Records section reads the same pass's holders. A warm-up was lifted, so it
+// counts for every record like any set; it never counts toward a set or session goal (domain/analytics, domain/orbit).
 
 /** "At least N reps": a 10-rep set stands as the 8-rep max too. */
 export const REP_MAXES = [1, 3, 5, 8, 10, 12] as const;
@@ -29,6 +30,8 @@ const chrono = (a: SetEntry, b: SetEntry) => (a.date < b.date ? -1 : a.date > b.
 const beats = (kind: RecordKind, v: number, than: number) => (kind === 'pace' ? v < than : v > than);
 /** Reps counted: a partial set (no rep count, or flagged partial) and a set of 0 reps aren't. */
 const full = (s: SetEntry) => s.reps != null && s.reps >= 1 && !s.flags.includes('partial');
+/** Plain Epley, a warm-up's too: stats' e1rm leaves warm-ups out, since progression and calibration read working sets only. */
+const est = (s: SetEntry) => e1rm(s.flags.includes('warmup') ? { ...s, flags: s.flags.filter((f) => f !== 'warmup') } : s);
 
 /** `tally`: for a set that broke a session record, the day's total at that set. */
 interface Scan { broke: Map<string, RecordKind[]>; held: Map<RecordKind, Held>; tally: Map<string, number> }
@@ -61,8 +64,10 @@ function scan(lift: SetEntry[]): Scan {
   // The sets no earlier set was both as heavy as and did as many reps as: what "more reps at a weight" has to beat.
   let front: { w: number; r: number }[] = [];
 
-  for (const s of [...lift].sort(chrono)) {
-    if (s.flags.includes('warmup')) continue;
+  const sorted = [...lift].sort(chrono);
+  // A lift's first day beats nothing: with warm-ups counting, its first working set would always beat them.
+  const first = sorted[0].date;
+  for (const s of sorted) {
     const out: RecordKind[] = [];
     if (s.cardio) {
       const { seconds, miles, floors } = s.cardio;
@@ -80,7 +85,7 @@ function scan(lift: SetEntry[]): Scan {
       if (s.reps == null || s.flags.includes('partial')) offer(out, 'heaviest', s.weight, s);
     } else {
       const w = s.weight, r = s.reps!;
-      const v = e1rm(s);
+      const v = est(s);
       if (v != null) offer(out, 'e1rm', v, s);
       offer(out, 'heaviest', w, s);
       for (const n of REP_MAXES) if (r >= n) offer(out, `rm${n}`, w, s);
@@ -89,7 +94,7 @@ function scan(lift: SetEntry[]): Scan {
       offer(out, 'setVolume', w * r, s);
       add(out, 'sessionVolume', w * r, s);
     }
-    if (out.length) broke.set(s.id, out);
+    if (out.length && s.date !== first) broke.set(s.id, out);
   }
   close('sessionVolume'); close('sessionReps');
   return { broke, held, tally };
@@ -167,7 +172,7 @@ export function prToast(entries: SetEntry[], set: SetEntry): string | null {
   if (kind === 'reps') return `PR! Most reps at ${lb(set.weight)}: ${set.reps}`;
   // A session record's value is the day's total so far; every other one is this set's own.
   const v = kind === 'sessionVolume' || kind === 'sessionReps' ? tally.get(set.id)!
-    : kind === 'e1rm' ? e1rm(set)!
+    : kind === 'e1rm' ? est(set)!
     : kind === 'setVolume' ? set.weight * set.reps!
     : kind === 'time' ? set.cardio!.seconds
     : kind === 'distance' ? set.cardio!.miles!

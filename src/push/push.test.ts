@@ -110,7 +110,7 @@ describe('routes', () => {
     expect(parseOpen('#open=rest&x')).toBeNull();
     expect(isRoute('recap')).toBe(true);
     expect(isRoute('javascript:alert(1)')).toBe(false);
-    expect([tabOf('rest'), tabOf('today'), tabOf('recap'), tabOf('friends'), tabOf('friend.u1')]).toEqual(['today', 'today', 'stats', 'friends', 'friends']);
+    expect([tabOf('rest'), tabOf('today'), tabOf('recap'), tabOf('friends'), tabOf('friend.u1')]).toEqual(['today', 'today', 'today', 'friends', 'friends']);
   });
 });
 

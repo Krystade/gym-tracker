@@ -21,8 +21,8 @@ async function notched(page: Page) {
 }
 
 const HEADER = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source';
-// Synthetic. Best e1RM 170 × 3 = 187; heaviest the partial 185; the warm-up would be the only 10- and 12-rep set;
-// Sep 22 ties Sep 8's 5-rep max, which Sep 8 keeps; July's two 135 × 8 are the best set and session volume.
+// Synthetic. Best e1RM 170 × 3 = 187; heaviest the partial 185; the warm-up counts, as the only 10- and 12-rep set and
+// the best set volume; Sep 22 ties Sep 8's 5-rep max, which Sep 8 keeps; July's three sets are the best session volume.
 const ROWS = [
   '2026-07-07,Bench Press,,1,95,12,,warmup,,sample',
   '2026-07-07,Bench Press,,2,135,8,,,,sample',
@@ -72,11 +72,10 @@ test('Records: worked out from the log, a tap opens the day, and a new best show
   const row = (name: RegExp) => rec.getByRole('button', { name });
   await expect(row(/^Best e1RM/)).toHaveText(/^Best e1RM\s*187 lb\s*170 × 3 · .*Sep 15/);
   await expect(row(/^Heaviest/)).toHaveText(/^Heaviest\s*185 lb\s*185 × \? · .*Sep 15/); // the partial set counts
-  await expect(row(/^Best set volume/)).toHaveText(/1,080 lb\s*135 × 8 · .*Jul 7/);
-  await expect(row(/^Best session volume/)).toHaveText(/2,160 lb\s*2 sets · .*Jul 7/); // the warm-up isn't counted
+  await expect(row(/^Best set volume/)).toHaveText(/1,140 lb\s*95 × 12 · .*Jul 7/); // the warm-up
+  await expect(row(/^Best session volume/)).toHaveText(/3,300 lb\s*3 sets · .*Jul 7/); // the warm-up counts
   const maxes = rec.getByRole('list', { name: 'Rep maxes' }).getByRole('listitem');
-  await expect(maxes).toHaveText([/^1 rep\s*170 lb\s*× 3\s*Sep 15$/, /^3 reps\s*170 lb/, /^5 reps\s*155 lb\s*× 5\s*Sep 8$/, /^8 reps\s*135 lb\s*× 8\s*Jul 7$/, /^10 reps\s*—$/, /^12 reps\s*—$/]);
-  await expect(maxes.nth(4).getByRole('button')).toHaveCount(0); // nothing to open
+  await expect(maxes).toHaveText([/^1 rep\s*170 lb\s*× 3\s*Sep 15$/, /^3 reps\s*170 lb/, /^5 reps\s*155 lb\s*× 5\s*Sep 8$/, /^8 reps\s*135 lb\s*× 8\s*Jul 7$/, /^10 reps\s*95 lb\s*× 12\s*Jul 7$/, /^12 reps\s*95 lb\s*× 12\s*Jul 7$/]);
   await rec.scrollIntoViewIfNeeded();
   await fits(page);
   await page.screenshot({ path: `${SHOTS}/1-records.png` });

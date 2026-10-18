@@ -12,45 +12,59 @@ const sorted = (...k: RecordKind[]) => [...k].sort();
 const held = (entries: SetEntry[], kind: RecordKind, name = 'Bench Press') => records(entries, name).get(kind);
 
 describe('records: what each lift holds', () => {
-  it('best e1RM is plain Epley over working sets, with the set and its day', () => {
+  it('best e1RM is plain Epley over every set with reps, warm-ups included, with the set and its day', () => {
     const a = s('2026-09-01', 135, 8), b = s('2026-09-08', 165, 3);
-    const entries = [a, b, warm('2026-09-08', 200, 5), s('2026-09-08', 100, 25), s('2026-09-15', 200, null)];
+    const entries = [a, b, s('2026-09-08', 100, 25), s('2026-09-15', 200, null)];
     expect(held(entries, 'e1rm')).toMatchObject({ date: '2026-09-08', set: b });
     expect(held(entries, 'e1rm')?.value).toBeCloseTo(181.5, 9); // 165 × (1 + 3/30)
-    // Past 20 reps there's no estimate; a warm-up and a partial set have none either.
+    // Past 20 reps there's no estimate; a partial set has none either.
     expect(held([s('2026-09-01', 100, 25)], 'e1rm')).toBeUndefined();
+    // A warm-up was lifted: it counts like any set.
+    const w = warm('2026-09-08', 170, 3);
+    expect(held([...entries, w], 'e1rm')).toMatchObject({ set: w });
+    expect(held([...entries, w], 'e1rm')?.value).toBeCloseTo(187, 9);
   });
 
-  it('heaviest weight counts a partial set, never a warm-up, a hold or a set of 0 reps', () => {
+  it('heaviest weight counts a partial set and a warm-up, never a hold or a set of 0 reps', () => {
     const part = s('2026-09-15', 185, null);
-    const entries = [s('2026-09-01', 135, 8), part, warm('2026-09-15', 225, 1), s('2026-09-16', 205, 0)];
+    const entries = [s('2026-09-01', 135, 8), part, s('2026-09-16', 205, 0)];
     expect(held(entries, 'heaviest')).toMatchObject({ value: 185, date: '2026-09-15', set: part });
+    const w = warm('2026-09-15', 225, 1);
+    expect(held([...entries, w], 'heaviest')).toMatchObject({ value: 225, set: w });
     expect(held([s('2026-09-01', 50, 30, { exercise: 'Plate Pinch Hold', flags: ['hold'] })], 'heaviest', 'Plate Pinch Hold')).toBeUndefined();
   });
 
-  it('a rep max is the most weight for at least that many reps; partial sets and warm-ups make none', () => {
-    const ten = s('2026-09-01', 135, 10), five = s('2026-09-08', 155, 5), three = s('2026-09-15', 165, 3);
-    const entries = [ten, five, three, s('2026-09-15', 185, null), warm('2026-09-15', 45, 15)];
+  it('a rep max is the most weight for at least that many reps; a partial set makes none, a warm-up does', () => {
+    const ten = s('2026-09-01', 135, 10), five = s('2026-09-08', 155, 5), three = s('2026-09-15', 165, 3), w = warm('2026-09-15', 45, 15);
+    const entries = [ten, five, three, s('2026-09-15', 185, null), w];
     const r = records(entries, 'Bench Press');
-    expect([1, 3, 5, 8, 10, 12].map((n) => r.get(`rm${n}` as RecordKind)?.value ?? null)).toEqual([165, 165, 155, 135, 135, null]);
+    expect([1, 3, 5, 8, 10, 12].map((n) => r.get(`rm${n}` as RecordKind)?.value ?? null)).toEqual([165, 165, 155, 135, 135, 45]);
     expect(r.get('rm8')?.set).toBe(ten); // the 10-rep set stands as the 8-rep max too
+    expect(r.get('rm12')?.set).toBe(w); // the warm-up is the only set of 12 or more
   });
 
-  it('set volume is the best weight × reps; session volume the best day’s working sets added up', () => {
+  it('set volume is the best weight × reps; session volume the best day’s sets added up, warm-ups included', () => {
     const entries = [s('2026-09-01', 100, 10), s('2026-09-01', 100, 10), warm('2026-09-01', 45, 10), s('2026-09-01', 150, null),
       s('2026-09-08', 150, 8)];
     expect(held(entries, 'setVolume')).toMatchObject({ value: 1200, date: '2026-09-08' });
-    expect(held(entries, 'sessionVolume')).toEqual({ kind: 'sessionVolume', value: 2000, date: '2026-09-01', set: null, sets: 2 });
+    expect(held(entries, 'sessionVolume')).toEqual({ kind: 'sessionVolume', value: 2450, date: '2026-09-01', set: null, sets: 3 });
+    const big = warm('2026-09-08', 135, 10); // a warm-up can hold the set volume too
+    expect(held([...entries, big], 'setVolume')).toMatchObject({ value: 1350, set: big });
   });
 
   it('a bodyweight lift holds most reps in a set and in a session, and no weight records', () => {
     const bw = (date: string, reps: number, over: Partial<SetEntry> = {}) => s(date, 0, reps, { exercise: 'Pull-up', flags: ['bodyweight'], ...over });
     const best = bw('2026-09-08', 12);
-    const entries = [bw('2026-09-01', 10), bw('2026-09-01', 9), bw('2026-09-01', 8), best, bw('2026-09-08', 6), bw('2026-09-08', 15, { flags: ['bodyweight', 'warmup'] })];
+    const entries = [bw('2026-09-01', 10), bw('2026-09-01', 9), bw('2026-09-01', 8), best, bw('2026-09-08', 6)];
     const r = records(entries, 'Pull-up');
     expect(r.get('mostReps')).toMatchObject({ value: 12, date: '2026-09-08', set: best });
     expect(r.get('sessionReps')).toMatchObject({ value: 27, date: '2026-09-01', sets: 3 });
     expect([...r.keys()].sort()).toEqual(['mostReps', 'sessionReps']);
+    // A warm-up's reps count: 15 in a set, and 12 + 6 + 15 = 33 on the 8th.
+    const w = bw('2026-09-08', 15, { flags: ['bodyweight', 'warmup'] });
+    const r2 = records([...entries, w], 'Pull-up');
+    expect(r2.get('mostReps')).toMatchObject({ value: 15, set: w });
+    expect(r2.get('sessionReps')).toMatchObject({ value: 33, date: '2026-09-08', sets: 3 });
   });
 
   it('a hold holds its longest hold only, weighted or not', () => {
@@ -114,6 +128,17 @@ describe('prKinds: the records a set broke when it was done', () => {
     expect(kinds([a, b], b)).toEqual(sorted('e1rm', 'heaviest', 'rm1', 'rm3', 'rm5', 'rm8', 'setVolume', 'sessionVolume'));
   });
 
+  it("a lift's first day is no PR: its working sets beat only that day's warm-ups", () => {
+    const w1 = warm('2026-09-01', 45, 10), w2 = warm('2026-09-01', 95, 5), a = s('2026-09-01', 135, 8), a2 = s('2026-09-01', 140, 8);
+    const day1 = [w1, w2, a, a2];
+    for (const x of day1) expect(kinds(day1, x)).toEqual([]);
+    // The records still stand from that day on: the next day has to beat them.
+    expect(held(day1, 'heaviest')?.set).toBe(a2);
+    const b = s('2026-09-08', 140, 8), c = s('2026-09-08', 145, 8);
+    expect(kinds([...day1, b], b)).toEqual([]);
+    expect(kinds([...day1, c], c)).toContain('heaviest');
+  });
+
   it('more reps at a weight: more than every earlier set at that weight or heavier', () => {
     const a = s('2026-09-01', 135, 8), b = s('2026-09-01', 145, 6);
     const more = s('2026-09-08', 120, 9); // 1080 lb, as a × 8 was; e1RM 156 under 171
@@ -131,10 +156,11 @@ describe('prKinds: the records a set broke when it was done', () => {
     expect(kinds([a, part, next], next)).toEqual(sorted('e1rm', 'rm1', 'rm3', 'rm5'));
   });
 
-  it('a warm-up is never a PR, and never the bar the next set has to beat', () => {
+  it('a warm-up is a PR like any set, and the bar the next set has to beat', () => {
     const a = s('2026-09-01', 135, 8), w = warm('2026-09-08', 200, 10), b = s('2026-09-08', 140, 8);
-    expect(kinds([a, w, b], w)).toEqual([]);
-    expect(kinds([a, w, b], b)).toEqual(sorted('e1rm', 'heaviest', 'rm1', 'rm3', 'rm5', 'rm8', 'setVolume', 'sessionVolume'));
+    expect(kinds([a, w, b], w)).toEqual(sorted('e1rm', 'heaviest', 'rm1', 'rm3', 'rm5', 'rm8', 'setVolume', 'sessionVolume'));
+    expect(kinds([a, w, b], b)).toEqual([]);
+    expect(prToast([a, w], w)).toBe('PR! Best e1RM: 267 lb'); // 200 × (1 + 10/30)
   });
 
   it('a longer hold is a hold PR and never a weight or rep PR', () => {

@@ -36,7 +36,8 @@ test('a warm-up set is tagged “warm-up”, not the raw flag', async ({ page })
   await bench.getByRole('button', { name: /^Details/ }).click();
   await bench.getByRole('group', { name: 'Flags' }).getByRole('button', { name: 'Warm-up' }).click();
   await bench.getByRole('button', { name: 'Add set' }).click();
-  await expect(bench.locator('.sets .tag')).toHaveText('warm-up');
+  // 135 × 9 beats Oct 1's 135 × 8, so it carries a PR mark too: warm-ups count for records.
+  await expect(bench.locator('.sets .tag')).toHaveText(['PR', 'warm-up']);
 });
 
 test('a set the form won’t take says why', async ({ page }) => {
