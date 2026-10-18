@@ -6,7 +6,13 @@ import { describe, expect, it } from 'vitest';
 // this covers the ones it can't (the CSV fallback, a field behind a failed share) by reading the rules themselves.
 const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const vars = Object.fromEntries([...css.matchAll(/(--fs-[a-z]+):\s*(\d+)px/g)].map((m) => [m[1], Number(m[2])]));
-const px = (v: string) => { const m = /^var\((--[\w-]+)\)$/.exec(v.trim()); return m ? vars[m[1]] : /^(\d+(?:\.\d+)?)px$/.test(v.trim()) ? parseFloat(v) : undefined; };
+const px = (v: string): number | undefined => {
+  // A clamp() is never smaller than its floor (the stepper's numerals scale with the field, from 18px).
+  const c = /^clamp\(\s*([^,]+),/.exec(v.trim());
+  if (c) return px(c[1]);
+  const m = /^var\((--[\w-]+)\)$/.exec(v.trim());
+  return m ? vars[m[1]] : /^(\d+(?:\.\d+)?)px$/.test(v.trim()) ? parseFloat(v) : undefined;
+};
 
 /** Each rule whose selector lands on a field, with the font size it sets. */
 function fieldRules() {
