@@ -1,3 +1,4 @@
+import { addDays } from './analytics';
 import { normalizeName } from './ids';
 import { isWorking, settingsKey } from './progression';
 import type { SetEntry } from './types';
@@ -10,12 +11,17 @@ import type { SetEntry } from './types';
  */
 export interface Superset { lifts: string[]; keys: string[]; live: boolean; after: Map<string, string | null> }
 
+/** A group from last session, in its round order, to start today with. */
+export interface Carried { lifts: string[]; keys: string[] }
+
 /** A switch is under this share of the lift's usual time from one set to the next. */
 const SHARE = 0.6;
 /** A round's rest over this is a break, not a rest (as for a lift's own sets in timing.ts). */
 const MAX_REST = 10 * 60;
 /** A switch takes in the next lift's set, so sets seconds apart were entered back to back, not done that way. */
 const MIN_GAP = 15;
+/** How far back last session's groups carry: a lift set not done together in this long starts over. */
+const CARRY_DAYS = 56;
 
 const secs = (e: SetEntry) => Date.parse(e.loggedAt!) / 1000;
 const key = (e: SetEntry) => settingsKey(e.exercise);
@@ -75,13 +81,29 @@ function rounds(day: SetEntry[], c: Cycle, planned: (exercise: string) => number
 }
 
 /**
+ * The day's own sets go against a group not seen today: where a switch was due, the next set was the same lift again or one
+ * outside the group (done separately), or came only after a full rest.
+ */
+function broken(day: SetEntry[], c: Cycle, after: Map<string, string | null>, usual: (exercise: string) => number): boolean {
+  for (let i = 0; i + 1 < day.length; i++) {
+    if (after.get(day[i].id) == null) continue;
+    const next = key(day[i + 1]);
+    if (next === key(day[i]) || !c.keys.includes(next)) return true;
+    if (secs(day[i + 1]) - secs(day[i]) > SHARE * usual(day[i].exercise)) return true;
+  }
+  return false;
+}
+
+/**
  * The day's supersets: working sets with a time, in the order done, where the lifts go round A→B(→C…)→A with the switches
  * well inside the usual rest (`usual(exercise)`: seconds from one set of it to the next). Warm-ups don't count; moving on to
  * the next lift never comes back round, so it isn't one. Once found, a group stays for the day. `dismissed`: groups (by
  * lift key) marked "Not a superset" that day; a group inside one stays out too. `planned(exercise)`: its sets planned today.
+ * `carried`: last session's groups (`lastSupersets`), newest first, in force from the day's first set until the day's own
+ * sets go against one or find a group with any of its lifts; one at a time per lift.
  */
 export function supersets(entries: SetEntry[], date: string, usual: (exercise: string) => number,
-  { dismissed = [], planned = () => null }: { dismissed?: string[][]; planned?: (exercise: string) => number | null | undefined } = {}): Superset[] {
+  { dismissed = [], planned = () => null, carried = [] }: { dismissed?: string[][]; planned?: (exercise: string) => number | null | undefined; carried?: Carried[] } = {}): Superset[] {
   const day = entries.filter((e) => e.date === date && e.loggedAt && isWorking(e)).sort((a, b) => secs(a) - secs(b));
   const found: Cycle[] = [];
   for (let i = 0; i < day.length; i++) {
@@ -95,7 +117,38 @@ export function supersets(entries: SetEntry[], date: string, usual: (exercise: s
     for (const f of live) if (f.keys.some((k) => c.keys.includes(k))) f.end = c.start;
     found.push(c);
   }
-  return found.map((c) => ({ lifts: c.names, keys: c.keys, live: c.end == null, after: rounds(day, c, planned) }));
+  const own = found.map((c) => ({ lifts: c.names, keys: c.keys, live: c.end == null, after: rounds(day, c, planned) }));
+  const held: Superset[] = [];
+  for (const g of carried) {
+    const c: Cycle = { keys: g.keys, names: g.lifts, start: 0 };
+    const meets = (keys: string[]) => keys.some((k) => c.keys.includes(k));
+    if (dismissed.some((d) => c.keys.every((k) => d.includes(k))) || found.some((f) => meets(f.keys)) || held.some((h) => meets(h.keys))) continue;
+    const after = rounds(day, c, planned);
+    if (!broken(day, c, after, usual)) held.push({ lifts: c.names, keys: c.keys, live: true, after });
+  }
+  return [...own, ...held];
+}
+
+/**
+ * Last session's supersets, to start today's with: going back from `date` (8 weeks at most), each day's groups still in
+ * force at its end, where that day was the last with a working set of every lift in the group. A session since with them
+ * all and no such group (done separately, or without times) carries nothing. Only groups whose lifts are all in `lifts`
+ * (today's session: its cards and planned lifts). `dismissedOn(date)`: that day's "Not a superset" groups. Newest first.
+ */
+export function lastSupersets(entries: SetEntry[], date: string, usual: (exercise: string) => number,
+  { lifts, dismissedOn = () => [] }: { lifts: string[]; dismissedOn?: (date: string) => string[][] }): Carried[] {
+  const from = addDays(date, -CARRY_DAYS), today = new Set(lifts.map(settingsKey));
+  const days = new Map<string, SetEntry[]>();
+  for (const e of entries) if (e.date >= from && e.date < date) { const d = days.get(e.date); if (d) d.push(e); else days.set(e.date, [e]); }
+  const out: Carried[] = [], since: Set<string>[] = [];
+  for (const d of [...days.keys()].sort().reverse()) {
+    const day = days.get(d)!;
+    for (const g of supersets(day, d, usual, { dismissed: dismissedOn(d) })) {
+      if (g.live && g.keys.every((k) => today.has(k)) && !since.some((s) => g.keys.every((k) => s.has(k)))) out.push({ lifts: g.lifts, keys: g.keys });
+    }
+    since.push(new Set(day.filter(isWorking).map(key)));
+  }
+  return out;
 }
 
 /** What follows the set `id`: the lift to switch to, null for the full rest after a round, undefined when it's in no superset. */

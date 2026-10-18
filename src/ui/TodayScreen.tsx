@@ -32,7 +32,7 @@ import { SuggestedToday } from './SuggestedToday';
 import { Icon } from './icons';
 import type { SetEntry } from '../domain/types';
 import { paces, usualGap } from '../domain/timing';
-import { nextAfter, supersets, type Superset } from '../domain/superset';
+import { lastSupersets, nextAfter, supersets, type Superset } from '../domain/superset';
 import { markNotSuperset, notSupersets } from '../state/notSuperset';
 
 export function TodayScreen({ who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews }: {
@@ -90,7 +90,11 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
   // Supersets, noticed from the day's log: lifts gone round with short switches. "Not a superset" holds for the day.
   const pace = useMemo(() => paces(store.entries), [store.entries]);
   const [notSuper, setNotSuper] = useState(() => notSupersets(owner, date));
-  const groupsIn = (entries: SetEntry[]) => supersets(entries, date, (ex) => usualGap(pace, ex), { dismissed: notSuper, planned: (ex) => plannedSets(programs.program, plan, ex) });
+  // Last session's groups start today's from the first set, for a session with all of a group's lifts (cards or planned).
+  const session = [...cards, ...(programs.program && plan ? plannedNames(programs.program, plan).filter((n) => plannedSets(programs.program, plan, n) != null) : [])].join('\n');
+  const last = useMemo(() => lastSupersets(store.entries, date, (ex) => usualGap(pace, ex), { lifts: session.split('\n'), dismissedOn: (d) => notSupersets(owner, d) }),
+    [store.entries, date, pace, owner, session]);
+  const groupsIn = (entries: SetEntry[]) => supersets(entries, date, (ex) => usualGap(pace, ex), { dismissed: notSuper, planned: (ex) => plannedSets(programs.program, plan, ex), carried: last });
   const groups = groupsIn(store.entries);
   const groupOf = (n: string) => groups.find((g) => g.live && g.lifts.some((x) => sameExercise(x, n)));
   const dismiss = (g: Superset) => { markNotSuperset(owner, date, g.keys); setNotSuper(notSupersets(owner, date)); revertSwitch(); };

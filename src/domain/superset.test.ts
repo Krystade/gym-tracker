@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextAfter, supersets } from './superset';
+import { lastSupersets, nextAfter, supersets } from './superset';
 import { paces, restAfter } from './timing';
 import type { SetEntry } from './types';
 
@@ -10,7 +10,9 @@ let n = 0;
  * Sets one after another on day D: a lift, then the seconds to the next, and so on. A lift ending in `*` is a warm-up;
  * one ending in `?` has no time (entered without one).
  */
-function run(...steps: (string | number)[]): SetEntry[] {
+const run = (...steps: (string | number)[]): SetEntry[] => runOn(D, ...steps);
+/** The same on another day. */
+function runOn(D: string, ...steps: (string | number)[]): SetEntry[] {
   let t = 0;
   const out: SetEntry[] = [];
   for (const s of steps) {
@@ -161,5 +163,123 @@ describe('supersets', () => {
     // A learned switch of 1:15 (less the set) and the lift's own learned rest after the round.
     const p = { perSet: new Map([['cable pushdown', 140]]), transition: 120, superSwitch: 75 };
     expect(timers(run(A, 60, B, 150, A, 60, B), p)).toEqual([35, 100, 35, 100]);
+  });
+});
+
+describe('supersets carried over from last session', () => {
+  const LAST = '2026-10-09', BEFORE = '2026-10-02';
+  /** Last week's pair, alternated: curls and pushdowns. */
+  const pair = () => runOn(LAST, A, 60, B, 150, A, 60, B);
+  const lastFor = (entries: SetEntry[], lifts: string[], dismissedOn?: (date: string) => string[][]) =>
+    lastSupersets(entries, D, usual, { lifts, dismissedOn }).map((g) => g.lifts);
+  /** Today's groups, with what last session carries for today's lifts. */
+  const today = (past: SetEntry[], day: SetEntry[], lifts: string[], o: { dismissed?: string[][]; planned?: (ex: string) => number | null } = {}) =>
+    supersets([...past, ...day], D, usual, { ...o, carried: lastSupersets([...past, ...day], D, usual, { lifts }) });
+  const after = (past: SetEntry[], day: SetEntry[], lifts: string[]) => {
+    const groups = today(past, day, lifts);
+    return day.map((s) => nextAfter(groups, s.id));
+  };
+
+  it('finds last session’s groups for a session with all of their lifts', () => {
+    expect(lastFor(pair(), [A, B])).toEqual([[A, B]]);
+    expect(lastFor(pair(), [B, C, A])).toEqual([[A, B]]);
+    expect(lastFor(pair(), [A])).toEqual([]); // the pushdown isn't in today's session
+    expect(lastFor(pair(), [])).toEqual([]);
+    // Today's names as typed: case and spacing don't matter.
+    expect(lastFor(pair(), ['cable curl', ' Cable  Pushdown'])).toEqual([[A, B]]);
+    // A tri-set comes in its round order.
+    expect(lastFor(runOn(LAST, A, 60, B, 60, C, 150, A, 60, B, 60, C), [C, B, A])).toEqual([[A, B, C]]);
+  });
+
+  it('only from the last session of those lifts: one since that did them separately carries nothing', () => {
+    const apart = runOn('2026-10-12', A, 150, A, 150, A, 180, B, 150, B);
+    expect(lastFor([...pair(), ...apart], [A, B])).toEqual([]);
+    // Untimed, it can't say: still the last session of them.
+    expect(lastFor([...pair(), ...runOn('2026-10-12', `${A}?`, 60, `${B}?`)], [A, B])).toEqual([]);
+    // Only warm-ups of one of them: not a session of both.
+    expect(lastFor([...pair(), ...runOn('2026-10-12', A, 150, A, 150, `${B}*`)], [A, B])).toEqual([[A, B]]);
+    // A session since with only one of them leaves the pair's last session as it was.
+    expect(lastFor([...pair(), ...runOn('2026-10-12', A, 150, A, 150, A)], [A, B])).toEqual([[A, B]]);
+    // An older pair, then a session of them done separately: nothing to carry.
+    expect(lastFor([...runOn(BEFORE, A, 60, B, 150, A, 60, B), ...runOn(LAST, A, 150, A, 180, B, 150, B)], [A, B])).toEqual([]);
+  });
+
+  it('carries the group a session ended with, not one a lift swapped in took over from', () => {
+    const swapped = runOn(LAST, A, 60, B, 150, A, 60, B, 150, A, 60, X, 150, A, 60, X);
+    expect(lastFor(swapped, [A, B, X])).toEqual([[A, X]]);
+  });
+
+  it('leaves out a group marked “not a superset” that day', () => {
+    expect(lastFor(pair(), [A, B], (d) => (d === LAST ? [['cable curl', 'cable pushdown']] : []))).toEqual([]);
+    expect(lastFor(pair(), [A, B], (d) => (d === BEFORE ? [['cable curl', 'cable pushdown']] : []))).toEqual([[A, B]]);
+  });
+
+  it('looks back 8 weeks at most, and never at the day itself or after it', () => {
+    expect(lastFor(runOn('2026-08-21', A, 60, B, 150, A, 60, B), [A, B])).toEqual([[A, B]]);
+    expect(lastFor(runOn('2026-08-20', A, 60, B, 150, A, 60, B), [A, B])).toEqual([]);
+    expect(lastFor(run(A, 60, B, 150, A, 60, B), [A, B])).toEqual([]);
+    expect(lastFor(runOn('2026-10-17', A, 60, B, 150, A, 60, B), [A, B])).toEqual([]);
+  });
+
+  it('newest first, each from its own last session', () => {
+    const older = runOn(BEFORE, A, 60, B, 150, A, 60, B), newer = runOn(LAST, A, 60, C, 150, A, 60, C);
+    expect(lastFor([...older, ...newer], [A, B, C])).toEqual([[A, C], [A, B]]);
+  });
+
+  it('switches from the very first set today, the full rest after the round', () => {
+    expect(after(pair(), run(A), [A, B])).toEqual([B]);
+    expect(after(pair(), run(A, 60, B), [A, B])).toEqual([B, null]);
+    expect(today(pair(), run(A), [A, B]).map((g) => [g.lifts, g.live])).toEqual([[[A, B], true]]);
+    // In force before any set: the cards can say so.
+    expect(today(pair(), [], [A, B]).map((g) => g.lifts)).toEqual([[A, B]]);
+    // Not without last session's.
+    expect(after([], run(A), [A, B])).toEqual([undefined]);
+    // A tri-set; and a round begun on another lift of it.
+    const tri = runOn(LAST, A, 60, B, 60, C, 150, A, 60, B, 60, C);
+    expect(after(tri, run(A, 60, B, 60, C), [A, B, C])).toEqual([B, C, null]);
+    expect(after(pair(), run(B, 60, A), [A, B])).toEqual([A, null]);
+    // Other lifts before it neither start nor stop it.
+    expect(after(pair(), run(C, 150, C, 180, A), [A, B, C])).toEqual([undefined, undefined, B]);
+    // Warm-ups on the way to the next lift don't stop it.
+    expect(after(pair(), run(A, 20, `${B}*`, 40, B), [A, B])).toEqual([B, undefined, null]);
+  });
+
+  it('times the first round as the switch and the full rest', () => {
+    const day = run(A, 60, B);
+    const g = today(pair(), day, [A, B]);
+    expect(day.map((s) => restAfter(paces([]), s.exercise, nextAfter(g, s.id)).seconds)).toEqual([20, 120]);
+  });
+
+  it('goes by today’s plan: a lift whose planned sets are done is out of the round', () => {
+    const day = run(A, 60, B, 150, A);
+    const g = today(pair(), day, [A, B], { planned: (ex) => (ex === B ? 1 : 3) });
+    expect(day.map((s) => nextAfter(g, s.id))).toEqual([B, null, null]);
+  });
+
+  it('gives way to today’s own sets: the same lift again, another lift, or a full rest where the switch was due', () => {
+    // Straight sets of curls: after the second, the group is gone, and the pushdowns get their own rest.
+    expect(after(pair(), run(A, 150, A), [A, B])).toEqual([undefined, undefined]);
+    expect(today(pair(), run(A, 150, A, 150, A, 180, B), [A, B])).toEqual([]);
+    // On to another lift where the switch was due.
+    expect(after(pair(), run(A, 60, C), [A, B, C])).toEqual([undefined, undefined]);
+    // The switch taken as a full rest.
+    expect(after(pair(), run(A, 150, B), [A, B])).toEqual([undefined, undefined]);
+    // The same lift after the round's rest is a new round, not straight sets.
+    expect(after(pair(), run(A, 60, B, 150, B), [A, B])).toEqual([B, null, A]);
+  });
+
+  it('gives way to a group today’s own alternation finds', () => {
+    const day = run(A, 60, X, 150, A, 60, X);
+    expect(today(pair(), day, [A, B, X]).map((g) => g.lifts)).toEqual([[A, X]]);
+    // The same group found again today is one group, not two.
+    expect(today(pair(), run(A, 60, B, 150, A, 60, B), [A, B]).map((g) => g.lifts)).toEqual([[A, B]]);
+  });
+
+  it('stays out once marked “not a superset” today, and the next one back takes its place', () => {
+    expect(today(pair(), run(A), [A, B], { dismissed: [['cable curl', 'cable pushdown']] })).toEqual([]);
+    expect(today(pair(), run(A), [A, B], { dismissed: [['cable curl', 'cable pushdown', 'lateral raise']] })).toEqual([]);
+    const past = [...runOn(BEFORE, A, 60, B, 150, A, 60, B), ...runOn(LAST, A, 60, C, 150, A, 60, C)];
+    expect(today(past, run(A), [A, B, C]).map((g) => g.lifts)).toEqual([[A, C]]);
+    expect(today(past, run(A), [A, B, C], { dismissed: [['cable curl', 'lateral raise']] }).map((g) => g.lifts)).toEqual([[A, B]]);
   });
 });

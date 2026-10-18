@@ -44,13 +44,16 @@ async function addCard(page: Page, name: string): Promise<Locator> {
   return page.locator(`[data-card="${name.toLowerCase()}"]`);
 }
 
-/** A set on `card` at `at` (the clock is held there): with weight and reps the first time, as the form keeps them after. */
+/**
+ * A set on `card` at `at` (the clock is held there; a time alone is on Oct 16): with weight and reps the first time, as the
+ * form keeps them after.
+ */
 async function logSet(page: Page, card: Locator, at: string, weight?: string) {
   if (weight) {
     await card.getByRole('textbox', { name: 'Weight' }).fill(weight);
     await card.getByRole('textbox', { name: 'Reps' }).fill('12');
   }
-  await page.clock.pauseAt(new Date(`2026-10-16T${at}`));
+  await page.clock.pauseAt(new Date(at.includes('T') ? at : `2026-10-16T${at}`));
   await card.getByRole('button', { name: /^Add set/ }).click();
 }
 
@@ -177,4 +180,66 @@ test('a tri-set: a switch after each of the first two lifts, the full rest after
   await expect(pull.getByRole('list', { name: 'Sets for Face Pull' }).getByRole('listitem')).toHaveCount(5);
   await expect(pull.locator('.card-last')).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/5-tri-set-round-5.png` });
+});
+
+test('last session’s superset holds from the first round; done separately today, it goes', async ({ page }) => {
+  await notched(page);
+  await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
+  await page.goto('/');
+  const rest = page.getByRole('timer', { name: 'Rest' }), sw = page.getByRole('timer', { name: 'Switch' });
+  const lines = page.locator('.superset-line');
+  /** A new day: the clock moved on and the app opened again, with the day's two cards added. */
+  async function day(date: string) {
+    if (date !== '2026-10-02') {
+      await page.clock.resume();
+      await page.clock.setSystemTime(new Date(`${date}T18:00:00`));
+      await page.reload();
+    }
+    return [await addCard(page, 'Cable Curl'), await addCard(page, 'Cable Pushdown')];
+  }
+
+  // Oct 2: the pair, noticed once the curls come back round.
+  let [curl, push] = await day('2026-10-02');
+  await expect(lines).toHaveCount(0);
+  await logSet(page, curl, '2026-10-02T18:30:00', '40');
+  await expect(rest).toContainText('2:00');
+  await logSet(page, push, '2026-10-02T18:31:00', '50');
+  await logSet(page, curl, '2026-10-02T18:33:30');
+  await expect(sw).toContainText('0:20');
+  await logSet(page, push, '2026-10-02T18:34:30');
+  await expect(rest).toContainText('2:00');
+
+  // Oct 9, the same two lifts: a superset before the first set, and the first curl switches to the pushdown.
+  [curl, push] = await day('2026-10-09');
+  await expect(curl.locator('.superset-line')).toHaveText(/^Superset with Cable Pushdown/);
+  await expect(push.locator('.superset-line')).toHaveText(/^Superset with Cable Curl/);
+  await logSet(page, curl, '2026-10-09T18:30:00', '40');
+  await expect(sw).toContainText('0:20');
+  await expect(rest).toHaveCount(0);
+  await cameUp(page, push);
+  await fits(page);
+  await page.screenshot({ path: `${SHOTS}/6-carried-first-round.png` });
+  await logSet(page, push, '2026-10-09T18:31:00', '50');
+  await expect(rest).toContainText('2:00');
+  await expect(sw).toHaveCount(0);
+  await logSet(page, curl, '2026-10-09T18:33:30');
+  await expect(sw).toContainText('0:20');
+  await logSet(page, push, '2026-10-09T18:34:30');
+  await expect(rest).toContainText('2:00');
+
+  // Oct 16: carried again, so the first curl switches; a second curl instead says they're done separately today.
+  [curl, push] = await day('2026-10-16');
+  await expect(lines).toHaveCount(2);
+  await logSet(page, curl, '2026-10-16T18:30:00', '40');
+  await expect(sw).toContainText('0:20');
+  await logSet(page, curl, '2026-10-16T18:32:30');
+  await expect(rest).toContainText('2:00');
+  await expect(sw).toHaveCount(0);
+  await expect(lines).toHaveCount(0);
+  await logSet(page, push, '2026-10-16T18:35:00', '50');
+  await expect(rest).toContainText('2:00');
+  await logSet(page, push, '2026-10-16T18:37:30');
+  await expect(rest).toContainText('2:00');
+  await expect(sw).toHaveCount(0);
+  await expect(lines).toHaveCount(0);
 });
