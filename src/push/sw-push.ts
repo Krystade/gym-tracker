@@ -32,7 +32,13 @@ const parse = (e: PushEventLike): unknown => {
  */
 export function onPush(e: PushEventLike, d: SwDeps): void {
   const n = noteOf(parse(e));
-  const shown = d.registration.showNotification(n.title, { body: n.body, data: n.data, ...(n.lang && { lang: n.lang }) });
+  // Where a tap lands, as the declarative notification this replaces had it. A browser that knows `navigate` (iOS 18.4+)
+  // opens it itself and fires no notificationclick; shown without one, a tap there just brought the app up wherever it
+  // was. One that doesn't know it ignores it and fires notificationclick, below.
+  const options: NotificationOptions & { navigate: string } = {
+    body: n.body, data: n.data, ...(n.lang && { lang: n.lang }), navigate: `${d.scope}#open=${isRoute(n.data.route) ? n.data.route : 'today'}`,
+  };
+  const shown = d.registration.showNotification(n.title, options);
   // The rest is bookkeeping: none of it may stop the notification, so each failure is its own.
   const extras = Promise.allSettled([
     n.badge != null ? d.setBadge(n.badge) : Promise.resolve(),

@@ -4,7 +4,7 @@ import {
 } from './payload';
 import { defaultPrefs, withDefaults } from './client';
 import { isRoute, parseOpen, tabOf } from './routes';
-import { onNotificationClick, onPush, type SwDeps } from './sw-push';
+import { onNotificationClick, onPush, type PushEventLike, type SwDeps } from './sw-push';
 
 const APP = 'https://krystade.github.io/gym-tracker/';
 
@@ -165,6 +165,25 @@ describe('service worker push', () => {
     expect(f.d.setBadge).toHaveBeenCalledWith(3);
     expect(f.d.record).toHaveBeenCalledWith('lastPush', expect.objectContaining({ kind: 'test' }));
     expect(win.postMessage).toHaveBeenCalledWith({ type: 'push', kind: 'test', route: null });
+  });
+
+  it('what it shows keeps the tap’s place, `navigate`, as the declarative notification it replaces had it', async () => {
+    // iOS 18.4+ opens a notification's `navigate` on a tap, without notificationclick (whose openWindow and focus are
+    // WebKit 263687's): shown without one, a tap just opens the app wherever it was.
+    const data = (v: unknown) => ({ json: () => (typeof v === 'string' ? JSON.parse(v) : v), text: () => String(v) });
+    const cases: [Omit<PushEventLike, 'waitUntil'>, string][] = [
+      [{ data: data(buildPayload('message', messageNote('jake', 'leg day?'), APP, { route: 'friend.u1' })) }, `${APP}#open=friend.u1`],
+      [{ notification: { title: 'Your week', body: 'This week: 1 session · 3 sets · 0 PRs', data: { kind: 'recap', route: 'recap' } } }, `${APP}#open=recap`],
+      [{ data: data(buildPayload('request', requestNote('jake'), APP)) }, `${APP}#open=friends`],
+      [{ data: data({ notification: { title: 't', data: { route: 'https://evil.example/' } } }) }, `${APP}#open=today`],
+      [{ data: data('{not json') }, `${APP}#open=today`],
+    ];
+    for (const [event, navigate] of cases) {
+      const f = fakes();
+      onPush({ ...event, waitUntil: f.waitUntil }, f.d);
+      await f.waits[0];
+      expect(f.d.registration.showNotification).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ navigate }));
+    }
   });
 
   it('tells open windows which friend a push is about, so the app reads that thread again', async () => {

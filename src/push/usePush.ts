@@ -31,6 +31,14 @@ export const usePushSync = PUSH_ON ? function usePushSync(entries: SetEntry[], p
 } : () => {};
 
 const FRESH_MS = 2 * 60_000;
+/** A tap's screen is up, and the app hasn't been in the background since. */
+let tapShown = false;
+/**
+ * For main.tsx: a deploy's reload waits until the app is next in the background rather than close what a tap just
+ * opened. Coming back to the front is when the app looks for a deploy, which is just when a tap brings it there.
+ */
+export const tapShowing = () => tapShown;
+
 /**
  * Where a notification tap wants the app to go: the `#open=` hash it opened with, the service worker's message to a
  * window that was already open, or (for an open that lost the hash, WebKit 263687) the route the tap stored.
@@ -39,7 +47,8 @@ export const useOpenRoute = PUSH_ON ? function useOpenRoute(go: (r: Route) => vo
   const latest = useRef(go);
   latest.current = go;
   useEffect(() => {
-    const follow = (r: Route) => { void take('route').catch(() => {}); latest.current(r); };
+    const show = (r: Route) => { tapShown = true; latest.current(r); };
+    const follow = (r: Route) => { void take('route').catch(() => {}); show(r); };
     const fromHash = () => {
       const r = parseOpen(location.hash);
       if (!r) return false;
@@ -49,11 +58,11 @@ export const useOpenRoute = PUSH_ON ? function useOpenRoute(go: (r: Route) => vo
     };
     const fromStore = async () => {
       const s = await take('route').catch(() => undefined);
-      if (s && Date.now() - s.at < FRESH_MS && isRoute(s.route)) latest.current(s.route);
+      if (s && Date.now() - s.at < FRESH_MS && isRoute(s.route)) show(s.route);
     };
     if (!fromHash()) void fromStore();
     const onHash = () => { fromHash(); };
-    const onVis = () => { if (document.visibilityState === 'visible') void fromStore(); };
+    const onVis = () => { if (document.visibilityState === 'visible') void fromStore(); else tapShown = false; };
     const onMsg = (e: MessageEvent) => { const d = e.data as { type?: string; route?: unknown }; if (d?.type === 'open' && isRoute(d.route)) follow(d.route); };
     window.addEventListener('hashchange', onHash);
     document.addEventListener('visibilitychange', onVis);

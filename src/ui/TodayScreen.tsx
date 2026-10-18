@@ -47,6 +47,9 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
 }) {
   const [picking, setPicking] = useState(false);
   const [swapFor, setSwapFor] = useState<string | null>(null);
+  // A recap tap with a picker up (it takes Today's place): the picker goes, so the digest shows.
+  const [recapSeen, setRecapSeen] = useState(recap);
+  if (recap !== recapSeen) { setRecapSeen(recap); setPicking(false); setSwapFor(null); }
   // Cards added but not logged yet: kept per profile for the day, so leaving the tab or switching profile keeps them.
   const [owner] = useState(activeProfileDb);
   // One list per day, so opening a past day doesn't overwrite today's.
