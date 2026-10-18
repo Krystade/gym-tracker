@@ -8,6 +8,7 @@ import type { SetEntry } from '../domain/types';
 import type { StatusStore } from '../state/useStatus';
 import { ChartTable } from './charts/ChartTable';
 import { Latest, MessageButton } from './MessageButton';
+import { Icon, initials } from './icons';
 
 // Every friend on one screen: a line each across the days, coloured by what they trained. Cycle data never comes here:
 // friends' rows read only their months and status phrase, and your own row only your log.
@@ -17,12 +18,11 @@ const SHOWN = 14; // days across a phone
 const MAX_OFF = SPAN - SHOWN;
 const LINE_H = 20;
 const colour = (k: Kind | undefined) => (k ? `var(--crew-${k})` : 'var(--crew-other)');
-const KEY_SEEN = 'gym-tracker:crew-key';
 
 interface Row { id: string; name: string; label: string; status: string; days: Day[]; sets: SetEntry[]; me: boolean; friend?: Friend; error?: string; loading?: boolean }
 
-export function Crew({ uid, friends, entries, today, status, news, pulled = 0, onOpenFriend, onOpenMine, onInvite, onMessage }: {
-  uid: string; friends: Friend[] | null; entries: SetEntry[]; today: string; status: StatusStore; news?: FriendNews | null;
+export function Crew({ uid, myName, friends, entries, today, status, news, pulled = 0, onOpenFriend, onOpenMine, onInvite, onMessage }: {
+  uid: string; /** This phone's person, for your avatar. */ myName?: string; friends: Friend[] | null; entries: SetEntry[]; today: string; status: StatusStore; news?: FriendNews | null;
   /** Moves on each pull-down or Refresh: every line is read again. */ pulled?: number;
   onOpenFriend: (f: Friend) => void; onOpenMine: () => void; onInvite: () => void; /** A friend's thread: pings and messages. */ onMessage?: (f: Friend) => void;
 }) {
@@ -137,9 +137,6 @@ export function Crew({ uid, friends, entries, today, status, news, pulled = 0, o
             );
           })}
         </svg>
-        <svg width={0} height={0} aria-hidden="true" style={{ position: 'absolute' }}>
-          <filter id="crew-glow" x="-50%" y="-150%" width="200%" height="400%"><feGaussianBlur stdDeviation="2.5" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
-        </svg>
         <ul className="crew-list">
           {rows.map((r) => {
             const latest = lastTraining(r.days);
@@ -148,14 +145,15 @@ export function Crew({ uid, friends, entries, today, status, news, pulled = 0, o
             return (
               <li key={r.id} className={`crew-row${quiet ? ' quiet' : ''}`} style={{ '--k': colour(latest?.kinds[0]) } as CSSProperties} data-testid={r.me ? 'crew-me' : `crew-${r.friend!.name}`}>
                 <div className="crew-head">
-                  <button className="link crew-name" onClick={open}>{r.label}</button>
-                  {r.me ? <StatusEdit status={status} /> : r.status && <span className="crew-bubble">{r.status}</span>}
-                  {r.friend && onMessage && (
-                    <span className="msg-end">
-                      <Latest news={news} uid={r.friend.uid} />
-                      <MessageButton name={r.friend.name} unread={news?.unread[r.friend.uid] ?? 0} onClick={() => onMessage(r.friend!)} />
-                    </span>
-                  )}
+                  <span className={r.me ? 'avatar me' : 'avatar'} aria-hidden="true">{initials(r.me ? myName || 'You' : r.friend!.name)}</span>
+                  <div className="crew-who">
+                    <div className="crew-name-line">
+                      <button className="link crew-name" onClick={open}>{r.label}</button>
+                      {r.me ? <StatusEdit status={status} /> : r.status && <span className="crew-bubble">{r.status}</span>}
+                    </div>
+                    {r.friend && onMessage && <Latest news={news} uid={r.friend.uid} />}
+                  </div>
+                  {r.friend && onMessage && <MessageButton name={r.friend.name} unread={news?.unread[r.friend.uid] ?? 0} onClick={() => onMessage(r.friend!)} />}
                 </div>
                 <svg className="crew-line" width={width} height={LINE_H} aria-hidden="true" onClick={open}>
                   <line x1={0} x2={width} y1={LINE_H / 2} y2={LINE_H / 2} className="crew-rest" />
@@ -164,7 +162,7 @@ export function Crew({ uid, friends, entries, today, status, news, pulled = 0, o
                     if (!d.training || x < -col || x > width) return null;
                     const [a, b] = d.kinds, y = LINE_H / 2 - 5, w = Math.max(2, col - 4);
                     return (
-                      <g key={d.date} data-date={d.date} data-kind={d.kinds.join('+') || 'other'} filter="url(#crew-glow)">
+                      <g key={d.date} data-date={d.date} data-kind={d.kinds.join('+') || 'other'}>
                         {b ? (<>
                           <rect x={x + 2} y={y} width={w} height={4} rx={2} fill={colour(a)} />
                           <rect x={x + 2} y={y + 6} width={w} height={4} rx={2} fill={colour(b)} />
@@ -184,7 +182,7 @@ export function Crew({ uid, friends, entries, today, status, news, pulled = 0, o
       </div>
       {friends && !friends.length && <p className="muted small">No friends here yet. Invite one and their line shows up under yours.</p>}
       {/* In the page, under the lines, while you have fewer than three friends: floating, it covered what scrolled under it. */}
-      {friends && friends.length < 3 && <button className="primary crew-invite" onClick={onInvite}>Invite a friend</button>}
+      {friends && friends.length < 3 && <button className="crew-invite" onClick={onInvite}><Icon name="person-plus" size={20} />Invite a friend</button>}
       <ChartTable caption={`What each person trained, ${dayName(first)} to ${dayName(lastShown)}`} head={['Who', 'Days trained']} rows={table} />
     </section>
   );
@@ -192,19 +190,14 @@ export function Crew({ uid, friends, entries, today, status, news, pulled = 0, o
 
 const dayName = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
-/** The colour key: open on the first visit, folded after. */
+/** The colour key, always in view: a dot and a word for each kind. */
 function CrewKey() {
-  const [first] = useState(() => { try { return !localStorage.getItem(KEY_SEEN); } catch { return false; } });
-  useEffect(() => { try { localStorage.setItem(KEY_SEEN, '1'); } catch { /* not kept */ } }, []);
   return (
-    <details className="crew-key" open={first}>
-      <summary>Colour key</summary>
-      <ul>
-        {KINDS.map((k) => <li key={k}><span className="crew-dot" style={{ background: colour(k) }} />{KIND_LABEL[k]}</li>)}
-        <li><span className="crew-dot" style={{ background: colour(undefined) }} />Other lifts</li>
-        <li><span className="crew-dot rest" />Rest</li>
-      </ul>
-    </details>
+    <ul className="crew-key" aria-label="Colour key">
+      {KINDS.map((k) => <li key={k}><span className="crew-dot" style={{ background: colour(k) }} />{KIND_LABEL[k]}</li>)}
+      <li><span className="crew-dot" style={{ background: colour(undefined) }} />Other lifts</li>
+      <li><span className="crew-dot rest" />Rest</li>
+    </ul>
   );
 }
 
@@ -213,8 +206,8 @@ function StatusEdit({ status }: { status: StatusStore }) {
   const [text, setText] = useState<string | null>(null);
   if (text == null) {
     return status.status
-      ? <button className="crew-tap" aria-label={`Your status: ${status.status}. Change it`} onClick={() => setText(status.status)}><span className="crew-bubble">{status.status}</span></button>
-      : <button className="crew-tap" onClick={() => setText('')}><span className="crew-bubble add">+ Status</span></button>;
+      ? <button className="crew-tap" aria-label={`Your status: ${status.status}. Change it`} onClick={() => setText(status.status)}><span className="crew-bubble">{status.status}</span><Icon name="pencil" size={16} /></button>
+      : <button className="crew-tap" onClick={() => setText('')}><Icon name="pencil" size={16} /><span className="crew-bubble add">+ Status</span></button>;
   }
   const n = statusLength(text), over = n > STATUS_MAX;
   return (

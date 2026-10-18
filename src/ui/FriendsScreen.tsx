@@ -10,6 +10,7 @@ import { Crew } from './Crew';
 import type { GymsStore } from '../state/useGyms';
 import { loadCloud } from '../cloud/firebase';
 import { refreshLists, refreshNews, useFriendCache } from '../state/friendCache';
+import { Icon } from './icons';
 
 const PULL = 70; // px down from the top of the page that reads everything again
 
@@ -18,10 +19,11 @@ const PULL = 70; // px down from the top of the page that reads everything again
  * Everything here shows from what the phone kept (state/friendCache) and is read again quietly behind it. A pull down at the
  * top reads it all again at once; so does a Refresh button a screen reader or keyboard finds (it shows when focused).
  */
-export function FriendsScreen({ cloud, gyms, pending, entries, status, today, news, newsRev, onPendingDone, onView, onChanged, onMessage, onSignIn, onOpenMine }: {
+export function FriendsScreen({ cloud, gyms, pending, entries, status, today, news, newsRev, onPendingDone, onView, onChanged, onMessage, onSignIn, onOpenMine, myName }: {
   cloud: CloudStore; gyms: GymsStore; pending: Invite | null; entries: SetEntry[]; status: StatusStore; today: string;
   /** Requests, gyms and unread messages; `newsRev` moves whenever they're read again. */ news: FriendNews | null; newsRev: number;
   onPendingDone: () => void; onView: (f: Friend) => void; onChanged: () => void; onMessage: (f: ThreadWith) => void; onSignIn: () => void; onOpenMine: () => void;
+  /** This phone's person, for your own avatar. */ myName?: string;
 }) {
   const uid = cloud.link && cloud.mine ? cloud.link.uid : null;
   const friends = useFriendCache(uid)?.lists?.friends ?? null;
@@ -51,7 +53,11 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
         setPull(dy > dx ? Math.max(0, dy) : 0);
       }}
       onTouchEnd={() => { if (pull > PULL) void refresh(); start.current = null; setPull(0); }}>
-      <h1>Friends</h1>
+      <div className="page-head">
+        <h1>Friends</h1>
+        {/* The same place Invite a friend goes: the add form at the foot of the page. */}
+        {uid && <button className="mini icon" aria-label="Add a friend" onClick={invite}><Icon name="person-plus" size={26} /></button>}
+      </div>
       {uid && (<>
         <button className="sr-only focus-show mini" onClick={() => void refresh()}>Refresh friends</button>
         <p className="friends-pull muted small" role="status">
@@ -66,7 +72,7 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
           </section>
         ) : !cloud.mine ? <p className="muted">The account on this phone belongs to another person here; switch to them to see friends.</p>
         : (<>
-          <Crew uid={cloud.link.uid} friends={friends} entries={entries} today={today} status={status} news={news} pulled={pulled} onOpenFriend={onView} onOpenMine={onOpenMine} onInvite={invite} onMessage={onMessage} />
+          <Crew uid={cloud.link.uid} myName={myName} friends={friends} entries={entries} today={today} status={status} news={news} pulled={pulled} onOpenFriend={onView} onOpenMine={onOpenMine} onInvite={invite} onMessage={onMessage} />
           <FriendsCard uid={cloud.link.uid} gyms={gyms} pending={pending} news={news} newsRev={newsRev} onPendingDone={onPendingDone} onView={onView} onChanged={onChanged} onMessage={onMessage} />
         </>)}
     </div>

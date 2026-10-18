@@ -679,44 +679,70 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
   --crew-other: #8e929a;  /* oklch(0.659 0.013 264.5) */
   --crew-rest: var(--hairline);
 }
-.crew { position: relative; margin-bottom: 16px; }
-.crew-top { display: flex; align-items: center; gap: 8px; }
-.crew-top h2 { flex: 1; margin: 0; }
+/* Friends leans Quiet (direction C, in amber): a flat page, round avatars, pill buttons, lighter weights. */
+/* A tab's large title with its one action beside it (Friends: Add a friend). */
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 16px; }
+.page-head h1 { margin: 0; min-width: 0; }
+.page-head .mini.icon { color: var(--accent-text); margin-right: -10px; }
+/* A round initials chip: a friend's on the fill, yours in the accent. */
+.avatar {
+  flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--fill-2); color: var(--text);
+  font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.02em; line-height: 1; user-select: none;
+}
+.avatar.me { background: var(--accent); color: var(--accent-ink); }
+
+.crew { position: relative; margin-bottom: 24px; }
+.crew-top { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.crew-top h2 { flex: 1; margin: 0; font-size: var(--fs-xl); line-height: 28px; font-weight: 700; }
 .crew-today { min-height: 44px; }
 .crew-pull { text-align: center; margin: 0 0 4px; }
-.crew-key > summary { min-height: 44px; display: flex; align-items: center; color: var(--muted); font-size: 14px; cursor: pointer; }
-.crew-key ul { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: var(--fs-sm); color: var(--muted); }
-.crew-key li { display: inline-flex; align-items: center; gap: 6px; }
+/* The key, always in view: a dot and a word for each kind, wrapping as it needs. */
+.crew-key { list-style: none; margin: 4px 0 12px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--fs-sm); line-height: 18px; color: var(--text-2); }
+.crew-key li { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .crew-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-.crew-dot.rest { height: 2px; border-radius: 1px; background: var(--crew-rest); width: 14px; border: 0; outline: 1px solid var(--line-strong); }
+.crew-dot.rest { height: 2px; border-radius: 1px; background: var(--line-strong); width: 14px; border: 0; }
 .crew-rows { position: relative; overflow: hidden; user-select: none; -webkit-user-select: none; border-radius: var(--r-sm); }
 .crew-rows:focus-visible { outline-offset: 2px; }
-.crew-days { display: block; }
-.crew-days text { font-size: 11px; fill: var(--muted); }
-.crew-days text.date { font-size: 12px; font-variant-numeric: tabular-nums; }
+.crew-days { display: block; margin-bottom: 4px; }
+.crew-days text { font-size: 11px; fill: var(--text-3); }
+.crew-days text.date { font-size: 13px; fill: var(--text-2); font-variant-numeric: tabular-nums; }
 .crew-days .today text { fill: var(--text); font-weight: 700; }
-.crew-days .today circle { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+.crew-days .today text.date { fill: var(--accent-ink); }
+.crew-days .today circle { fill: var(--accent); stroke: none; }
 .crew-list { list-style: none; margin: 0; padding: 0; }
-.crew-row { padding: 8px 0 6px; border-top: 1px solid var(--line); }
-.crew-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 44px; }
-.crew-name { font-size: var(--fs-md); min-height: 44px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
-.crew-bubble {
-  display: inline-flex; align-items: center; min-height: 28px; max-width: 100%; padding: 2px 10px; border-radius: 14px; font-size: var(--fs-sm); font-weight: 600;
-  background: color-mix(in oklab, var(--k) 22%, var(--bg)); border: 1px solid color-mix(in oklab, var(--k) 70%, var(--bg)); color: var(--text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-/* Your own bubble is a button: a 44px target around the 28px pill. */
-.crew-tap { min-height: 44px; padding: 0; background: none; border: 0; max-width: 100%; }
-.crew-bubble.add { background: none; border: 1px dashed var(--line-strong); color: var(--muted); }
-.crew-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; }
+/* One row per person, divided by hairlines: avatar, name and status, the newest message and its button; the line; the week. */
+.crew-row { padding: 12px 0 10px; border-top: 1px solid var(--hairline); }
+.crew-head { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 0 12px; min-height: 44px; }
+.crew-who { display: grid; min-width: 0; }
+.crew-name-line { display: flex; align-items: center; gap: 0 10px; min-width: 0; }
+.crew-name { flex: none; font-size: var(--fs-body); font-weight: 600; min-height: 44px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+/* A status is quiet words beside the name, not a coloured pill. */
+.crew-bubble { display: block; min-width: 0; font-size: var(--fs-sub); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Your own status is a button: a 44px target around the words and a pencil. */
+.crew-tap { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 0; padding: 0; background: none; border: 0; max-width: 100%; font-weight: 400; color: var(--text-2); }
+.crew-tap .ic { color: var(--text-3); }
+.crew-tap:has(.add) { color: var(--accent-text); }
+.crew-tap:has(.add) .ic { color: var(--accent-text); }
+.crew-bubble.add { color: var(--accent-text); font-weight: 500; }
+.crew-who .msg-latest { margin-top: -8px; }
+.crew-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; padding: 4px 0; }
 .crew-status input { flex: 1 1 100%; font-size: 16px; min-height: 44px; }
-.crew-status .mini { flex: 1; }
-.crew-line { display: block; cursor: pointer; overflow: visible; }
+.crew-status .mini { flex: 1; border-radius: var(--r-pill); }
+.crew-head:has(.crew-status) { grid-template-columns: 36px minmax(0, 1fr); }
+.crew-line { display: block; cursor: pointer; overflow: visible; margin-top: 6px; }
 .crew-rest { stroke: var(--crew-rest); stroke-width: 2; }
 .crew-now { fill: var(--text); stroke: var(--bg); stroke-width: 1.5; }
 .crew-row.quiet .crew-line { opacity: 0.5; }
-.crew-week { margin: 2px 0 0; }
+.crew-week { margin: 4px 0 0; color: var(--text-3); }
 .crew .chart-table { margin-top: 4px; }
+.crew .chart-table summary { color: var(--accent-text); font-size: var(--fs-md); }
+/* Invite sits in the page under the Crew lines (it floated over the page and covered "Add a friend"): a tonal pill. */
+.crew-invite { margin: 12px 0 4px; border-radius: var(--r-pill); padding: 0 20px 0 16px; background: var(--fill); color: var(--accent-text); gap: 8px; }
+
+/* The friends card under Crew: flat grouped cells, pill buttons. */
+.friends-page .card button:not(.link, .msg-button, .mini.icon) { border-radius: var(--r-pill); }
+.friends-page .card .sub > h3 { margin: 0 0 4px; }
+.friend-list .link { font-weight: 500; }
 
 /* A friend's thread: a sheet from the bottom over everything (the tab bar included), never a centred modal. */
 .sheet-backdrop { position: fixed; inset: 0; z-index: 7; background: rgb(0 0 0 / 0.6); }
@@ -730,53 +756,66 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 /* The grabber: says "a sheet", nothing to drag yet. */
 .sheet::before { content: ''; flex: none; align-self: center; width: 36px; height: 5px; border-radius: 3px; background: var(--fill-2); }
 .sheet-head { display: flex; align-items: center; gap: 4px; }
-.sheet-head h2 { flex: 1; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-head .avatar { width: 40px; height: 40px; margin-right: 8px; }
+.sheet-head h2 { flex: 1; margin: 0; font-size: var(--fs-body); line-height: 22px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mini.icon { min-width: 44px; padding: 0; background: none; color: var(--text-2); }
+.mini.icon[aria-pressed='true'] { color: var(--accent-text); }
 .sheet-menu { display: flex; flex-wrap: wrap; gap: 8px; }
+.sheet-menu .mini { border-radius: var(--r-pill); }
 .thread { list-style: none; margin: 0; padding: 4px 0; flex: 1 1 auto; min-height: 96px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 6px; }
-.bubble { max-width: 82%; padding: 8px 12px; border-radius: 16px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; overflow-wrap: anywhere; }
-.bubble.theirs { align-self: flex-start; background: var(--surface-2); border-bottom-left-radius: 4px; }
-.bubble.mine { align-self: flex-end; background: color-mix(in oklab, var(--accent) 22%, var(--surface)); border: 1px solid color-mix(in oklab, var(--accent) 45%, var(--surface)); border-bottom-right-radius: 4px; }
-.bubble.ping .bubble-text { font-size: var(--fs-lg); }
+/* Theirs on the fill, mine an opaque accent fill with accent-ink words: never the accent mixed into the dark. */
+.bubble { max-width: 82%; padding: 8px 14px; border-radius: var(--r-bubble); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; overflow-wrap: anywhere; font-size: var(--fs-body); line-height: 22px; }
+.bubble.theirs { align-self: flex-start; background: var(--fill); border-bottom-left-radius: 6px; }
+.bubble.mine { align-self: flex-end; background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 6px; }
 .bubble time { font-size: var(--fs-xs); margin-left: auto; }
+.bubble.mine time { color: var(--accent-ink); }
 .bubble-actions { display: flex; gap: 8px; flex-basis: 100%; margin-top: 4px; }
+.bubble-actions .mini { border-radius: var(--r-pill); }
+.bubble.mine .bubble-actions .mini:not(.primary) { background: var(--accent-ink); color: var(--accent); }
 .thread-empty { align-self: center; margin: auto 0; }
-/* Six 48px pings with 8px between: 328px, inside a 375px phone's 343px. */
-.presets { display: flex; justify-content: space-between; gap: 8px; }
-.preset { width: 48px; height: 48px; min-height: 48px; padding: 0; border-radius: 24px; font-size: 24px; line-height: 1; flex: none; }
-.compose { display: flex; align-items: center; gap: 8px; }
-.compose input { flex: 1; font-size: var(--fs-md); min-height: 44px; }
+/* The six pings on one fill pill: each a 44px target, unbordered. */
+.presets { display: flex; justify-content: space-between; gap: 2px; padding: 2px 6px; background: var(--fill); border-radius: var(--r-pill); }
+.preset { width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: 50%; background: none; font-size: 26px; line-height: 1; flex: none; }
+/* The message box: one bordered rounded field with the round Send inside it, at its foot. */
+.compose { display: flex; align-items: flex-end; gap: 4px; padding: 3px; border: 1px solid var(--line-strong); border-radius: 24px; background: var(--bg); }
+.compose:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
 .compose .small { flex: none; font-variant-numeric: tabular-nums; }
 .compose .mini { flex: none; }
-/* A friend's row: their newest item and the message button with its unread dot. */
-.msg-latest { display: inline-flex; font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; min-width: 0; }
+.compose .send { width: 44px; min-width: 44px; height: 44px; padding: 0; border-radius: 50%; }
+
+/* A friend's row: their newest item and the message button with its unread count. */
+.msg-latest { display: inline-flex; font-size: var(--fs-sub); color: var(--text-2); white-space: nowrap; min-width: 0; }
 .msg-latest .msg-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.msg-latest .msg-ago { flex: none; white-space: pre; }
-.msg-button { position: relative; min-width: 44px; padding: 0; font-size: 18px; flex: none; }
-.unread-dot { position: absolute; top: 6px; right: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface-2); }
-.crew-head .msg-end { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.msg-latest .msg-ago { flex: none; white-space: pre; color: var(--text-3); }
+.msg-button { position: relative; min-width: 44px; padding: 0; flex: none; background: none; color: var(--text-2); }
+.unread-dot {
+  position: absolute; top: 4px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--accent-ink);
+  font-size: 11px; line-height: 18px; font-weight: 700; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 2px var(--bg);
+}
+.card .unread-dot { box-shadow: 0 0 0 2px var(--surface); }
 .viewing-bar .bar-actions { display: flex; gap: 8px; flex: none; }
 .today-news { width: 100%; min-height: 52px; justify-content: flex-start; gap: 12px; text-align: left; margin: 0 0 16px; padding: 0 16px; background: var(--surface); border-radius: var(--r-group); font-weight: 500; }
 .today-news .ic { color: var(--accent-text); }
 .today-news > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .today-news .reply { color: var(--accent-text); font-weight: 400; }
 
-/* ---- Round 10: Friends on the tab bar, the thread sheet and its message box. Self-contained; the redesign replaces it. ---- */
 /* The sheet stays on the screen you see: its foot on the bottom edge and its top below the status bar, both moved by the gap
    iOS 26 can leave between the two viewports (src/ui/viewportPin.ts), as the tab bar is. 100% is the viewport it's fixed to. */
 .sheet { translate: 0 calc(-1 * var(--vv-bottom, 0px)); max-height: calc(100% - var(--sat) - 24px - var(--vv-top, 0px) - var(--vv-bottom, 0px)); }
 /* The message box grows a line at a time from one to five (ThreadSheet sets its height), then scrolls. Send stays at its foot,
    with the count above it once a message nears 140; a message keeps its line breaks in the thread. */
-.compose { align-items: flex-end; }
-.compose textarea { flex: 1; display: block; resize: none; font-size: var(--fs-md); line-height: 22px; padding: 10px 12px; min-height: 44px; max-height: calc(5 * 22px + 22px); overflow-y: hidden; }
+.compose textarea {
+  flex: 1; display: block; resize: none; font-size: var(--fs-md); line-height: 22px; padding: 10px 8px 10px 14px; min-height: 44px;
+  max-height: calc(5 * 22px + 22px); overflow-y: hidden; border: 0; background: none;
+}
+.compose textarea:focus-visible { outline: 0; }
 .compose-side { display: flex; flex-direction: column; align-items: flex-end; flex: none; }
-.compose-side .small:not(:empty) { margin-bottom: 2px; }
+.compose-side .small:not(:empty) { margin: 0 8px 2px 0; }
 .bubble-text { white-space: pre-wrap; }
-/* A ping is its emoji alone, shown large; no words go with it. */
-.bubble.ping { align-items: center; padding: 4px 12px; }
-.bubble.ping .bubble-text { font-size: 32px; line-height: 1.15; }
-/* Invite sits in the page under the Crew lines (it floated over the page and covered "Add a friend"). */
-.crew-invite { margin: 10px 0 4px; border-radius: 22px; padding: 0 20px; }
+/* A ping is its emoji alone, shown large and unbubbled; no words go with it. */
+.bubble.ping { align-items: center; padding: 0 4px; background: none; }
+.bubble.ping .bubble-text { font-size: 36px; line-height: 1.15; }
+.bubble.ping time { color: var(--text-3); }
 /* Friends reads again on a pull down at the top; the note under the heading says so (empty, it takes no room). The Refresh a
    screen reader or keyboard reaches shows only while it has focus, over the heading's row so nothing moves when it shows. */
 .friends-page { position: relative; }

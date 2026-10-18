@@ -1,11 +1,12 @@
 import type { FriendNews } from '../cloud/friends';
 import { shortAgo } from '../domain/messages';
+import { Icon } from './icons';
 
-/** A friend's message button: 44px, with a dot while they have unread pings or messages. */
+/** A friend's message button: 44px, with a count while they have unread pings or messages. */
 export function MessageButton({ name, unread, onClick }: { name: string; unread: number; onClick: () => void }) {
   return (
     <button className="mini msg-button" aria-label={`Message @${name}${unread ? `, ${unread} unread` : ''}`} onClick={onClick}>
-      <span aria-hidden="true">💬</span>{unread > 0 && <span className="unread-dot" aria-hidden="true" />}
+      <Icon name="message" size={24} />{unread > 0 && <span className="unread-dot" aria-hidden="true">{unread > 9 ? '9+' : unread}</span>}
     </button>
   );
 }

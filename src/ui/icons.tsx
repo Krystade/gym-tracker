@@ -33,6 +33,13 @@ const P = {
 
 export type IconName = keyof typeof P;
 
+/** Initials for a round avatar: the first letters of the first two words of a name or username, else its first two letters. */
+export function initials(name: string): string {
+  const words = name.replace(/^@/, '').split(/[\s_.-]+/).filter(Boolean);
+  const s = words.length > 1 ? words.slice(0, 2).map((w) => [...w][0]).join('') : [...(words[0] ?? '')].slice(0, 2).join('');
+  return s.toUpperCase() || '?';
+}
+
 export function Icon({ name, size = 24, sw = 1.75, className }: { name: IconName; size?: number; sw?: number; className?: string }) {
   return (
     <svg className={className ? `ic ${className}` : 'ic'} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"

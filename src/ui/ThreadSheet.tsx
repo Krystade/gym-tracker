@@ -5,6 +5,7 @@ import { MAX_MESSAGE, messageOk, PRESET_KEYS, PRESETS, shortAgo, type PresetKey 
 import { patchFriendCache, peekFriendCache, readLocally, refreshThread, useFriendCache } from '../state/friendCache';
 import { copyGym } from '../domain/share';
 import type { GymsStore } from '../state/useGyms';
+import { Icon, initials } from './icons';
 
 /** The friend a thread is with: from a row (name known) or a notification (uid alone). */
 export interface ThreadWith { uid: string; name?: string }
@@ -109,12 +110,13 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
       <div className="sheet-backdrop" aria-hidden="true" onClick={onClose} />
       <section className="sheet thread-sheet" role="dialog" aria-modal="true" aria-label={`Messages with ${who}`}>
         <header className="sheet-head">
+          <span className="avatar" aria-hidden="true">{initials(name || '?')}</span>
           <h2>{who}</h2>
           {state?.friend && (
-            <button className="mini icon" aria-pressed={state.muted} aria-label={state.muted ? `Unmute ${who}` : `Mute ${who}`} disabled={busy} onClick={mute}>{state.muted ? '🔕' : '🔔'}</button>
+            <button className="mini icon" aria-pressed={state.muted} aria-label={state.muted ? `Unmute ${who}` : `Mute ${who}`} disabled={busy} onClick={mute}><Icon name={state.muted ? 'bell-off' : 'bell'} /></button>
           )}
-          <button className="mini icon" aria-label="More" aria-expanded={menu} onClick={() => { setMenu(!menu); setArmed(null); }}>⋯</button>
-          <button className="mini icon" aria-label="Close" onClick={onClose}>✕</button>
+          <button className="mini icon" aria-label="More" aria-expanded={menu} onClick={() => { setMenu(!menu); setArmed(null); }}><Icon name="more" /></button>
+          <button className="mini icon" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
         </header>
         {menu && (
           <div className="sheet-menu" role="group" aria-label={`${who} options`}>
@@ -166,7 +168,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
               onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} />
             <span className="compose-side">
               <span className={`small ${n >= MAX_MESSAGE ? 'warn' : 'muted'}`} aria-live="polite">{n > COUNT_FROM ? `${n}/${MAX_MESSAGE}` : ''}</span>
-              <button type="submit" className="mini primary" disabled={busy || !state || !messageOk(text)}>Send</button>
+              <button type="submit" className="mini primary send" aria-label="Send" disabled={busy || !state || !messageOk(text)}><Icon name="send" size={22} sw={2.25} /></button>
             </span>
           </form>
         </>) : state && <p className="muted small">You’re not friends with {who} now, so you can’t message them.</p>}
