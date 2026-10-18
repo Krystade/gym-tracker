@@ -25,6 +25,9 @@ import { nextTime, plannedMinutes, plannedSets } from '../domain/suggest';
 import { todayPlanFor } from './TodayPlan';
 import { SuggestionCard } from './SuggestionCard';
 import { Input } from './Field';
+import { carryOver, rotation } from '../domain/rotation';
+import { applyRotation, inProgram, RotationSuggestion } from './RotationSuggestion';
+import { activeProfileDb } from '../db/db';
 
 /** A cardio machine: distance (or floors) per session over time, and each session's numbers with its pace. */
 function CardioScreen({ name, store, programs, date, onLog, onBack, onDay, readOnly }: { name: string; store: SetsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void; onDay?: (date: string) => void; readOnly?: boolean }) {
@@ -186,11 +189,23 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
   const snoozed = settings.get(name).testSnoozedUntil;
   const due = testDue(store.entries, name, today);
   const offset = rirOffset(store.entries, name);
+  // A stalled lift's next variation. Switched from here, the note stays (with its undo) while this screen is open.
+  const [owner] = useState(activeProfileDb);
+  const [switched, setSwitched] = useState<{ to: string; undo: () => Promise<void> } | null>(null);
+  const available = gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined;
+  const rot = readOnly || hold || switched ? null : rotation(store.entries, name, today, { available, include: gyms.active?.include, program: programs.program });
+  const carry = rot && carryOver(store.entries, rot.from, rot.to, today, settings.get(rot.to));
   return (
     <>
       <button className="back" onClick={onBack}>‹ Back</button>
       <h1>{name}</h1>
       {!readOnly && <SuggestionCard s={sug} onLog={trainedToday ? undefined : onLog} />}
+      {rot && <RotationSuggestion owner={owner} r={rot} carry={carry} known={store.entries.some((e) => sameExercise(e.exercise, rot.to))} today={today}
+        onSwitch={inProgram(programs, name) ? async () => setSwitched({ to: rot.to, undo: await applyRotation(rot, carry, programs, settings, today, todayPlanFor(programs, store.entries, today)) }) : undefined} />}
+      {switched && (
+        <p className="undo-note card note-card" role="status"><span>{switched.to} replaces {name} in your program.</span>
+          <button className="mini" onClick={async () => { await switched.undo(); setSwitched(null); }}>Undo</button></p>
+      )}
       {/* The chips sit right under the estimate they change, not over the chart (which is always e1RM). */}
       {!hold && <>
       <div className="tiles tiles-est">
@@ -235,7 +250,7 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
       })}
       {!all && sessions.length > HISTORY_CAP && <button className="wide" onClick={() => setAll(true)}>Show all {sessions.length} sessions</button>}
       {!readOnly && <>
-      <SwapSuggestions items={swapSuggestions(name, store.entries, today, 5, gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined)} />
+      <SwapSuggestions items={swapSuggestions(name, store.entries, today, 5, available)} />
       <SettingsEditor key={name} name={name} settings={settings} hold={hold} />
       <RenameLift key={`rename-${name}`} name={name} store={store} settings={settings} gyms={gyms} programs={programs} onRenamed={onRenamed} />
       </>}

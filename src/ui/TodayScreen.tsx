@@ -34,6 +34,8 @@ import type { SetEntry } from '../domain/types';
 import { paces, usualGap } from '../domain/timing';
 import { lastSupersets, nextAfter, supersets, type Superset } from '../domain/superset';
 import { markNotSuperset, notSupersets } from '../state/notSuperset';
+import { carryOver, rotation, type Carry, type Rotation } from '../domain/rotation';
+import { applyRotation, inProgram, RotationSuggestion } from './RotationSuggestion';
 
 export function TodayScreen({ who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews }: {
   /** Whose sets these are, named only when several people share the phone. */
@@ -133,7 +135,46 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
     return () => { ro.disconnect(); removeEventListener('scroll', onScroll); };
   }, [shown]);
 
-  const available = gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined;
+  const available = useMemo(() => (gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined),
+    [gyms.active, store.entries]);
+
+  // A stalled lift's next variation, on its card: today only, for a lift in the program, before its first working set
+  // (once it's started, switching would only muddle today's plan). Worked out once per lift per log change.
+  const rotations = useMemo(() => new Map<string, { r: Rotation; carry: Carry | null; known: boolean } | null>(), [store.entries, today, programs.program, available, settings.get]);
+  const rotationOf = (n: string) => {
+    const k = n.toLowerCase();
+    if (!rotations.has(k)) {
+      const r = rotation(store.entries, n, today, { available, include: gyms.active?.include, program: programs.program });
+      rotations.set(k, r && { r, carry: carryOver(store.entries, r.from, r.to, today, settings.get(r.to)), known: store.entries.some((e) => sameExercise(e.exercise, r.to)) });
+    }
+    return rotations.get(k)!;
+  };
+  const [switched, setSwitched] = useState<{ from: string; to: string; undo: () => Promise<void> } | null>(null);
+  useEffect(() => { if (!switched) return; const t = setTimeout(() => setSwitched(null), 8000); return () => clearTimeout(t); }, [switched]);
+  const rotate = async (r: Rotation, carry: Carry | null) => {
+    const undo = await applyRotation(r, carry, programs, settings, today, plan);
+    // The new lift's card takes the old one's place.
+    setExtra((xs) => (xs.some((x) => sameExercise(x, r.from)) ? xs.map((x) => (sameExercise(x, r.from) ? r.to : x)) : [...xs, r.to]));
+    setOpenReq(r.to); setJump(r.to);
+    setSwitched({ from: r.from, to: r.to, undo });
+  };
+  const undoRotate = async () => {
+    if (!switched) return;
+    const { from, to, undo } = switched;
+    setSwitched(null);
+    await undo();
+    setExtra((xs) => xs.map((x) => (sameExercise(x, to) ? from : x)));
+    setJump(from);
+  };
+  const asideFor = (n: string) => {
+    // Just switched: the new lift's card says so, with the undo, where you're looking.
+    if (switched && sameExercise(switched.to, n)) {
+      return <p className="undo-note rotate-undo" role="status"><span>Switched from {switched.from}.</span><button className="mini" onClick={() => void undoRotate()}>Undo</button></p>;
+    }
+    if (date !== today || !programs.program || !inProgram(programs, n) || store.entries.some((e) => e.date === date && sameExercise(e.exercise, n) && isWorking(e))) return null;
+    const x = rotationOf(n);
+    return x && <RotationSuggestion owner={owner} r={x.r} carry={x.carry} known={x.known} today={today} onSwitch={() => void rotate(x.r, x.carry)} />;
+  };
   if (picking) return <ExercisePicker recent={exerciseNames(store.entries)} gym={gyms.active} onCancel={() => setPicking(false)}
     onPick={(n) => { goTo(n); setPicking(false); }} />;
   if (swapFor && plan) return <ExercisePicker recent={exerciseNames(store.entries)} gym={gyms.active} title={`Swap ${swapFor}`} suggested={swapSuggestions(swapFor, store.entries, date, 5, available)} onCancel={() => setSwapFor(null)}
@@ -177,7 +218,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
         swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
         openReq={openReq != null && sameExercise(openReq, n)} onOpenReq={() => setOpenReq(null)}
         supersetWith={groupOf(n)?.lifts.filter((x) => !sameExercise(x, n))} onNotSuperset={() => { const g = groupOf(n); if (g) dismiss(g); }}
-        switchAfter={(entries, id) => nextAfter(groupsIn(entries), id)} onSwitch={setSwitchTo} />)}
+        switchAfter={(entries, id) => nextAfter(groupsIn(entries), id)} onSwitch={setSwitchTo} aside={asideFor(n)} />)}
       {/* Below the cards, so the card you're logging on never moves down. */}
       <SessionSummary entries={store.entries} date={date} past={date < today} />
       <button className="wide add-exercise" data-tour="add" onClick={() => setPicking(true)}>Add exercise</button>

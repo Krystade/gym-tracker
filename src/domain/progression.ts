@@ -3,8 +3,13 @@ import { e1rm, estimateWeightForReps, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 import { isHold, isHoldLift } from './care';
 
+/**
+ * A first target carried over from another variation when this lift was rotated in (domain/rotation): an estimate, used until
+ * the lift has a session on or after `date`, the day of the switch.
+ */
+export interface Seed { weight: number; reps: number; from: string; date: string }
 // testSnoozedUntil: the "time for a test" banner stays hidden until this day.
-export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number; testSnoozedUntil?: string }
+export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number; testSnoozedUntil?: string; seed?: Seed }
 
 export const settingsKey = (name: string): string => normalizeName(name).toLowerCase();
 
@@ -85,7 +90,7 @@ export function estimateRir(set: SetEntry, sessionSets: SetEntry[], prior: numbe
 }
 
 /** `done`: for an increase, the reps that earned it, over that many sets at the top weight. */
-export interface Target { kind: 'increase' | 'reps' | 'repeat' | 'maxed' | 'test'; weight: number; reps: number; last: SetEntry[]; text: string; done?: { total: number; sets: number } }
+export interface Target { kind: 'increase' | 'reps' | 'repeat' | 'maxed' | 'test' | 'carry'; weight: number; reps: number; last: SetEntry[]; text: string; done?: { total: number; sets: number } }
 
 const lb = (w: number) => (w === 0 ? 'BW' : `${Math.round(w * 100) / 100} lb`);
 
@@ -95,6 +100,11 @@ export const isProgressionSet = (s: SetEntry): boolean => isWorking(s) && !isTes
 
 export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string): Target | null {
   const before = sessionsFor(entries, exercise).filter((x) => x.date < date);
+  // Just rotated in: the carried-over estimate, until the first session since the switch.
+  const seed = st.seed;
+  if (seed && date >= seed.date && !before.some((x) => x.date >= seed.date && x.sets.some(isWorking))) {
+    return { kind: 'carry', weight: seed.weight, reps: seed.reps, last: before[0]?.sets ?? [], text: `Estimate: ${lb(seed.weight)} × ${seed.reps}+` };
+  }
   if (!before.length) return null;
   // The session to progress from: the last one that isn't only test sets.
   const at = before.findIndex((x) => x.sets.some(isProgressionSet) || !x.sets.some(isTest));

@@ -27,3 +27,19 @@ export const CATALOG: string[] = [
   // Cardio
   'Treadmill', 'StairMaster', 'Exercise Bike', 'Elliptical',
 ];
+
+/**
+ * The six movement patterns the catalog's main compound lifts fall into, for rotating a plateaued lift to another variation of
+ * the same movement (src/domain/rotation). Each pattern's lifts are in the order a new variation is offered; everything left out
+ * (arms, calves, core, isolation, bodyweight presses, glute and erector work, cardio) never rotates.
+ */
+export const PATTERNS = ['Horizontal press', 'Horizontal pull', 'Vertical press', 'Vertical pull', 'Squat', 'Hinge'] as const;
+export type Pattern = (typeof PATTERNS)[number];
+export const VARIATIONS: Record<Pattern, string[]> = {
+  'Horizontal press': ['Bench Press', 'Machine Chest Press', 'Incline Bench Press', 'Flat DB Press', 'Incline DB Press', 'Smith Flat Press', 'Smith Incline Press', 'Close-Grip Bench Press'],
+  'Horizontal pull': ['Chest-Supported Row', 'Seated Cable Row', 'T-Bar Row', 'Kneeling DB Row', 'Machine Row', 'Landmine Row'],
+  'Vertical press': ['Overhead Press', 'Machine Shoulder Press', 'Arnold Press', 'Landmine Press'],
+  'Vertical pull': ['Lat Pulldown', 'Pull-up', 'Close-Grip Lat Pulldown', 'Chin-up'],
+  Squat: ['Barbell Squat', 'Leg Press', 'Smith Squat', 'Bulgarian Split Squat', 'Landmine Squat'],
+  Hinge: ['Deadlift', 'Romanian Deadlift', 'DB Romanian Deadlift'],
+};
