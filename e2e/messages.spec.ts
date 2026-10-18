@@ -15,7 +15,8 @@ const TOP = 47, BOTTOM = 34;
 // A message near the 140 limit: it has to fit Crew's row, the friends list and Today's one line without scrolling sideways.
 const LONG = 'See you at 6? Bring chalk, deadlifts first and then heavy rows after if the rack by the window is free';
 
-test.use({ serviceWorkers: 'block' });
+// Where the thread sheet sits, not where it is mid-slide (its 240ms rise; e2e/design.spec checks the motion itself).
+test.use({ serviceWorkers: 'block', reducedMotion: 'reduce' });
 async function notched(page: Page) {
   const inset = (s: string) => s.replace(/env\(\s*safe-area-inset-(top|right|bottom|left)\s*(?:,[^)]*)?\)/g, (_, side: string) => `${side === 'top' ? TOP : side === 'bottom' ? BOTTOM : 0}px`);
   await page.route('**/*', async (route) => {

@@ -134,3 +134,28 @@ test('landscape: content is capped and centred, tabs span the width', async ({ p
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'screenshots/49-landscape.png' });
 });
+
+test('sheets slide up and their backdrop fades in, a pressed button scales; all of it is off under reduced motion', async ({ browser }) => {
+  // The thread sheet needs two accounts; its classes on a probe element read the same rules.
+  const motion = async (reducedMotion: 'reduce' | 'no-preference') => {
+    const ctx = await browser.newContext({ reducedMotion, viewport: { width: 375, height: 812 } });
+    const page = await ctx.newPage();
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'Add exercise' })).toBeVisible();
+    const out = await page.evaluate(() => {
+      const read = (cls: string) => { const el = document.createElement('section'); el.className = cls; document.body.append(el); const cs = getComputedStyle(el); const r = { name: cs.animationName, ms: parseFloat(cs.animationDuration) * 1000 }; el.remove(); return r; };
+      const b = getComputedStyle(document.querySelector('button')!);
+      return { sheet: read('sheet'), backdrop: read('sheet-backdrop'), press: b.transitionProperty };
+    });
+    await ctx.close();
+    return out;
+  };
+  const on = await motion('no-preference');
+  expect(on.sheet).toEqual({ name: 'sheet-up', ms: 240 });
+  expect(on.backdrop).toEqual({ name: 'fade-in', ms: 240 });
+  expect(on.press).toContain('transform');
+  const off = await motion('reduce');
+  expect(off.sheet.name).toBe('none');
+  expect(off.backdrop.name).toBe('none');
+  expect(off.press).not.toContain('transform');
+});

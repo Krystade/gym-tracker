@@ -94,7 +94,7 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
   padding: 16px calc(16px + var(--sar)) 16px calc(16px + var(--sal));
   background: var(--surface-2); border: 0; border-radius: var(--r-lg);
   box-shadow: 0 12px 40px rgb(0 0 0 / 0.6), 0 0 0 1px var(--hairline); margin-inline: max(8px, calc((100% - 640px) / 2));
-  animation: walk-rise 320ms cubic-bezier(0.2, 0.9, 0.3, 1.1) both;
+  animation: walk-rise 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .walkthrough h2 { margin: 2px 0 6px; }
 .walkthrough p { margin: 0 0 12px; }
@@ -915,3 +915,22 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 .target-suggest-changes { list-style: none; margin: 0 0 10px; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 16px; }
 .target-suggest-changes li { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); padding: 3px 0; border-bottom: 1px solid var(--line); }
 .target-suggest-changes li span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* ---- Motion (stage 4): subtle, and all of it off under prefers-reduced-motion. ---- */
+/* Sheets slide up over 240ms, easing out, and their backdrop fades in. `transform`, not `translate`: the sheet's translate
+   keeps it on the visible viewport (--vv-bottom), and the two compose. */
+@keyframes sheet-up { from { transform: translateY(100%); } }
+@keyframes fade-in { from { opacity: 0; } }
+.sheet { animation: sheet-up 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.sheet-backdrop { animation: fade-in 240ms ease-out both; }
+/* The thread's More menu and an opened Details drop in. */
+@keyframes drop-in { from { opacity: 0; transform: translateY(-6px); } }
+.sheet-menu { animation: drop-in 150ms ease-out both; }
+/* Folds and disclosure chevrons turn over 150ms (History's and the tables' markers already do). */
+.chip.more .chev, .fold-chev { transition: transform 150ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .sheet, .sheet-backdrop, .sheet-menu { animation: none; }
+  .chip.more .chev, .fold-chev,
+  details.month > summary::after, details.day > summary::after,
+  .chart-table > summary::after, details.builder > summary::after, .paste-help > summary::after { transition: none; }
+}
