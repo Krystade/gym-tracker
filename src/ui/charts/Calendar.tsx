@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { fmtDay, plural } from '../../domain/format';
 
-// One hue, dark → bright amber: more sets reads as brighter on the dark surface.
-export const STEPS = ['#2a2f3a', '#5c4a1f', '#8a6a24', '#b98a2b', '#f5b83d'];
+// Lightness only ever rises, neutral into the accent, so more sets reads as brighter on the dark surface and no step goes
+// brown: oklch(0.301 0.008 264) · (0.441 0.009 261) · (0.580 0.013 270) · (0.720 0.125 76) · (0.859 0.130 82). Each step is
+// ΔE×100 12.5 or more from the next, under protan, deutan and tritan simulation too.
+export const STEPS = ['#2c2e32', '#505358', '#777a82', '#d1993e', '#fbc865'];
 const step = (n: number) => (n === 0 ? 0 : n < 6 ? 1 : n < 12 ? 2 : n < 20 ? 3 : 4);
 const C = 16, G = 3, LBL = 14, TOP = 16;
 const month = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month: 'short' });
