@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { supersets } from './superset';
+import { nextAfter, supersets } from './superset';
+import { paces, restAfter } from './timing';
 import type { SetEntry } from './types';
 
 const D = '2026-10-16';
@@ -101,7 +102,7 @@ describe('supersets', () => {
     const day = run(A, 60, B, 150, A, 60, B, 150, A, 60, X, 150, A, 60, X);
     const groups = supersets(day, D, usual);
     expect(groups.map((g) => [g.lifts, g.live])).toEqual([[[A, B], false], [[A, X], true]]);
-    expect(day.map((s) => groups.find((g) => g.after.has(s.id))?.after.get(s.id))).toEqual([B, null, B, null, X, null, X, null]);
+    expect(day.map((s) => nextAfter(groups, s.id))).toEqual([B, null, B, null, X, null, X, null]);
   });
 
   it('judges "well inside the rest" by the lift’s own usual time between sets', () => {
@@ -144,5 +145,21 @@ describe('supersets', () => {
   it('reads only sets with a time, on that day', () => {
     expect(supersets(run(`${A}?`, 60, `${B}?`, 150, `${A}?`), D, usual)).toEqual([]);
     expect(supersets(run(A, 60, B, 150, A), '2026-10-17', usual)).toEqual([]);
+  });
+
+  it('times each position of a round: a switch after every lift with another to go, the lift’s full rest after the last', () => {
+    const timers = (day: SetEntry[], p = paces([])) => {
+      const groups = supersets(day, D, usual);
+      return day.map((s) => restAfter(p, s.exercise, nextAfter(groups, s.id)).seconds);
+    };
+    // Nothing learned: 0:20 switches, 2:00 rests. A pair, a tri-set, a circuit of four.
+    expect(timers(run(A, 60, B, 150, A, 60, B))).toEqual([20, 120, 20, 120]);
+    expect(timers(run(A, 60, B, 60, C, 150, A, 60, B, 60, C))).toEqual([20, 20, 120, 20, 20, 120]);
+    expect(timers(run(A, 50, B, 50, C, 50, E, 150, A, 50, B, 50, C, 50, E))).toEqual([20, 20, 20, 120, 20, 20, 20, 120]);
+    // Not a superset: every set gets the full rest.
+    expect(timers(run(A, 150, A, 150, A, 180, B, 150, B))).toEqual([120, 120, 120, 120, 120]);
+    // A learned switch of 1:15 (less the set) and the lift's own learned rest after the round.
+    const p = { perSet: new Map([['cable pushdown', 140]]), transition: 120, superSwitch: 75 };
+    expect(timers(run(A, 60, B, 150, A, 60, B), p)).toEqual([35, 100, 35, 100]);
   });
 });
