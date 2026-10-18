@@ -65,17 +65,22 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
 .set-form, .set-form button, .set-form .pain-box { scroll-margin-bottom: calc(72px + var(--sab) + var(--rest-h, 0px)); }
 /* The rest timer: a bar above the tabs, out of the way of the form (the page gets its height as room below). */
 .rest-timer {
-  position: fixed; left: 0; right: 0; bottom: calc(57px + 8px + var(--sab)); z-index: 4; max-width: 640px;
-  margin-inline: max(calc(16px + var(--sal)), calc((100% - 640px) / 2)); display: flex; gap: 8px; align-items: center;
-  padding: 4px 4px 4px 0; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-lg);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+  position: fixed; left: 0; right: 0; bottom: calc(57px + var(--sab)); z-index: 4; display: flex; gap: 8px; align-items: center;
+  padding: 6px calc(12px + var(--sar)) 6px calc(8px + var(--sal)); background: var(--surface-2); border-top: 1px solid var(--hairline);
 }
-.rest-timer .rest-main { flex: 1; display: flex; align-items: baseline; gap: 8px; min-height: 44px; background: none; border: 0; padding: 0 12px; text-align: left; }
-.rest-timer .rest-main b { font-size: var(--fs-xl); font-variant-numeric: tabular-nums; }
-.rest-timer .rest-main .small { margin-left: auto; }
-.rest-timer.done { border-color: var(--accent); }
-.rest-timer.done .rest-main b { color: var(--accent); font-size: var(--fs-lg); }
-.card.folded .left-row { margin: 0 12px 12px; }
+/* How much of the rest is left, along the bar's top edge. */
+.rest-progress { position: absolute; left: 0; top: -1px; height: 2px; width: calc(var(--p, 0) * 100%); background: var(--accent); }
+.rest-timer .rest-main { flex: 1; display: flex; justify-content: flex-start; align-items: center; gap: 10px; min-height: 48px; background: none; padding: 0 8px; text-align: left; font-weight: 400; }
+.rest-timer .rest-main .ic { color: var(--accent-text); }
+.rest-timer .rest-main b { font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.rest-words { display: grid; gap: 0; line-height: 1.2; min-width: 0; }
+.rest-words > span:first-child { font-weight: 600; }
+.rest-timer .mini:not(.icon) { border-radius: var(--r-pill); color: var(--accent-text); padding: 0 16px; }
+.rest-timer { padding-right: calc(4px + var(--sar)); gap: 4px; }
+/* A 320px phone: the time, the words, +30 s and close fit without the timer glyph. */
+@media (max-width: 359px) { .rest-timer .rest-main > .ic { display: none; } .rest-timer .rest-main { gap: 8px; } }
+.rest-timer.done .rest-main b { color: var(--accent-text); }
+.card.folded .left-row { margin: 0 16px 12px; }
 /* 56px of tabs and a hairline: 57px over the home-indicator inset (the rest bar and the walkthrough sit on it). */
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
@@ -180,34 +185,42 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 /* A group: a filled cell on the page, no border. Padding 16, and 16 between groups. */
 .card { background: var(--surface); border: 0; border-radius: var(--r-group); padding: 16px; margin-bottom: 16px; }
 .card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 8px; }
+/* The lift's name is the card's title. */
+.card-head > .link { font-size: var(--fs-xl); line-height: 28px; font-weight: 700; min-height: 44px; }
 .card-head .muted { font-size: var(--fs-sm); }
+.card-head .quiet-btn { min-height: 44px; }
 /* Best and Last read as one small block under the name. */
-.card-last { font-size: var(--fs-sm); margin: 2px 0 6px; }
-/* A lift that reached its planned sets: one tappable line, still in its slot. */
+.card-last { font-size: var(--fs-sub); margin: 0 0 6px; }
+/* A lift that reached its planned sets: one tappable 52px line, still in its slot. */
 .card.folded { padding: 0; }
-.fold-line { width: 100%; min-height: 44px; padding: 8px 12px; border: 0; background: none; justify-content: flex-start; flex-wrap: wrap; gap: 2px 10px; text-align: left; font-size: inherit; }
-.fold-line b { min-width: 0; overflow-wrap: anywhere; }
-.fold-line .nw { margin-left: auto; font-size: var(--fs-sm); }
-.card.folded .pr { margin: 0 12px 10px; }
+.fold-line { width: 100%; min-height: 52px; padding: 8px 16px; border: 0; background: none; justify-content: flex-start; flex-wrap: wrap; gap: 2px 10px; text-align: left; font-size: var(--fs-body); }
+.fold-line b { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.fold-line .ok { font-weight: 500; }
+.fold-line .nw { margin-left: auto; font-size: var(--fs-sub); font-weight: 400; font-variant-numeric: tabular-nums; }
+.fold-check { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--ok); color: var(--bg); }
+.fold-chev { color: var(--text-3); }
+.card.folded .pr { margin: 0 16px 12px; }
 
-.sets { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.sets { list-style: none; margin: 12px -16px 8px; padding: 0; display: grid; gap: 0; }
+.sets:not(:empty) { border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); }
+.sets li + li { box-shadow: inset 0 1px var(--hairline); }
 .set-row {
-  width: 100%; justify-content: flex-start; flex-wrap: wrap; text-align: left; font-weight: 500;
-  background: var(--bg); padding: 8px 12px; min-height: 44px;
+  width: 100%; justify-content: flex-start; flex-wrap: wrap; text-align: left; font-weight: 500; font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums; background: none; border-radius: 0; padding: 8px 16px; min-height: 48px; gap: 6px 12px;
 }
-.set-row.editing { border-color: var(--accent); background: var(--surface-2); }
+.set-row.editing { background: var(--fill); box-shadow: inset 3px 0 var(--accent); }
 .edit-title { font-size: var(--fs-sm); color: var(--muted); margin: 8px 0 0; }
 /* Scrolled to above the fixed tab bar (56px + the home-indicator inset), not under it. */
 .edit-box { scroll-margin-bottom: calc(var(--sab) + 68px); }
 .nw { white-space: nowrap; }
-.set-no { color: var(--muted); width: 1.5em; }
-.tag { font-size: var(--fs-xs); padding: 2px 6px; border-radius: var(--r-sm); background: var(--surface-2); color: var(--muted); }
+.set-no { color: var(--text-3); width: 1.5em; }
+.tag { font-size: var(--fs-sm); line-height: 18px; padding: 2px 8px; border-radius: 6px; background: var(--fill); color: var(--text-2); font-weight: 500; }
 .tag.pain { color: var(--pain); }
 .tag.unsure, .tag.partial { color: var(--warn); }
 .note { flex-basis: 100%; font-size: var(--fs-sm); color: var(--muted); padding-left: 1.5em; overflow-wrap: anywhere; }
 
-.set-form { display: grid; gap: 10px; margin-top: 8px; }
-.steppers { display: grid; grid-template-columns: 1fr 140px; gap: 10px 12px; }
+.set-form { display: grid; gap: 12px; margin-top: 12px; }
+.steppers { display: grid; grid-template-columns: 1fr 140px; gap: 12px; }
 /* Under 360px two steppers side by side clip "152.5"; stack them. */
 @media (max-width: 359px) { .steppers { grid-template-columns: 1fr; } }
 /* A stepper is one rounded field with − and + inside it, and the number big and tabular in the middle. */
@@ -315,8 +328,8 @@ textarea.csv { min-height: 160px; padding: 8px; font-family: ui-monospace, Menlo
 /* Read-only set rows (exercise history) are <li>, not buttons, so give them the button row layout. */
 li.set-row { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--r-md); }
 .set-no { flex: none; }
-.target { color: var(--accent); font-weight: 600; margin: 6px 0; display: flex; align-items: center; gap: 6px; }
-.target-warm { display: block; font-weight: 500; font-size: var(--fs-sm); }
+.target { color: var(--accent-text); font-size: var(--fs-body); font-weight: 600; font-variant-numeric: tabular-nums; margin: 4px 0 8px; display: flex; align-items: center; gap: 8px; }
+.target-warm { display: block; font-weight: 400; font-size: var(--fs-sm); }
 .tag.est { font-style: italic; }
 .tag.pr-tag { color: var(--accent); font-weight: 700; }
 .summary-lifts { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
@@ -364,17 +377,18 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 .card > .sub { margin-top: 16px; } /* a new group inside the card */
 .prio-grid label, .goal-row { display: grid; gap: 6px; font-size: var(--fs-sm); color: var(--muted); margin-bottom: 8px; }
 .prio-grid select { min-height: 44px; font-size: var(--fs-md); background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-md); padding: 0 8px; }
-.note-card { border-color: var(--accent); }
+.note-card > span:first-child { color: var(--accent-text); font-weight: 600; }
 .test-due { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .test-due span { align-self: stretch; }
 
 /* Program */
-/* The date is read whole: where it and Program don't fit on one line (a 320px phone), Program wraps under, to the right. */
-.today-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; margin-bottom: 12px; }
-.today-head > button { margin-left: auto; padding: 0 10px; } /* a little narrower, so a long date and Program share a 375px line */
-.today-head h1 { margin: 4px 0; }
+/* Today's header: the day arrows and Program on a nav row, the date as the large title under them. Program sits on the
+   arrows' row (a grid cell over the day switch's empty corner), so the date always gets the whole width. */
+.today-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 44px auto; align-items: center; margin-bottom: 16px; }
+.today-head > .day-switch { grid-column: 1 / -1; grid-row: 1 / span 2; }
+.today-head > .program-btn { grid-column: 2; grid-row: 1; z-index: 1; padding: 0 0 0 12px; font-size: var(--fs-body); font-weight: 500; }
 /* "at Garage ›" under the day: quiet, a full-width 44px tap target pulled up into the head's gap. */
-.gym-line { width: 100%; justify-content: flex-start; margin: -12px 0 4px; padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
+.gym-line { width: 100%; justify-content: flex-start; margin: -12px 0 8px; padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--fs-sub); font-weight: 400; gap: 4px; }
 .gym-line > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gym-line b { color: var(--text); font-weight: 600; }
 /* Program's gym, one row above the days: the words take two lines at most and give way before the button does. */
@@ -382,21 +396,44 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 .gym-head > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .gym-head .mini { flex: none; margin: 0; padding: 0 0 0 8px; background: none; color: var(--accent-text); }
 .plan h2:last-child { margin-bottom: 0; } /* folded: nothing under the title */
-.plan-toggle { width: 100%; padding: 0; border: 0; background: none; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left; font-size: inherit; }
+.plan-toggle { width: 100%; padding: 0; border: 0; background: none; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left; font-size: inherit; font-weight: inherit; }
+.plan-toggle .muted { font-weight: 400; }
+/* B's scoreboard line: sets done of planned, big and tabular, over a bar with a segment per set. */
+.sets-progress { margin: 8px 0 12px; }
+.sets-num { margin: 0 0 6px; font-size: var(--fs-xl); line-height: 28px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.sets-num b { font-size: var(--fs-title); line-height: 34px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+.sets-num span { font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.sets-bar { display: flex; gap: 3px; }
+.sets-bar i { flex: 1; height: 6px; border-radius: 3px; background: var(--fill-2); }
+.sets-bar i.on { background: var(--accent); }
 .plan-slots, .prog-slots { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
 .prog-slots { gap: 12px; } /* rows are two or three lines tall */
-/* Fixed columns, so count, Skip/Undo and Swap line up across rows (a skipped row keeps an empty Swap cell). */
-.plan-slots li { display: grid; grid-template-columns: minmax(0, 1fr) 56px 56px; align-items: center; gap: 6px; }
+/* Rows divided by hairlines that start past the status glyph. Fixed columns, so the count, Skip/Undo and Swap line up across
+   rows (a skipped row keeps an empty Swap cell). */
+.plan-slots { gap: 0; margin-top: 4px; }
+.plan-slots li { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 52px 56px; align-items: center; gap: 0; }
+.plan-slots li + li::before { content: ''; position: absolute; top: 0; left: 40px; right: -16px; height: 1px; background: var(--hairline); }
 .plan-slots li.done .plan-count { color: var(--ok); }
+.plan-slots li[data-state='going'] .plan-count { color: var(--accent-text); }
 .plan-slots li.skipped .plan-name b { text-decoration: line-through; color: var(--muted); }
 /* The generic button rule centres (justify-content: center); .plan-name must override it to fill the column, left-aligned. */
-.plan-name { text-align: left; min-height: 44px; padding: 6px 10px; display: grid; gap: 1px; line-height: 1.25; justify-items: start; justify-content: stretch; width: 100%; min-width: 0; }
-.plan-name b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.plan-name {
+  position: relative; text-align: left; min-height: 56px; padding: 8px 4px 8px 40px; display: grid; gap: 1px; line-height: 1.25;
+  justify-items: start; justify-content: stretch; width: 100%; min-width: 0; background: none; border-radius: 0; font-weight: 400;
+}
+.plan-name b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: var(--fs-body); font-weight: 600; }
+.plan-name .muted { font-size: var(--fs-sub); }
+/* Done: a filled check. Under way: an accent ring with a dot. To do: an empty ring. */
+.slot-glyph { position: absolute; left: 0; top: 50%; translate: 0 -50%; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--text-3); }
+.plan-slots li.done .slot-glyph { background: var(--ok); color: var(--bg); box-shadow: none; }
+.plan-slots li[data-state='going'] .slot-glyph { box-shadow: inset 0 0 0 2px var(--accent); }
+.plan-slots li[data-state='going'] .slot-glyph::after { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.plan-slots li.skipped .slot-glyph { box-shadow: inset 0 0 0 2px var(--fill-2); }
 .plan-count { font-variant-numeric: tabular-nums; }
 .plan-slots li.done .plan-count { font-weight: 600; }
 /* A jump lands a card below the sticky profile bar. */
 [data-card], #priorities { scroll-margin-top: calc(var(--sat) + 72px); }
-.plan-slots button:not(.plan-name) { padding: 0 4px; font-size: 14px; }
+.plan-slots button:not(.plan-name) { padding: 0 4px; font-size: var(--fs-md); font-weight: 400; background: none; color: var(--text-2); }
 .prog-slots li { display: grid; grid-template-columns: 1fr 44px 28px 44px 56px; align-items: center; gap: 4px; }
 /* Remove sits a thumb-width away from the steppers: it deletes. */
 .prog-slots li > button:last-child { margin-left: 12px; }
@@ -422,10 +459,28 @@ details.builder[open] > summary { margin-bottom: 8px; }
 .swaps li > button { width: 100%; padding: 8px 10px; margin: 4px 0; }
 
 /* body weight */
-.weigh { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 12px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+/* Check-in: the weigh-in and the energy row read as one group, divided by a hairline. */
+.weigh { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 60px; margin: 0 0 16px; padding: 8px 16px; background: var(--surface); border-radius: var(--r-group); }
+.weigh > span { font-size: var(--fs-body); }
+.weigh b { font-size: var(--fs-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
 .weigh form { display: flex; gap: 8px; width: 100%; }
 .weigh input { flex: 1; }
-.energy { margin: 0 0 12px; }
+.energy { margin: 0 0 16px; }
+.weigh:has(+ .energy) { margin-bottom: 0; border-radius: var(--r-group) var(--r-group) 0 0; }
+.weigh + .energy { position: relative; padding: 8px 16px 12px; background: var(--surface); border-radius: 0 0 var(--r-group) var(--r-group); }
+.weigh + .energy::before { content: ''; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--hairline); }
+/* A segmented control: Energy 1-5, RIR 0-4+. The label sits beside it, or above it on a narrow phone. */
+.chips.seg { display: grid; grid-template-columns: auto repeat(5, minmax(44px, 1fr)); gap: 2px; }
+.chips.seg .chip-label { margin-right: 10px; font-size: var(--fs-body); }
+.chips.seg .chip { border-radius: 0; padding: 0; font-variant-numeric: tabular-nums; font-size: var(--fs-body); }
+.chips.seg .chip:first-of-type { border-radius: var(--r-md) 0 0 var(--r-md); }
+.chips.seg .chip:last-of-type { border-radius: 0 var(--r-md) var(--r-md) 0; }
+@media (max-width: 359px) { .chips.seg { grid-template-columns: repeat(5, minmax(0, 1fr)); } .chips.seg .chip-label { grid-column: 1 / -1; } }
+/* The program's days, side by side as one control. */
+.chips.seg-wide { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; }
+.chips.seg-wide .chip { border-radius: 0; padding: 0 6px; }
+.chips.seg-wide .chip:first-child { border-radius: var(--r-md) 0 0 var(--r-md); }
+.chips.seg-wide .chip:last-child { border-radius: 0 var(--r-md) var(--r-md) 0; }
 .chart .bw-pt { fill: var(--muted); opacity: 0.55; }
 .chart .bw-sel { stroke: var(--muted); stroke-dasharray: 3 3; }
 .bw-band { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; margin: 0 0 8px; }
@@ -549,9 +604,11 @@ p + .sync-form, p + .field { margin-top: 12px; }
 .suggestion h2 { margin: 0; }
 
 /* Late sets: the day switcher on Today, the past-day banner, the time field. */
-.day-switch { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.day-switch h1 { margin: 4px 0; font-size: var(--fs-xl); line-height: 28px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.day-switch .mini { min-width: 44px; font-size: 26px; line-height: 1; }
+/* The arrows' glyphs line up with the title's left edge: the first 44px tap area starts 12px out into the margin. */
+.day-switch { display: grid; grid-template-columns: 44px 44px minmax(0, 1fr); grid-template-rows: 44px auto; align-items: center; min-width: 0; margin-left: -12px; }
+.day-switch h1 { grid-column: 1 / -1; grid-row: 2; margin: 4px 0 0; padding-left: 12px; font-size: clamp(28px, 9vw, 34px); line-height: 41px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.day-switch .mini { grid-row: 1; min-width: 44px; padding: 0; background: none; color: var(--accent-text); }
+.day-switch .mini:disabled { color: var(--text-3); }
 .past-day { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 /* The hint goes under the field: iOS gives a time input its own width, and a hint beside it drew over it. */
 .when { display: grid; gap: 6px; }
@@ -559,8 +616,10 @@ p + .sync-form, p + .field { margin-top: 12px; }
 .when input { min-height: 44px; font-size: var(--fs-md); width: 100%; min-width: 0; -webkit-appearance: none; appearance: none; text-align: left; }
 .when input::-webkit-date-and-time-value { text-align: left; }
 .err { color: var(--danger); }
-.chip.more { justify-self: start; } /* .set-form is a grid, so the inline axis is justify */
-.form-delete { justify-self: end; }
+/* Details: a quiet text button with a chevron that turns open. .set-form is a grid, so the inline axis is justify. */
+.chip.more { justify-self: start; background: none; color: var(--accent-text); padding: 0 4px; gap: 4px; font-size: var(--fs-md); }
+.chip.more[aria-expanded='true'] .chev { transform: rotate(180deg); }
+.form-delete { justify-self: end; background: none; }
 .chart .goal, .chart .goal-lbl { pointer-events: none; }
 .chart .goal-lbl { paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
 .confirm-delete .form-actions { margin-top: 8px; }
@@ -697,8 +756,10 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .unread-dot { position: absolute; top: 6px; right: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface-2); }
 .crew-head .msg-end { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .viewing-bar .bar-actions { display: flex; gap: 8px; flex: none; }
-.today-news { width: 100%; justify-content: flex-start; gap: 8px; text-align: left; margin: 0 0 12px; border-color: var(--accent); }
-.today-news > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-news { width: 100%; min-height: 52px; justify-content: flex-start; gap: 12px; text-align: left; margin: 0 0 16px; padding: 0 16px; background: var(--surface); border-radius: var(--r-group); font-weight: 500; }
+.today-news .ic { color: var(--accent-text); }
+.today-news > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-news .reply { color: var(--accent-text); font-weight: 400; }
 
 /* ---- Round 10: Friends on the tab bar, the thread sheet and its message box. Self-contained; the redesign replaces it. ---- */
 /* The sheet stays on the screen you see: its foot on the bottom edge and its top below the status bar, both moved by the gap

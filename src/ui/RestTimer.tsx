@@ -1,10 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { restAlertState, restPush, subscribeRestAlert } from '../push/client';
 import { PUSH_ON } from '../push/config';
+import { Icon } from './icons';
 
 // One rest at a time, kept outside the screens so leaving Today and coming back doesn't lose it. `card`: the lift's card.
 // `label`: what the lock-screen alert says ("Bench Press · set 4 next"), where push notifications are on.
-interface Rest { until: number; card: string; label?: string }
+/** `total`: the whole rest in ms, +30 s included, for the bar's progress line. */
+interface Rest { until: number; card: string; label?: string; total?: number }
 let rest: Rest | null = null;
 const subs = new Set<() => void>();
 const set = (r: Rest | null) => { rest = r; for (const f of subs) f(); };
@@ -13,7 +15,7 @@ const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f
 const setRest = (r: Rest | null) => { set(r); restPush(r ? r.until : null, r?.label); };
 
 /** Starts (or starts over) the rest after a set. */
-export const startRest = (seconds: number, card: string, label?: string) => setRest({ until: Date.now() + seconds * 1000, card, label });
+export const startRest = (seconds: number, card: string, label?: string) => setRest({ until: Date.now() + seconds * 1000, card, label, total: seconds * 1000 });
 
 /** How long "Rest done" stays up before the bar goes. */
 const DONE_FOR = 30_000;
@@ -73,11 +75,17 @@ export function RestTimer() {
   if (gone) return null;
   return (
     <div ref={bar} className={left > 0 ? 'rest-timer' : 'rest-timer done'} role="timer" aria-label="Rest">
+      {left > 0 && r?.total && <i className="rest-progress" aria-hidden="true" style={{ '--p': Math.min(1, (r.until - now) / r.total) } as CSSProperties} />}
       <button type="button" className="rest-main" aria-label="Dismiss rest timer" onClick={() => setRest(null)}>
-        {left > 0 ? <><span>Rest</span><b>{mss(left)}</b></> : <b>Rest done</b>}
-        <span className="muted small">{PUSH_ON && left > 0 && alert === 'failed' ? 'No lock-screen alert' : 'Tap to close'}</span>
+        <Icon name="timer" size={22} />
+        <b>{mss(left)}</b>
+        <span className="rest-words">
+          <span>{left > 0 ? 'Rest' : 'Rest done'}</span>
+          <span className="muted small">{PUSH_ON && left > 0 && alert === 'failed' ? 'No lock-screen alert' : 'Tap to close'}</span>
+        </span>
       </button>
-      <button type="button" className="mini" onClick={() => setRest({ ...r!, until: Math.max(r!.until, Date.now()) + 30_000 })}>+30 s</button>
+      <button type="button" className="mini" onClick={() => { const until = Math.max(r!.until, Date.now()) + 30_000; setRest({ ...r!, until, total: Math.max(r!.total ?? 0, until - Date.now()) }); }}>+30 s</button>
+      <button type="button" className="mini icon" aria-label="Close rest timer" onClick={() => setRest(null)}><Icon name="close" /></button>
     </div>
   );
 }

@@ -28,8 +28,10 @@ test('Today: the energy row and the date arrows have room, and the button under 
   expect(await gap(page, 'main p.muted', 'button:text-is("Add exercise")')).toBe(16);
   const [prev, title, next] = await Promise.all(['Previous day', 'h1', 'Next day'].map((n) =>
     (n === 'h1' ? page.locator('.day-switch h1') : page.getByRole('button', { name: n })).boundingBox()));
-  expect(title!.x - (prev!.x + prev!.width)).toBeGreaterThanOrEqual(12);
-  expect(next!.x - (title!.x + title!.width)).toBeGreaterThanOrEqual(12);
+  // The arrows sit on a row of their own above the large title (the 2026-10-17 redesign): clear of it and of each other.
+  expect(title!.y).toBeGreaterThanOrEqual(prev!.y + prev!.height);
+  expect(title!.y).toBeGreaterThanOrEqual(next!.y + next!.height);
+  expect(next!.x).toBeGreaterThanOrEqual(prev!.x + prev!.width);
   // With a log: a card above the button is 16px off too, not 32.
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');

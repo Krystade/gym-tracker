@@ -29,6 +29,7 @@ import { addDays } from '../domain/analytics';
 import type { ThreadWith } from './ThreadSheet';
 import { TodayDigest } from './WeekDigest';
 import { SuggestedToday } from './SuggestedToday';
+import { Icon } from './icons';
 
 export function TodayScreen({ who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews }: {
   /** Whose sets these are, named only when several people share the phone. */
@@ -110,17 +111,17 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
     <div ref={outer}><div ref={inner}>
       <div className="today-head">
         <div className="day-switch" data-tour="day">
-          <button className="mini" aria-label="Previous day" onClick={() => onDay(addDays(date, -1))}>‹</button>
+          <button className="mini" aria-label="Previous day" onClick={() => onDay(addDays(date, -1))}><Icon name="chev-left" size={28} sw={2} /></button>
           <h1>{fmtDay(date, today)}</h1>
-          <button className="mini" aria-label="Next day" disabled={date >= today} onClick={() => onDay(addDays(date, 1))}>›</button>
+          <button className="mini" aria-label="Next day" disabled={date >= today} onClick={() => onDay(addDays(date, 1))}><Icon name="chev-right" size={28} sw={2} /></button>
         </div>
-        <button data-tour="program" onClick={onOpenProgram}>Program</button>
+        <button className="quiet-btn program-btn" data-tour="program" onClick={onOpenProgram}>Program</button>
       </div>
       {/* Which gym only matters once there's a choice of them. */}
-      {gyms.gyms.length > 1 && gyms.active && <button className="gym-line" onClick={onOpenGym}><span>at <b className="pname">{gyms.active.name}</b></span><span aria-hidden="true">›</span></button>}
+      {gyms.gyms.length > 1 && gyms.active && <button className="gym-line" onClick={onOpenGym}><span>at <b className="pname">{gyms.active.name}</b></span><Icon name="chev-right" size={16} sw={2} /></button>}
       {news && onOpenNews && (
         <button className="today-news" onClick={() => onOpenNews({ uid: news.uid, name: news.name })}>
-          <span>@{news.name} {news.text}</span><span className="muted small">tap to reply</span>
+          <Icon name="message" size={22} /><span>@{news.name} {news.text}</span><span className="small reply">tap to reply</span>
         </button>
       )}
       {date < today && <p className="card note-card past-day"><span>Logging to a past day</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={() => onDay(today)}>Back to today</button></p>}

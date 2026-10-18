@@ -6,6 +6,7 @@ import { REGIONS, type Flag, type Region } from '../domain/types';
 import { derivedFlags } from '../domain/buildSet';
 import { isHold, likelyRegion, painDefaults } from '../domain/care';
 import { Stepper } from './Stepper';
+import { Icon } from './icons';
 import { BUILT_IN, type TagPrefs } from '../domain/tags';
 import { TagEditor } from './TagEditor';
 import { fmtPerSide } from '../domain/plates';
@@ -141,7 +142,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       {problem && <p role="status" className={quiet ? 'small muted' : 'small err'}>{problem}</p>}
       {!problem && typo && asked === w && <p role="status" className="small err">{weight} lb is {Math.round(w / heaviest)}× your best: tap {submitLabel.split(' ·')[0]} again to keep it</p>}
       {/* Reps in reserve doesn't apply to a timed hold. */}
-      {!hold && <div className="chips" role="group" aria-label="RIR">
+      {!hold && <div className="chips seg" role="group" aria-label="RIR">
         <span className="chip-label">RIR</span>
         {[0, 1, 2, 3, 4].map((n) => (
           <button type="button" key={n} className="chip" aria-pressed={rir === n} onClick={() => touch(setRir)(rir === n ? undefined : n)}>{n === 4 ? '4+' : n}</button>
@@ -153,7 +154,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
         {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
         <button type="submit" className="primary" disabled={!valid}>{submitLabel}</button>
       </div>
-      <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>{moreOpen || !moreHint ? 'Details' : `Details · ${moreHint}`}</button>
+      <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>{moreOpen || !moreHint ? 'Details' : `Details · ${moreHint}`}<Icon name="chev-down" size={18} sw={2} className="chev" /></button>
       {moreOpen && (
         <>
           <div className="chips" role="group" aria-label="Flags">

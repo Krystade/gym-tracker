@@ -226,8 +226,8 @@ test('the day switch buttons are full-size taps and the header fits at 375 wide'
   }
   await page.getByRole('button', { name: 'Previous day' }).click();
   await expect(page.getByText(/Logging to/)).toBeVisible();
-  // One line: a wrapped heading is taller than a single 22px line.
-  expect((await page.getByRole('heading', { name: /Sep 29/ }).boundingBox())!.height).toBeLessThan(40);
+  // One line: a wrapped heading is taller than a single 41px line (the large title since the 2026-10-17 redesign).
+  expect((await page.getByRole('heading', { name: /Sep 29/ }).boundingBox())!.height).toBeLessThan(60);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   await page.screenshot({ path: 'screenshots/24-day-switch.png' });
 });

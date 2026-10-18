@@ -9,6 +9,7 @@ import { estimateSeconds, hhmm, paces, timedDay } from '../domain/timing';
 import { warmupCount } from '../domain/suggest';
 import { fmtLoad } from './SuggestionCard';
 import { cardioTarget } from '../domain/cardio';
+import { Icon } from './icons';
 
 /** Done for the plan: a working set, or a cardio bout. */
 const doneEntry = (e: SetEntry) => isWorking(e) || !!e.cardio;
@@ -74,6 +75,9 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
   };
   const live = day.slots.filter((s) => !plan.skips.includes(s.exercise));
   const finished = live.filter((s) => doneOf(plan.swaps[s.exercise] ?? s.exercise) >= s.sets).length;
+  // The day in sets, for the bar under the header: each planned set a segment, lit once it's done (extra sets don't count).
+  const total = live.reduce((n, s) => n + s.sets, 0);
+  const setsDone = live.reduce((n, s) => n + Math.min(s.sets, doneOf(plan.swaps[s.exercise] ?? s.exercise)), 0);
   // The second line of the header: how long it runs when open, how far along when folded. Inside the
   // toggle, so it fills the 44 px tap area instead of sitting under it.
   const length = () => {
@@ -91,7 +95,13 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
       </button></h2>
 
       {open && (<>
-      <div className="chips" role="group" aria-label="Program day">
+      {total > 0 && (
+        <div className="sets-progress">
+          <p className="sets-num"><b>{setsDone}</b>/{total} <span>sets</span></p>
+          <div className="sets-bar" aria-hidden="true">{Array.from({ length: total }, (_, i) => <i key={i} className={i < setsDone ? 'on' : undefined} />)}</div>
+        </div>
+      )}
+      <div className="chips seg-wide" role="group" aria-label="Program day">
         {program.days.map((d, i) => (
           <button key={d.name} type="button" className="chip" aria-pressed={!quick && i === plan.day} onClick={() => onChange({ ...plan, day: i, skips: [], swaps: {}, slots: undefined, quick: undefined })}>{d.name}</button>
         ))}
@@ -113,8 +123,9 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
           const target = plan.swaps[slot.exercise] ?? slot.exercise;
           const done = doneOf(target);
           return (
-            <li key={slot.exercise} className={skipped ? 'skipped' : done >= slot.sets ? 'done' : ''}>
+            <li key={slot.exercise} className={skipped ? 'skipped' : done >= slot.sets ? 'done' : ''} data-state={!skipped && done > 0 && done < slot.sets ? 'going' : undefined}>
               <button className="plan-name" data-exercise={target} disabled={skipped} onClick={() => { onChange(plan); onOpen(target); }}>
+                <span className="slot-glyph" aria-hidden="true">{!skipped && done >= slot.sets && <Icon name="check" size={16} sw={2.75} />}</span>
                 <b>{target}</b>
                 {target !== slot.exercise && <span className="muted small">for {slot.exercise}</span>}
                 {/* The count rides under the name, so the name gets the width it needs. */}

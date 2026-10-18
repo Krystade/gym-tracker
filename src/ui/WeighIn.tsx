@@ -20,7 +20,7 @@ export function WeighIn({ body, date }: { body: BodyStore; date: string }) {
     <div className="weigh" role="group" aria-label="Weigh-in">
       {todays != null && !editing ? (<>
         <span>Weighed <b>{fmtWeight(todays)} lb</b></span>
-        <button type="button" onClick={() => { setV(String(todays)); setEditing(true); }}>Edit</button>
+        <button type="button" className="quiet-btn" onClick={() => { setV(String(todays)); setEditing(true); }}>Edit</button>
       </>) : (
         <form onSubmit={(e) => { e.preventDefault(); void save(); }}>
           <input aria-label="Weigh-in (lb)" inputMode="decimal" placeholder={last ? `Weigh-in (trend ${last.trend.toFixed(1)})` : 'Weigh-in, lb'}

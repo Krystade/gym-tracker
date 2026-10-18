@@ -10,6 +10,7 @@ import { SetForm, type SetFormValue } from './SetForm';
 import { isHoldLift } from '../domain/care';
 import { SetRowContent } from './SetRow';
 import { suggest } from '../domain/suggest';
+import { Icon } from './icons';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
 import { hhmm, paces, restSeconds, suggestTime } from '../domain/timing';
 import { startRest } from './RestTimer';
@@ -20,11 +21,7 @@ import { fmtPerSide } from '../domain/plates';
 import { isCardio } from '../domain/cardio';
 import { CardioCard } from './CardioCard';
 
-const TargetIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
-    <circle cx="8" cy="8" r="6.5" /><circle cx="8" cy="8" r="3.5" /><circle cx="8" cy="8" r="0.8" fill="currentColor" />
-  </svg>
-);
+const TargetIcon = () => <Icon name="target" size={20} />;
 
 type CardProps = Parameters<typeof LiftCard>[0] & { plannedMinutes?: number | null };
 /** A cardio machine gets its own card: time and distance, not weight and reps. */
@@ -133,10 +130,12 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     return (
       <section className="card folded" data-card={exercise.toLowerCase()}>
         <button className="fold-line" aria-expanded="false" aria-label={`Show ${exercise}`} onClick={() => setOpened(true)}>
+          <span className="fold-check" aria-hidden="true"><Icon name="check" size={16} sw={2.5} /></span>
           <b>{exercise}</b>
           <span className="ok">{working.length}/{plannedSets} sets ✓</span>
           {today.some((x) => prs.has(x.id)) && <span className="tag pr-tag">PR</span>}
           <span className="muted nw">{fmtSet(top)}</span>
+          <Icon name="chev-right" size={18} className="fold-chev" />
         </button>
         {pr && <p role="status" className="pr">{pr}</p>}
         {justDone && onGo && left.length > 0 && (
@@ -153,7 +152,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     <section ref={box} className="card" data-card={exercise.toLowerCase()}>
       <header className="card-head">
         <button className="link" onClick={() => onOpen(exercise)}>{exercise}</button>
-        {complete && <button className="mini" aria-expanded="true" onClick={() => setOpened(false)}>Fold</button>}
+        {complete && <button className="mini quiet-btn" aria-expanded="true" onClick={() => setOpened(false)}>Fold</button>}
         {best?.set && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.value))} lb</span>}
       </header>
       {last && <p className="muted card-last">Last ({fmtDay(last.date, realToday)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
