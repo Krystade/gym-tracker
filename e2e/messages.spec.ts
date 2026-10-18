@@ -316,3 +316,30 @@ test('the message box wraps a long message onto lines it grows to fit; Enter is 
   await expect(field).toHaveValue('');
   expect((await field.boundingBox())!.height).toBeLessThanOrEqual(one + 1);
 });
+
+// A thread read can come back at any moment (a push, the app coming back, the news after a send), and the friend cache
+// re-renders the sheet at once. One that lands inside a keystroke's input event, after the field has changed and before
+// React's own listener sees it, used to write the old, empty value over what was typed (the field was controlled).
+test('a thread read coming back mid-keystroke keeps what was typed', async ({ browser }) => {
+  const [a, b] = await Promise.all([person(browser), person(browser)]);
+  await befriend(b, a, b.name);
+  await crew(a.page).getByTestId(`crew-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
+  const sheet = sheetOf(a.page, b.name);
+  await expect(sheet.getByRole('list', { name: 'Messages' })).toContainText('Nothing yet');
+  const field = sheet.getByRole('textbox', { name: `Message @${b.name}` });
+  type Held = { held: (() => void)[] };
+  // Firestore's replies are held; the app coming back reads the thread again (three queries).
+  await a.page.evaluate(() => {
+    const w = window as unknown as Held, json = Response.prototype.json;
+    w.held = [];
+    Response.prototype.json = function () { const p = json.call(this); return new Promise((res, rej) => { w.held.push(() => void p.then(res, rej)); }); };
+    // Let go inside the field's next input event, before React's listener on the root; replies after that aren't held.
+    addEventListener('input', () => { Response.prototype.json = json; for (const go of w.held.splice(0)) go(); }, { capture: true, once: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect.poll(() => a.page.evaluate(() => (window as unknown as Held).held.length)).toBeGreaterThanOrEqual(3);
+  await a.page.waitForTimeout(300); // the replies' bodies are in, so letting go finishes the read within the event
+  await field.fill('Bench at 6?');
+  await expect(field).toHaveValue('Bench at 6?');
+  await expect(sheet.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+});

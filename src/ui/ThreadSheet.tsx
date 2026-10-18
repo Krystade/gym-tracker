@@ -34,6 +34,9 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   const kept = cache?.threads[friend.uid];
   const items = kept?.items ?? (empty ? [] : null);
   const sentGyms = kept?.gyms ?? [];
+  // What's typed lives in the field itself (uncontrolled) and `text` follows it. A controlled field is written back from state
+  // on every render, and a render landing inside an input event (a thread or news read coming back: the friend cache tells
+  // every screen at once, synchronously) wrote the old value over the keystroke before React's own listener saw it.
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   /** `fades`: a send's "Sent", which the new bubble already shows; it goes after 2 s (still read out, then gone from view). */
@@ -93,7 +96,10 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
     finally { setTimeout(() => setBusy(false), Math.max(0, GAP_MS - (Date.now() - t0))); }
   };
   const ping = (k: PresetKey) => void send(async () => sendPing(await loadCloud(), me, friend.uid, k), `Sent ${PRESETS[k].emoji}`);
-  const submit = () => { const t = text; if (messageOk(t)) void send(async () => { await sendMessage(await loadCloud(), me, friend.uid, t); setText(''); }, 'Sent'); };
+  const submit = () => {
+    const t = text;
+    if (messageOk(t)) void send(async () => { await sendMessage(await loadCloud(), me, friend.uid, t); setText(''); if (field.current) field.current.value = ''; }, 'Sent');
+  };
   const act = async (f: () => Promise<void>, after: () => void) => {
     setBusy(true); setMsg(null);
     try { await f(); changed.current(); after(); } catch (e) { setMsg({ ok: false, text: cloudError(e) }); } finally { setBusy(false); }
@@ -165,7 +171,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
           </div>
           {/* Enter is a new line (a message can have several); Send sends, and so does Cmd or Ctrl+Enter on a keyboard. */}
           <form className="compose" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-            <textarea ref={field} aria-label={`Message ${who}`} value={text} maxLength={MAX_MESSAGE} rows={1} enterKeyHint="enter" placeholder="Message" autoComplete="off"
+            <textarea ref={field} aria-label={`Message ${who}`} maxLength={MAX_MESSAGE} rows={1} enterKeyHint="enter" placeholder="Message" autoComplete="off"
               onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} />
             <span className="compose-side">
               <span className={`small ${n >= MAX_MESSAGE ? 'warn' : 'muted'}`} aria-live="polite">{n > COUNT_FROM ? `${n}/${MAX_MESSAGE}` : ''}</span>
