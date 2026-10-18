@@ -29,6 +29,7 @@ const P = {
   plus: <path d="M12 5.5v13M5.5 12h13" />,
   minus: <path d="M5.5 12h13" />,
   timer: <><circle cx="12" cy="13.25" r="7.25" /><path d="M12 9.5v3.75l2.5 1.5M9.75 2.75h4.5" /></>,
+  switch: <><path d="M4.75 8.75h14.5M15.75 5.25l3.5 3.5-3.5 3.5" /><path d="M19.25 15.25H4.75M8.25 11.75l-3.5 3.5 3.5 3.5" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof P;

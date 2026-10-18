@@ -916,6 +916,15 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 .target-suggest-changes li { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); padding: 3px 0; border-bottom: 1px solid var(--line); }
 .target-suggest-changes li span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
+/* Supersets (noticed from the log, src/domain/superset.ts): an amber line under the card's head, with its swap glyph, and a
+   quiet "Not a superset" at its end; History marks the grouped lifts the same way, smaller. */
+.superset-line { display: flex; align-items: center; gap: 6px; margin: -4px 0 4px; color: var(--text-2); font-size: var(--fs-sm); font-weight: 500; }
+.superset-line .ic { flex: none; color: var(--accent-text); }
+.superset-line span { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.superset-line .mini { flex: none; margin: 0 -8px 0 auto; padding: 0 8px; background: none; color: var(--accent-text); font-size: var(--fs-sm); font-weight: 600; }
+.superset-mark { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); font-weight: 600; color: var(--accent-text); overflow-wrap: anywhere; }
+.superset-mark .ic { flex: none; }
+
 /* ---- Motion (stage 4): subtle, and all of it off under prefers-reduced-motion. ---- */
 /* Sheets slide up over 240ms, easing out, and their backdrop fades in. `transform`, not `translate`: the sheet's translate
    keeps it on the visible viewport (--vv-bottom), and the two compose. */

@@ -5,8 +5,12 @@ import { fmtDay, fmtSet, plural } from '../domain/format';
 import { localDate } from '../domain/ids';
 import type { SetEntry } from '../domain/types';
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { paces, sessionMinutes } from '../domain/timing';
+import { paces, sessionMinutes, usualGap } from '../domain/timing';
 import { prIds } from '../domain/records';
+import { andList, supersets } from '../domain/superset';
+import { notSupersets } from '../state/notSuperset';
+import { activeProfileDb } from '../db/db';
+import { Icon } from './icons';
 
 function byExercise(sets: SetEntry[]): [string, SetEntry[]][] {
   const out: [string, SetEntry[]][] = [];
@@ -25,6 +29,21 @@ export function HistoryScreen({ store, onOpen, onAddTo, focus = null, onFocused 
   const today = localDate(new Date());
   const pace = useMemo(() => paces(store.entries), [store.entries]);
   const prs = useMemo(() => prIds(store.entries), [store.entries]);
+  // Each set done in a superset, and the lifts it went with. "Not a superset" is this phone's own: a friend's log has none.
+  const own = onAddTo != null;
+  const grouped = useMemo(() => {
+    const owner = own ? activeProfileDb() : null, days = new Map<string, SetEntry[]>(), out = new Map<string, string[]>();
+    for (const e of store.entries) if (e.loggedAt) { const d = days.get(e.date); if (d) d.push(e); else days.set(e.date, [e]); }
+    for (const [date, day] of days) {
+      for (const g of supersets(day, date, (ex) => usualGap(pace, ex), { dismissed: owner ? notSupersets(owner, date) : [] })) {
+        for (const id of g.after.keys()) {
+          const ex = day.find((e) => e.id === id)!.exercise;
+          out.set(id, g.lifts.filter((x) => !sameExercise(x, ex)));
+        }
+      }
+    }
+    return out;
+  }, [store.entries, pace, own]);
   // Kept from the first render: the caller clears its copy once it's used, and the day stays open.
   const [at] = useState(focus);
   useEffect(() => {
@@ -65,9 +84,11 @@ export function HistoryScreen({ store, onOpen, onAddTo, focus = null, onFocused 
                 // Warm-ups would bury the working weights: count them, don't list them.
                 const working = sets.filter((x) => !x.flags.includes('warmup'));
                 const warm = sets.length - working.length;
+                const with_ = sets.map((x) => grouped.get(x.id)).find((w) => w?.length);
                 return (
                 <button key={name} className="row-button" onClick={() => onOpen(name)}>
                   <b>{name}</b>
+                  {with_ && <span className="superset-mark"><Icon name="switch" size={14} sw={2} />Superset with {andList(with_)}</span>}
                   <span className="muted">
                     {working.map((x, j) => <Fragment key={x.id}>{j > 0 && ', '}<span className="nw">{fmtSet(x)}{prs.has(x.id) && <>{' '}<span className="tag pr-tag">PR</span></>}{x.flags.includes('pain') && <>{' '}<span className="pain-mark">pain</span></>}{x.tags?.map((t) => <Fragment key={t}>{' '}<span className="tag own">{t}</span></Fragment>)}</span></Fragment>)}
                     {warm > 0 && `${working.length ? ' + ' : ''}${plural(warm, 'warm-up')}`}
