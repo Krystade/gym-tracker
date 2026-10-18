@@ -59,3 +59,33 @@ describe('rows that mention a bench', () => {
     }
   });
 });
+
+describe('pull bias', () => {
+  const LAT = { Lats: 1, 'Mid-Back': 0.5, Biceps: 0.5, Forearms: 0.5 };
+  const CHIN = { Lats: 1, 'Mid-Back': 0.5, Biceps: 0.75, Forearms: 0.5 };
+  it('every vertical pull is lats first; an underhand or close grip brings the biceps in more, short of direct work', () => {
+    for (const n of ['Lat Pulldown', 'Pull-up']) expect(muscleVector(n), n).toEqual(LAT);
+    for (const n of ['Chin-up', 'Close-Grip Lat Pulldown']) expect(muscleVector(n), n).toEqual(CHIN);
+    expect(muscleVector('Chin-up')).not.toEqual(muscleVector('Pull-up'));
+  });
+  it('a pull logged under its own name reads its grip', () => {
+    for (const n of ['Weighted Chin-up', 'Neutral Grip Chin', 'Supinated Lat Pulldown', 'Underhand Pulldown', 'Reverse-Grip Lat Pulldown',
+      'Reverse Grip Pull-up', 'V-Bar Pulldown', 'Narrow Grip Pulldown']) expect(muscleVector(n), n).toEqual(CHIN);
+    for (const n of ['Wide-Grip Lat Pulldown', 'Weighted Pull-up', 'Machine Pulldown', 'Wide Grip Pull-up']) expect(muscleVector(n), n).toEqual(LAT);
+    // A row is a row, whatever the grip.
+    for (const n of ['Underhand Row', 'Reverse-Grip Barbell Row', 'Close-Grip Cable Row']) expect(muscleVector(n)?.['Mid-Back'], n).toBe(1);
+  });
+});
+
+describe('new catalog lifts', () => {
+  it('DB Shoulder Press is an overhead press; Front Squat and Pendulum Squat are squats', () => {
+    for (const n of ['DB Shoulder Press', 'Front Squat', 'Pendulum Squat']) expect(CATALOG, n).toContain(n);
+    expect(muscleVector('DB Shoulder Press')).toEqual(muscleVector('Overhead Press'));
+    expect(muscleVector('Front Squat')).toEqual(muscleVector('Barbell Squat'));
+    expect(muscleVector('Pendulum Squat')).toEqual(muscleVector('Barbell Squat'));
+  });
+  it('and their logged spellings read the same', () => {
+    for (const n of ['Dumbbell Shoulder Press', 'Seated DB Shoulder Press']) expect(muscleVector(n), n).toEqual(muscleVector('DB Shoulder Press'));
+    for (const n of ['Barbell Front Squat', 'Pendulum Squat Machine']) expect(muscleVector(n), n).toEqual(muscleVector('Front Squat'));
+  });
+});

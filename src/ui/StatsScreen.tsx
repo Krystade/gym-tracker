@@ -127,7 +127,7 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
       <LastWeekCard entries={store.entries} profile={p} today={today} />
       <section className="card">
         <h2>Muscle volume</h2>
-        <p className="muted small">Fractional sets this week (direct 1, indirect ½), against each priority’s target range (outlined). “On pace” is short of the target but keeping up with the week so far.</p>
+        <p className="muted small">Fractional sets this week (direct 1, indirect ½; a chin-up’s biceps ¾), against each priority’s target range (outlined). “On pace” is short of the target but keeping up with the week so far.</p>
         <MuscleBars sets={muscle.sets} profile={p} pace={weekPace(today)} />
         {muscle.unmapped.length > 0 && <p className="muted small">Not counted (unknown muscles): {muscle.unmapped.join(', ')}</p>}
         <ChartTable caption="Fractional sets per muscle" head={['Muscle', 'This week / last week']}

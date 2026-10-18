@@ -31,7 +31,7 @@ export const likelyRegion = (exercise: string): Region => REGION_RULES.find(([re
 /** Lifts that load a region hard; steered away from while that region has hurt recently. */
 const STRESS: Partial<Record<Region, RegExp>> = {
   elbow: /skull|overhead.*extension|close-grip|\bdips?\b|french press/i,
-  'lower back': /deadlift|barbell squat|smith squat|good morning|bent-over row/i,
+  'lower back': /deadlift|barbell squat|smith squat|front squat|good morning|bent-over row/i,
   shoulder: /overhead press|arnold|upright row|\bdips?\b|behind the neck/i,
   knee: /leg extension|lunge|split squat/i,
 };

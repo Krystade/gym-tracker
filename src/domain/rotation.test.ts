@@ -3,7 +3,7 @@ import type { Flag, SetEntry } from './types';
 import { CATALOG, PATTERNS, VARIATIONS } from './catalog';
 import { NEEDS } from './equipment';
 import { muscleVector } from './muscles';
-import { carryOver, mainMuscle, nextVariation, patternOf, rotateProgram, rotation, stall } from './rotation';
+import { biasOf, carryOver, mainMuscle, nextVariation, patternOf, rotateProgram, rotation, rotationReason, stall } from './rotation';
 import { defaultSettings, nextTarget } from './progression';
 import type { Program } from './program';
 
@@ -42,7 +42,23 @@ describe('patterns', () => {
     for (const ex of VARIATIONS['Vertical pull']) expect(main(ex)).toBe('Lats');
     for (const ex of VARIATIONS.Squat) expect(main(ex)).toBe('Quads');
     for (const ex of VARIATIONS.Hinge) expect(main(ex)).toBe('Hamstrings');
-    for (const ex of VARIATIONS['Vertical pull']) expect(muscleVector(ex)?.Biceps).toBe(0.5);
+    // Lats lead every vertical pull; the underhand and close grips bring the biceps in more.
+    for (const ex of VARIATIONS['Vertical pull']) expect(muscleVector(ex)?.Biceps, ex).toBe(['Chin-up', 'Close-Grip Lat Pulldown'].includes(ex) ? 0.75 : 0.5);
+  });
+  it('the bias is the main muscle and any other trained at three quarters or more', () => {
+    expect(biasOf('Lat Pulldown')).toEqual(['Lats']);
+    expect(biasOf('Pull-up')).toEqual(['Lats']);
+    expect(biasOf('Chin-up')).toEqual(['Lats', 'Biceps']);
+    expect(biasOf('Close-Grip Lat Pulldown')).toEqual(['Lats', 'Biceps']);
+    expect(biasOf('Seated Cable Row')).toEqual(['Mid-Back']);
+    expect(biasOf('Close-Grip Bench Press')).toEqual(['Triceps']);
+    expect(biasOf('Zercher Thing')).toEqual([]);
+  });
+  it('the new lifts have their patterns, and their logged spellings too', () => {
+    expect(VARIATIONS['Vertical press']).toContain('DB Shoulder Press');
+    expect(VARIATIONS.Squat).toEqual(expect.arrayContaining(['Front Squat', 'Pendulum Squat']));
+    for (const n of ['DB Shoulder Press', 'Dumbbell Shoulder Press']) expect(patternOf(n), n).toBe('Vertical press');
+    for (const n of ['Front Squat', 'Pendulum Squat', 'Barbell Front Squat', 'Pendulum Squat Machine']) expect(patternOf(n), n).toBe('Squat');
   });
   it('a catalog lift gets its pattern; a lift outside the six gets none', () => {
     expect(patternOf('Bench Press')).toBe('Horizontal press');
@@ -190,6 +206,22 @@ describe('nextVariation', () => {
     const gym2 = new Set(['Bench Press', 'Close-Grip Bench Press', 'Incline Bench Press']);
     expect(nextVariation(bench, 'Bench Press', TODAY, { available: gym2 })).toBe('Incline Bench Press');
   });
+  it('a pull keeps its bias: lats-led to lats-led, biceps-heavy to biceps-heavy', () => {
+    // With one profile for every pull, a stalled chin-up would go to the pattern's first, the lat pulldown.
+    expect(nextVariation(log('Chin-up', PLATEAU), 'Chin-up', TODAY)).toBe('Close-Grip Lat Pulldown');
+    expect(nextVariation(log('Close-Grip Lat Pulldown', PLATEAU), 'Close-Grip Lat Pulldown', TODAY)).toBe('Chin-up');
+    expect(nextVariation(log('Pull-up', PLATEAU), 'Pull-up', TODAY)).toBe('Lat Pulldown');
+    // A close-grip pulldown you know, from longer ago, still waits behind the pull-up: the same bias comes first.
+    const known = [...log('Lat Pulldown', PLATEAU), ...trained('Close-Grip Lat Pulldown', '2026-03-01'), ...trained('Pull-up', '2026-07-01')];
+    expect(nextVariation(known, 'Lat Pulldown', TODAY)).toBe('Pull-up');
+    // And round again: the lats-led pair alternate, with nothing biceps-heavy in between.
+    const back = [...known, ...trained('Pull-up', '2026-09-29')];
+    expect(nextVariation(back, 'Pull-up', TODAY)).toBe('Lat Pulldown');
+  });
+  it('with no pull of the same bias here, the closest of the rest, still lats-led', () => {
+    expect(nextVariation(log('Lat Pulldown', PLATEAU), 'Lat Pulldown', TODAY, { available: new Set(['Lat Pulldown', 'Close-Grip Lat Pulldown']) })).toBe('Close-Grip Lat Pulldown');
+    expect(nextVariation(log('Chin-up', PLATEAU), 'Chin-up', TODAY, { available: new Set(['Chin-up', 'Pull-up', 'Lat Pulldown']) })).toBe('Lat Pulldown');
+  });
   it('only what this gym can do; nothing when nothing fits', () => {
     const gym = new Set(['Bench Press', 'Flat DB Press', 'Cable Curl']);
     expect(nextVariation(bench, 'Bench Press', TODAY, { available: gym })).toBe('Flat DB Press');
@@ -218,7 +250,21 @@ describe('rotation', () => {
     expect(rotation(log('Bench Press', PLATEAU), 'Bench Press', TODAY, { available: new Set(['Bench Press']) })).toBeNull();
     expect(rotation(log('Cable Curl', PLATEAU), 'Cable Curl', TODAY)).toBeNull();
     const gym = new Set(['Machine Row', 'Seated Cable Row']);
-    expect(rotation(log('Machine Row', PLATEAU), 'Machine Row', TODAY, { available: gym })).toMatchObject({ to: 'Seated Cable Row', sameMuscle: false });
+    expect(rotation(log('Machine Row', PLATEAU), 'Machine Row', TODAY, { available: gym })).toMatchObject({ to: 'Seated Cable Row', sameMuscle: false, sameBias: false });
+  });
+  it('names what held: the muscles of a two-muscle bias, else the main muscle, else the closest', () => {
+    const r = (lift: string, available?: string[]) => rotationReason(rotation(log(lift, PLATEAU), lift, TODAY, available ? { available: new Set(available) } : {})!);
+    expect(r('Chin-up')).toBe('same pattern and muscles (lats and biceps)');
+    expect(r('Bench Press')).toBe('same pattern and main muscle (chest)');
+    expect(r('Lat Pulldown')).toBe('same pattern and main muscle (lats)');
+    expect(r('Chin-up', ['Chin-up', 'Lat Pulldown'])).toBe('same pattern and main muscle (lats)');
+    expect(r('Machine Row', ['Machine Row', 'Seated Cable Row'])).toBe('same pattern, the closest muscles this gym has');
+  });
+  it('says whether the bias held, as well as the main muscle', () => {
+    expect(rotation(log('Chin-up', PLATEAU), 'Chin-up', TODAY))
+      .toMatchObject({ to: 'Close-Grip Lat Pulldown', muscle: 'Lats', bias: ['Lats', 'Biceps'], sameMuscle: true, sameBias: true });
+    expect(rotation(log('Chin-up', PLATEAU), 'Chin-up', TODAY, { available: new Set(['Chin-up', 'Lat Pulldown']) }))
+      .toMatchObject({ to: 'Lat Pulldown', sameMuscle: true, sameBias: false });
   });
 });
 
@@ -230,6 +276,8 @@ describe('carryOver', () => {
     // Deadlift 315 × 5 = 367.5 → RDL at 0.75 × 0.9 ≈ 248 → 177 for 12 → 175. Smith squat 225 × 8 = 285 → squat at 1 × 0.9 → 183 → 180.
     expect(carryOver(log('Deadlift', [['2026-09-29', ['315x5']]]), 'Deadlift', 'Romanian Deadlift', TODAY, defaultSettings('Romanian Deadlift'))?.weight).toBe(175);
     expect(carryOver(log('Smith Squat', [['2026-09-29', ['225x8']]]), 'Smith Squat', 'Barbell Squat', TODAY, defaultSettings('Barbell Squat'))?.weight).toBe(180);
+    // A front squat is about 0.8 of a back squat: 225 × 8 = 285 → × 0.8 × 0.9 ≈ 205 → 146.6 for 12 → 145.
+    expect(carryOver(log('Barbell Squat', [['2026-09-29', ['225x8']]]), 'Barbell Squat', 'Front Squat', TODAY, defaultSettings('Front Squat'))?.weight).toBe(145);
   });
   it('from your own history of both, when they were trained around the same time', () => {
     const e = [...log('Bench Press', [['2025-09-01', ['185x8']], ['2025-09-15', ['185x8']]]), ...log('Incline Bench Press', [['2025-09-10', ['135x10']]]),

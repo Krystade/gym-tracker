@@ -51,6 +51,18 @@ export function mainMuscle(name: string): Muscle | null {
   return best;
 }
 
+/** A muscle trained at this much or more is part of a lift's bias, beside its main muscle. */
+const BIAS = 0.75;
+/**
+ * A lift's bias: its main muscle, then any other it trains at ¾ or more (muscles.ts order). A chin-up is lats and biceps; a
+ * pull-up, lats alone. Same bias is what a rotation keeps. Empty for a lift muscles.ts can't place.
+ */
+export function biasOf(name: string): Muscle[] {
+  const v = muscleVector(name), main = mainMuscle(name);
+  if (!v || !main) return [];
+  return [main, ...MUSCLES.filter((m) => m !== main && (v[m] ?? 0) >= BIAS)];
+}
+
 /** How many sessions in a row with nothing better make a stall, and how long they must span. */
 export const STALL_SESSIONS = 3;
 export const STALL_DAYS = 14;
@@ -114,8 +126,8 @@ const ROTATION = 3;
 const PAIN_DAYS = 60;
 
 /**
- * The next variation for a lift: same pattern, same main muscle when the gym has one (else the closest muscle profile), one
- * this gym can do, not already in the program, no pain logged on it lately. The rotation is the lift plus the two others you
+ * The next variation for a lift: same pattern, same bias when the gym has one (a lats-led pull to a lats-led pull, a chin-up
+ * to a close-grip pulldown; else the closest muscle profile, which keeps the main muscle where the pattern can), one this gym can do, not already in the program, no pain logged on it lately. The rotation is the lift plus the two others you
  * trained most recently, topped up with ones you haven't (closest muscles, then the pattern's order); the next is the one of
  * those trained longest ago, never trained first. So it goes A → B → C and back to A.
  */
@@ -132,8 +144,8 @@ export function nextVariation(entries: SetEntry[], lift: string, today: string, 
     if ((ok && !ok.has(k)) || programmed.has(k) || hurt.has(k)) continue;
     pool.push(n);
   }
-  const main = mainMuscle(lift);
-  const same = pool.filter((n) => mainMuscle(n) === main);
+  const bias = biasOf(lift).join();
+  const same = pool.filter((n) => biasOf(n).join() === bias);
   // Sorts are stable: ties keep the pattern's order.
   const closest = (xs: string[]) => [...xs].sort((a, b) => similarity(lift, b) - similarity(lift, a));
   const group = same.length ? same : closest(pool);
@@ -150,8 +162,11 @@ export function nextVariation(entries: SetEntry[], lift: string, today: string, 
   return others.sort((a, b) => last(a).localeCompare(last(b)))[0] ?? null;
 }
 
-/** A stalled lift and the variation to switch to. `sameMuscle`: false when the gym had none with the same main muscle. */
-export interface Rotation { from: string; to: string; pattern: Pattern; muscle: Muscle | null; sameMuscle: boolean; stall: Stall }
+/**
+ * A stalled lift and the variation to switch to. `bias`: the lift's (see `biasOf`). `sameBias`: false when the gym had none
+ * of the same bias; `sameMuscle`: false when it had none with the same main muscle either.
+ */
+export interface Rotation { from: string; to: string; pattern: Pattern; muscle: Muscle | null; bias: Muscle[]; sameMuscle: boolean; sameBias: boolean; stall: Stall }
 
 export function rotation(entries: SetEntry[], lift: string, today: string, ctx: RotationContext = {}): Rotation | null {
   const pattern = patternOf(lift);
@@ -160,18 +175,25 @@ export function rotation(entries: SetEntry[], lift: string, today: string, ctx: 
   if (!s) return null;
   const to = nextVariation(entries, lift, today, ctx);
   if (!to) return null;
-  const muscle = mainMuscle(lift);
-  return { from: lift, to, pattern, muscle, sameMuscle: mainMuscle(to) === muscle, stall: s };
+  const muscle = mainMuscle(lift), bias = biasOf(lift);
+  return { from: lift, to, pattern, muscle, bias, sameMuscle: mainMuscle(to) === muscle, sameBias: biasOf(to).join() === bias.join(), stall: s };
+}
+
+/** Why this variation, in a phrase: the two muscles a chin-up's bias keeps, else the main muscle, else the closest there was. */
+export function rotationReason(r: Rotation): string {
+  const lower = (m: Muscle | null) => m?.toLowerCase();
+  if (r.sameBias && r.bias.length > 1) return `same pattern and muscles (${r.bias.map(lower).join(' and ')})`;
+  return r.sameMuscle ? `same pattern and main muscle (${lower(r.muscle)})` : 'same pattern, the closest muscles this gym has';
 }
 
 /**
  * Rough e1RM of each lift against the others in its pattern, only where loads compare: the barbell lifts and their Smith
- * versions, and the two pulldowns on one stack. Dumbbells, machines and bodyweight vary too much (per hand or both, stack
+ * versions (a front squat about 0.8 of a back squat), and the two pulldowns on one stack. Dumbbells, machines and bodyweight vary too much (per hand or both, stack
  * and lever ratios) to guess; those carry over only from your own history.
  */
 const LOAD: Record<string, number> = {
   'bench press': 1, 'smith flat press': 1, 'close-grip bench press': 0.9, 'incline bench press': 0.8, 'smith incline press': 0.8,
-  'lat pulldown': 1, 'close-grip lat pulldown': 1, 'barbell squat': 1, 'smith squat': 1, deadlift: 1, 'romanian deadlift': 0.75,
+  'lat pulldown': 1, 'close-grip lat pulldown': 1, 'barbell squat': 1, 'smith squat': 1, 'front squat': 0.8, deadlift: 1, 'romanian deadlift': 0.75,
 };
 /** Every carried-over estimate is taken down this much: a first session a little light costs one session, one too heavy costs more. */
 export const CONSERVATIVE = 0.9;

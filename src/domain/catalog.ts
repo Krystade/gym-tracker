@@ -10,7 +10,7 @@ export const CATALOG: string[] = [
   'DB Curl', 'Incline DB Curl', 'Hammer Curl', 'Cable Curl', 'Bayesian Cable Curl', 'Preacher Curl', 'Cross-Body DB Curl',
   'Machine Biceps Curl', 'Reverse Curl', 'Wrist Curl', 'Farmer’s Carry', 'Plate Pinch Hold',
   // Shoulders
-  'Overhead Press', 'Machine Shoulder Press', 'Arnold Press', 'DB Lateral Raise', 'Cable Lateral Raise', 'Machine Lateral Raise',
+  'Overhead Press', 'Machine Shoulder Press', 'DB Shoulder Press', 'Arnold Press', 'DB Lateral Raise', 'Cable Lateral Raise', 'Machine Lateral Raise',
   'Front Raise', 'Face Pull', 'Cable Rear Delt Fly', 'Reverse Pec Deck',
   // Back
   'Lat Pulldown', 'Close-Grip Lat Pulldown', 'Lat Pull-In', 'Pull-up', 'Chin-up', 'Seated Cable Row', 'Machine Row',
@@ -20,7 +20,7 @@ export const CATALOG: string[] = [
   'Plank', 'Side Plank', 'Bird Dog', 'McGill Curl-Up', 'Dead Bug', 'Back Extension', 'Pallof Press',
   // Legs
   'Leg Press', 'Leg Extension', 'Seated Leg Curl', 'Lying Leg Curl', 'Deadlift', 'Romanian Deadlift', 'DB Romanian Deadlift', 'Barbell Squat',
-  'Smith Squat', 'Bulgarian Split Squat', 'Hip Thrust', 'Glute Press', 'Hip Adduction Machine', 'Hip Abduction Machine',
+  'Smith Squat', 'Front Squat', 'Pendulum Squat', 'Bulgarian Split Squat', 'Hip Thrust', 'Glute Press', 'Hip Adduction Machine', 'Hip Abduction Machine',
   'Standing Calf Raise', 'Seated Calf Raise',
   // Landmine (a bar anchored at one end)
   'Landmine Press', 'Landmine Row', 'T-Bar Row', 'Landmine Squat', 'Landmine Rotation',
@@ -38,8 +38,8 @@ export type Pattern = (typeof PATTERNS)[number];
 export const VARIATIONS: Record<Pattern, string[]> = {
   'Horizontal press': ['Bench Press', 'Machine Chest Press', 'Incline Bench Press', 'Flat DB Press', 'Incline DB Press', 'Smith Flat Press', 'Smith Incline Press', 'Close-Grip Bench Press'],
   'Horizontal pull': ['Chest-Supported Row', 'Seated Cable Row', 'T-Bar Row', 'Kneeling DB Row', 'Machine Row', 'Landmine Row'],
-  'Vertical press': ['Overhead Press', 'Machine Shoulder Press', 'Arnold Press', 'Landmine Press'],
+  'Vertical press': ['Overhead Press', 'Machine Shoulder Press', 'DB Shoulder Press', 'Arnold Press', 'Landmine Press'],
   'Vertical pull': ['Lat Pulldown', 'Pull-up', 'Close-Grip Lat Pulldown', 'Chin-up'],
-  Squat: ['Barbell Squat', 'Leg Press', 'Smith Squat', 'Bulgarian Split Squat', 'Landmine Squat'],
+  Squat: ['Barbell Squat', 'Leg Press', 'Smith Squat', 'Pendulum Squat', 'Front Squat', 'Bulgarian Split Squat', 'Landmine Squat'],
   Hinge: ['Deadlift', 'Romanian Deadlift', 'DB Romanian Deadlift'],
 };

@@ -185,3 +185,12 @@ describe('swapSuggestions at a gym', () => {
     for (const n of here) expect(available.has(n), n).toBe(true);
   });
 });
+
+describe('the new squats and a sore lower back', () => {
+  it('a front squat loads it, like a back squat; a pendulum squat, back against the pad, does not', () => {
+    const e = [s('2026-09-20', 'Deadlift', { flags: ['pain'], painRegion: 'lower back', painSeverity: 2 })];
+    const r = swapSuggestions('Leg Press', e, '2026-09-30', 200);
+    expect(r.find((x) => x.name === 'Front Squat')?.why).toContain('loads your lower back');
+    expect(r.find((x) => x.name === 'Pendulum Squat')?.why).not.toContain('loads your lower back');
+  });
+});

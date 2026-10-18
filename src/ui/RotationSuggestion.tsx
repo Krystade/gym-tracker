@@ -3,7 +3,7 @@ import { fmtDay, fmtWeight, plural } from '../domain/format';
 import type { DayPlan } from '../domain/program';
 import { settingsKey } from '../domain/progression';
 import { renameInPlan } from '../domain/rename';
-import { rotateProgram, type Carry, type Rotation } from '../domain/rotation';
+import { rotateProgram, rotationReason, type Carry, type Rotation } from '../domain/rotation';
 import { sameExercise } from '../domain/stats';
 import { getPref, setPref } from '../state/prefs';
 import type { ProgramStore } from '../state/useProgram';
@@ -22,7 +22,7 @@ export function RotationSuggestion({ owner, r, carry, known, today, onSwitch }: 
 }) {
   const [, bump] = useState(0);
   if (getPref<string>(owner, prefName(r.from)) === sig(r)) return null;
-  const why = r.sameMuscle ? `same pattern and main muscle (${r.muscle?.toLowerCase()})` : 'same pattern, the closest muscles this gym has';
+  const why = rotationReason(r);
   const start = carry ? <>Start ≈ <b>{fmtWeight(carry.weight)} lb × {carry.reps}</b>: an estimate from your {r.from}, on the light side.</>
     : known ? <>Picks up from your last {r.to}.</> : <>New to you: start light and log every set.</>;
   return (

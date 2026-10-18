@@ -4,7 +4,7 @@ import type { SetEntry } from './types';
 import { CATALOG } from './catalog';
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
 import { defaultProfile, type Profile, type Tier } from './profile';
-import { PREFERENCE, addSlot, adherence, buildProgram, cardioSlot, DEFAULT_PICK, nextDay, primaryExercise, programVolume, type DayPlan, type Program } from './program';
+import { PREFERENCE, addSlot, adherence, buildProgram, candidates, cardioSlot, DEFAULT_PICK, nextDay, primaryExercise, programVolume, type DayPlan, type Program } from './program';
 
 let seq = 0;
 const s = (date: string, exercise: string, reps = 10, over: Partial<SetEntry> = {}): SetEntry => ({
@@ -287,5 +287,24 @@ describe('addSlot', () => {
     const empty: Program['days'][number] = { name: 'Day B', slots: [] };
     addSlot(empty, lift('Plank'));
     expect(empty.slots.map((x) => x.exercise)).toEqual(['Plank']);
+  });
+});
+
+describe('round 13 lifts and pull bias', () => {
+  it('the new lifts are fallbacks for their muscle: a dumbbell gym presses overhead with dumbbells', () => {
+    expect(PREFERENCE['Front Delts']).toContain('DB Shoulder Press');
+    expect(PREFERENCE.Quads).toEqual(expect.arrayContaining(['Front Squat', 'Pendulum Squat']));
+    const available = new Set(['DB Shoulder Press', 'Arnold Press', 'Overhead Press']);
+    expect(primaryExercise('Front Delts', [])).toBe('Machine Shoulder Press');
+    const p = buildProgram(withTiers({ 'Front Delts': 1 }, 4), [], { days: 1, perSession: 4 }, NOW, { available });
+    expect(p.days[0].slots.map((sl) => sl.exercise)).toEqual(['DB Shoulder Press']);
+  });
+  it('a chin-up counts more for the biceps than a pull-up; the lats and the rest the same', () => {
+    const prog = (exercise: string): Program => ({ key: 'program', perSession: 4, createdAt: '', days: [{ name: 'Day A', slots: [{ exercise, sets: 4, repMin: 8, repMax: 12 }] }] });
+    const pull = programVolume(prog('Pull-up')), chin = programVolume(prog('Chin-up'));
+    expect(pull).toMatchObject({ Lats: 4, 'Mid-Back': 2, Biceps: 2, Forearms: 2 });
+    expect(chin).toMatchObject({ Lats: 4, 'Mid-Back': 2, Biceps: 3, Forearms: 2 });
+    // Short of direct work: a chin-up is never the program's biceps lift.
+    expect(candidates('Biceps', [], '2026-09-30')).not.toContain('Chin-up');
   });
 });

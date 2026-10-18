@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CATALOG } from './catalog';
-import { availableSet, canDo, NEEDS, type Gym } from './equipment';
+import { availableSet, canDo, EQUIPMENT, EQUIPMENT_GROUPS, gearOf, NEEDS, type Gym } from './equipment';
 
 const gym = (equipment: Gym['equipment'], over: Partial<Gym> = {}): Gym => ({ id: 'g', name: 'G', equipment, exclude: [], include: [], ...over });
 
@@ -39,5 +39,23 @@ describe('equipment', () => {
 describe('equipment review fixes', () => {
   it('counts a dual cable station as a cable stack', () => {
     for (const ex of ['Cable Curl', 'Face Pull', 'Cable Pushdown']) expect(canDo(gym(['dual cable']), ex), ex).toBe(true);
+  });
+});
+
+describe('round 13 lifts', () => {
+  it('a DB shoulder press needs dumbbells; a front squat a barbell in a rack; a pendulum squat its machine', () => {
+    expect(canDo(gym(['dumbbells']), 'DB Shoulder Press')).toBe(true);
+    expect(canDo(gym(['barbell', 'squat rack']), 'DB Shoulder Press')).toBe(false);
+    expect(canDo(gym(['barbell', 'squat rack']), 'Front Squat')).toBe(true);
+    expect(canDo(gym(['barbell']), 'Front Squat')).toBe(false);
+    expect(canDo(gym(['pendulum squat']), 'Pendulum Squat')).toBe(true);
+    expect(canDo(gym(['leg press', 'smith machine', 'barbell', 'squat rack']), 'Pendulum Squat')).toBe(false);
+  });
+  it('the pendulum squat is gear a gym can tick, with the machines', () => {
+    expect(EQUIPMENT).toContain('pendulum squat');
+    expect(EQUIPMENT_GROUPS.find(([g]) => g === 'Machines')![1]).toContain('pendulum squat');
+    expect(gearOf('Pendulum Squat')).toBe('machine');
+    expect(gearOf('Front Squat')).toBe('barbell');
+    expect(gearOf('DB Shoulder Press')).toBe('dumbbells');
   });
 });
