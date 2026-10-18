@@ -18,6 +18,7 @@ import { estimateSeconds, paces, perSessionForMinutes } from '../domain/timing';
 import { warmupCount } from '../domain/suggest';
 import { localDate } from '../domain/ids';
 import type { ProgramDay } from '../domain/program';
+import { Input } from './Field';
 
 export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel = '‹ Back', onBack, onOpenPriorities }: { programs: ProgramStore; profile: ProfileStore; entries: SetEntry[]; gyms: GymsStore; uid?: string | null; backLabel?: string; onBack: () => void; onOpenPriorities: () => void }) {
   const p = programs.program;
@@ -95,10 +96,10 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel
       <section className={frame}>
         <p className="muted small">Built from your priorities: each set goes to the priority muscle furthest below its weekly target, using the lifts you actually do. Full-body days: every day trains your priority muscles, with a different lift for a muscle where you have one.</p>
         <div className="settings-grid two">
-          <label>Days per week<input aria-label="Days per week" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} /></label>
+          <label>Days per week<Input aria-label="Days per week" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} /></label>
           {mode === 'sets'
-            ? <label>Sets per session<input aria-label="Sets per session" inputMode="numeric" value={per} onChange={(e) => setPer(e.target.value)} /></label>
-            : <label>Minutes per session<input aria-label="Minutes per session" inputMode="numeric" value={mins} onChange={(e) => setMins(e.target.value)} /></label>}
+            ? <label>Sets per session<Input aria-label="Sets per session" inputMode="numeric" value={per} onChange={(e) => setPer(e.target.value)} /></label>
+            : <label>Minutes per session<Input aria-label="Minutes per session" inputMode="numeric" value={mins} onChange={(e) => setMins(e.target.value)} /></label>}
         </div>
         <div className="chips" role="group" aria-label="Session size">
           <span className="chip-label">Size by</span>

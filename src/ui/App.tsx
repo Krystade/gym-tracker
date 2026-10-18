@@ -14,6 +14,7 @@ import { ProfileBar } from './ProfileBar';
 import { ProfileDbProvider } from '../state/profileDb';
 import { useFittedProfile } from '../state/useFittedProfile';
 import { useStatus } from '../state/useStatus';
+import { useBox, useOwnBox, type Box } from '../state/box';
 import { getDraft, saveDraft } from '../state/drafts';
 import { exerciseNames, sameExercise } from '../domain/stats';
 import { sessionDay } from '../domain/timing';
@@ -45,7 +46,7 @@ import { CharactersScreen } from './CharactersScreen';
 import { GymsScreen } from './GymsScreen';
 import type { Friend, FriendNews } from '../cloud/friends';
 import { loadCloud } from '../cloud/firebase';
-import { prefetchSoon, readAfterPush, refreshChangedThreads, refreshNews, useFriendCache } from '../state/friendCache';
+import { prefetchSoon, readAfterPush, refreshChangedThreads, refreshNews, useFriendNews } from '../state/friendCache';
 import { syncBadge, syncMuted } from '../push/client';
 import { ThreadSheet, type ThreadWith } from './ThreadSheet';
 import { parseInvite, type Invite } from '../domain/invite';
@@ -88,11 +89,13 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const [me, setMe] = useState<string | null>(null);
   const [thread, setThread] = useState<ThreadWith | null>(null);
   // Friends' news (requests, gyms, unread pings and messages), as kept on the phone (state/friendCache): shown at once,
-  // read again after a sync, a push, or anything done in Friends.
-  const friendCache = useFriendCache(me);
-  const news: FriendNews | null = (me && friendCache?.news) || null;
-  const [newsRev, setNewsRev] = useState(0);
-  const bumpNews = useCallback(() => setNewsRev((n) => n + 1), []);
+  // read again after a sync, a push, or anything done in Friends. Only the news: everything renders under here, so a Crew
+  // line, a thread or the same news read again in the background doesn't take every screen through a render.
+  const kept = useFriendNews(me);
+  const news: FriendNews | null = (me && kept) || null;
+  // Moves whenever the news should be read again; in a box, so a push or a sync moving it renders only what reads it.
+  const newsRev = useOwnBox(0);
+  const bumpNews = useCallback(() => newsRev.set((n) => n + 1), [newsRev]);
   const waiting = news?.total ?? 0;
   const meNow = useRef(me);
   meNow.current = me;
@@ -190,7 +193,7 @@ interface Nav {
   setTab: (t: Tab) => void; setExercise: (x: string | null) => void; setProgramOpen: (b: boolean) => void; setPhotosOpen: (b: boolean) => void; setPasteOpen: (b: boolean) => void; setCharsOpen: (b: boolean) => void; setGymOpen: (b: boolean) => void;
   open: (name: string) => void; showTour: () => void;
   pending: Invite | null; clearPending: () => void; waiting: number; view: (f: Friend) => void;
-  news: FriendNews | null; newsRev: number; bumpNews: () => void; setMe: (uid: string | null) => void; openThread: (f: ThreadWith) => void;
+  news: FriendNews | null; newsRev: Box<number>; bumpNews: () => void; setMe: (uid: string | null) => void; openThread: (f: ThreadWith) => void;
 }
 
 function PersonScreens({ person, people, gyms, nav }: { person: Person; people: PeopleStore; gyms: GymsStore; nav: Nav }) {
@@ -222,21 +225,8 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const top = (fn: () => void) => () => { fn(); window.scrollTo(0, 0); };
   const uid = cloud.mine ? cloud.link?.uid : null;
   account.current = { uid: uid ?? null, date };
-  const { setMe, newsRev } = nav;
+  const { setMe } = nav;
   useEffect(() => { setMe(uid ?? null); }, [uid, setMe]);
-  useEffect(() => {
-    if (!uid) return;
-    let live = true;
-    newsAt.current = Date.now();
-    void loadCloud().then(async (c) => {
-      const n = await refreshNews(c, uid);
-      if (!live) return;
-      syncBadge(n.total); syncMuted(n.muted);
-      // A friend sent something since their thread was read (a push while the app was away): read it now.
-      await refreshChangedThreads(c, uid);
-    }).catch(() => {});
-    return () => { live = false; };
-  }, [uid, newsRev]);
   // Push: the reminder and recap numbers, for the person whose account this is (signed out: this phone's subscription goes).
   usePushSync(store.entries, programs.program, programs.plans, date, cloud.link === null ? false : cloud.mine ? true : null);
   // A record tapped on a lift's screen: History opens at its day.
@@ -250,6 +240,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
 
   return (
     <>
+      {uid && <NewsReader uid={uid} rev={nav.newsRev} newsAt={newsAt} />}
       {error && <div role="alert" className="banner">{error}</div>}
       <main className="screen">
         <ProfileBar people={people} />
@@ -279,4 +270,22 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
       </main>
     </>
   );
+}
+
+/** Reads friends' news again each time `rev` moves (and on signing in): on its own, so that renders nothing else. */
+function NewsReader({ uid, rev, newsAt }: { uid: string; rev: Box<number>; newsAt: { current: number } }) {
+  const n = useBox(rev);
+  useEffect(() => {
+    let live = true;
+    newsAt.current = Date.now();
+    void loadCloud().then(async (c) => {
+      const news = await refreshNews(c, uid);
+      if (!live) return;
+      syncBadge(news.total); syncMuted(news.muted);
+      // A friend sent something since their thread was read (a push while the app was away): read it now.
+      await refreshChangedThreads(c, uid);
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [uid, n, newsAt]);
+  return null;
 }

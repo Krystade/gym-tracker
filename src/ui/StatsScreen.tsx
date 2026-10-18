@@ -21,6 +21,7 @@ import { LastWeekCard } from './WeekDigest';
 import { GoalSuggestion, PrioritySuggestion } from './TargetSuggestions';
 import type { SetEntry } from '../domain/types';
 import { activeProfileDb } from '../db/db';
+import { Input } from './Field';
 
 const tons = (n: number) => (n >= 1000 ? `${fmtWeight(Math.round(n / 100) / 10)}k` : fmtWeight(Math.round(n)));
 const fmt = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
@@ -39,8 +40,8 @@ function TierTarget({ t, profile }: { t: Tier; profile: FittedProfileStore }) {
       <span>{t} · {fmtN(lo)}–{fmtN(hi)} sets · <span className="muted">{mine ? 'yours' : 'auto'}</span></span>
       {edit ? (
         <span className="tier-edit">
-          <label>Min<input aria-label="Min" inputMode="decimal" value={edit[0]} onChange={(e) => setEdit([e.target.value, edit[1]])} /></label>
-          <label>Max<input aria-label="Max" inputMode="decimal" value={edit[1]} onChange={(e) => setEdit([edit[0], e.target.value])} /></label>
+          <label>Min<Input aria-label="Min" inputMode="decimal" value={edit[0]} onChange={(e) => setEdit([e.target.value, edit[1]])} /></label>
+          <label>Max<Input aria-label="Max" inputMode="decimal" value={edit[1]} onChange={(e) => setEdit([edit[0], e.target.value])} /></label>
           <button className="mini" disabled={!ok} onClick={async () => { await profile.setTarget(t, v); setEdit(null); }}>Save</button>
         </span>
       ) : mine
@@ -59,7 +60,7 @@ function Priorities({ profile, readOnly, cardioMinutes, entries, today }: { prof
     <fieldset className="card plain" id="priorities" disabled={readOnly}>
       <h2>Priorities</h2>
       <label className="goal-row">Sessions per week goal
-        <input aria-label="Sessions per week goal" inputMode="numeric" value={goal}
+        <Input aria-label="Sessions per week goal" inputMode="numeric" value={goal}
           onChange={(e) => {
             setGoal(e.target.value);
             const n = Number(e.target.value);

@@ -7,6 +7,7 @@ import { sameExercise } from '../domain/stats';
 import { copyGym, gymText, parseGymText } from '../domain/share';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { listFriends, myUsername, sendGym, type Friend } from '../cloud/friends';
+import { Input, TextArea } from './Field';
 
 const newGym = (n: number): Gym => ({ id: `g${Date.now().toString(36)}`, name: n ? `Gym ${n + 1}` : 'My gym', equipment: [], exclude: [], include: [] });
 const ALL_GEAR = EQUIPMENT_GROUPS.flatMap(([, items]) => items);
@@ -18,7 +19,7 @@ function AddFromText({ gyms, onDone }: { gyms: GymsStore; onDone: () => void }) 
   const r = text.trim() ? parseGymText(text) : null;
   return (
     <section className="card" aria-label="Add from text">
-      <label className="field">Paste a copied gym<textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} /></label>
+      <label className="field">Paste a copied gym<TextArea rows={5} value={text} onChange={(e) => setText(e.target.value)} /></label>
       {r && 'error' in r && <p className="warn small" role="status">{r.error}</p>}
       {r && 'gym' in r && <p className="muted small" role="status">{r.gym.name} · {r.gym.equipment.length} {r.gym.equipment.length === 1 ? 'piece' : 'pieces'} of gear{r.unknown.length ? `. Skipped gear this app doesn’t know: ${r.unknown.join(', ')}` : ''}</p>}
       <div className="form-actions">
@@ -119,7 +120,7 @@ export function GymsScreen({ gyms, logged, fresh, uid, backLabel = '‹ Back', o
       </div>}
       {pasting && <AddFromText gyms={gyms} onDone={() => setPasting(false)} />}
       <section className="card">
-        <label className="field">Gym name<input value={g.name} onChange={(e) => update((x) => ({ ...x, name: e.target.value }))} /></label>
+        <label className="field">Gym name<Input value={g.name} onChange={(e) => update((x) => ({ ...x, name: e.target.value }))} /></label>
       </section>
       <button className="wide" disabled={ALL_GEAR.every((e) => g.equipment.includes(e))}
         onClick={() => update((x) => ({ ...x, equipment: [...ALL_GEAR] }))}>Full gym: tick all gear</button>
@@ -146,7 +147,7 @@ export function GymsScreen({ gyms, logged, fresh, uid, backLabel = '‹ Back', o
       <section className="card">
         <h2>Exercises here</h2>
         <p className="muted small">Exclude a lift the gear can’t really do (a weak cable stack, a broken machine). Add lifts that need nothing listed above, or that aren’t in the app’s list.</p>
-        <input type="search" aria-label="Search exercises" placeholder="Search exercises" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input type="search" aria-label="Search exercises" placeholder="Search exercises" value={q} onChange={(e) => setQ(e.target.value)} />
         <ul className="gym-ex">
           {query && !listed && <li><button className="primary" onClick={() => { update((x) => ({ ...x, include: [...without(x.include, query), query], exclude: without(x.exclude, query) })); }}>I can do “{query}” here</button></li>}
           {shown.map((n) => {

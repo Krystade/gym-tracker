@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { deleteFriendCaches, getFriendCache, putFriendCache } from '../db/db';
 import { loadCloud, type Cloud } from '../cloud/firebase';
 import {
@@ -151,6 +151,35 @@ export function useFriendCache(uid: string | null | undefined): FriendCache | un
   useEffect(() => { if (uid) void hydrateFriendCache(uid); }, [uid]);
   return c;
 }
+
+/**
+ * One part of this account's friends as kept here, live. The screen renders again only when `pick` gives something `same`
+ * calls different, not on every read that comes back (a Crew line, a thread, the same news read again), so a screen high in
+ * the app doesn't take everything under it through a render each time.
+ */
+export function useFriendCacheSelect<T>(uid: string | null | undefined, pick: (c: FriendCache | undefined) => T, same: (a: T, b: T) => boolean = Object.is): T {
+  const last = useRef<{ c: FriendCache | undefined; v: T } | null>(null);
+  const v = useSyncExternalStore(subscribe, () => {
+    const c = peekFriendCache(uid), l = last.current;
+    if (l && l.c === c) return l.v;
+    const next = pick(c);
+    last.current = { c, v: l && same(l.v, next) ? l.v : next };
+    return last.current.v;
+  });
+  useEffect(() => { if (uid) void hydrateFriendCache(uid); }, [uid]);
+  return v;
+}
+
+/** The news without when it was read: the same requests, gyms and unread read again are the same news. */
+export function sameNews(a: (FriendNews & { at?: number }) | null, b: (FriendNews & { at?: number }) | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const bare = ({ at: _at, ...n }: FriendNews & { at?: number }) => JSON.stringify(n);
+  return bare(a) === bare(b);
+}
+const pickNews = (c: FriendCache | undefined): FriendNews | null => c?.news ?? null;
+/** Friends' news as kept here: a new value only when it says something new. */
+export const useFriendNews = (uid: string | null | undefined) => useFriendCacheSelect(uid, pickNews, sameNews);
 
 // ---- Reading Firestore into it ----
 

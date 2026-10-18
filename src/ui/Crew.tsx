@@ -9,6 +9,7 @@ import type { StatusStore } from '../state/useStatus';
 import { ChartTable } from './charts/ChartTable';
 import { Latest, MessageButton } from './MessageButton';
 import { Icon, initials } from './icons';
+import { Input } from './Field';
 
 // Every friend on one screen: a line each across the days, coloured by what they trained. Cycle data never comes here:
 // friends' rows read only their months and status phrase, and your own row only your log.
@@ -213,7 +214,7 @@ function StatusEdit({ status }: { status: StatusStore }) {
   const n = statusLength(text), over = n > STATUS_MAX;
   return (
     <form className="crew-status" onSubmit={(e) => { e.preventDefault(); if (!over) void status.save(text).then(() => setText(null)); }}>
-      <input aria-label="Your status" value={text} autoFocus placeholder="Deload week" enterKeyHint="done"
+      <Input aria-label="Your status" value={text} autoFocus placeholder="Deload week" enterKeyHint="done"
         onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setText(null); }} />
       <span className={`small ${over ? 'err' : 'muted'}`} aria-live="polite">{n}/{STATUS_MAX}</span>
       <button type="submit" className="mini primary" disabled={over}>Save</button>

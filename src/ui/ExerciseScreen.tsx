@@ -24,6 +24,7 @@ import type { ProgramStore } from '../state/useProgram';
 import { nextTime, plannedMinutes, plannedSets } from '../domain/suggest';
 import { todayPlanFor } from './TodayPlan';
 import { SuggestionCard } from './SuggestionCard';
+import { Input } from './Field';
 
 /** A cardio machine: distance (or floors) per session over time, and each session's numbers with its pace. */
 function CardioScreen({ name, store, programs, date, onLog, onBack, onDay, readOnly }: { name: string; store: SetsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void; onDay?: (date: string) => void; readOnly?: boolean }) {
@@ -108,9 +109,9 @@ function SettingsEditor({ name, settings, hold }: { name: string; settings: Sett
         ? 'Add 5 s each time until every hold reaches max seconds, then add weight or move to a harder variation.'
         : 'Double progression: stay at a weight until every working set reaches max reps, then add the increment.'}</p>
       <div className="settings-grid">
-        <label>Min {unit}<input aria-label={`Min ${unit}`} inputMode="numeric" value={min} onChange={(e) => { setMin(e.target.value); setSaved(false); }} /></label>
-        <label>Max {unit}<input aria-label={`Max ${unit}`} inputMode="numeric" value={max} onChange={(e) => { setMax(e.target.value); setSaved(false); }} /></label>
-        <label>{hold ? 'Add weight (lb)' : 'Increment (lb)'}<input aria-label={hold ? 'Add weight' : 'Increment'} inputMode="decimal" value={inc} onChange={(e) => { setInc(e.target.value.replace(',', '.')); setSaved(false); }} /></label>
+        <label>Min {unit}<Input aria-label={`Min ${unit}`} inputMode="numeric" value={min} onChange={(e) => { setMin(e.target.value); setSaved(false); }} /></label>
+        <label>Max {unit}<Input aria-label={`Max ${unit}`} inputMode="numeric" value={max} onChange={(e) => { setMax(e.target.value); setSaved(false); }} /></label>
+        <label>{hold ? 'Add weight (lb)' : 'Increment (lb)'}<Input aria-label={hold ? 'Add weight' : 'Increment'} inputMode="decimal" value={inc} onChange={(e) => { setInc(e.target.value.replace(',', '.')); setSaved(false); }} /></label>
       </div>
       {problem && <p role="status" className="small err">{problem}</p>}
       <button className="wide" disabled={!valid} onClick={async () => { await settings.save({ ...cur, repMin: vMin, repMax: vMax, increment: vInc }); setSaved(true); }}>
@@ -149,7 +150,7 @@ function RenameLift({ name, store, settings, gyms, programs, onRenamed }: {
     <section className="card" role="group" aria-label="Rename or merge">
       <h2>Rename or merge</h2>
       <p className="muted small">Type a new name, or the name of a lift you already log to merge this one into it. Its sets, plan and settings move over.</p>
-      <input aria-label="New name" list="rename-names" value={to} onChange={(e) => { setTo(e.target.value); setArmed(false); }} placeholder={name} />
+      <Input aria-label="New name" list="rename-names" value={to} onChange={(e) => { setTo(e.target.value); setArmed(false); }} placeholder={name} />
       <datalist id="rename-names">{logged.filter((n) => n !== name).map((n) => <option key={n} value={n} />)}</datalist>
       {armed && valid && <p className="small" role="status">{plural(moving, 'set')} {moving === 1 ? 'moves' : 'move'} to {target}.</p>}
       <button className="wide" disabled={!valid || busy} onClick={() => (armed ? void go() : setArmed(true))}>

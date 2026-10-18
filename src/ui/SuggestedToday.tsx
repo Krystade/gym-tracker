@@ -11,6 +11,7 @@ import { cardioTarget } from '../domain/cardio';
 import { isHoldLift } from '../domain/care';
 import type { SetEntry } from '../domain/types';
 import { fmtLoad } from './SuggestionCard';
+import { Input } from './Field';
 
 /**
  * With no program: a quick session for today from what the week is furthest behind on (the Quick day's builder), as long
@@ -46,7 +47,7 @@ export function SuggestedToday({ profile, entries, date, gym, loadFor, onOpen }:
       </button></h2>
       {open && <>
         <label className="suggested-minutes">Minutes
-          <input aria-label="Minutes" inputMode="numeric" value={minutes} onChange={(e) => {
+          <Input aria-label="Minutes" inputMode="numeric" value={minutes} onChange={(e) => {
             setMinutes(e.target.value);
             const n = Number(e.target.value);
             if (Number.isInteger(n) && n >= 5 && n <= 180) setMins(n);

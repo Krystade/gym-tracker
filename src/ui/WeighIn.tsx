@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { BodyStore } from '../state/useBody';
 import { fmtWeight } from '../domain/format';
 import { trend } from '../domain/body';
+import { Input } from './Field';
 
 export function WeighIn({ body, date }: { body: BodyStore; date: string }) {
   const todays = body.days.find((d) => d.date === date)?.weight;
@@ -23,7 +24,7 @@ export function WeighIn({ body, date }: { body: BodyStore; date: string }) {
         <button type="button" className="quiet-btn" onClick={() => { setV(String(todays)); setEditing(true); }}>Edit</button>
       </>) : (
         <form onSubmit={(e) => { e.preventDefault(); void save(); }}>
-          <input aria-label="Weigh-in (lb)" inputMode="decimal" placeholder={last ? `Weigh-in (trend ${last.trend.toFixed(1)})` : 'Weigh-in, lb'}
+          <Input aria-label="Weigh-in (lb)" inputMode="decimal" placeholder={last ? `Weigh-in (trend ${last.trend.toFixed(1)})` : 'Weigh-in, lb'}
             value={v} onChange={(e) => setV(e.target.value.replace(',', '.'))} />
           <button type="submit" className="primary" disabled={!valid}>Save weight</button>
         </form>

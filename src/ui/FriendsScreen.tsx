@@ -8,6 +8,7 @@ import type { StatusStore } from '../state/useStatus';
 import { FriendsCard } from './FriendsCard';
 import { Crew } from './Crew';
 import type { GymsStore } from '../state/useGyms';
+import type { Box } from '../state/box';
 import { loadCloud } from '../cloud/firebase';
 import { refreshLists, refreshNews, useFriendCache } from '../state/friendCache';
 import { Icon } from './icons';
@@ -21,7 +22,7 @@ const PULL = 70; // px down from the top of the page that reads everything again
  */
 export function FriendsScreen({ cloud, gyms, pending, entries, status, today, news, newsRev, onPendingDone, onView, onChanged, onMessage, onSignIn, onOpenMine, myName }: {
   cloud: CloudStore; gyms: GymsStore; pending: Invite | null; entries: SetEntry[]; status: StatusStore; today: string;
-  /** Requests, gyms and unread messages; `newsRev` moves whenever they're read again. */ news: FriendNews | null; newsRev: number;
+  /** Requests, gyms and unread messages; `newsRev` moves whenever they're read again. */ news: FriendNews | null; newsRev: Box<number>;
   onPendingDone: () => void; onView: (f: Friend) => void; onChanged: () => void; onMessage: (f: ThreadWith) => void; onSignIn: () => void; onOpenMine: () => void;
   /** This phone's person, for your own avatar. */ myName?: string;
 }) {

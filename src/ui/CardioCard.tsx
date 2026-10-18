@@ -10,6 +10,7 @@ import { clearDraft, getDraft, markDirty, saveDraft } from '../state/drafts';
 import { Stepper } from './Stepper';
 import { prToast } from '../domain/records';
 import { prSetIds } from '../domain/summary';
+import { Input } from './Field';
 
 const LABEL: Record<CardioField, string> = { miles: 'Distance (mi)', incline: 'Incline %', level: 'Level', floors: 'Floors' };
 const STEP: Record<CardioField, number> = { miles: 0.05, incline: 0.5, level: 1, floors: 1 };
@@ -75,7 +76,7 @@ function CardioForm({ name, initial, submitLabel, onSubmit, onCancel, onDelete, 
       </div>
       {m.decline && (nums.incline ?? 0) < 0 && <p className="muted small">Below 0 is decline</p>}
       {problem && <p role="status" className="small err">{problem}</p>}
-      {whenOpen && <div className="when"><label>When <input type="time" aria-label="When" value={at} onChange={(e) => touch(setAt)(e.target.value)} /></label><span className="muted small">Leave empty if you don’t know</span></div>}
+      {whenOpen && <div className="when"><label>When <Input type="time" aria-label="When" value={at} onChange={(e) => touch(setAt)(e.target.value)} /></label><span className="muted small">Leave empty if you don’t know</span></div>}
       <div className="form-actions">
         {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
         <button type="submit" className="primary" disabled={!!problem}>{submitLabel}</button>
@@ -83,7 +84,7 @@ function CardioForm({ name, initial, submitLabel, onSubmit, onCancel, onDelete, 
       <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>Details</button>
       {moreOpen && (<>
         {!whenOpen && <button type="button" className="chip" onClick={() => setWhenOpen(true)}>Did this earlier?</button>}
-        <input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => touch(setNote)(e.target.value)} />
+        <Input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => touch(setNote)(e.target.value)} />
       </>)}
       {onDelete && <button type="button" className="mini danger form-delete" onClick={onDelete}>Delete</button>}
     </form>

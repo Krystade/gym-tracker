@@ -5,8 +5,10 @@ import {
 } from '../cloud/friends';
 import { hydrateFriendCache, patchFriendCache, refreshLists, useFriendCache } from '../state/friendCache';
 import type { GymsStore } from '../state/useGyms';
+import { useBox, type Box } from '../state/box';
 import { copyGym } from '../domain/share';
 import { cleanUsername, inviteUrl, parseInvite, USERNAME, type Invite } from '../domain/invite';
+import { Input } from './Field';
 
 type Msg = { ok: boolean; text: string } | null;
 const base = () => `${location.origin}${location.pathname}`;
@@ -18,7 +20,7 @@ const base = () => `${location.origin}${location.pathname}`;
  * when news comes in.
  */
 export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChanged }: {
-  uid: string; gyms: GymsStore; pending: Invite | null; newsRev?: number; onPendingDone: () => void;
+  uid: string; gyms: GymsStore; pending: Invite | null; newsRev: Box<number>; onPendingDone: () => void;
   /** After anything done here: the Friends tab's dot and the badge count again. */ onChanged: () => void;
 }) {
   const cache = useFriendCache(uid);
@@ -62,12 +64,13 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
     })();
   }, [uid, refresh]);
   // Something changed elsewhere (a thread's Remove, Block or Add, a push): read the lists again, quietly.
-  const seenRev = useRef(newsRev);
+  const rev = useBox(newsRev);
+  const seenRev = useRef(rev);
   useEffect(() => {
-    if (newsRev === seenRev.current) return;
-    seenRev.current = newsRev;
+    if (rev === seenRev.current) return;
+    seenRev.current = rev;
     void loadCloud().then(refresh).catch(() => {});
-  }, [newsRev, refresh]);
+  }, [rev, refresh]);
   const open = useCallback((inv: Invite) => act(async (c) => { setOffer(null); setOffer({ inv, name: await peekInvite(c, uid, inv) }); }), [act, uid]);
   // An invite link opened in this app: offered once you have a username, so they see who you are.
   useEffect(() => {
@@ -85,7 +88,7 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
       <section className="card" aria-label="Friends">
         <p className="muted small">Pick a username so friends can find you: 3–20 lowercase letters, numbers or _.{pending && ' Then you can accept the invite you opened.'}</p>
         <form className="sync-form" onSubmit={(e) => { e.preventDefault(); if (ok) void act(async (c) => { await claimUsername(c, uid, n); setMe(n); }); }}>
-          <label>Username<input autoCapitalize="off" autoCorrect="off" spellCheck={false} value={name} onChange={(e) => setName(e.target.value)} /></label>
+          <label>Username<Input autoCapitalize="off" autoCorrect="off" spellCheck={false} value={name} onChange={(e) => setName(e.target.value)} /></label>
           {name && !ok && <p className="small err" role="status">3–20 lowercase letters, numbers or _</p>}
           <button type="submit" className="primary wide" disabled={!ok || busy}>Save username</button>
         </form>
@@ -158,7 +161,7 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
           e.preventDefault();
           if (USERNAME.test(to)) void act(async (c) => { const r = await sendRequest(c, uid, me, to); setFind(''); return r === 'accepted' ? `You and @${to} are now friends.` : `Request sent to @${to}.`; });
         }}>
-          <label>Their username<input autoCapitalize="off" autoCorrect="off" spellCheck={false} value={find} onChange={(e) => setFind(e.target.value)} /></label>
+          <label>Their username<Input autoCapitalize="off" autoCorrect="off" spellCheck={false} value={find} onChange={(e) => setFind(e.target.value)} /></label>
           <button type="submit" className="wide" disabled={!USERNAME.test(to) || busy}>Send request</button>
         </form>
         {link ? (
@@ -176,7 +179,7 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
           const inv = parseInvite(paste);
           if (inv) void open(inv);
         }}>
-          <label>Got an invite link? Paste it<input autoCapitalize="off" autoCorrect="off" spellCheck={false} value={paste} onChange={(e) => setPaste(e.target.value)} /></label>
+          <label>Got an invite link? Paste it<Input autoCapitalize="off" autoCorrect="off" spellCheck={false} value={paste} onChange={(e) => setPaste(e.target.value)} /></label>
           <button type="submit" className="wide" disabled={!parseInvite(paste) || busy}>Open invite</button>
         </form>
       </section>

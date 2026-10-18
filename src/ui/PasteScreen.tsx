@@ -7,6 +7,7 @@ import { fmtCardio } from '../domain/cardio';
 import { fmtDate, fmtWeight, plural } from '../domain/format';
 import { matchExercise, nameKey, parseNotes, toEntries, type NoteLine, type NoteSet } from '../domain/notes';
 import { exerciseNames } from '../domain/stats';
+import { Input, TextArea } from './Field';
 
 const EXAMPLE = `9/28
 Seated Row: 80x10 70x12 dropped the weight 70x12
@@ -78,7 +79,7 @@ export function PasteScreen({ store, today, backLabel = '‹ Back', onBack, onDo
       <button className="back" onClick={onBack}>{backLabel}</button>
       <h1>Paste from notes</h1>
       <label className="paste-label">Workout notes
-        <textarea className="paste" rows={12} value={text} onChange={(e) => setText(e.target.value)} placeholder={EXAMPLE} />
+        <TextArea className="paste" rows={12} value={text} onChange={(e) => setText(e.target.value)} placeholder={EXAMPLE} />
       </label>
       <button className="primary wide" disabled={!text.trim()} onClick={() => { setRaws(text.split(/\r?\n/)); window.scrollTo(0, 0); }}>Read notes</button>
       <details className="card paste-help">
@@ -99,7 +100,7 @@ export function PasteScreen({ store, today, backLabel = '‹ Back', onBack, onDo
     );
     if (editing === l.index) return (
       <li key={l.index} className="paste-line editing">
-        <input aria-label={`Line ${l.index + 1} text`} autoFocus value={raws[l.index]}
+        <Input aria-label={`Line ${l.index + 1} text`} autoFocus value={raws[l.index]}
           onChange={(e) => setRaws((r) => r!.map((x, i) => (i === l.index ? e.target.value : x)))}
           onKeyDown={(e) => { if (e.key === 'Enter') setEditing(null); }} />
         <span className="paste-preview muted small">{l.kind === 'sets' ? l.sets!.map(chip).join('  ') : l.kind === 'unparsed' ? l.reason : l.kind}</span>
@@ -125,7 +126,7 @@ export function PasteScreen({ store, today, backLabel = '‹ Back', onBack, onDo
     const skipped = off || built.groups.some((g) => g.existing && g.lines.includes(l.index) && !include.has(g.key));
     return (
       <li key={l.index} className={`paste-line${skipped ? ' dim' : ''}`}>
-        <input className="paste-name" list="known-exercises" aria-label={`Exercise on line ${l.index + 1}`} value={ex}
+        <Input className="paste-name" list="known-exercises" aria-label={`Exercise on line ${l.index + 1}`} value={ex}
           onChange={(e) => setOverrides((o) => ({ ...o, [key]: e.target.value }))} />
         {/* A cardio line's numbers were read out of free text: show it as written, to check against. */}
         {l.sets!.some((s) => s.cardio) ? <span className="muted small">as written: {l.raw.trim()}</span>

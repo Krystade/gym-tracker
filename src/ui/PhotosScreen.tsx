@@ -6,6 +6,7 @@ import { trend } from '../domain/body';
 import { fmtDate, fmtDay } from '../domain/format';
 import type { PhotosStore } from '../state/usePhotos';
 import type { BodyStore } from '../state/useBody';
+import { Input } from './Field';
 
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
 const alt = (m: { pose: Pose; date: string }) => `${cap(m.pose)}, ${m.date}`;
@@ -107,7 +108,7 @@ export function PhotosScreen({ photos, body, today, backLabel = '‹ Back', onBa
         <div className="chips" role="group" aria-label="Pose">
           {POSES.map((p) => <button key={p} type="button" className="chip" aria-pressed={pose === p} onClick={() => setPose(p)}>{cap(p)}</button>)}
         </div>
-        <label className="photo-date">Date for library photos<input type="date" aria-label="Photo date" value={date} max={today} onChange={(e) => setDate(e.target.value || today)} /></label>
+        <label className="photo-date">Date for library photos<Input type="date" aria-label="Photo date" value={date} max={today} onChange={(e) => setDate(e.target.value || today)} /></label>
         <div className="photo-add">
           <label className={`button primary${busy ? ' disabled' : ''}`}>Take photo
             <input type="file" accept="image/*" capture="environment" hidden disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onFile(f, 'camera'); }} />

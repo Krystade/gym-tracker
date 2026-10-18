@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { Icon } from './icons';
+import { Input } from './Field';
 
 /** A number with − and + either side. `min`: the lowest the buttons go (0 by default; incline can go below). */
 export function Stepper({ label, value, onChange, step, mode, min = 0 }: { label: string; value: string; onChange: (v: string) => void; step: number; mode: 'decimal' | 'numeric'; min?: number }) {
@@ -12,7 +13,7 @@ export function Stepper({ label, value, onChange, step, mode, min = 0 }: { label
       <span>{label}</span>
       <div>
         <button type="button" aria-label={`${label} down`} onClick={() => bump(-step)}><Icon name="minus" size={22} sw={2.25} /></button>
-        <input aria-label={label} inputMode={mode} style={{ '--n': n } as CSSProperties} value={value} onChange={(e) => onChange(e.target.value.replace(',', '.').replace('−', '-'))} />
+        <Input aria-label={label} inputMode={mode} style={{ '--n': n } as CSSProperties} value={value} onChange={(e) => onChange(e.target.value.replace(',', '.').replace('−', '-'))} />
         <button type="button" aria-label={`${label} up`} onClick={() => bump(step)}><Icon name="plus" size={22} sw={2.25} /></button>
       </div>
     </div>

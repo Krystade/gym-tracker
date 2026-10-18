@@ -2,6 +2,7 @@ import { TOKEN_URL } from '../domain/sync';
 import { useState, type ReactNode } from 'react';
 import type { SyncStore } from '../state/useSync';
 import { fmtDate } from '../domain/format';
+import { Input } from './Field';
 
 const DEFAULT_REPO = 'Krystade/gym-data';
 
@@ -28,8 +29,8 @@ export function SyncCard({ sync, newestSet, replaced }: { sync: SyncStore; newes
       <p className="muted small">Copies your sets and body data to your private GitHub repo and pulls in anything newer (including the converter’s history.csv). Photos never leave the phone.</p>
       {editing ? (
         <form className="sync-form" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-          <label>Repository<input aria-label="Repository" autoCapitalize="off" autoCorrect="off" spellCheck={false} value={repo} onChange={(e) => setRepo(e.target.value)} /></label>
-          <label>Access token<input aria-label="Access token" type="password" autoComplete="off" value={token} placeholder={c ? 'Paste a new token' : 'github_pat_…'} onChange={(e) => setToken(e.target.value)} /></label>
+          <label>Repository<Input aria-label="Repository" autoCapitalize="off" autoCorrect="off" spellCheck={false} value={repo} onChange={(e) => setRepo(e.target.value)} /></label>
+          <label>Access token<Input aria-label="Access token" type="password" autoComplete="off" value={token} placeholder={c ? 'Paste a new token' : 'github_pat_…'} onChange={(e) => setToken(e.target.value)} /></label>
           <div className="form-actions">
             {c && <button type="button" onClick={() => { setReplacing(false); setToken(''); }}>Cancel</button>}
             <button type="submit" className="primary" disabled={!repoOk || (!token.trim() && !c)}>Save</button>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { MAIN } from '../db/db';
 import { slugError } from '../domain/sync';
 import type { PeopleStore } from '../state/usePeople';
+import { Input } from './Field';
 
 const toSlug = (name: string) => name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
 
@@ -27,14 +28,14 @@ export function PeopleCard({ people }: { people: PeopleStore }) {
         <ul className="people">
           {people.people.map((p) => (
             <li key={p.id}>
-              <input aria-label={`Name of ${p.name}`} value={p.name} onChange={(e) => void people.rename(p.id, e.target.value)} />
+              <Input aria-label={`Name of ${p.name}`} value={p.name} onChange={(e) => void people.rename(p.id, e.target.value)} />
               {p.id !== MAIN && <button className="mini danger" onClick={() => { setDeleting(p.id); setConfirm(''); }}>Delete</button>}
               {p.id === MAIN && <span className="muted small people-note">Your own profile can’t be deleted.</span>}
               {/* Under the row that opened it, not after the whole list. */}
               {target?.id === p.id && (
                 <div className="confirm-delete">
                   <p className="warn">Deletes everything {p.name} logged on this phone. Their backup folder (profiles/{p.slug}) stays in the repo.</p>
-                  <label className="field">Type {p.name} to confirm<input value={confirm} onChange={(e) => setConfirm(e.target.value)} /></label>
+                  <label className="field">Type {p.name} to confirm<Input value={confirm} onChange={(e) => setConfirm(e.target.value)} /></label>
                   <div className="form-actions">
                     <button onClick={() => setDeleting(null)}>Cancel</button>
                     <button className="danger" disabled={confirm.trim() !== p.name.trim()} onClick={() => { void people.remove(p.id); setDeleting(null); }}>Delete {p.name}</button>
@@ -45,9 +46,9 @@ export function PeopleCard({ people }: { people: PeopleStore }) {
           ))}
         </ul>
       )}
-      <label className="field">Name<input value={name} onChange={(e) => change(e.target.value, slug)} placeholder="e.g. Sam" /></label>
+      <label className="field">Name<Input value={name} onChange={(e) => change(e.target.value, slug)} placeholder="e.g. Sam" /></label>
       {name.trim() && (
-        <label className="field">Backup folder<input value={folder} onChange={(e) => change(name, e.target.value)} aria-describedby="slug-help" /></label>
+        <label className="field">Backup folder<Input value={folder} onChange={(e) => change(name, e.target.value)} aria-describedby="slug-help" /></label>
       )}
       {name.trim() && <p id="slug-help" className={`small ${err ? 'warn' : 'muted'}`}>{err ?? `Backed up to profiles/${folder}/ in your private repo.`}</p>}
       <button className="wide" disabled={!name.trim() || err != null} onClick={() => { void people.add(name.trim(), folder); change('', null); }}>Add {name.trim() || 'person'}</button>

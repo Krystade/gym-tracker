@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { addTag, BUILT_IN, cleanTag, hasTag, removeTag, showTag, TAG_MAX, type TagPrefs } from '../domain/tags';
+import { Input } from './Field';
 
 /** The tag row, edited in place under it: built-ins shown or hidden, their own tags removed or added. Each change saves. */
 export function TagEditor({ prefs, onChange, onDone }: { prefs: TagPrefs; onChange: (t: TagPrefs) => void; onDone: () => void }) {
@@ -28,7 +29,7 @@ export function TagEditor({ prefs, onChange, onDone }: { prefs: TagPrefs; onChan
       </ul>
       <div className="tag-add">
         {/* Enter adds the tag; inside the set form it would otherwise log the set. */}
-        <input aria-label="Add a tag" placeholder="Add a tag" maxLength={TAG_MAX} enterKeyHint="done" value={text} onChange={(e) => setText(e.target.value)}
+        <Input aria-label="Add a tag" placeholder="Add a tag" maxLength={TAG_MAX} enterKeyHint="done" value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} />
         <button type="button" disabled={!t || there} onClick={add}>Add</button>
       </div>

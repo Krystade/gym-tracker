@@ -10,6 +10,7 @@ import { warmupCount } from '../domain/suggest';
 import { fmtLoad } from './SuggestionCard';
 import { cardioTarget } from '../domain/cardio';
 import { Icon } from './icons';
+import { Input } from './Field';
 
 /** Done for the plan: a working set, or a cardio bout. */
 const doneEntry = (e: SetEntry) => isWorking(e) || !!e.cardio;
@@ -109,7 +110,7 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
       </div>
       {quick && (
         <label className="quick-minutes">Minutes
-          <input aria-label="Minutes" inputMode="numeric" value={minutes} onChange={(e) => {
+          <Input aria-label="Minutes" inputMode="numeric" value={minutes} onChange={(e) => {
             setMinutes(e.target.value);
             const n = Number(e.target.value);
             if (Number.isInteger(n) && n >= 5 && n <= 180) pickQuick(n);

@@ -5,6 +5,7 @@ import { sameExercise } from '../domain/stats';
 import type { Suggestion } from '../domain/care';
 import { SwapSuggestions } from './SwapSuggestions';
 import { canDo, type Gym } from '../domain/equipment';
+import { Input } from './Field';
 
 export function ExercisePicker({ recent, onPick, onCancel, suggested = [], gym = null, title }: { recent: string[]; onPick: (name: string) => void; onCancel: () => void; suggested?: Suggestion[]; gym?: Gym | null; title?: string }) {
   const [q, setQ] = useState('');
@@ -20,7 +21,7 @@ export function ExercisePicker({ recent, onPick, onCancel, suggested = [], gym =
       <div className="picker-head">
         {/* Inside the sticky head: it keeps the notch handling, and the lift being swapped stays named while scrolling. */}
         {title && <h1 className="picker-title">{title}</h1>}
-        <input type="search" aria-label="Search exercises" placeholder="Search or add new" autoFocus value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input type="search" aria-label="Search exercises" placeholder="Search or add new" autoFocus value={q} onChange={(e) => setQ(e.target.value)} />
         <button onClick={onCancel}>Cancel</button>
       </div>
       {!query && <SwapSuggestions items={suggested} onPick={onPick} />}

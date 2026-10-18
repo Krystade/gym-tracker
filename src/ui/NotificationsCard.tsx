@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { PUSH_ON } from '../push/config';
 import { disablePush, enablePush, getStatus, localState, PushError, resyncPush, sendTest, setPrefs, standalone, subscribeLocal, supported, type PushPrefs, type Status, withDefaults } from '../push/client';
 import { read } from '../push/store';
+import { Input } from './Field';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WEEK = [1, 2, 3, 4, 5, 6, 0]; // chips run Monday to Sunday, like the app's weeks
@@ -81,7 +82,7 @@ function Card({ signedIn, goal }: { signedIn: boolean; goal: number }) {
                     onClick={() => change({ ...prefs, reminder: { ...prefs.reminder, days: prefs.reminder.days.includes(d) ? prefs.reminder.days.filter((x) => x !== d) : [...prefs.reminder.days, d].sort() } })}>{DAYS[d]}</button>
                 ))}
               </div>
-              <div className="when"><label>Time<input type="time" aria-label="Reminder time" value={prefs.reminder.at} onChange={(e) => e.target.value && change({ ...prefs, reminder: { ...prefs.reminder, at: e.target.value } })} /></label></div>
+              <div className="when"><label>Time<Input type="time" aria-label="Reminder time" value={prefs.reminder.at} onChange={(e) => e.target.value && change({ ...prefs, reminder: { ...prefs.reminder, at: e.target.value } })} /></label></div>
             </div>
           )}
           {kind('recap', 'Weekly recap', 'Sessions, sets and PRs for the week.')}
@@ -90,7 +91,7 @@ function Card({ signedIn, goal }: { signedIn: boolean; goal: number }) {
               <label>Day<select aria-label="Recap day" value={prefs.recap.day} onChange={(e) => change({ ...prefs, recap: { ...prefs.recap, day: Number(e.target.value) } })}>
                 {WEEK.map((d) => <option key={d} value={d}>{DAYS[d]}</option>)}
               </select></label>
-              <label>Time<input type="time" aria-label="Recap time" value={prefs.recap.at} onChange={(e) => e.target.value && change({ ...prefs, recap: { ...prefs.recap, at: e.target.value } })} /></label>
+              <label>Time<Input type="time" aria-label="Recap time" value={prefs.recap.at} onChange={(e) => e.target.value && change({ ...prefs, recap: { ...prefs.recap, at: e.target.value } })} /></label>
             </div>
           )}
           <button className="wide" disabled={busy} onClick={() => void act(async () => { const r = await sendTest(); if (r.status < 200 || r.status > 299) throw new PushError(r.status); void getStatus().then(setStatus, () => {}); }, 'Sent. It should show in a few seconds.')}>Send test notification</button>

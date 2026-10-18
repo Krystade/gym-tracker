@@ -11,6 +11,7 @@ import type { BodyStore } from './useBody';
 import { replacedChanged } from './useReplaced';
 import { KEEP_MS } from '../domain/replaced';
 import { forgetFriendCaches } from './friendCache';
+import { useBox, useOwnBox } from './box';
 
 export type CloudStatus = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'done'; text: string } | { kind: 'error'; text: string };
 const QUIET_MS = 3000; // after the last change, so a run of sets syncs once
@@ -24,8 +25,10 @@ const POLL_MS = 120_000;
 export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta: { reload: () => void; rev: unknown[]; /** After each sync: friends' news (requests, gyms, messages) may have come in. */ onSynced?: () => void }) {
   const db = useDb();
   const [link, setLink] = useState<CloudLink | null | undefined>(undefined);
-  const [status, setStatus] = useState<CloudStatus>({ kind: 'idle' });
-  const [lastSync, setLastSync] = useState<string | null>(null);
+  // The status and when it last synced show only on the Account card: kept in boxes it reads, so a sync (after every set)
+  // doesn't take every screen through two renders.
+  const statusBox = useOwnBox<CloudStatus>({ kind: 'idle' }), lastSyncBox = useOwnBox<string | null>(null);
+  const setStatus = statusBox.set, setLastSync = lastSyncBox.set;
   const mine = !!link && link.person === person.id;
 
   useEffect(() => { void getCloudLink().then((l) => setLink(l ?? null)).catch(() => setLink(null)); }, []);
@@ -153,6 +156,9 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
     } catch (e) { setStatus({ kind: 'error', text: cloudError(e) }); return false; }
   }, [link]);
 
-  return { link, mine, status, lastSync, enter, signOut, resetPassword, deleteAccount, run };
+  return { link, mine, statusBox, lastSyncBox, enter, signOut, resetPassword, deleteAccount, run };
 }
 export type CloudStore = ReturnType<typeof useCloud>;
+
+/** The sync's status and when it last synced, live, for the screen that shows them. */
+export const useCloudStatus = (cloud: CloudStore) => ({ status: useBox(cloud.statusBox), lastSync: useBox(cloud.lastSyncBox) });

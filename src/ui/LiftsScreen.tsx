@@ -8,6 +8,7 @@ import { topSet } from '../domain/summary';
 import { localDate } from '../domain/ids';
 import { CATALOG } from '../domain/catalog';
 import { sameExercise } from '../domain/stats';
+import { Input } from './Field';
 
 /** `loggedOnly`: a friend's lifts, without the catalogue's never-logged ones. */
 export function LiftsScreen({ store, onOpen, loggedOnly }: { store: SetsStore; onOpen: (name: string) => void; loggedOnly?: boolean }) {
@@ -21,7 +22,7 @@ export function LiftsScreen({ store, onOpen, loggedOnly }: { store: SetsStore; o
   return (
     <>
       <h1>Lifts</h1>
-      <input type="search" aria-label="Filter lifts" placeholder="Search lifts" value={q} onChange={(e) => setQ(e.target.value)} />
+      <Input type="search" aria-label="Filter lifts" placeholder="Search lifts" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="lift-list">
         {names.map((n) => {
           const s = sessionsFor(store.entries, n);

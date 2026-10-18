@@ -10,6 +10,7 @@ import { Icon } from './icons';
 import { BUILT_IN, type TagPrefs } from '../domain/tags';
 import { TagEditor } from './TagEditor';
 import { fmtPerSide } from '../domain/plates';
+import { Input } from './Field';
 
 export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3; at?: string | null; tags?: string[] }
 const SEVERITY: [1 | 2 | 3, string][] = [[1, 'Mild'], [2, 'Moderate'], [3, 'Sharp']];
@@ -127,7 +128,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
 
   const whenField = when && whenOpen && (
     <div className="when">
-      <label>When <input type="time" aria-label="When" value={time} max={latest ?? undefined} aria-invalid={tooLate || undefined} aria-describedby={timeId} onChange={(e) => touch(setTime)(e.target.value)} /></label>
+      <label>When <Input type="time" aria-label="When" value={time} max={latest ?? undefined} aria-invalid={tooLate || undefined} aria-describedby={timeId} onChange={(e) => touch(setTime)(e.target.value)} /></label>
       <span id={timeId} className={tooLate ? 'small err' : 'muted small'}>{tooLate ? `Later than now (${latest})` : time ? 'A guess is fine' : 'Leave empty if you don’t know'}</span>
     </div>
   );
@@ -180,7 +181,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
             </div>
           )}
           {when && !when.always && !whenOpen && <button type="button" className="chip" onClick={() => { setTime(when.suggest() ?? ''); setWhenOpen(true); }}>Did this earlier?</button>}
-          <input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => touch(setNote)(e.target.value)} />
+          <Input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => touch(setNote)(e.target.value)} />
         </>
       )}
       {/* Out of the Cancel/Save row, so a reach for Save can't delete; Undo still brings it back. */}

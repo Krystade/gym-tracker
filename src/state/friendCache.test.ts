@@ -5,7 +5,7 @@ import { resetDbForTests } from '../db/db';
 import type { FriendNews } from '../cloud/friends';
 import {
   flushFriendCache, forgetFriendCaches, hydrateFriendCache, crewRange, patchFriendCache, peekFriendCache, pruneTo, readLocally, resetFriendCacheForTests,
-  STALE_MS, staleWindow, threadsBehind, type FriendCache,
+  sameNews, STALE_MS, staleWindow, threadsBehind, type FriendCache,
 } from './friendCache';
 
 const NOW = Date.parse('2026-10-17T18:00:00Z');
@@ -94,5 +94,16 @@ describe('friend cache: kept on the phone', () => {
     expect(peekFriendCache('me')).toBeUndefined();
     resetFriendCacheForTests();
     expect(await hydrateFriendCache('me')).toEqual(empty());
+  });
+});
+
+describe('friend cache: the news the app shows', () => {
+  it('counts the same news read again as the same, and anything it says differently as new', () => {
+    expect(sameNews(news(), { ...news(), at: NOW + 60_000 })).toBe(true);
+    expect(sameNews(news(), news({ requests: 1, total: 1 }))).toBe(false);
+    expect(sameNews(news(), news({ unread: { f: 1 } }))).toBe(false);
+    expect(sameNews(news(), news({ top: { uid: 'f', name: 'sam', text: 'hi' } }))).toBe(false);
+    expect(sameNews(news(), null)).toBe(false);
+    expect(sameNews(null, null)).toBe(true);
   });
 });
