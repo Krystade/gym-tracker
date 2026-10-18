@@ -189,7 +189,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 8px; }
 /* The lift's name is the card's title. */
 .card-head > .link { font-size: var(--fs-xl); line-height: 28px; font-weight: 700; min-height: 44px; }
-.card-head .muted { font-size: var(--fs-sm); }
+.card-head .muted { font-size: var(--fs-sub); }
 .card-head .quiet-btn { min-height: 44px; }
 /* Best and Last read as one small block under the name. */
 .card-last { font-size: var(--fs-sub); margin: 0 0 6px; }
@@ -283,7 +283,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .picker-list li:last-child > button { border-radius: 0 0 var(--r-group) var(--r-group); }
 .picker-list li:only-child > button { border-radius: var(--r-group); }
 .picker-list button:focus-visible { outline-offset: -2px; }
-.picker-list button.primary { font-weight: 600; background: var(--accent); color: var(--accent-ink); border-radius: var(--r-group); margin-bottom: 8px; }
+.picker-list button.primary { font-weight: 700; background: var(--accent); color: var(--accent-ink); border-radius: var(--r-group); margin-bottom: 8px; }
 .picker-title { grid-column: 1 / -1; margin: 0; font-size: var(--fs-lg); line-height: 22px; font-weight: 600; letter-spacing: 0; }
 
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
