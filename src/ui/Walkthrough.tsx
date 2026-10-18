@@ -93,7 +93,7 @@ export function Walkthrough({ onClose }: { onClose: () => void }) {
           <p>{card.body}</p>
         </div>
         <div className="walk-actions">
-          <button type="button" onClick={close}>Skip</button>
+          <button type="button" className="quiet-btn" onClick={close}>Skip</button>
           <span>
             {i > 0 && <button type="button" onClick={() => setI(i - 1)}>Back</button>}
             <button type="button" className="primary" onClick={last ? close : () => setI(i + 1)}>{last ? 'Done' : 'Next'}</button>

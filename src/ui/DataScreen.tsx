@@ -21,6 +21,7 @@ import { parseCsv, toCsv, type CsvError } from '../domain/csv';
 import { exerciseNames, sessionsByDate } from '../domain/stats';
 import { localDate } from '../domain/ids';
 import { fmtDay, plural } from '../domain/format';
+import { Icon } from './icons';
 
 const KIND: Partial<Record<CsvKind, string>> = { body: 'Body data', 'mfp-weight': 'MyFitnessPal weight', 'mfp-nutrition': 'MyFitnessPal nutrition' };
 
@@ -112,7 +113,7 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
       <h1>More</h1>
       <ul className="card more-list" aria-label="More screens">
         {([['Characters', onOpenCharacters, null], ['Gym', onOpenGym, null], ['Program', onOpenProgram, null], ['Photos', onOpenPhotos, null]] as const).map(([name, go, note]) => (
-          <li key={name}><button className="more-row" onClick={go}><span>{name}</span>{note && <span className="more-note">{note}</span>}<span className="muted" aria-hidden="true">›</span></button></li>
+          <li key={name}><button className="more-row" onClick={go}><span>{name}</span>{note && <span className="more-note">{note}</span>}<Icon name="chev-right" size={20} sw={2} className="more-chev" /></button></li>
         ))}
       </ul>
       <h2>Backup</h2>

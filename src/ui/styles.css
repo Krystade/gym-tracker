@@ -49,7 +49,7 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
 .warn { color: var(--warn); }
 .ok { color: var(--ok); }
 .import-result { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
-.import-confirm { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--warn); border-radius: var(--r-md); }
+.import-confirm { margin-top: 12px; padding: 12px 16px; background: var(--surface-2); box-shadow: inset 3px 0 var(--warn); border-radius: var(--r-group); }
 
 .app { min-height: 100dvh; display: flex; flex-direction: column; }
 /* Capped and centred for landscape and tablets; the side insets keep it out from under the notch. */
@@ -102,7 +102,7 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
 .walk-dots { display: flex; gap: 6px; margin-bottom: 4px; }
 .walk-card > p.small:first-child { margin: 0 0 8px; }
 .walk-dots span { width: 6px; height: 6px; border-radius: 3px; background: var(--line-strong); transition: width 260ms ease, background-color 260ms ease; }
-.walk-dots span.past { background: color-mix(in oklab, var(--accent) 45%, var(--line-strong)); }
+.walk-dots span.past { background: var(--text-3); }
 .walk-dots span.on { width: 20px; background: var(--accent); }
 .walk-actions { display: flex; justify-content: space-between; gap: 8px; }
 .walk-actions span { display: flex; gap: 8px; }
@@ -254,7 +254,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .cycle-setting { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cycle-setting h2 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .cycle-who { display: block; font-size: var(--fs-sm); font-weight: 400; color: var(--muted); }
-.tag-editor { display: grid; gap: 8px; padding: 4px 12px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); }
+.tag-editor { display: grid; gap: 8px; padding: 4px 12px 12px; background: var(--surface-2); border: 0; border-radius: var(--r-group); }
 .tag-list { list-style: none; margin: 0; padding: 0; }
 .tag-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .tag-list li:first-child { border-top: 0; }
@@ -275,9 +275,15 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
   /* Stick below the notch: pad by the inset, and pull up by the same amount so the resting layout is unchanged. */
   margin: calc(-1 * var(--sat) - 12px) -16px 0; padding: calc(var(--sat) + 12px) 16px 8px;
 }
-.picker-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; }
-.picker-list button { width: 100%; justify-content: flex-start; text-align: left; font-weight: 500; }
-.picker-list button.primary { font-weight: 700; }
+.picker-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 0; }
+/* The picker's lifts: grouped cells divided by hairlines (a divider line or the add row breaks the group). */
+.picker-list button { width: 100%; min-height: 52px; justify-content: flex-start; text-align: left; font-weight: 400; font-size: var(--fs-body); background: var(--surface); border-radius: 0; }
+.picker-list li + li > button { background: linear-gradient(var(--hairline), var(--hairline)) 16px 0 / calc(100% - 16px) 1px no-repeat, var(--surface); }
+.picker-list li:first-child > button { border-radius: var(--r-group) var(--r-group) 0 0; }
+.picker-list li:last-child > button { border-radius: 0 0 var(--r-group) var(--r-group); }
+.picker-list li:only-child > button { border-radius: var(--r-group); }
+.picker-list button:focus-visible { outline-offset: -2px; }
+.picker-list button.primary { font-weight: 600; background: var(--accent); color: var(--accent-ink); border-radius: var(--r-group); margin-bottom: 8px; }
 .picker-title { grid-column: 1 / -1; margin: 0; font-size: var(--fs-lg); line-height: 22px; font-weight: 600; letter-spacing: 0; }
 
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
@@ -391,7 +397,7 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 .prio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .card > .sub { margin-top: 16px; } /* a new group inside the card */
 .prio-grid label, .goal-row { display: grid; gap: 6px; font-size: var(--fs-sm); color: var(--muted); margin-bottom: 8px; }
-.prio-grid select { min-height: 44px; font-size: var(--fs-md); background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-md); padding: 0 8px; }
+.prio-grid select { min-height: 44px; font-size: var(--fs-md); background: var(--bg); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--r-md); padding: 0 8px; }
 .note-card > span:first-child { color: var(--accent-text); font-weight: 600; }
 .test-due { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .test-due span { align-self: stretch; }
@@ -451,7 +457,8 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 .plan-slots button:not(.plan-name) { padding: 0 4px; font-size: var(--fs-md); font-weight: 400; background: none; color: var(--text-2); }
 .prog-slots li { display: grid; grid-template-columns: 1fr 44px 28px 44px 56px; align-items: center; gap: 4px; }
 /* Remove sits a thumb-width away from the steppers: it deletes. */
-.prog-slots li > button:last-child { margin-left: 12px; }
+.prog-slots li > button:last-child { margin-left: 12px; background: none; color: var(--text-3); }
+.prog-slots li > button:not(:last-child) { border-radius: 50%; color: var(--accent-text); }
 .undo-note { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 0; }
 details.builder > summary { min-height: 44px; display: flex; align-items: center; font-weight: 600; cursor: pointer; }
 details.builder[open] > summary { margin-bottom: 8px; }
@@ -543,7 +550,7 @@ details.builder[open] > summary { margin-bottom: 8px; }
 
 /* Paste from notes */
 .paste-label { display: grid; gap: 6px; font-size: var(--fs-sm); color: var(--muted); }
-textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: var(--fs-md); line-height: 1.4; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-md); }
+textarea.paste { width: 100%; min-height: 240px; padding: 12px; font-size: var(--fs-md); line-height: 1.4; background: var(--bg); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--r-group); }
 /* The help card sits below the Read notes button, not against it. */
 .paste-help { margin-top: 12px; }
 .paste-help summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
@@ -556,22 +563,23 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: var(-
 .paste-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
 .paste-date { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
 .paste-date h2 { font-size: var(--fs-md); margin: 0; }
-.paste-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.paste-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: var(--surface); border: 0; border-radius: var(--r-group); padding: 12px 16px; }
 /* Dim what is left out, not the Edit/Ignore/Include buttons: they still work and must not look disabled. */
 .paste-line.dim > :not(.paste-actions, button, label, input) { opacity: 0.55; }
 .paste-line.dim .paste-actions { opacity: 1; }
-.paste-line.bad { border-color: var(--warn); }
-.paste-line.editing { border-color: var(--accent); }
+.paste-line.bad { box-shadow: inset 3px 0 var(--warn); }
+.paste-line.editing { box-shadow: inset 3px 0 var(--accent); }
 .paste-line.editing input { flex: 1 1 100%; font-size: var(--fs-md); min-height: 44px; }
 .paste-raw { flex: 1 1 100%; overflow-wrap: anywhere; }
 .paste-name { flex: 1 1 100%; font-size: var(--fs-md); min-height: 44px; font-weight: 600; }
 .paste-sets { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 100%; }
-.paste-set { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; font-weight: 600; background: var(--surface-2); border-radius: 8px; padding: 4px 8px; }
+.paste-set { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; font-weight: 600; background: var(--fill); border-radius: var(--r-sm); padding: 4px 8px; }
 .paste-set .tag { font-style: normal; }
 .paste-preview { flex: 1 1 100%; }
 .paste-existing { flex: 1 1 100%; display: flex; align-items: center; gap: 8px; min-height: 44px; color: var(--warn); }
 .paste-existing input { width: 22px; height: 22px; }
-.paste-actions { margin-left: auto; display: flex; gap: 6px; }
+.paste-actions { margin-left: auto; display: flex; gap: 8px; }
+.paste-actions button, .paste-date button { border-radius: var(--r-pill); }
 .mini { min-height: 44px; padding: 0 14px; font-size: var(--fs-sub); }
 .paste-footer { position: sticky; bottom: calc(var(--sab) + 64px); padding: 8px 0; background: linear-gradient(transparent, var(--bg) 30%); }
 
@@ -612,7 +620,7 @@ p + .sync-form, p + .field { margin-top: 12px; }
 .people li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .people .people-note, .people .confirm-delete { flex: 1 0 100%; margin: 0; }
 .people input { flex: 1; min-height: 44px; font-size: var(--fs-md); }
-.confirm-delete { border: 1px solid var(--danger); border-radius: var(--r-md); padding: 10px; margin-bottom: 10px; }
+.confirm-delete { background: var(--surface-2); box-shadow: inset 3px 0 var(--danger); border-radius: var(--r-group); padding: 12px; margin-bottom: 12px; }
 /* With the profile bar showing, the picker's search sticks just below it instead of under it. */
 .screen:has(.profile-bar) .picker-head { top: calc(var(--sat) + 57px); margin-top: 0; padding-top: 8px; }
 .suggestion .big { font-size: var(--fs-xl); font-weight: 700; margin: 4px 0; }
@@ -650,7 +658,7 @@ p + .sync-form, p + .field { margin-top: 12px; }
 .friend-list .link { flex: none; }
 /* Air between the card's forms: the invite link's Cancel/Share row isn't the paste field's. */
 .sub > .sync-form + .sync-form, .sub > .sync-form + button { margin-top: 16px; }
-.invite-offer { border: 1px solid var(--accent); border-radius: var(--r-md); padding: 10px 12px; }
+.invite-offer { background: var(--surface-2); box-shadow: inset 3px 0 var(--accent); border-radius: var(--r-group); padding: 12px 16px; }
 .invite-offer > p:first-child { margin-top: 0; }
 .invite-offer .form-actions { margin-top: 10px; }
 fieldset.plain { min-width: 0; }
@@ -658,7 +666,7 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .viewing-bar {
   position: sticky; top: var(--vv-top, 0px); z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: calc(8px + var(--sat)) calc(16px + var(--sar)) 8px calc(16px + var(--sal));
-  background: var(--surface-2); border-bottom: 1px solid var(--accent);
+  background: var(--surface-2); border-bottom: 1px solid var(--hairline); box-shadow: inset 0 -2px var(--accent);
 }
 .viewing-bar + .screen { padding-top: 12px; }
 
@@ -900,7 +908,7 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 .suggested li.done .suggested-count { color: var(--ok); }
 
 /* Suggested targets (Stats → Priorities): self-contained, for the coming redesign. */
-.target-suggest { margin: 8px 0 12px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface-2); }
+.target-suggest { margin: 8px 0 12px; padding: 12px 16px; border: 0; border-radius: var(--r-group); background: var(--surface-2); box-shadow: inset 3px 0 var(--accent); }
 .target-suggest p { margin: 0 0 8px; }
 .target-suggest-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .target-suggest-actions button { flex: 1 1 auto; }
