@@ -3,17 +3,33 @@
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
-  --bg: #0e1116; --surface: #171b22; --surface-2: #212733; --line: #2c3442;
-  /* Control boundaries need 3:1 against --bg and --surface (WCAG 1.4.11); --line stays for decorative card edges. */
-  --line-strong: #5f6b7d;
-  /* Small red text: --danger itself is for fills and big marks. */
-  --danger-text: #ff8a8a;
-  --text: #e9edf3; --muted: #9aa5b4; --accent: #f5b83d; --accent-ink: #1a1305;
-  --danger: #ef6b6b; --warn: #f0a24a; --pain: #ef6b6b; --ok: #5fcf8f;
-  /* The selected-bar highlight on charts. */
-  --accent-hi: #ffd27a;
-  --fs-xs: 12px; --fs-sm: 13px; --fs-md: 16px; --fs-lg: 18px; --fs-xl: 22px;
-  --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+  /* Direction A, "Grouped" (docs/superpowers/plans/2026-10-17-redesign.md). Authored in OKLCH, shipped as the opaque hex: no
+     translucent tints, and the accent is never mixed into a dark surface (that goes brown). */
+  --bg: #090a0c;          /* oklch(0.145 0.005 263.8): the page */
+  --surface: #18191c;     /* oklch(0.214 0.006 271.1): cells and cards */
+  --surface-2: #1f2024;   /* oklch(0.244 0.008 274.6): sheets, the rest bar, the tab bar */
+  --fill: #2c2e32;        /* oklch(0.301 0.008 264.5): tonal buttons, chips, steppers' keys, their bubbles */
+  --fill-2: #3a3d43;      /* oklch(0.359 0.011 264.4): avatars, tracks, a pressed tonal button */
+  --hairline: #303236;    /* oklch(0.317 0.008 264.5): separators, decorative only */
+  /* Field boundaries only: 4.24:1 on --bg, 3.76 on --surface, 3.48 on --surface-2 (WCAG 1.4.11). Fields are filled with --bg. */
+  --line-strong: #71747c; /* oklch(0.559 0.013 269.5) */
+  --text: #f4f5f7;        /* oklch(0.970 0.003 264.5) */
+  --text-2: #adb1b9;      /* oklch(0.760 0.012 264.5): secondary, 8.2:1 on --surface */
+  --text-3: #8f929a;      /* oklch(0.660 0.012 269.5): captions, 5.2:1 on --surface-2 */
+  --accent: #fbba4a;      /* oklch(0.830 0.145 77.6): primary fill, selection, progress */
+  --accent-ink: #311d03;  /* oklch(0.251 0.050 70.0): text on --accent, 9.4:1 */
+  --accent-text: #fbc865; /* oklch(0.859 0.130 82.1): accent text and icons on dark, 11.3:1 on --surface */
+  --accent-hi: #ffe1a2;   /* oklch(0.920 0.086 85.3): the selected bar on charts */
+  --ok: #69d98d;          /* oklch(0.800 0.150 152.1) */
+  --danger: #f97770;      /* oklch(0.720 0.161 25.0): destructive text and pain, 6.6:1 on --surface */
+  --warn: #fa934e;        /* oklch(0.760 0.150 52.3): between --danger and --accent, 7.8:1 on --surface */
+  /* The names the screens used before the redesign. */
+  --muted: var(--text-2); --line: var(--hairline); --danger-text: var(--danger); --pain: var(--danger);
+  /* Type: seven styles, weight tops out at 700. Fields stay 16px or more (iOS zooms into anything smaller). */
+  --fs-xs: 12px; --fs-sm: 13px; --fs-sub: 15px; --fs-md: 16px; --fs-body: 17px; --fs-lg: 17px; --fs-xl: 22px; --fs-title: 34px;
+  /* One radius scale and a 4px grid. */
+  --r-sm: 8px; --r-md: 10px; --r-group: 12px; --r-lg: 14px; --r-bubble: 18px; --r-pill: 999px;
+  --tab-bg: var(--surface-2);
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
   -webkit-text-size-adjust: 100%;
@@ -23,7 +39,8 @@ html, body { margin: 0; background: var(--bg); color: var(--text); }
 /* clip, not hidden: hidden on html+body makes body the scroll container, which breaks window scroll and sticky headers. */
 body { overflow-x: clip; }
 body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
-h1 { font-size: var(--fs-xl); margin: 4px 0 12px; }
+/* The large title: one per screen. */
+h1 { font-size: var(--fs-title); line-height: 41px; font-weight: 700; letter-spacing: -0.01em; margin: 4px 0 16px; }
 p { margin: 6px 0; }
 /* Status and warning text under a button or a row of them needs air above it. */
 button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
@@ -59,18 +76,19 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
 .rest-timer.done { border-color: var(--accent); }
 .rest-timer.done .rest-main b { color: var(--accent); font-size: var(--fs-lg); }
 .card.folded .left-row { margin: 0 12px 12px; }
+/* 56px of tabs and a hairline: 57px over the home-indicator inset (the rest bar and the walkthrough sit on it). */
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
   display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
-  padding: 0 var(--sar) var(--sab) var(--sal); background: var(--bg);
-  border-top: 1px solid var(--line);
+  padding: 0 var(--sar) var(--sab) var(--sal); background: var(--tab-bg);
+  border-top: 1px solid var(--hairline);
 }
 .walkthrough {
   /* Above the tab bar, so the tabs can be pointed at too. */
   position: fixed; left: 0; right: 0; bottom: calc(57px + 14px + var(--sab)); z-index: 6; max-width: 640px; margin: 0 auto;
   padding: 16px calc(16px + var(--sar)) 16px calc(16px + var(--sal));
-  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-lg);
-  box-shadow: 0 12px 40px rgb(0 0 0 / 0.55); margin-inline: max(8px, calc((100% - 640px) / 2));
+  background: var(--surface-2); border: 0; border-radius: var(--r-lg);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.6), 0 0 0 1px var(--hairline); margin-inline: max(8px, calc((100% - 640px) / 2));
   animation: walk-rise 320ms cubic-bezier(0.2, 0.9, 0.3, 1.1) both;
 }
 .walkthrough h2 { margin: 2px 0 6px; }
@@ -101,37 +119,49 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
   .walkthrough, .walk-card, .spotlight::after { animation: none; }
   .spotlight, .walk-dots span { transition: none; }
 }
-.tabs button { min-height: 56px; padding: 0 1px; background: none; border: 0; color: var(--muted); font-size: 13px; font-weight: 600; position: relative; }
-.tab-dot { position: absolute; top: 12px; right: calc(50% - 30px); width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
-.tabs button[aria-current='page'] { color: var(--accent); }
+.tabs button {
+  min-height: 56px; padding: 6px 1px 4px; background: none; border-radius: 0; color: var(--text-2); position: relative;
+  flex-direction: column; gap: 2px; font-size: 11px; line-height: 13px; font-weight: 600; letter-spacing: 0.01em;
+}
+.tabs .ic { width: 26px; height: 26px; }
+/* On the icon's shoulder, ringed in the bar's colour so it reads apart from the icon. */
+.tab-dot { position: absolute; top: 5px; left: calc(50% + 8px); width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--tab-bg); }
+.tabs button[aria-current='page'] { color: var(--accent-text); }
 
+/* Three tiers. Secondary (this) is a tonal fill with no border; .primary is the accent fill, one per view where it can be;
+   quiet buttons (.link, .quiet-btn and the plain text actions) have no chrome at all. */
 button, .button {
-  min-height: 44px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--line);
-  background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--fs-md); font-weight: 600;
+  min-height: 44px; padding: 0 16px; border-radius: var(--r-md); border: 0;
+  background: var(--fill); color: var(--text); font: inherit; font-size: var(--fs-md); font-weight: 600; line-height: 1.25;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;
   transition: transform .06s, filter .06s;
 }
+.ic { flex: none; display: block; }
 /* The tap highlight is off (below), so this is the only press feedback. */
 button:active:not(:disabled), .button:active:not([aria-disabled='true']) { transform: scale(0.97); filter: brightness(1.15); }
 @media (prefers-reduced-motion: reduce) { button:active:not(:disabled), .button:active { transform: none; } button, .button { transition: none; } }
 button:disabled, .button[aria-disabled='true'] { opacity: 0.45; }
-.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-/* Disabled primary would be a muddy mustard at .45 opacity; read as an inert control instead. */
-.primary:disabled, .button.primary[aria-disabled='true'] { background: var(--surface-2); color: var(--muted); border-color: var(--line); opacity: 1; }
-.danger { color: var(--danger-text); }
+.primary { background: var(--accent); color: var(--accent-ink); }
+/* Disabled primary would be a muddy mustard at .45 opacity; read as an inert control instead (--text-3 on --fill is 4.4:1). */
+.primary:disabled, .button.primary[aria-disabled='true'] { background: var(--fill); color: var(--text-3); opacity: 1; }
+.danger { color: var(--danger); }
+/* Quiet: accent text, no fill. Still a 44px target. */
+.quiet-btn { background: none; color: var(--accent-text); padding: 0 8px; }
 .wide { width: 100%; }
 /* Block-level, so a full-width button's margins collapse with its neighbours': 12px from text or a card, not 18 or 24. */
 button.wide, .button.wide { display: flex; margin: 12px 0; }
+/* Add exercise closes the day's blocks: 16 off whatever is above it, like the groups. A tonal button, accent text: Add set is the primary. */
+button.add-exercise { margin: 16px 0; color: var(--accent-text); }
 /* A card's padding is its inset: the first and last child's own margins don't add to it. */
 .card > :first-child { margin-top: 0; }
 .card > :last-child { margin-bottom: 0; }
 /* Sub-screens: the title gets room under Back. */
 .back + h1 { margin-top: 12px; }
 /* A closed disclosure card is its 44px summary with 12px air at the sides, not 12px padding stacked on it. */
-details.card { padding: 0 12px; }
-details.card[open] { padding-bottom: 12px; }
+details.card { padding: 0 16px; }
+details.card[open] { padding-bottom: 16px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.link { background: none; border: 0; padding: 0; color: var(--text); font-size: var(--fs-lg); font-weight: 700; justify-content: flex-start; text-align: left; }
+.link { background: none; border: 0; padding: 0; color: var(--text); font-size: var(--fs-body); font-weight: 600; justify-content: flex-start; text-align: left; }
 /* More's list of screens: one row each, divided by hairlines, inside the card's own padding. */
 .more-list { list-style: none; }
 .more-list li + li { border-top: 1px solid var(--line); }
@@ -139,13 +169,16 @@ details.card[open] { padding-bottom: 12px; }
 .more-row > span:first-child { flex: 1; text-align: left; }
 .more-note { color: var(--accent); font-size: var(--fs-sm); }
 
+/* The one bordered thing: a field keeps a 3:1 boundary (WCAG 1.4.11), on a --bg well so the boundary also clears its fill. */
 input, select, textarea {
   font: inherit; font-size: var(--fs-md); min-height: 44px; width: 100%; padding: 0 12px;
   border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg); color: var(--text);
 }
+::placeholder { color: var(--text-3); opacity: 1; }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 0; }
 
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 12px; margin-bottom: 12px; }
+/* A group: a filled cell on the page, no border. Padding 16, and 16 between groups. */
+.card { background: var(--surface); border: 0; border-radius: var(--r-group); padding: 16px; margin-bottom: 16px; }
 .card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 8px; }
 .card-head .muted { font-size: var(--fs-sm); }
 /* Best and Last read as one small block under the name. */
@@ -177,20 +210,31 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .steppers { display: grid; grid-template-columns: 1fr 140px; gap: 10px 12px; }
 /* Under 360px two steppers side by side clip "152.5"; stack them. */
 @media (max-width: 359px) { .steppers { grid-template-columns: 1fr; } }
-.stepper { display: grid; gap: 4px; font-size: var(--fs-sm); color: var(--muted); }
-.stepper > div { display: grid; grid-template-columns: 44px 1fr 44px; gap: 4px; }
-.stepper input { text-align: center; font-size: 20px; font-weight: 700; padding: 0 2px; }
-.stepper button { padding: 0; font-size: var(--fs-xl); touch-action: manipulation; }
-.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 44px; }
-.chip-label { font-size: var(--fs-sm); color: var(--muted); margin-right: 2px; }
-.chip { min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: 22px; touch-action: manipulation; font-size: 14px; font-weight: 600; border-color: var(--line-strong); }
-.chip[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+/* A stepper is one rounded field with − and + inside it, and the number big and tabular in the middle. */
+.stepper { display: grid; gap: 6px; font-size: var(--fs-sub); color: var(--text-2); }
+.stepper > div {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: stretch; min-height: 52px;
+  border: 1px solid var(--line-strong); border-radius: var(--r-group); background: var(--bg); container-type: inline-size;
+}
+/* As big as the field allows, up to 30px: --n is the value's width in digits (Stepper.tsx), the field is the box less its keys. */
+.stepper input {
+  min-height: 50px; padding: 0 2px; border: 0; border-radius: 0; background: none; text-align: center;
+  font-size: clamp(18px, calc((100cqi - 94px) / (var(--n, 3) * 0.62)), 30px); font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+}
+.stepper input:focus-visible { outline: 0; }
+.stepper > div:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
+.stepper button { min-height: 50px; padding: 0; background: none; color: var(--accent-text); touch-action: manipulation; }
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 44px; }
+.chip-label { font-size: var(--fs-sub); color: var(--text-2); margin-right: 4px; }
+/* A chip is a borderless tonal pill; pressed, it takes the accent fill (7.9:1 against an un-pressed one). */
+.chip { min-height: 44px; min-width: 44px; padding: 0 14px; border-radius: var(--r-pill); touch-action: manipulation; font-size: var(--fs-sub); font-weight: 600; }
+.chip[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
 .form-actions { display: flex; gap: 8px; }
 .form-actions .primary { flex: 1; }
 /* Edit tags: a quieter chip at the end of the tag row, and the editor that opens under it. */
-.chip.edit-tags { border-style: dashed; color: var(--muted); }
+.chip.edit-tags { background: none; color: var(--accent-text); }
 /* Cycle phase: the likely phase, outlined only (no fill, no label); it isn't pressed until tapped. */
-.chip.predicted:not([aria-pressed='true']) { border-style: dashed; border-color: var(--accent); }
+.chip.predicted:not([aria-pressed='true']) { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .chips.cycle .chip { padding: 0 8px; } /* four phases on one line at 375px */
 .cycle-setting { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cycle-setting h2 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
@@ -219,7 +263,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .picker-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; }
 .picker-list button { width: 100%; justify-content: flex-start; text-align: left; font-weight: 500; }
 .picker-list button.primary { font-weight: 700; }
-.picker-title { grid-column: 1 / -1; margin: 0; font-size: var(--fs-lg); }
+.picker-title { grid-column: 1 / -1; margin: 0; font-size: var(--fs-lg); line-height: 22px; font-weight: 600; letter-spacing: 0; }
 
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
 .tiles-est { margin-bottom: 8px; } /* the rep-max chips belong to it */
@@ -333,9 +377,10 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 .gym-line { width: 100%; justify-content: flex-start; margin: -12px 0 4px; padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
 .gym-line > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gym-line b { color: var(--text); font-weight: 600; }
-/* Program's gym, one line above the days: the name gives way before the button does. */
-.gym-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gym-head .mini { flex: none; }
+/* Program's gym, one row above the days: the words take two lines at most and give way before the button does. */
+.gym-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; margin: 0 0 16px; }
+.gym-head > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.gym-head .mini { flex: none; margin: 0; padding: 0 0 0 8px; background: none; color: var(--accent-text); }
 .plan h2:last-child { margin-bottom: 0; } /* folded: nothing under the title */
 .plan-toggle { width: 100%; padding: 0; border: 0; background: none; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left; font-size: inherit; }
 .plan-slots, .prog-slots { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
@@ -457,7 +502,7 @@ textarea.paste { width: 100%; min-height: 240px; padding: 10px; font-size: var(-
 .paste-existing { flex: 1 1 100%; display: flex; align-items: center; gap: 8px; min-height: 44px; color: var(--warn); }
 .paste-existing input { width: 22px; height: 22px; }
 .paste-actions { margin-left: auto; display: flex; gap: 6px; }
-.mini { min-height: 44px; padding: 0 12px; font-size: 14px; }
+.mini { min-height: 44px; padding: 0 14px; font-size: var(--fs-sub); }
 .paste-footer { position: sticky; bottom: calc(var(--sab) + 64px); padding: 8px 0; background: linear-gradient(transparent, var(--bg) 30%); }
 
 /* Gyms */
@@ -505,7 +550,7 @@ p + .sync-form, p + .field { margin-top: 12px; }
 
 /* Late sets: the day switcher on Today, the past-day banner, the time field. */
 .day-switch { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.day-switch h1 { margin: 4px 0; font-size: var(--fs-xl); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.day-switch h1 { margin: 4px 0; font-size: var(--fs-xl); line-height: 28px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .day-switch .mini { min-width: 44px; font-size: 26px; line-height: 1; }
 .past-day { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 /* The hint goes under the field: iOS gives a time input its own width, and a hint beside it drew over it. */
@@ -564,11 +609,16 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 
 /* Crew (top of Friends): a line per person across the days, coloured by what they trained. Its own block. */
 :root {
-  /* The app is dark only, so these are the dark values. Checked as a set with the dataviz validator: every pair (any two kinds can sit
-     side by side) apart by OKLab ΔE ≥ 11.8 under colour-blindness and ≥ 19.5 in full colour; each ≥ 3:1 on --bg and on --surface.
-     Colour is never the only signal: the table under the lines names each day's kind. */
-  --crew-legs: #439fd3; --crew-push: #c33d83; --crew-pull: #4ead00; --crew-core: #8a6814; --crew-cardio: #7d54e1;
-  --crew-other: #8a94a3; --crew-rest: #2c3442;
+  /* Shared by the three redesign directions and checked as a set: the closest pair is OKLab ΔE×100 24.8 in full colour, and
+     18.4 / 17.9 / 18.0 under protan / deutan / tritan simulation (Machado 2009); the old set's was 4.5. Each is 3:1 or more
+     on --surface. Colour is never the only signal: the table under the lines names each day's kind. */
+  --crew-legs: #0075d2;   /* oklch(0.560 0.167 252.0) */
+  --crew-push: #c42c65;   /* oklch(0.550 0.191 3.8) */
+  --crew-pull: #7cfbbd;   /* oklch(0.899 0.144 160.2) */
+  --crew-core: #f8910e;   /* oklch(0.750 0.170 62.1) */
+  --crew-cardio: #bda7ff; /* oklch(0.780 0.125 294.8) */
+  --crew-other: #8e929a;  /* oklch(0.659 0.013 264.5) */
+  --crew-rest: var(--hairline);
 }
 .crew { position: relative; margin-bottom: 16px; }
 .crew-top { display: flex; align-items: center; gap: 8px; }
@@ -610,17 +660,19 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .crew .chart-table { margin-top: 4px; }
 
 /* A friend's thread: a sheet from the bottom over everything (the tab bar included), never a centred modal. */
-.sheet-backdrop { position: fixed; inset: 0; z-index: 7; background: rgb(0 0 0 / 0.55); }
+.sheet-backdrop { position: fixed; inset: 0; z-index: 7; background: rgb(0 0 0 / 0.6); }
 .sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; max-width: 640px; margin: 0 auto;
   max-height: calc(100dvh - var(--sat) - 24px); display: flex; flex-direction: column; gap: 8px;
-  padding: 8px calc(16px + var(--sar)) calc(12px + var(--sab)) calc(16px + var(--sal));
-  background: var(--surface); border: 1px solid var(--line-strong); border-bottom: 0; border-radius: var(--r-lg) var(--r-lg) 0 0;
-  box-shadow: 0 -12px 40px rgb(0 0 0 / 0.55);
+  padding: 6px calc(16px + var(--sar)) calc(12px + var(--sab)) calc(16px + var(--sal));
+  background: var(--surface-2); border: 0; border-radius: var(--r-lg) var(--r-lg) 0 0;
+  box-shadow: 0 -10px 40px rgb(0 0 0 / 0.5);
 }
+/* The grabber: says "a sheet", nothing to drag yet. */
+.sheet::before { content: ''; flex: none; align-self: center; width: 36px; height: 5px; border-radius: 3px; background: var(--fill-2); }
 .sheet-head { display: flex; align-items: center; gap: 4px; }
 .sheet-head h2 { flex: 1; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mini.icon { min-width: 44px; padding: 0; font-size: 18px; }
+.mini.icon { min-width: 44px; padding: 0; background: none; color: var(--text-2); }
 .sheet-menu { display: flex; flex-wrap: wrap; gap: 8px; }
 .thread { list-style: none; margin: 0; padding: 4px 0; flex: 1 1 auto; min-height: 96px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 6px; }
 .bubble { max-width: 82%; padding: 8px 12px; border-radius: 16px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; overflow-wrap: anywhere; }

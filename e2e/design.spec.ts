@@ -48,7 +48,7 @@ test('the "under" status icon in Stats is readable (4.5:1) on its card', async (
   expect(ratio(fg, bg), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
 });
 
-test('input and un-pressed chip borders are visible (3:1); card borders stay decorative', async ({ page }) => {
+test('input borders are visible (3:1), and a pressed chip stands out from the rest (3:1) with no border', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
@@ -57,8 +57,13 @@ test('input and un-pressed chip borders are visible (3:1); card borders stay dec
   const surface = await page.locator('.card').first().evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(ratio(border, fill), 'input border vs input fill').toBeGreaterThanOrEqual(3);
   expect(ratio(border, surface), 'input border vs card').toBeGreaterThanOrEqual(3);
-  const [chipBorder] = await style(page, '.chip:not([aria-pressed="true"])', ['border-top-color']);
-  expect(ratio(chipBorder, surface), 'chip border vs card').toBeGreaterThanOrEqual(3);
+  // Chips are borderless tonal pills (the 2026-10-17 redesign): the label identifies one, and the pressed fill shows its state.
+  const [chipFill, chipText] = await style(page, '.chip:not([aria-pressed="true"])', ['background-color', 'color']);
+  expect(ratio(chipText, chipFill), 'un-pressed chip label vs its fill').toBeGreaterThanOrEqual(4.5);
+  await page.getByRole('group', { name: 'Energy' }).getByRole('button', { name: '3' }).click();
+  const [pressedFill, pressedText] = await style(page, '.chip[aria-pressed="true"]', ['background-color', 'color']);
+  expect(ratio(pressedFill, chipFill), 'pressed chip vs un-pressed').toBeGreaterThanOrEqual(3);
+  expect(ratio(pressedText, pressedFill), 'pressed chip label vs its fill').toBeGreaterThanOrEqual(4.5);
 });
 
 test('keyboard focus on a button shows the accent outline, and buttons have a pressed state', async ({ page }) => {

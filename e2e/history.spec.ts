@@ -48,7 +48,7 @@ test('History: short date, a two-line summary, warm-ups folded to a suffix, pain
   const pain = bench.locator('.pain-mark');
   await expect(pain).toHaveCount(1);
   await expect(pain).toHaveText('pain');
-  await expect(pain).toHaveCSS('color', 'rgb(239, 107, 107)');
+  await expect(pain).toHaveCSS('color', 'rgb(249, 119, 112)'); // --danger, #f97770 since the 2026-10-17 redesign
   const summary = day.locator('summary');
   await expect(summary).toContainText('Fri, Oct 2');
   await expect(summary).not.toContainText('2026');

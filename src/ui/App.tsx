@@ -51,6 +51,7 @@ import { ThreadSheet, type ThreadWith } from './ThreadSheet';
 import { parseInvite, type Invite } from '../domain/invite';
 import { useOpenRoute, usePushSync } from '../push/usePush';
 import { tabOf } from '../push/routes';
+import { Icon, type IconName } from './icons';
 
 // An invite link opened in the app: kept until Friends can accept it, and gone from the address bar so a reload doesn't repeat it.
 let launchInvite: Invite | null = typeof location !== 'undefined' ? parseInvite(location.hash) : null;
@@ -59,6 +60,10 @@ if (launchInvite) history.replaceState(null, '', location.pathname + location.se
 // Gym isn't on the bar: it opens from More (or Today's gym line) over the tab, like Program.
 type Tab = 'today' | 'history' | 'lifts' | 'stats' | 'friends' | 'more';
 const TABS: [Tab, string][] = [['today', 'Today'], ['history', 'History'], ['lifts', 'Lifts'], ['stats', 'Stats'], ['friends', 'Friends'], ['more', 'More']];
+/** Each tab's icon, and the filled one it shows while it's the current tab. */
+const TAB_ICON: Record<Tab, [IconName, IconName]> = {
+  today: ['today', 'today-on'], history: ['history', 'history-on'], lifts: ['lifts', 'lifts-on'], stats: ['stats', 'stats-on'], friends: ['friends', 'friends-on'], more: ['more', 'more'],
+};
 const FRIEND_TABS = TABS.filter(([t]) => t === 'history' || t === 'lifts' || t === 'stats');
 
 export default function App() {
@@ -171,6 +176,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
       <nav className="tabs" aria-label="Sections">
         {(viewing ? FRIEND_TABS : TABS).map(([t, label]) => (
           <button key={t} data-tour={t} aria-current={current(t) ? 'page' : undefined} onClick={() => { setTab(t); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); }}>
+            <Icon name={TAB_ICON[t][current(t) ? 1 : 0]} size={26} />
             {label}{t === 'friends' && waiting > 0 && <span className="tab-dot" aria-hidden="true" />}
           </button>
         ))}

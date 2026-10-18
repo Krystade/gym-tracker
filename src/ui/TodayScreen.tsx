@@ -145,7 +145,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
         openReq={openReq != null && sameExercise(openReq, n)} onOpenReq={() => setOpenReq(null)} />)}
       {/* Below the cards, so the card you're logging on never moves down. */}
       <SessionSummary entries={store.entries} date={date} past={date < today} />
-      <button className="primary wide" data-tour="add" onClick={() => setPicking(true)}>Add exercise</button>
+      <button className="wide add-exercise" data-tour="add" onClick={() => setPicking(true)}>Add exercise</button>
       <RestTimer />
     </div></div>
   );

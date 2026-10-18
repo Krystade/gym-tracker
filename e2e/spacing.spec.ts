@@ -20,16 +20,17 @@ const gap = async (page: Page, above: string, below: string) => {
   return Math.round(b.y - (a.y + a.height));
 };
 
-test('Today: the energy row and the date arrows have room, and the button under the log sits 12px below it', async ({ page }) => {
+test('Today: the energy row and the date arrows have room, and the button under the log sits 16px below it', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Add exercise' })).toBeVisible();
   expect(await gap(page, '[role=group][aria-label=Energy]', 'main p.muted')).toBeGreaterThanOrEqual(12);
-  expect(await gap(page, 'main p.muted', 'button:text-is("Add exercise")')).toBe(12);
+  // 16: the gap between blocks on a screen since the 2026-10-17 redesign (it was 12).
+  expect(await gap(page, 'main p.muted', 'button:text-is("Add exercise")')).toBe(16);
   const [prev, title, next] = await Promise.all(['Previous day', 'h1', 'Next day'].map((n) =>
     (n === 'h1' ? page.locator('.day-switch h1') : page.getByRole('button', { name: n })).boundingBox()));
   expect(title!.x - (prev!.x + prev!.width)).toBeGreaterThanOrEqual(12);
   expect(next!.x - (title!.x + title!.width)).toBeGreaterThanOrEqual(12);
-  // With a log: a card above the button is 12px off too, not 24.
+  // With a log: a card above the button is 16px off too, not 32.
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
   await page.getByRole('button', { name: 'Bench Press', exact: true }).click();
@@ -37,7 +38,7 @@ test('Today: the energy row and the date arrows have room, and the button under 
   await page.getByRole('textbox', { name: 'Reps' }).fill('10');
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.locator('.summary, .card').filter({ hasText: 'Today so far' }).first()).toBeVisible();
-  expect(await gap(page, '.card:has-text("Today so far")', 'button:text-is("Add exercise")')).toBe(12);
+  expect(await gap(page, '.card:has-text("Today so far")', 'button:text-is("Add exercise")')).toBe(16);
   expect(await unevenCards(page)).toEqual([]);
 });
 

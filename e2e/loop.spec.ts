@@ -66,6 +66,8 @@ test('folding a finished card does not jump the page', async ({ page }) => {
   // Saves land async; measure once they've rendered, or Playwright's own click scroll chases the moving button.
   await expect(card.getByRole('list', { name: /^Sets for / }).getByRole('listitem')).toHaveCount(sets - 1);
   await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+  // Still near the bottom, but with Add set wholly on screen: a click that has to scroll to it first moves the page itself.
+  await card.getByRole('button', { name: /^Add set/ }).evaluate((el) => { const t = el.getBoundingClientRect().top; if (t < 8) scrollBy(0, t - 8); });
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   const before = (await card.boundingBox())!.y;
   await logSet(card);

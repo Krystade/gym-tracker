@@ -99,5 +99,5 @@ test('the plan header has no dead space, folded or open', async ({ page }) => {
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   const card = await box(page, plan);
   const t = await box(page, toggle);
-  expect(card.y + card.height - (t.y + t.height)).toBeLessThanOrEqual(14);
+  expect(card.y + card.height - (t.y + t.height)).toBeLessThanOrEqual(18); // a card pads 16 since the 2026-10-17 redesign
 });

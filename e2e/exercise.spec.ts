@@ -56,6 +56,8 @@ test('the chart reads out a point, defaulting to the latest, and a tap selects a
   await expect(page.locator('.chart .pt.sel')).toHaveCount(1);
   // A thumb rarely lands on a dot: a tap anywhere picks the point nearest in x, even far above the line.
   const pts = page.locator('.chart circle.pt');
+  // Clicks by coordinates don't scroll: the whole chart has to be clear of the tab bar first.
+  await page.locator('svg.chart').evaluate((el) => el.scrollIntoView({ block: 'center' }));
   const [a, b] = [(await pts.nth(2).boundingBox())!, (await pts.nth(3).boundingBox())!];
   const svg = (await page.locator('svg.chart').boundingBox())!;
   await page.mouse.click(a.x + a.width / 2 + 0.4 * (b.x - a.x), svg.y + 6);
