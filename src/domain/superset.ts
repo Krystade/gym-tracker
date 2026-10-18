@@ -14,6 +14,8 @@ export interface Superset { lifts: string[]; keys: string[]; live: boolean; afte
 const SHARE = 0.6;
 /** A round's rest over this is a break, not a rest (as for a lift's own sets in timing.ts). */
 const MAX_REST = 10 * 60;
+/** A switch takes in the next lift's set, so sets seconds apart were entered back to back, not done that way. */
+const MIN_GAP = 15;
 
 const secs = (e: SetEntry) => Date.parse(e.loggedAt!) / 1000;
 const key = (e: SetEntry) => settingsKey(e.exercise);
@@ -35,7 +37,7 @@ function cycleAt(day: SetEntry[], i: number, usual: (exercise: string) => number
   let rest = -1;
   for (let g = 0; g < keys.length; g++) {
     const gap = secs(day[i + g + 1]) - secs(day[i + g]);
-    if (gap <= 0) return null;
+    if (gap < MIN_GAP) return null;
     if (gap <= SHARE * usual(day[i + g].exercise)) continue;
     if (rest >= 0 || gap > MAX_REST) return null;
     rest = g;

@@ -137,6 +137,10 @@ describe('supersets', () => {
     expect(supersets(run(A, 60, C, 150, A), D, usual, { dismissed: [['cable curl', 'cable pushdown']] }).map((g) => g.lifts)).toEqual([[A, C]]);
   });
 
+  it('is not sets entered back to back, seconds apart', () => {
+    expect(supersets(run(A, 5, B, 8, A, 5, B), D, usual)).toEqual([]);
+  });
+
   it('reads only sets with a time, on that day', () => {
     expect(supersets(run(`${A}?`, 60, `${B}?`, 150, `${A}?`), D, usual)).toEqual([]);
     expect(supersets(run(A, 60, B, 150, A), '2026-10-17', usual)).toEqual([]);
