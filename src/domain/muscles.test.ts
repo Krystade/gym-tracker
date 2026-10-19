@@ -40,7 +40,9 @@ describe('keyword fallback word boundaries', () => {
     expect(muscleVector('Leg Press Machine')?.Quads).toBe(1);
     expect(muscleVector('Machine Incline Press')?.Chest).toBe(1);
     expect(muscleVector('Hip thrust machine')?.Glutes).toBe(1);
-    expect(muscleVector('Narrow Grip Bench Press')?.Chest).toBe(1);
+    // A close or narrow grip makes it a triceps press (round 15), as Close-Grip Bench Press: still not a row.
+    expect(muscleVector('Narrow Grip Bench Press')?.Triceps).toBe(1);
+    expect(muscleVector('Narrow Grip Bench Press')?.['Mid-Back']).toBeUndefined();
     expect(muscleVector('Neutral Grip Chin')?.Lats).toBe(1);
     expect(muscleVector('T-Bar Row')?.['Mid-Back']).toBe(1);
     expect(muscleVector('Landmine Press')).toEqual({ 'Front Delts': 1, Chest: 0.5, Triceps: 0.5 });

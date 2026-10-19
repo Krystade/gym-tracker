@@ -27,8 +27,8 @@ describe('equipment', () => {
   });
   it('lets exclusions beat the gear, and inclusions cover unknown lifts', () => {
     expect(canDo(gym(['cable stack'], { exclude: ['Cable Curl'] }), 'Cable Curl')).toBe(false);
-    expect(canDo(gym([]), 'Zercher Squat')).toBeNull();
-    expect(canDo(gym([], { include: ['zercher squat'] }), 'Zercher Squat')).toBe(true);
+    expect(canDo(gym([]), 'Atlas Stone')).toBeNull();
+    expect(canDo(gym([], { include: ['atlas stone'] }), 'Atlas Stone')).toBe(true);
   });
   it('treats no gym as everything available', () => {
     expect(canDo(null, 'Leg Press')).toBe(true);

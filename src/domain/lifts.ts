@@ -1,6 +1,6 @@
 import type { Equipment } from './equipment';
-import { liftKey } from './ids';
-import type { Vector } from './muscles';
+import { nameKey } from './ids';
+import type { Muscle, Vector } from './muscles';
 
 // Every lift the app knows, one record each: its muscles, movement pattern, gear and rep range (round 15). The picker's
 // catalog, muscles.ts's table, equipment.ts's NEEDS and the rotation's patterns are all read from here, and resolveLift says
@@ -38,6 +38,7 @@ const CHIN: Vector = { Lats: 1, 'Mid-Back': 0.5, Biceps: 0.75, Forearms: 0.5 };
 const SQUAT: Vector = { Quads: 1, Glutes: 0.5, Hamstrings: 0.5 };
 const HINGE: Vector = { Hamstrings: 1, Glutes: 0.5, Erectors: 0.5 };
 const LEGCURL: Vector = { Hamstrings: 1 };
+const CLOSE: Vector = { Triceps: 1, Chest: 0.5, 'Front Delts': 0.5 };
 const B: Vector = { Biceps: 1 }, T: Vector = { Triceps: 1 }, A: Vector = { Abs: 1 }, SD: Vector = { 'Side Delts': 1 }, RD: Vector = { 'Rear Delts': 1 };
 
 const NOTHING: Needs = [[]];
@@ -66,11 +67,11 @@ export const LIFTS: Lift[] = [
   L('Overhead Cable Extension', T, one('cable stack'), { iso: true }),
   L('Overhead DB Triceps Extension', T, one('dumbbells'), { iso: true }),
   L('Skullcrusher', T, [['barbell', 'flat bench'], ['dumbbells', 'flat bench']]),
-  L('Close-Grip Bench Press', { Triceps: 1, Chest: 0.5, 'Front Delts': 0.5 }, [['barbell', 'flat bench'], ['smith machine', 'flat bench']], { p: 'Horizontal press' }),
+  L('Close-Grip Bench Press', CLOSE, [['barbell', 'flat bench'], ['smith machine', 'flat bench']], { p: 'Horizontal press' }),
   L('DB Kickback', T, one('dumbbells'), { iso: true }),
   L('Cable Kickback', { Glutes: 1, Hamstrings: 0.5 }, one('cable stack'), { iso: true }),
   L('Triceps Press Machine', T, one('triceps machine')),
-  L('Upright Dips', { Triceps: 1, Chest: 0.5, 'Front Delts': 0.5 }, one('dip station')),
+  L('Upright Dips', CLOSE, one('dip station')),
   // Biceps / forearms
   L('DB Curl', B, one('dumbbells'), { iso: true }),
   L('Incline DB Curl', B, [['dumbbells', 'incline bench']], { iso: true }),
@@ -152,64 +153,296 @@ export const LIFTS: Lift[] = [
   L('StairMaster', null, one('stair climber')),
   L('Exercise Bike', null, one('exercise bike')),
   L('Elliptical', null, one('elliptical')),
-  // Known by name, not listed: generic names logged before the catalog had them. Gear unknown.
-  L('close-grip push-up', { Triceps: 1, Chest: 0.5, 'Front Delts': 0.5 }, null, { hidden: true }),
-  L('close-grip smith press', { Triceps: 1, Chest: 0.5, 'Front Delts': 0.5 }, null, { hidden: true }),
-  L('dips', PRESS, null, { hidden: true }),
-  L('incline bench pushdown', T, null, { iso: true, hidden: true }),
-  L('db reverse curl', { Forearms: 1, Biceps: 0.5 }, null, { iso: true, hidden: true }),
+  // Known by name, not listed: generic names logged before the catalog had them.
+  L('close-grip push-up', CLOSE, NOTHING, { hidden: true }),
+  L('close-grip smith press', CLOSE, one('smith machine'), { p: 'Horizontal press', hidden: true }),
+  L('dips', PRESS, one('dip station'), { hidden: true }),
+  L('incline bench pushdown', T, one('cable stack'), { iso: true, hidden: true }),
+  L('db reverse curl', { Forearms: 1, Biceps: 0.5 }, one('dumbbells'), { iso: true, hidden: true }),
   L('zottman curl', { Biceps: 1, Forearms: 0.5 }, null, { iso: true, hidden: true }),
-  L('db wrist curl', { Forearms: 1 }, null, { iso: true, hidden: true }),
-  L('db reverse wrist curl', { Forearms: 1 }, null, { iso: true, hidden: true }),
-  L('overhead db press', OHP, null, { hidden: true }),
+  L('db wrist curl', { Forearms: 1 }, one('dumbbells'), { iso: true, hidden: true }),
+  L('db reverse wrist curl', { Forearms: 1 }, one('dumbbells'), { iso: true, hidden: true }),
+  L('overhead db press', OHP, one('dumbbells'), { p: 'Vertical press', hidden: true }),
   L('decline crunch (weighted)', A, null, { iso: true, hidden: true }),
   L('leg raise', A, null, { iso: true, hidden: true }),
-  L('db calf raise', { Calves: 1 }, null, { iso: true, hidden: true }),
+  L('db calf raise', { Calves: 1 }, one('dumbbells'), { iso: true, hidden: true }),
 ];
 
-// A name the table doesn't know, read from its words. Order matters (leg curl before curl; row before bench, so a
-// bench-supported row is back work), and words need boundaries: "machine" contains "chin" and "narrow" contains "row".
-const KEYWORDS: [RegExp, Vector][] = [
-  [/\bleg curl|\bham(string)? curl|\bnordic/i, LEGCURL], [/\bwrist curl/i, { Forearms: 1 }], [/\bcurl/i, B],
-  [/pushdown|push down|kickback|skull|\btriceps? ext|french press/i, T],
-  [/lateral raise|side raise|upright row/i, SD], [/rear delt|reverse fly|reverse pec|face pull/i, RD],
-  [/\bsquat|leg press|\blunge|step-?up|\bhack\b/i, SQUAT], [/deadlift|good morning|\bhinge|\brdl\b/i, HINGE], [/leg ext/i, { Quads: 1 }],
-  [/\bcalf|\bcalves/i, { Calves: 1 }], [/hip thrust|\bglute/i, { Glutes: 1, Hamstrings: 0.5 }],
-  [/\bfly\b|\bflyes?\b|pec deck/i, { Chest: 1 }], [/overhead press|shoulder press|military|\bohp\b/i, OHP],
-  [/\brows?\b/i, ROW_MID],
-  [/bench|chest press|incline.*\bpress|push-?up|\bdips?\b/i, PRESS],
-  [/\bchin(-?ups?)?\b|(supinated|underhand|reverse[- ]?grip|close[- ]?grip|narrow[- ]?grip|\bv-?bar\b).*(pull-?down|pull-?up)/i, CHIN],
-  [/pulldown|pull-?up/i, PULLDOWN],
-  [/crunch|sit-?up|plank|leg raise|\babs?\b/i, A],
+// ---------------------------------------------------------------------------------------------------------------------------
+// A name the table doesn't know is read from its words: a movement (the base), the gear, and the few modifiers that change
+// which muscles work. The most specific movement phrase wins, wherever it sits in the name: "Leg Press Calf Raise" is a calf
+// raise, "Bench-Supported Row" a row, "Straight-Arm Pulldown" not a pulldown. Words the app doesn't know (Kroc, paused, tempo)
+// change nothing, so the movement still counts.
+
+/** Spellings nameKey leaves apart, joined or spelled out into the words the movements use. */
+const SPELLINGS: [RegExp, string][] = [
+  [/ e z /g, ' ez '], [/ ez bar /g, ' ez '], [/ ezbar /g, ' ez '], [/ t bar /g, ' tbar '], [/ v bar /g, ' vbar '], [/ hex bar /g, ' trap bar '],
+  [/ skull crusher /g, ' skullcrusher '], [/ pull over /g, ' pullover '], [/ step up /g, ' stepup '], [/ kick back /g, ' kickback '],
+  [/ pec dec /g, ' pec deck '], [/ peck deck /g, ' pec deck '], [/ wood chop /g, ' woodchop '], [/ hyper extension /g, ' hyperextension '],
+  [/ cross body /g, ' crossbody '], [/ low to high /g, ' lowtohigh '], [/ pull thru /g, ' pull through '], [/ plate loaded /g, ' machine '],
+  [/ captain chair /g, ' captainchair '], [/ toe to bar /g, ' toetobar '], [/ behind the neck /g, ' btn '], [/ behind neck /g, ' btn '],
+  [/ rdl /g, ' romanian deadlift '], [/ sldl /g, ' stiff leg deadlift '], [/ ohp /g, ' overhead press '], [/ bss /g, ' bulgarian split squat '],
+  [/ ghr /g, ' glute ham raise '], [/ kettlebell /g, ' kb '], [/ body weight /g, ' bodyweight '], [/ bw /g, ' bodyweight '],
+  [/ step ups /g, ' stepup '], [/ reverse hyperextension /g, ' reverse hyper '], [/ side bridge /g, ' side plank '],
 ];
-const ISOLATION = /(curl|raise|fly|flye|extension|pushdown|push down|kickback|crunch|calf|face pull|rear delt|shrug|pec deck|pull-in|pullover|wrist|leg raise|sit-up|rotation|abduction|adduction)/i;
-/** Words that make a lift not one of the six, though it has a pattern word in it ("Straight-Arm Pulldown", "Upright Row"). */
-const NOT_A_PATTERN = /straight[- ]?arm|pull-?over|upright row|face pull|\bshrug/i;
-/** First match wins: "Bench-Supported Row" is a row. */
-const WORDS: [RegExp, Pattern][] = [
-  [/deadlift|\brdl\b|good morning/i, 'Hinge'],
-  [/\bsquat|leg press|\bhack\b/i, 'Squat'],
-  [/\brows?\b/i, 'Horizontal pull'],
-  [/pull-?downs?\b|pull-?ups?\b|chin-?ups?\b/i, 'Vertical pull'],
-  [/overhead press|shoulder press|military|\bohp\b|push press|viking/i, 'Vertical press'],
-  [/bench|chest press|floor press|incline.*\bpress/i, 'Horizontal press'],
+/** Plurals nameKey leaves half-folded. */
+const FOLD: Record<string, string> = { presse: 'press', crunche: 'crunch', flye: 'fly', flie: 'fly', benche: 'bench', carrie: 'carry', tibiali: 'tibialis' };
+
+/** A name's words: nameKey's folding, then the spellings above. */
+export function words(name: string): string[] {
+  let s = ` ${nameKey(name)} `;
+  for (const [re, to] of SPELLINGS) s = s.replace(re, to);
+  return s.trim().split(' ').filter(Boolean).map((w) => FOLD[w] ?? w);
+}
+
+/** Whether the words hold this phrase, word for word. */
+const has = (ws: string[], phrase: string): boolean => {
+  const t = phrase.split(' ');
+  return ws.some((_, i) => t.every((x, j) => ws[i + j] === x));
+};
+/** Whether the words hold the phrase's words in order, at most two other words between each: "Lateral Cable Raise". */
+function found(ws: string[], t: string[]): boolean {
+  return ws.some((w, i) => {
+    if (w !== t[0]) return false;
+    let at = i;
+    return t.slice(1).every((x) => {
+      for (let k = at + 1; k <= at + 3 && k < ws.length; k++) if (ws[k] === x) { at = k; return true; }
+      return false;
+    });
+  });
+}
+
+/**
+ * A movement. `gear`: what it's done with when no word names the gear (a bench press: a barbell); `needs`: the gear in full when
+ * no word names it (several ways, or none needed). `machine`, `cable`: what those words mean for it. `bench`: the bench it's done
+ * on with free weights. `rack`: with a barbell it needs a squat rack.
+ */
+interface Base { m: Vector; p?: Pattern; iso?: true; gear?: Equipment; needs?: Needs; machine?: Equipment; cable?: Equipment; bench?: Equipment; rack?: true }
+
+const UPRIGHT: Vector = { 'Side Delts': 1, Traps: 0.5 }, FACE: Vector = { 'Rear Delts': 1, 'Mid-Back': 0.5, Traps: 0.5 };
+const GLUTE: Vector = { Glutes: 1, Hamstrings: 0.5 }, BACK_EXT: Vector = { Erectors: 1, Glutes: 0.5, Hamstrings: 0.5 };
+const CHEST: Vector = { Chest: 1 }, QUADS: Vector = { Quads: 1 }, CALVES: Vector = { Calves: 1 }, F: Vector = { Forearms: 1 }, LATS: Vector = { Lats: 1 };
+const CARRY: Vector = { Forearms: 1, Traps: 0.5 }, OTHER: Vector = {};
+const HP: Pattern = 'Horizontal press', HL: Pattern = 'Horizontal pull', VP: Pattern = 'Vertical press', VL: Pattern = 'Vertical pull';
+const CABLE = one('cable stack');
+
+/**
+ * Movements, by phrase. A longer phrase beats a shorter one, and between two as long, the one listed first wins (calf raise before
+ * leg press, so "Calf Leg Press" and "Leg Press Calf Raise" are both calf work; row before bench; dip before bench).
+ */
+const BASES: [string, Base][] = [
+  // Calves before the leg press they're done on.
+  ['seated calf raise', { m: CALVES, iso: true, needs: one('seated calf machine'), machine: 'seated calf machine' }],
+  ['calf raise', { m: CALVES, iso: true, machine: 'standing calf machine' }], ['calf press', { m: CALVES, iso: true }],
+  ['calf extension', { m: CALVES, iso: true }], ['calf', { m: CALVES, iso: true }],
+  // Known lifts that count for no muscle the app tracks: neck, shins, rotator cuff.
+  ['neck curl', { m: OTHER, iso: true }], ['neck extension', { m: OTHER, iso: true }], ['neck flexion', { m: OTHER, iso: true }],
+  ['tibialis raise', { m: OTHER, iso: true }], ['tib raise', { m: OTHER, iso: true }], ['tibialis', { m: OTHER, iso: true }],
+  // Legs.
+  ['leg press', { m: SQUAT, p: 'Squat', needs: one('leg press'), machine: 'leg press' }],
+  ['pendulum squat', { m: SQUAT, p: 'Squat', needs: one('pendulum squat'), machine: 'pendulum squat' }],
+  ['hack squat', { m: SQUAT, p: 'Squat' }], ['belt squat', { m: SQUAT, p: 'Squat' }],
+  ['bulgarian split squat', { m: SQUAT, p: 'Squat', needs: one('flat bench'), bench: 'flat bench' }], ['split squat', { m: SQUAT, p: 'Squat' }],
+  ['sissy squat', { m: QUADS, iso: true }], ['wall sit', { m: QUADS, needs: NOTHING }],
+  ['squat', { m: SQUAT, p: 'Squat', gear: 'barbell', rack: true }],
+  ['lunge', { m: SQUAT }], ['stepup', { m: SQUAT, bench: 'flat bench' }],
+  ['leg extension', { m: QUADS, iso: true, needs: one('leg extension'), machine: 'leg extension' }],
+  ['knee extension', { m: QUADS, iso: true, needs: one('leg extension'), machine: 'leg extension' }],
+  ['seated leg curl', { m: LEGCURL, iso: true, needs: one('seated leg curl'), machine: 'seated leg curl' }],
+  ['lying leg curl', { m: LEGCURL, iso: true, needs: one('lying leg curl'), machine: 'lying leg curl' }],
+  ['leg curl', { m: LEGCURL, iso: true }], ['hamstring curl', { m: LEGCURL, iso: true }], ['ham curl', { m: LEGCURL, iso: true }],
+  ['nordic curl', { m: LEGCURL }], ['nordic', { m: LEGCURL }],
+  ['glute ham raise', { m: { Hamstrings: 1, Glutes: 0.5 } }],
+  ['stiff leg deadlift', { m: HINGE, p: 'Hinge', gear: 'barbell' }], ['romanian deadlift', { m: HINGE, p: 'Hinge', gear: 'barbell' }],
+  ['deadlift', { m: HINGE, p: 'Hinge', gear: 'barbell' }],
+  ['good morning', { m: HINGE, p: 'Hinge', gear: 'barbell', rack: true }],
+  ['rack pull', { m: { ...HINGE, Traps: 0.5 }, p: 'Hinge', gear: 'barbell', rack: true }],
+  ['hip thrust', { m: GLUTE, needs: [['barbell', 'hip thrust bench'], ['barbell', 'flat bench'], ['smith machine', 'flat bench']], bench: 'flat bench' }],
+  ['glute bridge', { m: GLUTE, needs: NOTHING }], ['hip bridge', { m: GLUTE, needs: NOTHING }], ['hip raise', { m: GLUTE }],
+  ['glute press', { m: GLUTE, needs: one('glute press'), machine: 'glute press' }],
+  ['glute kickback', { m: GLUTE, iso: true }], ['donkey kick', { m: GLUTE, iso: true }], ['hip extension', { m: GLUTE, iso: true }],
+  ['pull through', { m: GLUTE, iso: true, needs: CABLE }], ['swing', { m: GLUTE, iso: true }],
+  ['hip abduction', { m: { Abductors: 1 }, iso: true, needs: one('hip abduction machine'), machine: 'hip abduction machine' }],
+  ['abduction', { m: { Abductors: 1 }, iso: true, needs: one('hip abduction machine'), machine: 'hip abduction machine' }],
+  ['abductor', { m: { Abductors: 1 }, iso: true, needs: one('hip abduction machine'), machine: 'hip abduction machine' }],
+  ['hip adduction', { m: { Adductors: 1 }, iso: true, needs: one('hip adduction machine'), machine: 'hip adduction machine' }],
+  ['adduction', { m: { Adductors: 1 }, iso: true, needs: one('hip adduction machine'), machine: 'hip adduction machine' }],
+  ['adductor', { m: { Adductors: 1 }, iso: true, needs: one('hip adduction machine'), machine: 'hip adduction machine' }],
+  ['copenhagen plank', { m: { Adductors: 1 }, iso: true }], ['copenhagen', { m: { Adductors: 1 }, iso: true }],
+  ['reverse hyper', { m: { Glutes: 1, Hamstrings: 0.5, Erectors: 0.5 }, iso: true }],
+  ['back extension', { m: BACK_EXT, iso: true, needs: one('back extension bench') }], ['hyperextension', { m: BACK_EXT, iso: true, needs: one('back extension bench') }],
+  // Chest.
+  ['bench press', { m: PRESS, p: HP, gear: 'barbell', bench: 'flat bench', machine: 'chest press machine' }],
+  ['chest press', { m: PRESS, p: HP, gear: 'chest press machine', bench: 'flat bench', machine: 'chest press machine' }],
+  ['floor press', { m: PRESS, p: HP, gear: 'barbell' }],
+  ['squeeze press', { m: PRESS, p: HP }], ['svend press', { m: CHEST, iso: true }],
+  ['pike pushup', { m: OHP, needs: NOTHING }], ['handstand pushup', { m: OHP, needs: NOTHING }], ['pushup', { m: PRESS, needs: NOTHING }],
+  ['upright dip', { m: CLOSE, needs: one('dip station') }], ['bench dip', { m: CLOSE, needs: one('flat bench') }],
+  ['dip', { m: PRESS, needs: one('dip station') }],
+  ['reverse pec deck', { m: RD, iso: true, needs: one('pec deck') }],
+  ['pec deck', { m: CHEST, iso: true, needs: one('pec deck'), machine: 'pec deck' }], ['butterfly', { m: CHEST, iso: true, needs: one('pec deck') }],
+  ['crossover', { m: CHEST, iso: true, needs: one('dual cable'), cable: 'dual cable' }],
+  // Shoulders, before the flys and rows that share their words.
+  ['rear delt fly', { m: RD, iso: true, machine: 'pec deck' }], ['rear delt row', { m: { 'Rear Delts': 1, 'Mid-Back': 0.5 }, iso: true }],
+  ['rear delt', { m: RD, iso: true, machine: 'pec deck' }], ['reverse fly', { m: RD, iso: true, machine: 'pec deck' }],
+  ['pull apart', { m: RD, iso: true }], ['face pull', { m: FACE, iso: true, needs: CABLE }],
+  ['external rotation', { m: OTHER, iso: true, cable: 'cable stack' }], ['internal rotation', { m: OTHER, iso: true }], ['cuban press', { m: OTHER, iso: true }],
+  ['fly', { m: CHEST, iso: true, machine: 'pec deck', cable: 'dual cable', bench: 'flat bench' }],
+  // A dumbbell or barbell pullover works the chest more than the lats (Marchetti & Uchida 2011, J Appl Biomech 27(4)); a cable one is a
+  // straight-arm pulldown (see MODIFIERS).
+  ['pullover', { m: { Chest: 1, Lats: 0.5 }, iso: true, bench: 'flat bench' }],
+  ['overhead press', { m: OHP, p: VP, gear: 'barbell', rack: true, machine: 'shoulder press machine' }],
+  ['shoulder press', { m: OHP, p: VP, machine: 'shoulder press machine' }],
+  ['military press', { m: OHP, p: VP, gear: 'barbell', rack: true }], ['military', { m: OHP, p: VP, gear: 'barbell', rack: true }],
+  ['push press', { m: OHP, p: VP, gear: 'barbell', rack: true }], ['z press', { m: OHP, p: VP, gear: 'barbell', rack: true }],
+  ['bradford press', { m: OHP, p: VP, gear: 'barbell', rack: true }],
+  ['arnold press', { m: OHP, p: VP, gear: 'dumbbells' }], ['arnold', { m: OHP, p: VP, gear: 'dumbbells' }],
+  ['landmine press', { m: { 'Front Delts': 1, Chest: 0.5, Triceps: 0.5 }, p: VP, needs: [['landmine', 'barbell']] }],
+  ['upright row', { m: UPRIGHT }],
+  ['lateral raise', { m: SD, iso: true, machine: 'lateral raise machine' }], ['side raise', { m: SD, iso: true, machine: 'lateral raise machine' }],
+  ['y raise', { m: SD, iso: true }], ['lu raise', { m: SD, iso: true }], ['deltoid raise', { m: SD, iso: true }], ['scaption', { m: SD, iso: true }],
+  ['front delt raise', { m: { 'Front Delts': 1 }, iso: true }], ['front raise', { m: { 'Front Delts': 1 }, iso: true }],
+  ['kelso shrug', { m: { 'Mid-Back': 1, Traps: 0.5 }, iso: true }], ['shoulder shrug', { m: { Traps: 1 }, iso: true }], ['shrug', { m: { Traps: 1 }, iso: true }],
+  // Triceps.
+  ['jm press', { m: T, bench: 'flat bench' }], ['tate press', { m: T, bench: 'flat bench' }], ['french press', { m: T, iso: true }],
+  ['triceps press', { m: T, needs: one('triceps machine'), machine: 'triceps machine' }],
+  ['triceps extension', { m: T, iso: true }], ['overhead extension', { m: T, iso: true }],
+  ['skullcrusher', { m: T, bench: 'flat bench' }], ['pushdown', { m: T, iso: true, needs: CABLE }], ['kickback', { m: T, iso: true }],
+  // Arms and grip.
+  ['wrist rotation', { m: F, iso: true }], ['pronation', { m: F, iso: true }], ['supination', { m: F, iso: true }], ['finger curl', { m: F, iso: true }], ['wrist curl', { m: F, iso: true }], ['wrist extension', { m: F, iso: true }], ['wrist roller', { m: F, iso: true }],
+  ['curl up', { m: A, iso: true, needs: NOTHING }],
+  ['curl', { m: B, iso: true, machine: 'biceps curl machine' }],
+  ['farmer carry', { m: CARRY, needs: one('dumbbells') }], ['farmer walk', { m: CARRY, needs: one('dumbbells') }], ['farmer', { m: CARRY, needs: one('dumbbells') }],
+  ['suitcase carry', { m: { Forearms: 1, Abs: 0.5 }, needs: one('dumbbells') }], ['carry', { m: CARRY, needs: one('dumbbells') }],
+  ['dead hang', { m: F, needs: one('pull-up bar') }], ['pinch', { m: F, needs: one('plates') }],
+  // Back.
+  ['straight arm pulldown', { m: LATS }], ['straight arm pullover', { m: { Chest: 1, Lats: 0.5 }, iso: true, bench: 'flat bench' }], ['straight arm', { m: LATS }], ['lat prayer', { m: LATS, iso: true }],
+  ['lat pulldown', { m: PULLDOWN, p: VL, needs: one('lat pulldown'), machine: 'lat pulldown', cable: 'lat pulldown' }],
+  ['leg pull in', { m: A, iso: true }], ['bench pull', { m: ROW_MID, p: HL }], ['pull in', { m: PULLDOWN, iso: true, needs: CABLE }], ['archer pull', { m: { Lats: 1, 'Mid-Back': 0.5, Biceps: 0.5 }, needs: CABLE }],
+  ['landmine row', { m: ROW_LAT, p: HL, needs: [['landmine', 'barbell']] }],
+  ['row', { m: ROW_MID, p: HL, machine: 'row machine' }],
+  ['pulldown', { m: PULLDOWN, p: VL, needs: one('lat pulldown'), machine: 'lat pulldown', cable: 'lat pulldown' }],
+  ['pullup', { m: PULLDOWN, p: VL, needs: one('pull-up bar') }],
+  ['chinup', { m: CHIN, p: VL, needs: one('pull-up bar') }], ['chin', { m: CHIN, p: VL, needs: one('pull-up bar') }],
+  // Core.
+  ['landmine rotation', { m: { Abs: 1, 'Front Delts': 0.25 }, iso: true, needs: [['landmine', 'barbell']] }],
+  ['side plank', { m: { Abs: 1, Erectors: 0.5 }, needs: NOTHING }], ['plank', { m: A, needs: NOTHING }],
+  ['bird dog', { m: { Erectors: 1, Glutes: 0.5, Abs: 0.5 }, needs: NOTHING }], ['dead bug', { m: A, needs: NOTHING }],
+  ['hollow', { m: A, needs: NOTHING }], ['v up', { m: A, iso: true, needs: NOTHING }],
+  ['leg raise', { m: A, iso: true }], ['knee raise', { m: A, iso: true }], ['leg lift', { m: A, iso: true }], ['flutter kick', { m: A, iso: true }],
+  ['jackknife', { m: A, iso: true }], ['heel touch', { m: A, iso: true }], ['tuck', { m: A, iso: true }], ['toetobar', { m: A, iso: true, needs: one('pull-up bar') }],
+  ['ab wheel', { m: A }], ['rollout', { m: A }],
+  ['side bend', { m: A, iso: true }], ['russian twist', { m: A, iso: true }], ['twist', { m: A, iso: true }],
+  ['woodchop', { m: A, iso: true, cable: 'cable stack' }], ['chop', { m: A, iso: true }],
+  ['pallof press', { m: A, needs: CABLE }], ['pallof', { m: A, needs: CABLE }],
+  ['crunch', { m: A, iso: true, machine: 'ab crunch machine' }], ['situp', { m: A, iso: true }],
+  ['rotation', { m: A, iso: true, machine: 'torso rotation machine' }],
+  // Last: single words that other phrases contain.
+  ['press', { m: PRESS, p: HP, machine: 'chest press machine' }],
+  ['bench', { m: PRESS, p: HP, gear: 'barbell', bench: 'flat bench' }],
+  ['extension', { m: T, iso: true }], ['lateral', { m: SD, iso: true, machine: 'lateral raise machine' }],
+  ['glute', { m: GLUTE }], ['bridge', { m: GLUTE }], ['oblique', { m: A, iso: true }], ['ab', { m: A, iso: true, machine: 'ab crunch machine' }],
+  ['abs', { m: A, iso: true, machine: 'ab crunch machine' }], ['core', { m: A }], ['neck', { m: OTHER, iso: true }], ['grip', { m: F }],
+];
+const BASE_WORDS = BASES.map(([phrase, base]) => ({ phrase, base, t: phrase.split(' ') }));
+const BASE_OF = new Map(BASES);
+
+/** Words that change which muscles a movement works (`m` replaces them, `add` raises a muscle to at least that) or which movement it is (`to`). */
+interface Modifier { on: string[]; any: string[]; to?: string; m?: Vector; add?: Vector; gear?: Equipment }
+const MODIFIERS: Modifier[] = [
+  // A seated or standing press is a shoulder press: "Seated DB Press", "Standing Barbell Press", "Behind-the-Neck Press".
+  { on: ['press'], any: ['seated', 'standing', 'overhead', 'shoulder', 'btn'], to: 'overhead press' },
+  // A close grip makes a press a triceps lift (as Close-Grip Bench Press).
+  { on: ['bench press', 'bench', 'press', 'chest press', 'floor press', 'pushup'], any: ['close grip', 'narrow grip', 'diamond'], m: CLOSE },
+  { on: ['pushup'], any: ['triceps'], m: CLOSE },
+  { on: ['dip'], any: ['triceps', 'upright', 'straight', 'machine'], m: CLOSE },
+  // An underhand, close or V-bar grip brings the biceps in on a vertical pull (round 13).
+  { on: ['pulldown', 'lat pulldown', 'pullup'], any: ['close grip', 'narrow grip', 'underhand', 'supinated', 'reverse grip', 'vbar'], m: CHIN },
+  { on: ['fly', 'crossover'], any: ['lowtohigh'], add: { 'Front Delts': 0.5 } },
+  { on: ['deadlift', 'romanian deadlift', 'stiff leg deadlift', 'squat'], any: ['sumo'], add: { Adductors: 0.5 } },
+  { on: ['deadlift'], any: ['trap bar'], add: { Quads: 0.5 } },
+  { on: ['lunge', 'squat', 'split squat'], any: ['lateral', 'side', 'cossack'], add: { Adductors: 0.5 } },
+  { on: ['curl'], any: ['hammer', 'crossbody', 'zottman'], add: { Forearms: 0.5 } },
+  { on: ['curl'], any: ['reverse', 'reverse grip', 'overhand', 'pronated'], m: { Forearms: 1, Biceps: 0.5 } },
+  { on: ['pullover', 'straight arm pullover'], any: ['cable', 'rope'], m: LATS },
+  { on: ['row'], any: ['lat', 'high'], m: ROW_LAT },
+  { on: ['kickback'], any: ['leg', 'legged', 'hip', 'donkey'], m: GLUTE },
+  { on: ['squat'], any: ['goblet'], gear: 'dumbbells' },
 ];
 
-/** How a name's facts were found: its record in the table, its words, or not at all. */
+/** Gear words, in the order they're read: "Smith Machine" is the Smith machine. null: gear the app doesn't list yet. */
+const IMPLEMENTS: [string, Equipment | 'machine' | 'cable' | 'nothing' | null][] = [
+  ['smith', 'smith machine'], ['landmine', 'landmine'], ['tbar', 'landmine'], ['trap bar', null], ['ez', null], ['kb', null], ['band', null],
+  ['safety bar', null], ['cable', 'cable'], ['rope', 'cable'], ['pulley', 'cable'], ['db', 'dumbbells'], ['barbell', 'barbell'], ['plate', 'plates'],
+  ['leg press', 'leg press'], ['pec deck', 'pec deck'], ['captainchair', 'captain’s chair'], ['hanging', 'pull-up bar'],
+  ['machine', 'machine'], ['bodyweight', 'nothing'],
+];
+/** Lifted in the hand, so done on a bench or in a rack. */
+const FREE = new Set<Equipment>(['barbell', 'dumbbells', 'smith machine', 'plates']);
+
+function gearFor(ws: string[], base: Base, gear: Equipment | undefined): Needs | null {
+  const named = IMPLEMENTS.find(([w]) => has(ws, w));
+  let tool: Equipment | undefined;
+  if (!named) {
+    if (!gear && base.needs) {
+      // "Weighted Push-up": weighted with something, but not said what.
+      if (has(ws, 'weighted') && !base.needs[0]?.length) return null;
+      return base.needs;
+    }
+    tool = gear;
+  } else {
+    const g = named[1];
+    if (g === null) return null;
+    if (g === 'nothing') return NOTHING;
+    tool = g === 'machine' ? base.machine : g === 'cable' ? base.cable ?? 'cable stack' : g;
+  }
+  if (!tool) return null;
+  const alt: Equipment[] = tool === 'landmine' ? ['landmine', 'barbell'] : [tool];
+  if (FREE.has(tool)) {
+    const bench: Equipment | undefined = has(ws, 'preacher') ? 'preacher bench' : has(ws, 'incline') ? 'incline bench' : has(ws, 'decline') ? 'decline bench'
+      : has(ws, 'flat') || has(ws, 'bench') || has(ws, 'kneeling') ? 'flat bench' : base.bench;
+    if (bench) alt.push(bench);
+    if (base.rack && tool === 'barbell') alt.push('squat rack');
+  }
+  return [alt];
+}
+
+/** What a name's words say it is, without the table. */
+export interface Built { m: Vector | null; p: Pattern | null; needs: Needs | null; iso: boolean }
+
+function build(ws: string[]): Built {
+  let best: (typeof BASE_WORDS)[number] | null = null;
+  for (const b of BASE_WORDS) if (b.t.length > (best?.t.length ?? 0) && found(ws, b.t)) best = b;
+  if (!best) return { m: null, p: null, needs: null, iso: false };
+  let phrase = best.phrase, base = best.base, m = base.m, gear = base.gear;
+  for (const mod of MODIFIERS) {
+    if (!mod.on.includes(phrase) || !mod.any.some((w) => has(ws, w))) continue;
+    if (mod.to) { phrase = mod.to; base = BASE_OF.get(mod.to)!; m = base.m; gear = base.gear; }
+    if (mod.m) m = mod.m;
+    if (mod.add) { m = { ...m }; for (const [k, v] of Object.entries(mod.add) as [Muscle, number][]) m[k] = Math.max(m[k] ?? 0, v); }
+    if (mod.gear) gear = mod.gear;
+  }
+  return { m, p: base.p ?? null, needs: gearFor(ws, base, gear), iso: !!base.iso };
+}
+
+/** A name read from its words alone (see BASES); the catalog's own records are the test set for it. */
+export const fromWords = (name: string): Built => build(words(name));
+
+/** How a name's facts were found: its record in the table (by any spelling that folds to its name), its words, or not at all. */
 export type How = 'catalog' | 'built' | 'none';
 /** What a lift name counts as. `lift`: its record, when the table has one. */
-export interface Resolved { m: Vector | null; p: Pattern | null; needs: Needs | null; iso: boolean; how: How; lift?: Lift }
+export interface Resolved extends Built { how: How; lift?: Lift }
 
-const BY_KEY = new Map(LIFTS.map((l) => [liftKey(l.name), l]));
+/** Folded words in any order: "Dumbbell Incline Press" is Incline DB Press. */
+export const wordKey = (name: string): string => words(name).sort().join(' ');
+const BY_KEY = new Map(LIFTS.map((l) => [wordKey(l.name), l]));
 
 function resolve(name: string): Resolved {
-  const k = liftKey(name);
-  const lift = BY_KEY.get(k);
+  const ws = words(name);
+  const lift = BY_KEY.get([...ws].sort().join(' '));
   if (lift) return { m: lift.m, p: lift.p ?? null, needs: lift.needs, iso: !!lift.iso, how: 'catalog', lift };
-  const iso = ISOLATION.test(name);
-  const m = KEYWORDS.find(([re]) => re.test(k))?.[1] ?? null;
-  const p = iso || NOT_A_PATTERN.test(k) ? null : WORDS.find(([re]) => re.test(k))?.[1] ?? null;
-  return { m, p, needs: null, iso, how: m || p ? 'built' : 'none' };
+  const b = build(ws);
+  return { ...b, how: b.m ? 'built' : 'none' };
 }
 
 // A pure function of the name, read for every set in whole-log passes: worked out once per distinct name. Bounded like liftKey.

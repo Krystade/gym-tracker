@@ -1,5 +1,6 @@
 // The facts every lift name had before src/domain/lifts.ts (round 15): the 97 catalog lifts, then the 12 names muscles.ts
 // knew without listing them. A change to any of these is a change to past weeks' volume, so it is made here by hand, on purpose.
+// Round 15 stage 2: nine of the twelve gained the gear their words name, and two presses their pattern; no muscles moved.
 /** `listed`: in the picker's catalog. `gear`: gearOf's word. `iso`: the 10–15 rep default. */
 export interface Golden { name: string; listed: boolean; m: Record<string, number> | null; p: string | null; needs: string[][] | null; gear: string | null; iso: boolean }
 
@@ -101,18 +102,18 @@ export const GOLDEN: Golden[] = [
   {"name":"StairMaster","listed":true,"m":null,"p":null,"needs":[["stair climber"]],"gear":"cardio machine","iso":false},
   {"name":"Exercise Bike","listed":true,"m":null,"p":null,"needs":[["exercise bike"]],"gear":"cardio machine","iso":false},
   {"name":"Elliptical","listed":true,"m":null,"p":null,"needs":[["elliptical"]],"gear":"cardio machine","iso":false},
-  {"name":"close-grip push-up","listed":false,"m":{"Triceps":1,"Chest":0.5,"Front Delts":0.5},"p":null,"needs":null,"gear":null,"iso":false},
-  {"name":"close-grip smith press","listed":false,"m":{"Triceps":1,"Chest":0.5,"Front Delts":0.5},"p":null,"needs":null,"gear":null,"iso":false},
-  {"name":"dips","listed":false,"m":{"Chest":1,"Triceps":0.5,"Front Delts":0.5},"p":null,"needs":null,"gear":null,"iso":false},
-  {"name":"incline bench pushdown","listed":false,"m":{"Triceps":1},"p":null,"needs":null,"gear":null,"iso":true},
-  {"name":"db reverse curl","listed":false,"m":{"Forearms":1,"Biceps":0.5},"p":null,"needs":null,"gear":null,"iso":true},
+  {"name": "close-grip push-up", "listed": false, "m": {"Triceps": 1, "Chest": 0.5, "Front Delts": 0.5}, "p": null, "needs": [[]], "gear": "no equipment", "iso": false},
+  {"name": "close-grip smith press", "listed": false, "m": {"Triceps": 1, "Chest": 0.5, "Front Delts": 0.5}, "p": "Horizontal press", "needs": [["smith machine"]], "gear": "Smith machine", "iso": false},
+  {"name": "dips", "listed": false, "m": {"Chest": 1, "Triceps": 0.5, "Front Delts": 0.5}, "p": null, "needs": [["dip station"]], "gear": "dip station", "iso": false},
+  {"name": "incline bench pushdown", "listed": false, "m": {"Triceps": 1}, "p": null, "needs": [["cable stack"]], "gear": "cable", "iso": true},
+  {"name": "db reverse curl", "listed": false, "m": {"Forearms": 1, "Biceps": 0.5}, "p": null, "needs": [["dumbbells"]], "gear": "dumbbells", "iso": true},
   {"name":"zottman curl","listed":false,"m":{"Biceps":1,"Forearms":0.5},"p":null,"needs":null,"gear":null,"iso":true},
-  {"name":"db wrist curl","listed":false,"m":{"Forearms":1},"p":null,"needs":null,"gear":null,"iso":true},
-  {"name":"db reverse wrist curl","listed":false,"m":{"Forearms":1},"p":null,"needs":null,"gear":null,"iso":true},
-  {"name":"overhead db press","listed":false,"m":{"Front Delts":1,"Triceps":0.5,"Side Delts":0.5},"p":null,"needs":null,"gear":null,"iso":false},
+  {"name": "db wrist curl", "listed": false, "m": {"Forearms": 1}, "p": null, "needs": [["dumbbells"]], "gear": "dumbbells", "iso": true},
+  {"name": "db reverse wrist curl", "listed": false, "m": {"Forearms": 1}, "p": null, "needs": [["dumbbells"]], "gear": "dumbbells", "iso": true},
+  {"name": "overhead db press", "listed": false, "m": {"Front Delts": 1, "Triceps": 0.5, "Side Delts": 0.5}, "p": "Vertical press", "needs": [["dumbbells"]], "gear": "dumbbells", "iso": false},
   {"name":"decline crunch (weighted)","listed":false,"m":{"Abs":1},"p":null,"needs":null,"gear":null,"iso":true},
   {"name":"leg raise","listed":false,"m":{"Abs":1},"p":null,"needs":null,"gear":null,"iso":true},
-  {"name":"db calf raise","listed":false,"m":{"Calves":1},"p":null,"needs":null,"gear":null,"iso":true},
+  {"name": "db calf raise", "listed": false, "m": {"Calves": 1}, "p": null, "needs": [["dumbbells"]], "gear": "dumbbells", "iso": true},
 ];
 
 export const GOLDEN_VARIATIONS: Record<string, string[]> = {"Horizontal press":["Bench Press","Machine Chest Press","Incline Bench Press","Flat DB Press","Incline DB Press","Smith Flat Press","Smith Incline Press","Close-Grip Bench Press"],"Horizontal pull":["Chest-Supported Row","Seated Cable Row","T-Bar Row","Kneeling DB Row","Machine Row","Landmine Row"],"Vertical press":["Overhead Press","Machine Shoulder Press","DB Shoulder Press","Arnold Press","Landmine Press"],"Vertical pull":["Lat Pulldown","Pull-up","Close-Grip Lat Pulldown","Chin-up"],"Squat":["Barbell Squat","Leg Press","Smith Squat","Pendulum Squat","Front Squat","Bulgarian Split Squat","Landmine Squat"],"Hinge":["Deadlift","Romanian Deadlift","DB Romanian Deadlift"]};

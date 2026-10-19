@@ -22,3 +22,25 @@ export function localDate(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
+
+const SYNONYMS: Record<string, string> = {
+  dumbell: 'db', dumbbell: 'db', dbs: 'db', tricep: 'triceps', bicep: 'biceps', calve: 'calf', ext: 'extension', bb: 'barbell',
+};
+
+/** A folded form of an exercise name: case, punctuation, plurals and common spellings don't matter. */
+export function nameKey(name: string): string {
+  const s = name.toLowerCase().replace(/[’'`]/g, '').replace(/[-–—/()_,.&+]/g, ' ')
+    .replace(/\b(push|pull|chin|sit)\s+(ups?|downs?)\b/g, '$1$2');
+  return s.split(/\s+/).filter(Boolean)
+    .map((w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w))
+    .map((w) => SYNONYMS[w] ?? w)
+    .join(' ');
+}
+
+/** Word overlap (Jaccard) of two names after folding. */
+export function nameSimilarity(a: string, b: string): number {
+  const A = new Set(nameKey(a).split(' ')), B = new Set(nameKey(b).split(' '));
+  let both = 0;
+  for (const w of A) if (B.has(w)) both++;
+  return both / (A.size + B.size - both || 1);
+}

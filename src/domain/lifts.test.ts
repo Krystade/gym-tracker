@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CATALOG, PATTERNS, VARIATIONS } from './catalog';
 import { EQUIPMENT, gearOf, NEEDS } from './equipment';
-import { liftKey } from './ids';
-import { LIFTS, resolveLift } from './lifts';
+import { LIFTS, resolveLift, wordKey } from './lifts';
 import { GOLDEN, GOLDEN_VARIATIONS } from './lifts.golden';
 import { MUSCLES, muscleVector } from './muscles';
 import { PREFERENCE } from './program';
@@ -37,8 +36,8 @@ describe('golden: every name the app knew before lifts.ts keeps its facts', () =
 });
 
 describe('the lifts table', () => {
-  it('has every lift once', () => {
-    const keys = LIFTS.map((l) => liftKey(l.name));
+  it('has every lift once, in any spelling that folds to the same words', () => {
+    const keys = LIFTS.map((l) => wordKey(l.name));
     expect(keys.length).toBeGreaterThan(100);
     expect(keys.filter((k, i) => keys.indexOf(k) !== i)).toEqual([]);
   });
@@ -60,7 +59,7 @@ describe('the lifts table', () => {
     }
   });
   it('a lift with a pattern is in that pattern’s variations, and a variation has the pattern', () => {
-    for (const l of LIFTS) if (l.p) expect(VARIATIONS[l.p], l.name).toContain(l.name);
+    for (const l of LIFTS) if (l.p && !l.hidden) expect(VARIATIONS[l.p], l.name).toContain(l.name);
     for (const p of PATTERNS) for (const n of VARIATIONS[p]) expect(resolveLift(n).p, n).toBe(p);
   });
   it('every PREFERENCE lift is a listed lift that trains its muscle directly (Traps: Face Pull, the old default)', () => {
@@ -89,6 +88,6 @@ describe('resolveLift', () => {
   });
   it('keeps a name it doesn’t list out of the catalog', () => {
     expect(CATALOG).not.toContain('dips');
-    expect(resolveLift('Dips')).toMatchObject({ how: 'catalog', needs: null });
+    expect(resolveLift('Dips')).toMatchObject({ how: 'catalog', needs: [['dip station']] });
   });
 });
