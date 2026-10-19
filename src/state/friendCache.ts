@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { deleteFriendCaches, getFriendCache, putFriendCache } from '../db/db';
 import { loadCloud, type Cloud } from '../cloud/firebase';
 import {
-  friendNews, listBlocked, listFriends, listRequests, listSentGyms, listThread, liveInvite, myUsername, readFriendWindow,
+  friendNews, listBlocked, listFriends, listRequests, listSent, listSentGyms, listThread, liveInvite, myUsername, readFriendWindow, readInbox, threadOf,
   type Friend, type FriendNews, type FriendWindow, type Request, type SentGym, type WindowBasis,
 } from '../cloud/friends';
 import { addDays } from '../domain/analytics';
@@ -29,7 +29,8 @@ export interface Lists {
 }
 /** `basis`: the times in their index it was read at, so the next read fetches only what changed (cloud/friends readFriendWindow). */
 export interface CachedWindow { at: number; from: string; to: string; win: FriendWindow; basis?: WindowBasis }
-export interface CachedThread { at: number; items: ThreadItem[]; gyms: SentGym[] }
+/** `mine`: what you sent them, as last read, so a thread can be built again from your inbox without reading theirs (none: kept by an older version). */
+export interface CachedThread { at: number; items: ThreadItem[]; gyms: SentGym[]; mine?: InboxDoc[] }
 export interface FriendCache {
   uid: string;
   lists?: Lists;
@@ -247,27 +248,54 @@ export function refreshWindow(c: Cloud, uid: string, f: string, from: string, to
   }, join);
 }
 
-/** You and one friend: both halves of the thread and the gyms they sent. */
-export function refreshThread(c: Cloud, uid: string, f: string, join = false): Promise<CachedThread> {
+/**
+ * You and one friend: what you sent them, what they sent you and the gyms they sent.
+ * - Opened (the default): what you sent is read whole (one sent from another of your phones, one their phone cleared), and
+ *   their side is what's new in your inbox (readInbox), kept for the news too; with no inbox kept yet, their side read whole.
+ * - `kept` (the news and lists were just read): built from them, so their side and the gyms cost no read; what you sent is
+ *   as kept, and read only when it never was. What only the opened read shows waits for the thread to open.
+ */
+export function refreshThread(c: Cloud, uid: string, f: string, join = false, kept = false): Promise<CachedThread> {
   return once(`thread:${uid}:${f}`, async () => {
-    const t = { at: Date.now(), ...(await listThread(c, uid, f)) };
-    await patchFriendCache(uid, (x) => ({ ...x, threads: { ...x.threads, [f]: t } }));
+    const x = await hydrateFriendCache(uid);
+    let t: CachedThread;
+    if (kept && x.inbox && x.lists) {
+      const mine = x.threads[f]?.mine ?? await listSent(c, uid, f);
+      const y = peekFriendCache(uid) ?? x; // the news or lists may have been read again meanwhile
+      t = { at: Date.now(), ...threadOf(mine, (y.inbox ?? x.inbox).items, f, (y.lists ?? x.lists).sentGyms) };
+    } else if (x.inbox) {
+      const [inbox, mine, gyms] = await Promise.all([readInbox(c, uid, x.inbox.items), listSent(c, uid, f), listSentGyms(c, uid)]);
+      t = { at: Date.now(), ...threadOf(mine, inbox, f, gyms) };
+      // Only added to: a news read since may have cleared what it held, and its word on that stands.
+      await patchFriendCache(uid, (y) => {
+        if (!y.inbox) return y;
+        const ids = new Set(y.inbox.items.map((d) => d.id)), held = new Set(x.inbox!.items.map((d) => d.id));
+        const added = inbox.filter((d) => !ids.has(d.id) && !held.has(d.id));
+        return added.length ? { ...y, inbox: { ...y.inbox, items: [...y.inbox.items, ...added] } } : y;
+      });
+    } else {
+      t = { at: Date.now(), ...(await listThread(c, uid, f)) };
+    }
+    await patchFriendCache(uid, (y) => ({ ...y, threads: { ...y.threads, [f]: t } }));
     return t;
   }, join);
 }
 
-/** The threads whose friend sent something since they were read (after the news is read again). */
+/**
+ * The threads whose friend sent something since they were read, after the news is read again: built again from the inbox it
+ * read and the lists, with no read of the thread (what you sent is as kept).
+ */
 export async function refreshChangedThreads(c: Cloud, uid: string): Promise<void> {
   const cache = peekFriendCache(uid);
   if (!cache?.lists) return;
   const friends = new Set(cache.lists.friends.map((f) => f.uid));
-  await Promise.all(threadsBehind(cache).filter((f) => friends.has(f)).map((f) => refreshThread(c, uid, f, true).catch(() => {})));
+  await Promise.all(threadsBehind(cache).filter((f) => friends.has(f)).map((f) => refreshThread(c, uid, f, true, true).catch(() => {})));
 }
 
 /**
  * Everything Friends shows, read again: lists and news always; Crew lines when stale; threads never read, and those the news
- * and lists say are behind (threadsBehind), not every thread each time: a thread is read whole, and opening it reads it again
- * anyway. `force`: all of it.
+ * and lists say are behind (threadsBehind), built from the news and lists just read: only what you sent is read, and only for
+ * a thread never read. `force`: all of it, each thread as if opened.
  */
 export async function prefetchFriends(uid: string, today: string, force = false): Promise<void> {
   const c = await loadCloud();
@@ -275,7 +303,7 @@ export async function prefetchFriends(uid: string, today: string, force = false)
   const { from, to } = crewRange(today), now = Date.now(), cache = peekFriendCache(uid);
   await Promise.all(lists.friends.flatMap((f) => [
     force || staleWindow(cache?.windows[f.uid], from, to, now) ? refreshWindow(c, uid, f.uid, from, to, !force).catch(() => {}) : null,
-    force || !cache?.threads[f.uid] ? refreshThread(c, uid, f.uid, !force).catch(() => {}) : null,
+    force || !cache?.threads[f.uid] ? refreshThread(c, uid, f.uid, !force, !force).catch(() => {}) : null,
   ]));
   await refreshChangedThreads(c, uid);
 }

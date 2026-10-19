@@ -2,9 +2,9 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetDbForTests } from '../db/db';
-import type { FriendNews } from '../cloud/friends';
+import { listThread, type FriendNews } from '../cloud/friends';
 import {
-  flushFriendCache, forgetFriendCaches, hydrateFriendCache, crewRange, FULL_INBOX_MS, patchFriendCache, peekFriendCache, prefetchFriends, pruneTo, readLocally, refreshNews, refreshWindow,
+  flushFriendCache, forgetFriendCaches, hydrateFriendCache, crewRange, FULL_INBOX_MS, patchFriendCache, peekFriendCache, prefetchFriends, pruneTo, readLocally, refreshChangedThreads, refreshNews, refreshThread, refreshWindow,
   resetFriendCacheForTests, sameNews, STALE_MS, staleWindow, threadsBehind, type FriendCache,
 } from './friendCache';
 import { fakeFirestore, ts } from '../cloud/fakeFirestore';
@@ -183,6 +183,10 @@ describe('friend cache: the background read (prefetchFriends)', () => {
     windows: Object.fromEntries(Object.entries(c.windows).map(([k, x]) => [k, { ...x, at: x.at - 6 * 60_000 }])),
   }));
 
+  /** Reads of what you sent a friend (their inbox, yours only), and of your inbox by sender: a thread's halves read whole. */
+  const sentRead = (w: ReturnType<typeof world>) => [...new Set(w.log.filter((l) => l.filters === 'from==me').map((l) => l.path.split('/')[1]))].sort();
+  const theirsRead = (w: ReturnType<typeof world>) => w.log.filter((l) => l.path === 'users/me/inbox' && l.filters?.startsWith('from=='));
+
   it('reads a thread when it was never read or its friend sent something since, not every 5 minutes', async () => {
     const w = world();
     cloudBox.c = w.cloud;
@@ -196,12 +200,117 @@ describe('friend cache: the background read (prefetchFriends)', () => {
     await age();
     w.take();
     await prefetchFriends('me', today);
-    expect(threadsRead(w)).toEqual(['jake']);
+    // Built again from the inbox the news just read and what you sent as kept: no read of either half.
+    expect(threadsRead(w)).toEqual([]);
     expect(peekFriendCache('me')?.threads.jake.items.map((i) => i.text)).toEqual(['💪', '👏', 'up?']);
     // Asked for (force): every thread again.
     w.take();
     await prefetchFriends('me', today, true);
-    expect(threadsRead(w)).toEqual(['ana', 'jake']);
+    expect(sentRead(w)).toEqual(['ana', 'jake']);
+  });
+
+  it('a thread never read: only what you sent is read; their side and the gyms come from the news and lists just read', async () => {
+    const w = world();
+    cloudBox.c = w.cloud;
+    await prefetchFriends('me', today);
+    expect(sentRead(w)).toEqual(['ana', 'jake']);
+    expect(theirsRead(w)).toEqual([]);
+    expect(w.log.filter((l) => l.path === 'users/me/gymInbox')).toHaveLength(2); // the lists and the news, none for a thread
+    expect(w.log.filter((l) => l.path === 'users/me/inbox')).toHaveLength(1); // the news
+    expect(peekFriendCache('me')?.threads.jake.items.map((i) => i.text)).toEqual(['💪', '👏']);
+  });
+
+  it('a friend’s new message costs no read beyond the news’, even after the app restarts; an old copy without what you sent reads it once', async () => {
+    const w = world();
+    cloudBox.c = w.cloud;
+    await prefetchFriends('me', today);
+    await flushFriendCache();
+    resetFriendCacheForTests();
+    w.docs['users/me/inbox/j2'] = { from: 'jake', kind: 'm', t: 'up?', at: ts(T) };
+    w.take();
+    await refreshNews(w.cloud, 'me');
+    w.take();
+    await refreshChangedThreads(w.cloud, 'me');
+    expect(w.take()).toBe(0);
+    expect(peekFriendCache('me')?.threads.jake.items.map((i) => i.text)).toEqual(['💪', '👏', 'up?']);
+    // A copy kept by an older version holds no `mine`: what you sent is read, their side still isn't.
+    await patchFriendCache('me', (c) => ({ ...c, threads: { ...c.threads, jake: { at: c.threads.jake.at, items: c.threads.jake.items, gyms: [] } } }));
+    w.docs['users/me/inbox/j3'] = { from: 'jake', kind: 'm', t: 'now?', at: ts(T + 1000) };
+    await refreshNews(w.cloud, 'me');
+    w.take();
+    await refreshChangedThreads(w.cloud, 'me');
+    expect(sentRead(w)).toEqual(['jake']);
+    expect(theirsRead(w)).toEqual([]);
+    expect(peekFriendCache('me')?.threads.jake.items.map((i) => i.text)).toEqual(['💪', '👏', 'up?', 'now?']);
+  });
+
+  it('a thread opened reads what you sent whole (another phone, their deletes) and only what’s new in your inbox', async () => {
+    const w = world();
+    cloudBox.c = w.cloud;
+    await prefetchFriends('me', today);
+    // Since: you sent one from another phone, jake's phone cleared your old ping, and jake wrote.
+    w.docs['users/jake/inbox/m2'] = { from: 'me', kind: 'm', t: 'from my iPad', at: ts(T - 30 * 60_000) };
+    delete w.docs['users/jake/inbox/m1'];
+    w.docs['users/me/inbox/j2'] = { from: 'jake', kind: 'm', t: 'up?', at: ts(T) };
+    w.take();
+    await refreshThread(w.cloud, 'me', 'jake');
+    expect(sentRead(w)).toEqual(['jake']);
+    expect(theirsRead(w)).toEqual([]);
+    expect(w.log.find((l) => l.path === 'users/me/inbox')?.filters).toBe(`at>${T - 2 * H - 60_000}`);
+    expect(peekFriendCache('me')?.threads.jake.items.map((i) => i.text)).toEqual(['💪', 'from my iPad', 'up?']);
+    // What it read of your inbox is kept for the news: its next read starts after it.
+    expect(peekFriendCache('me')?.inbox?.items.map((d) => d.id).sort()).toEqual(['j1', 'j2']);
+    w.take();
+    await refreshNews(w.cloud, 'me');
+    expect(w.log.find((l) => l.path === 'users/me/inbox')?.filters).toBe(`at>${T - 60_000}`);
+  });
+
+  it('a thread opened while the news clears something keeps it cleared', async () => {
+    const w = world();
+    cloudBox.c = w.cloud;
+    await prefetchFriends('me', today);
+    w.docs['users/me/inbox/j2'] = { from: 'jake', kind: 'm', t: 'up?', at: ts(T) };
+    const opened = refreshThread(w.cloud, 'me', 'jake');
+    await patchFriendCache('me', (c) => ({ ...c, inbox: { ...c.inbox!, items: c.inbox!.items.filter((d) => d.id !== 'j1') } }));
+    await opened;
+    expect(peekFriendCache('me')?.inbox?.items.map((d) => d.id).sort()).toEqual(['j2']);
+  });
+
+  it('with no inbox kept (a first open), a thread opened reads both halves whole', async () => {
+    const w = world();
+    await refreshThread(w.cloud, 'me', 'jake');
+    expect(sentRead(w)).toEqual(['jake']);
+    expect(theirsRead(w)).toEqual([{ path: 'users/me/inbox', n: 1, filters: 'from==jake' }]);
+    expect(peekFriendCache('me')?.threads.jake.items.map((i) => i.text)).toEqual(['💪', '👏']);
+  });
+
+  it('a thread built from what’s kept says what reading it whole says, as messages come and go', async () => {
+    const w = world();
+    cloudBox.c = w.cloud;
+    const D = 864e5;
+    w.docs['users/me/inbox/old'] = { from: 'jake', kind: 'm', t: 'last month', at: ts(T - 29 * D) };
+    for (let i = 0; i < 25; i++) w.docs[`users/jake/inbox/s${i}`] = { from: 'me', kind: 'm', t: `mine ${i}`, at: ts(T - 2 * D + i * 60_000) };
+    await prefetchFriends('me', today);
+    const whole = async () => (await listThread(w.cloud, 'me', 'jake')).items;
+    expect(peekFriendCache('me')?.threads.jake.items).toEqual(await whole());
+    for (let i = 0; i < 6; i++) {
+      w.docs[`users/me/inbox/n${i}`] = { from: 'jake', kind: i % 2 ? 'p' : 'm', e: 'fire', t: `theirs ${i}`, at: ts(T + i * 60_000) };
+      await age();
+      await prefetchFriends('me', today);
+      expect(peekFriendCache('me')?.threads.jake.items).toEqual(await whole());
+    }
+    // Their message goes past 30 days: the news clears it from your inbox, and the thread built again drops it.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(T + 1.5 * D);
+      w.docs['users/me/inbox/n9'] = { from: 'jake', kind: 'm', t: 'still there?', at: ts(T + 1.5 * D) };
+      await prefetchFriends('me', today);
+      expect(w.docs['users/me/inbox/old']).toBeUndefined();
+      const items = peekFriendCache('me')!.threads.jake.items;
+      expect(items.map((i) => i.text)).toContain('still there?');
+      expect(items.map((i) => i.text)).not.toContain('last month');
+      expect(items).toEqual(await whole());
+    } finally { vi.useRealTimers(); }
   });
 
   it('a gym a friend sent, or one dismissed since, reads their thread again', async () => {
@@ -212,14 +321,22 @@ describe('friend cache: the background read (prefetchFriends)', () => {
     await age();
     w.take();
     await prefetchFriends('me', today);
-    expect(threadsRead(w)).toEqual(['ana']);
+    // Built again from the gyms the lists just read: no read of the thread.
+    expect(threadsRead(w)).toEqual([]);
     expect(peekFriendCache('me')?.threads.ana.gyms.map((g) => g.id)).toEqual(['g1']);
+    expect(peekFriendCache('me')?.threads.ana.items.map((i) => i.text)).toEqual(['Iron Den']);
+    // Only ana's: jake's thread, opened or built from what's kept, holds none of it.
+    await refreshThread(w.cloud, 'me', 'jake');
+    expect(peekFriendCache('me')?.threads.jake.gyms).toEqual([]);
+    await refreshThread(w.cloud, 'me', 'jake', false, true);
+    expect(peekFriendCache('me')?.threads.jake.items.map((i) => i.text)).toEqual(['💪', '👏']);
     delete w.docs['users/me/gymInbox/g1'];
     await age();
     w.take();
     await prefetchFriends('me', today);
-    expect(threadsRead(w)).toEqual(['ana']);
+    expect(threadsRead(w)).toEqual([]);
     expect(peekFriendCache('me')?.threads.ana.gyms).toEqual([]);
+    expect(peekFriendCache('me')?.threads.ana.items).toEqual([]);
   });
 
   it('the pure rule: a kept thread whose gyms aren’t the ones lists read after it hold from that friend is behind', () => {

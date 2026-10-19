@@ -268,15 +268,26 @@ const inboxDoc = (d: { id: string; data(): Record<string, unknown> }): InboxDoc 
 };
 const docs = (q: { docs: { id: string; data(): Record<string, unknown> }[] }) => q.docs.map(inboxDoc).filter((d): d is InboxDoc => !!d);
 
-/** You and one friend: what you sent them (you may read only your own there), what they sent you, and gyms from them. */
-export async function listThread(c: Cloud, me: string, f: string): Promise<{ items: ThreadItem[]; gyms: SentGym[] }> {
+/** What you sent one friend that's still in their inbox (you may read only your own there). Only they delete it, and nobody edits it. */
+export async function listSent({ F, db }: Cloud, me: string, f: string): Promise<InboxDoc[]> {
+  return docs(await F.getDocs(F.query(F.collection(db, `users/${f}/inbox`), F.where('from', '==', me))));
+}
+
+/** A thread from its parts: what you sent them, your inbox (theirs are picked from it) and the gyms sent to you (theirs, likewise). */
+export function threadOf(mine: InboxDoc[], inbox: InboxDoc[], f: string, sentGyms: SentGym[]): { items: ThreadItem[]; gyms: SentGym[]; mine: InboxDoc[] } {
+  const gyms = sentGyms.filter((g) => g.from === f);
+  return { items: thread(mine, inbox.filter((d) => d.from === f), gyms.map((g) => ({ id: g.id, sent: g.sent, name: g.gym.name }))), gyms, mine };
+}
+
+/** You and one friend, read whole: what you sent them, what they sent you, and gyms from them. */
+export async function listThread(c: Cloud, me: string, f: string): Promise<{ items: ThreadItem[]; gyms: SentGym[]; mine: InboxDoc[] }> {
   const { F, db } = c;
   const [mine, theirs, gyms] = await Promise.all([
-    F.getDocs(F.query(F.collection(db, `users/${f}/inbox`), F.where('from', '==', me))),
+    listSent(c, me, f),
     F.getDocs(F.query(F.collection(db, `users/${me}/inbox`), F.where('from', '==', f))),
-    listSentGyms(c, me).then((g) => g.filter((x) => x.from === f)),
+    listSentGyms(c, me),
   ]);
-  return { items: thread(docs(mine), docs(theirs), gyms.map((g) => ({ id: g.id, sent: g.sent, name: g.gym.name }))), gyms };
+  return threadOf(mine, docs(theirs), f, gyms);
 }
 
 /** Opening their thread: everything they sent so far is read. Only on your own list, so no read receipts. */
@@ -339,24 +350,30 @@ export interface FriendNews {
 /** How far before the newest item held a read of what's new starts: two sends moments apart may commit out of order. */
 const OVERLAP_MS = 60_000;
 /**
+ * Your inbox as it now stands: `held` (your inbox as last read) with what came after its newest (OVERLAP_MS before it); without
+ * it, the whole inbox. What's held needs no re-read for deletes or edits: nobody edits an inbox document (firestore.rules), and
+ * only this phone, or another of yours, deletes in your inbox, and only what `toClear` finds again on every news read.
+ */
+export async function readInbox({ F, db }: Cloud, me: string, held?: InboxDoc[]): Promise<InboxDoc[]> {
+  const all = F.collection(db, `users/${me}/inbox`);
+  const has = held?.length ? held : null;
+  const since = has && F.query(all, F.where('at', '>', F.Timestamp.fromMillis(Math.max(...has.map((d) => d.at)) - OVERLAP_MS)));
+  const byId = new Map((has ?? []).map((d) => [d.id, d]));
+  for (const d of docs(await F.getDocs(since ?? all))) byId.set(d.id, d);
+  return [...byId.values()];
+}
+/**
  * `known`: your inbox as the last read left it (state/friendCache keeps it), so only what came after its newest is read, not the
- * whole 30 days each time; without it, the whole inbox. Every read hands back the inbox as it now stands. What's held needs no
- * re-read for deletes: only this phone, or another of yours, ever deletes in your inbox, and only what's over 30 days old or
- * from someone no longer a friend, which `toClear` finds again here. `names`: your friends' usernames as kept, for the banner.
+ * whole 30 days each time (readInbox); without it, the whole inbox. Every read hands back the inbox as it now stands, with what's
+ * over 30 days old or from someone no longer a friend cleared. `names`: your friends' usernames as kept, for the banner.
  */
 export async function friendNews(c: Cloud, me: string, now = Date.now(), known?: { inbox?: InboxDoc[]; names?: Record<string, string> }): Promise<FriendNews & { inbox: InboxDoc[] }> {
   const { F, db } = c;
-  const held = known?.inbox?.length ? known.inbox : null;
-  const all = F.collection(db, `users/${me}/inbox`);
-  const since = held && F.query(all, F.where('at', '>', F.Timestamp.fromMillis(Math.max(...held.map((d) => d.at)) - OVERLAP_MS)));
-  const [friendDocs, requests, gyms, inboxSnap] = await Promise.all([
-    F.getDocs(F.collection(db, `users/${me}/friends`)), listRequests(c, me), listSentGyms(c, me), F.getDocs(since ?? all),
+  const [friendDocs, requests, gyms, inbox] = await Promise.all([
+    F.getDocs(F.collection(db, `users/${me}/friends`)), listRequests(c, me), listSentGyms(c, me), readInbox(c, me, known?.inbox),
   ]);
   const friends = new Set(friendDocs.docs.map((d) => d.id));
   const readAt = Object.fromEntries(friendDocs.docs.map((d) => [d.id, (d.data().readAt as { toMillis?(): number } | undefined)?.toMillis?.()]));
-  const byId = new Map((held ?? []).map((d) => [d.id, d]));
-  for (const d of docs(inboxSnap)) byId.set(d.id, d);
-  const inbox = [...byId.values()];
   // Spark has no automatic expiry: this phone clears what's over 30 days old, or from someone who's no longer a friend.
   const stale = toClear(inbox, friends, now);
   if (stale.length) void clearIds(c, me, stale).catch(() => {});
