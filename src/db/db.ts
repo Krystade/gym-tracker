@@ -105,10 +105,13 @@ export const resetDbForTests = () => {
 };
 export const getAllSets = async (): Promise<SetEntry[]> => (await db()).getAll(STORE);
 export const putSet = async (e: SetEntry): Promise<void> => { await (await db()).put(STORE, e); };
-/** Builds a set from what's stored and saves it in one transaction, so two open copies of the app can't take the same set number. */
-export async function addSet(make: (stored: SetEntry[]) => SetEntry): Promise<SetEntry> {
+/**
+ * Builds a set from the sets stored for its day and saves it in one transaction, so two open copies of the app can't take the
+ * same set number. Only `date`'s sets are read, not the whole log: `make` gets those, and its set must be on that day.
+ */
+export async function addSet(date: string, make: (sameDay: SetEntry[]) => SetEntry): Promise<SetEntry> {
   const tx = (await db()).transaction(STORE, 'readwrite');
-  const e = make((await tx.store.getAll()) as SetEntry[]);
+  const e = make((await tx.store.index('date').getAll(date)) as SetEntry[]);
   await tx.store.put(e);
   await tx.done;
   return e;

@@ -2,12 +2,12 @@ import { addDays } from './analytics';
 import { isCardio } from './cardio';
 import { isHold, isHoldLift, recentPain, similarity } from './care';
 import { CATALOG, PATTERNS, VARIATIONS, type Pattern } from './catalog';
-import { normalizeName } from './ids';
+import { liftKey } from './ids';
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
 import type { Program } from './program';
 import { defaultSettings, isProgressionSet, isWorking, priorE1rm, type ExerciseSettings } from './progression';
 import { renameInProgram } from './rename';
-import { e1rm, estimateWeightForReps, exerciseNames, sameExercise, sessionsFor } from './stats';
+import { e1rm, estimateWeightForReps, exerciseNames, liftSets, sameExercise, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 
 // Rotating a plateaued lift to another variation of the same movement (round 13). Six movement patterns, a few variations
@@ -15,7 +15,7 @@ import type { SetEntry } from './types';
 // pattern, aimed at the same muscles. Strength carries over, so coming back round to the first one finds you stronger.
 // Nothing here changes a thing by itself: Today and the lift's screen offer the switch, and a tap takes it.
 
-const key = (s: string) => normalizeName(s).toLowerCase();
+const key = liftKey;
 const days = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
 
 const PATTERN_BY_KEY = new Map<string, Pattern>(PATTERNS.flatMap((p) => VARIATIONS[p].map((ex) => [key(ex), p] as const)));
@@ -219,7 +219,7 @@ export function carryOver(entries: SetEntry[], from: string, to: string, today: 
   let ratio: number | null = null, basis: Carry['basis'] = 'history';
   if (lastTo) {
     const toBest = priorE1rm(entries, to, addDays(lastTo, 1));
-    const near = entries.filter((e) => sameExercise(e.exercise, from) && Math.abs(days(e.date, lastTo)) <= NEAR_DAYS)
+    const near = liftSets(entries, from).filter((e) => Math.abs(days(e.date, lastTo)) <= NEAR_DAYS)
       .map(e1rm).filter((v): v is number => v != null);
     if (toBest != null && near.length) ratio = toBest / Math.max(...near);
   }

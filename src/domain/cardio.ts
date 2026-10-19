@@ -1,5 +1,5 @@
 import { addDays, weekStart } from './analytics';
-import { normalizeName } from './ids';
+import { liftKey } from './ids';
 import type { Tier } from './profile';
 import { sameExercise } from './stats';
 import type { CardioData, SetEntry } from './types';
@@ -18,7 +18,7 @@ export const MACHINES: Machine[] = [
 ];
 export const CARDIO_NAMES = MACHINES.map((m) => m.name);
 
-const key = (s: string) => normalizeName(s).toLowerCase();
+const key = liftKey;
 const BY_KEY = new Map(MACHINES.map((m) => [key(m.name), m]));
 export const machine = (name: string): Machine | null => BY_KEY.get(key(name)) ?? null;
 export const isCardio = (name: string): boolean => BY_KEY.has(key(name));

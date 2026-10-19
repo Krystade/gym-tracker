@@ -1,4 +1,4 @@
-import { normalizeName } from './ids';
+import { liftKey } from './ids';
 
 // What a gym has, and what each catalog lift needs. Generic gym gear only.
 
@@ -63,7 +63,7 @@ export const NEEDS: Record<string, Needs> = {
   Treadmill: one('treadmill'), StairMaster: one('stair climber'), 'Exercise Bike': one('exercise bike'), Elliptical: one('elliptical'),
 };
 
-const key = (s: string) => normalizeName(s).toLowerCase();
+const key = liftKey;
 const NEEDS_BY_KEY = new Map(Object.entries(NEEDS).map(([k, v]) => [key(k), v]));
 
 const MACHINES = new Set<Equipment>(EQUIPMENT_GROUPS.find(([g]) => g === 'Machines')![1]);

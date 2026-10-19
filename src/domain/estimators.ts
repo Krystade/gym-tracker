@@ -1,4 +1,4 @@
-import { sameExercise, sessionsFor } from './stats';
+import { liftSets, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 import { addDays } from './analytics';
 
@@ -35,7 +35,9 @@ const isTest = (s: SetEntry) => s.flags.includes('test');
 const testReps = (s: SetEntry) => (s.reps as number) + (s.rir ?? 0);
 
 function rawE1rm(entries: SetEntry[], exercise: string, f: Formula, beforeDate: string): number | null {
-  const vals = sessionsFor(entries.filter((x) => !isTest(x)), exercise).filter((x) => x.date < beforeDate).slice(0, 3)
+  // The lift's sessions with test sets left out (a session of only tests isn't one): the same as leaving them out of the log first.
+  const vals = sessionsFor(entries, exercise).map((x) => ({ ...x, sets: x.sets.filter((s) => !isTest(s)) })).filter((x) => x.sets.length)
+    .filter((x) => x.date < beforeDate).slice(0, 3)
     .flatMap((x) => x.sets.filter(usable).map((s) => oneRm(f, s.weight, s.reps as number))).filter((v): v is number => v != null);
   return vals.length ? Math.max(...vals) : null;
 }
@@ -48,7 +50,7 @@ export interface Calibration { formula: Formula; factor: number; tests: number; 
  * ratios agree best once the factor is applied (their spread); with one test either would fit exactly, so Epley.
  */
 export function calibrate(entries: SetEntry[], exercise: string, beforeDate = '9999-12-31'): Calibration {
-  const mine = entries.filter((s) => sameExercise(s.exercise, exercise) && s.date < beforeDate);
+  const mine = liftSets(entries, exercise).filter((s) => s.date < beforeDate);
   // A test counts at face value only while recent: 6 weeks before the latest session, so a layoff doesn't pin the peak.
   const latest = mine.reduce((a, s) => (s.date > a ? s.date : a), '');
   const cutoff = latest ? new Date(Date.parse(latest) - 42 * 864e5).toISOString().slice(0, 10) : '';
@@ -74,7 +76,7 @@ export function calibrate(entries: SetEntry[], exercise: string, beforeDate = '9
 export function calibratedE1rm(entries: SetEntry[], exercise: string, beforeDate = '9999-12-31'): number | null {
   const c = calibrate(entries, exercise, beforeDate);
   const raw = rawE1rm(entries, exercise, c.formula, beforeDate);
-  const mine = entries.filter((s) => sameExercise(s.exercise, exercise) && s.date < beforeDate);
+  const mine = liftSets(entries, exercise).filter((s) => s.date < beforeDate);
   // A test counts at face value only while recent: 6 weeks before the latest session, so a layoff doesn't pin the peak.
   const latest = mine.reduce((a, s) => (s.date > a ? s.date : a), '');
   const cutoff = latest ? new Date(Date.parse(latest) - 42 * 864e5).toISOString().slice(0, 10) : '';
@@ -85,7 +87,7 @@ export function calibratedE1rm(entries: SetEntry[], exercise: string, beforeDate
 }
 
 export function testDue(entries: SetEntry[], exercise: string, today: string): boolean {
-  const mine = entries.filter((s) => sameExercise(s.exercise, exercise));
+  const mine = liftSets(entries, exercise);
   const recentDays = new Set(mine.filter((s) => s.date >= addDays(today, -56)).map((s) => s.date));
   if (recentDays.size < 4) return false;
   const lastTest = mine.filter((s) => s.flags.includes('test')).map((s) => s.date).sort().at(-1);

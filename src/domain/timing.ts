@@ -1,5 +1,5 @@
 import { defaultSettings, isWorking, settingsKey } from './progression';
-import { sameExercise } from './stats';
+import { daySets, doneAt, perLog, sameExercise } from './stats';
 import { addDays } from './analytics';
 import type { Program, ProgramDay } from './program';
 import type { SetEntry } from './types';
@@ -9,19 +9,19 @@ import { supersets, type Superset } from './superset';
 export const DEFAULT_PACE = { compound: 180, isolation: 120, transition: 120, warmup: 60 } as const;
 const MAX_SAME = 10 * 60, MAX_SWITCH = 15 * 60, MIN_SAMPLES = 3;
 
-const secs = (e: SetEntry) => Date.parse(e.loggedAt!) / 1000;
+const secs = (e: SetEntry) => doneAt(e) / 1000;
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 export const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 /** One day's sets that have a time, in the order they were done. Sets added later without a time are left out. */
 export const timedDay = (entries: SetEntry[], date: string): SetEntry[] =>
-  entries.filter((e) => e.date === date && e.loggedAt).sort((a, b) => secs(a) - secs(b));
+  daySets(entries, date).filter((e) => e.loggedAt).sort((a, b) => secs(a) - secs(b));
 
 /** `superSwitch`: inside a superset, the median time from a set of one lift to the next lift's set (once there are 3). */
 export interface Paces { perSet: Map<string, number>; transition: number; superSwitch?: number }
 
 /** One timed day per date, each in the order done. */
-function timedDays(entries: SetEntry[]): SetEntry[][] {
+function timedDays(entries: readonly SetEntry[]): SetEntry[][] {
   const days = new Map<string, SetEntry[]>();
   for (const e of entries) if (e.loggedAt) { const d = days.get(e.date); if (d) d.push(e); else days.set(e.date, [e]); }
   return [...days.values()].map((d) => d.sort((a, b) => secs(a) - secs(b)));
@@ -35,7 +35,8 @@ function sameGaps(days: SetEntry[][], skip: (day: SetEntry[], i: number) => bool
       const gap = secs(day[i]) - secs(day[i - 1]);
       if (gap <= 0 || gap > MAX_SAME || !sameExercise(day[i].exercise, day[i - 1].exercise) || skip(day, i)) continue;
       const k = settingsKey(day[i].exercise);
-      same.set(k, [...(same.get(k) ?? []), gap]);
+      const xs = same.get(k);
+      if (xs) xs.push(gap); else same.set(k, [gap]);
     }
   }
   return new Map([...same].filter(([, xs]) => xs.length >= MIN_SAMPLES).map(([k, xs]) => [k, median(xs)]));
@@ -46,7 +47,9 @@ function sameGaps(days: SetEntry[][], skip: (day: SetEntry[], i: number) => bool
  * (≤ 15 min). A superset's gaps are neither: its switches are learned apart (`superSwitch`), and the rest after its round is
  * no lift's own rest and no switch between lifts.
  */
-export function paces(entries: SetEntry[]): Paces {
+export const paces: (entries: SetEntry[]) => Paces = perLog((entries) => pacesOf(entries));
+// Once per log array: Today alone reads it in every card. Shared, so never changed by a caller.
+function pacesOf(entries: readonly SetEntry[]): Paces {
   const days = timedDays(entries);
   // Which gaps are a superset's depends on each lift's usual time between sets: first without leaving any out.
   const raw = sameGaps(days);
@@ -132,8 +135,9 @@ export function suggestTime(entries: SetEntry[], date: string, exercise: string,
 }
 
 /** The day a workout belongs to: past midnight, the previous day while its last timed set is under `hours` old. */
+const lastTimed = perLog((entries) => entries.filter((e) => e.loggedAt).reduce<SetEntry | null>((a, e) => (!a || secs(e) > secs(a) ? e : a), null));
 export function sessionDay(entries: SetEntry[], today: string, now: Date, hours = 3): string {
-  const last = entries.filter((e) => e.loggedAt).reduce<SetEntry | null>((a, e) => (!a || secs(e) > secs(a) ? e : a), null);
+  const last = lastTimed(entries);
   return last && last.date === addDays(today, -1) && now.getTime() - secs(last) * 1000 <= hours * 3600e3 ? last.date : today;
 }
 

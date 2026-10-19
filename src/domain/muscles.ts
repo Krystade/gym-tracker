@@ -1,4 +1,4 @@
-import { normalizeName } from './ids';
+import { liftKey } from './ids';
 
 export const MUSCLES = ['Chest', 'Triceps', 'Biceps', 'Front Delts', 'Side Delts', 'Rear Delts', 'Lats', 'Mid-Back', 'Traps', 'Erectors',
   'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Abs', 'Forearms', 'Adductors', 'Abductors'] as const;
@@ -69,8 +69,19 @@ const KEYWORDS: [RegExp, Vector][] = [
   [/crunch|sit-?up|plank|leg raise|\babs?\b/i, A],
 ];
 
+// A pure function of the name, read for every set in whole-log passes: worked out once per distinct name. Bounded like liftKey.
+const VECTORS = new Map<string, Vector | null>();
 export function muscleVector(name: string): Vector | null {
-  const key = normalizeName(name).toLowerCase();
+  let v = VECTORS.get(name);
+  if (v === undefined) {
+    v = vectorOf(name);
+    if (VECTORS.size >= 2000) VECTORS.clear();
+    VECTORS.set(name, v);
+  }
+  return v;
+}
+function vectorOf(name: string): Vector | null {
+  const key = liftKey(name);
   if (TABLE[key]) return TABLE[key];
   for (const [re, v] of KEYWORDS) if (re.test(key)) return v;
   return null;

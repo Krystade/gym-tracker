@@ -1,8 +1,7 @@
 import { isHoldLift } from './care';
 import { fmtClock } from './cardio';
 import { fmtWeight } from './format';
-import { normalizeName } from './ids';
-import { byOrderDone, e1rm, sameExercise } from './stats';
+import { byOrderDone, e1rm, liftIndex, liftSets } from './stats';
 import type { SetEntry } from './types';
 
 // Records and PRs: one pass over a lift's log, oldest set first. A record is the best value of its kind so far; a PR is
@@ -24,7 +23,6 @@ export type RecordKind =
  * "more reps than any set at this weight or heavier", which the rep maxes show. */
 export interface Held { kind: RecordKind; value: number; date: string; set: SetEntry | null; sets?: number }
 
-const key = (s: string) => normalizeName(s).toLowerCase();
 const chrono = (a: SetEntry, b: SetEntry) => (a.date < b.date ? -1 : a.date > b.date ? 1 : byOrderDone(a, b));
 // Pace is time per mile: lower is better. A tie never beats a record, so the earliest set keeps it.
 const beats = (kind: RecordKind, v: number, than: number) => (kind === 'pace' ? v < than : v > than);
@@ -37,7 +35,7 @@ const est = (s: SetEntry) => e1rm(s.flags.includes('warmup') ? { ...s, flags: s.
 interface Scan { broke: Map<string, RecordKind[]>; held: Map<RecordKind, Held>; tally: Map<string, number> }
 
 /** One lift's sets, in any order. */
-function scan(lift: SetEntry[]): Scan {
+function scan(lift: readonly SetEntry[]): Scan {
   const broke = new Map<string, RecordKind[]>();
   const held = new Map<RecordKind, Held>();
   const tally = new Map<string, number>();
@@ -100,20 +98,10 @@ function scan(lift: SetEntry[]): Scan {
   return { broke, held, tally };
 }
 
-function byLift(entries: SetEntry[]): SetEntry[][] {
-  const out = new Map<string, SetEntry[]>();
-  for (const e of entries) {
-    const k = key(e.exercise);
-    const list = out.get(k);
-    if (list) list.push(e); else out.set(k, [e]);
-  }
-  return [...out.values()];
-}
-
-/** Every set that broke a record when it was done, with the records it broke. */
-export function prKinds(entries: SetEntry[]): Map<string, RecordKind[]> {
+/** Every set that broke a record when it was done, with the records it broke. `lifts`: only these lifts (by key). */
+export function prKinds(entries: SetEntry[], lifts?: ReadonlySet<string>): Map<string, RecordKind[]> {
   const out = new Map<string, RecordKind[]>();
-  for (const lift of byLift(entries)) for (const [id, kinds] of scan(lift).broke) out.set(id, kinds);
+  for (const [k, lift] of liftIndex(entries)) if (!lifts || lifts.has(k)) for (const [id, kinds] of scan(lift).broke) out.set(id, kinds);
   return out;
 }
 
@@ -122,7 +110,7 @@ export const prIds = (entries: SetEntry[]): Set<string> => new Set(prKinds(entri
 
 /** What a lift holds now, by kind. */
 export const records = (entries: SetEntry[], exercise: string): Map<RecordKind, Held> =>
-  scan(entries.filter((e) => sameExercise(e.exercise, exercise))).held;
+  scan(liftSets(entries, exercise)).held;
 
 const trim = (n: number) => String(Math.round(n * 100) / 100);
 const lb = (n: number) => `${fmtWeight(n)} lb`;
@@ -165,7 +153,7 @@ const RANK: RecordKind[] = ['e1rm', 'heaviest', ...REP_MAXES.map((n) => `rm${n}`
 
 /** The banner for a set just saved ("PR! Best e1RM: 209 lb"), or null. `entries` may or may not include it yet. */
 export function prToast(entries: SetEntry[], set: SetEntry): string | null {
-  const lift = entries.filter((e) => e.id !== set.id && sameExercise(e.exercise, set.exercise));
+  const lift = liftSets(entries, set.exercise).filter((e) => e.id !== set.id);
   const { broke, tally } = scan([...lift, set]);
   const kind = RANK.find((k) => broke.get(set.id)?.includes(k));
   if (!kind) return null;

@@ -1,7 +1,7 @@
 import { isHold, isHoldLift } from './care';
 import { defaultSettings, isProgressionSet, isWorking, nextTarget, type ExerciseSettings, type Target } from './progression';
 import type { DayPlan, Program } from './program';
-import { sameExercise, sessionsFor } from './stats';
+import { daySets, sameExercise, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 import { addDays } from './analytics';
 
@@ -50,7 +50,7 @@ export function warmups(weight: number, exercise: string): Ramp[] {
 
 /** A compound lift already worked on `date` (not this one) means the session is warm: only the first compound ramps. */
 const warmAlready = (entries: SetEntry[], exercise: string, date: string) =>
-  entries.some((e) => e.date === date && isWorking(e) && !sameExercise(e.exercise, exercise) && warmups(e.weight, e.exercise).length > 0);
+  daySets(entries, date).some((e) => isWorking(e) && !sameExercise(e.exercise, exercise) && warmups(e.weight, e.exercise).length > 0);
 
 /** What to do next time: weight and reps from double progression, sets from the program or last session. Ignores `date`'s own sets. */
 export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null): Suggestion {
@@ -78,7 +78,7 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
  * once it has working sets today, the session after — today counts as the last session.
  */
 export function nextTime(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null): { s: Suggestion; trainedToday: boolean } {
-  const trainedToday = entries.some((e) => e.date === date && sameExercise(e.exercise, exercise) && isWorking(e));
+  const trainedToday = daySets(entries, date).some((e) => sameExercise(e.exercise, exercise) && isWorking(e));
   return trainedToday ? { s: suggest(entries, exercise, st, addDays(date, 1), null), trainedToday } : { s: suggest(entries, exercise, st, date, planned), trainedToday };
 }
 

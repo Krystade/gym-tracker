@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { setBlockedHandler } from '../db/db';
 import { useDb, useProfileId } from './profileDb';
-import { buildAppSet, type NewSetInput } from '../domain/buildSet';
+import { buildNamedSet, type NewSetInput } from '../domain/buildSet';
+import { canonicalName } from '../domain/stats';
 import { diffSets } from '../domain/csv';
 import type { SetEntry } from '../domain/types';
 
@@ -41,7 +42,9 @@ export function useSets() {
   const add = useCallback(async (input: NewSetInput): Promise<SetEntry | null> => {
     const now = new Date(); // taken at the tap, not after the database answers
     let e: SetEntry;
-    try { e = await db.addSet((stored) => buildAppSet(stored, input, now)); } catch (err) { fail('Saving the set', err); return null; }
+    // The name as already logged, from the log in memory; the save reads only the day's stored sets, for the set number.
+    const exercise = canonicalName(ref.current, input.exercise);
+    try { e = await db.addSet(input.date, (sameDay) => buildNamedSet(sameDay, { ...input, exercise }, now)); } catch (err) { fail('Saving the set', err); return null; }
     ref.current = [...ref.current.filter((x) => x.id !== e.id), e];
     setEntries(ref.current);
     setError(null);

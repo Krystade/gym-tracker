@@ -1,4 +1,4 @@
-import { normalizeName } from './ids';
+import { liftKey } from './ids';
 import { e1rm, estimateWeightForReps, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 import { isHold, isHoldLift } from './care';
@@ -11,7 +11,7 @@ export interface Seed { weight: number; reps: number; from: string; date: string
 // testSnoozedUntil: the "time for a test" banner stays hidden until this day.
 export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number; testSnoozedUntil?: string; seed?: Seed }
 
-export const settingsKey = (name: string): string => normalizeName(name).toLowerCase();
+export const settingsKey = (name: string): string => liftKey(name);
 
 const ISOLATION = /(curl|raise|fly|flye|extension|pushdown|push down|kickback|crunch|calf|face pull|rear delt|shrug|pec deck|pull-in|pullover|wrist|leg raise|sit-up|rotation|abduction|adduction)/i;
 

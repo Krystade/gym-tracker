@@ -1,19 +1,18 @@
 import { muscleVector, type Muscle } from './muscles';
 import { isWorking } from './progression';
-import { byOrderDone, lastSession, sameExercise } from './stats';
-import { prIds } from './records';
-import { normalizeName } from './ids';
+import { byOrderDone, daySets, lastSession, sameExercise } from './stats';
+import { prKinds } from './records';
+import { liftKey } from './ids';
 import type { SetEntry } from './types';
 
-const key = (s: string) => normalizeName(s).toLowerCase();
+const key = liftKey;
 
 /** The PR sets done on `date`, by the one rule (domain/records): only the lifts done that day are read. */
 export function prSetIds(entries: SetEntry[], date: string): Set<string> {
-  const day = entries.filter((e) => e.date === date);
+  const day = daySets(entries, date);
   const done = new Set(day.map((e) => key(e.exercise)));
-  const lifts = entries.filter((e) => done.has(key(e.exercise)));
   const ids = new Set(day.map((e) => e.id));
-  return new Set([...prIds(lifts)].filter((id) => ids.has(id)));
+  return new Set([...prKinds(entries, done).keys()].filter((id) => ids.has(id)));
 }
 
 /** The heaviest working set, more reps breaking a tie. */
@@ -27,7 +26,7 @@ export interface DaySummary {
 }
 
 export function daySummary(entries: SetEntry[], date: string): DaySummary {
-  const today = entries.filter((e) => e.date === date && isWorking(e)).sort(byOrderDone);
+  const today = daySets(entries, date).filter(isWorking).sort(byOrderDone);
   const prs = prSetIds(entries, date);
   const names: string[] = [];
   for (const e of today) if (!names.some((n) => sameExercise(n, e.exercise))) names.push(e.exercise);
@@ -37,7 +36,7 @@ export function daySummary(entries: SetEntry[], date: string): DaySummary {
     const top = topSet(sets);
     const times = sets.filter((e) => e.weight === top.weight && e.reps === top.reps).length;
     // A partial set can be the PR (heaviest weight) without being a working set.
-    const pr = entries.some((e) => e.date === date && prs.has(e.id) && sameExercise(e.exercise, exercise));
+    const pr = daySets(entries, date).some((e) => prs.has(e.id) && sameExercise(e.exercise, exercise));
     return { exercise, top, times, last: prev.length ? topSet(prev) : null, pr };
   });
   const per = new Map<Muscle, number>();

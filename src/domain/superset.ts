@@ -1,6 +1,7 @@
 import { addDays } from './analytics';
 import { normalizeName } from './ids';
 import { isWorking, settingsKey } from './progression';
+import { daySets, doneAt } from './stats';
 import type { SetEntry } from './types';
 
 /**
@@ -23,7 +24,7 @@ const MIN_GAP = 15;
 /** How far back last session's groups carry: a lift set not done together in this long starts over. */
 const CARRY_DAYS = 56;
 
-const secs = (e: SetEntry) => Date.parse(e.loggedAt!) / 1000;
+const secs = (e: SetEntry) => doneAt(e) / 1000;
 const key = (e: SetEntry) => settingsKey(e.exercise);
 
 interface Cycle { keys: string[]; names: string[]; start: number; end?: number }
@@ -104,7 +105,7 @@ function broken(day: SetEntry[], c: Cycle, after: Map<string, string | null>, us
  */
 export function supersets(entries: SetEntry[], date: string, usual: (exercise: string) => number,
   { dismissed = [], planned = () => null, carried = [] }: { dismissed?: string[][]; planned?: (exercise: string) => number | null | undefined; carried?: Carried[] } = {}): Superset[] {
-  const day = entries.filter((e) => e.date === date && e.loggedAt && isWorking(e)).sort((a, b) => secs(a) - secs(b));
+  const day = daySets(entries, date).filter((e) => e.loggedAt && isWorking(e)).sort((a, b) => secs(a) - secs(b));
   const found: Cycle[] = [];
   for (let i = 0; i < day.length; i++) {
     const c = cycleAt(day, i, usual);

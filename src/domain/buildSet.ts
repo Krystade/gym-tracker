@@ -17,9 +17,16 @@ export function derivedFlags(flags: Flag[], weight: number, reps: number | null)
   return [...(weight === 0 ? (['bodyweight'] as Flag[]) : []), ...rest, ...(reps === null ? (['partial'] as Flag[]) : [])];
 }
 
-export function buildAppSet(existing: SetEntry[], input: NewSetInput, now: Date): SetEntry {
-  const exercise = canonicalName(existing, input.exercise);
-  const setNo = 1 + Math.max(0, ...existing.filter((e) => e.date === input.date && sameExercise(e.exercise, exercise)).map((e) => e.setNo));
+export const buildAppSet = (existing: SetEntry[], input: NewSetInput, now: Date): SetEntry =>
+  buildNamedSet(existing, { ...input, exercise: canonicalName(existing, input.exercise) }, now);
+
+/**
+ * buildAppSet with the name already resolved against the whole log (canonicalName): `sameDay` need only hold the sets of
+ * `input.date`, since the set number counts that day's sets of the lift. Saving reads just that day (db addSet).
+ */
+export function buildNamedSet(sameDay: readonly SetEntry[], input: NewSetInput, now: Date): SetEntry {
+  const exercise = input.exercise;
+  const setNo = 1 + Math.max(0, ...sameDay.filter((e) => e.date === input.date && sameExercise(e.exercise, exercise)).map((e) => e.setNo));
   const flags = derivedFlags(input.cardio && !input.flags.includes('cardio') ? [...input.flags, 'cardio'] : input.flags, input.weight, input.reps);
   const late = input.at !== undefined;
   const done = late ? input.at : now;

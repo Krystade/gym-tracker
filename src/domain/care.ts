@@ -2,10 +2,10 @@ import { CARDIO_NAMES, isCardio } from './cardio';
 import { addDays, weekStart } from './analytics';
 import { CATALOG } from './catalog';
 import { gearOf } from './equipment';
-import { normalizeName } from './ids';
+import { liftKey } from './ids';
 import { muscleVector, MUSCLES } from './muscles';
 import type { Slot } from './program';
-import { exerciseNames, sameExercise } from './stats';
+import { exerciseNames, liftSets, sameExercise } from './stats';
 import type { Flag, Region, SetEntry } from './types';
 
 // Not medical advice: these helpers record and surface patterns; they never diagnose.
@@ -37,11 +37,11 @@ const STRESS: Partial<Record<Region, RegExp>> = {
 };
 
 export const HOLD_EXERCISES = new Set(['plank', 'side plank', 'bird dog', 'dead bug', 'mcgill curl-up', 'plate pinch hold']);
-export const isHold = (name: string): boolean => HOLD_EXERCISES.has(name.trim().replace(/\s+/g, ' ').toLowerCase());
+export const isHold = (name: string): boolean => HOLD_EXERCISES.has(liftKey(name));
 
 /** A lift timed in seconds: a known hold, or one whose logged sets are holds. */
-export const isHoldLift = (exercise: string, sets: SetEntry[]): boolean =>
-  isHold(exercise) || sets.some((x) => sameExercise(x.exercise, exercise) && x.flags.includes('hold'));
+export const isHoldLift = (exercise: string, sets: readonly SetEntry[]): boolean =>
+  isHold(exercise) || liftSets(sets, exercise).some((x) => x.flags.includes('hold'));
 
 /** McGill's "big 3" for spine endurance, as hold-time sets. */
 export const BACK_BLOCK: Slot[] = ['Bird Dog', 'Side Plank', 'McGill Curl-Up'].map((exercise) => ({ exercise, sets: 2, repMin: 20, repMax: 40 }));
@@ -52,7 +52,7 @@ export function recentPain(entries: SetEntry[], today: string, days = 60): { byE
   const regions = new Set<Region>();
   for (const e of entries) {
     if (!e.flags.includes('pain') || e.date < since || e.date > today) continue;
-    const k = normalizeName(e.exercise).toLowerCase(); // "Bench  Press" and "bench press" are one lift
+    const k = liftKey(e.exercise); // "Bench  Press" and "bench press" are one lift
     byExercise.set(k, (byExercise.get(k) ?? 0) + 1);
     regions.add(e.painRegion ?? likelyRegion(e.exercise));
   }
@@ -92,7 +92,7 @@ export function swapSuggestions(exercise: string, entries: SetEntry[], today: st
     // Swaps for one lift share their muscles, so the gear is what tells them apart.
     const gear = gearOf(name);
     if (gear && gear !== gearOf(exercise)) why.push(gear);
-    const hurt = pain.byExercise.get(normalizeName(name).toLowerCase()) ?? 0;
+    const hurt = pain.byExercise.get(liftKey(name)) ?? 0;
     if (hurt) { score -= 0.3 * Math.min(hurt, 3); why.push('pain logged recently'); }
     const loaded = [...pain.regions].find((r) => STRESS[r]?.test(name));
     if (loaded) { score -= 0.25; why.push(`loads your ${loaded}, which hurt recently`); }

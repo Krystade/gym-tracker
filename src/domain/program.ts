@@ -1,8 +1,8 @@
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
 import { DEFAULT_LOW_SHARE, type Profile, type Tier } from './profile';
-import { localDate, normalizeName } from './ids';
+import { liftKey, localDate } from './ids';
 import { defaultSettings, isWorking } from './progression';
-import { sameExercise } from './stats';
+import { daySets, perLog, sameExercise } from './stats';
 import { addDays } from './analytics';
 import type { SetEntry } from './types';
 import { CATALOG } from './catalog';
@@ -49,17 +49,27 @@ export const DEFAULT_PICK: Record<Muscle, string> = Object.fromEntries(MUSCLES.m
 /** `available`: what the gym can do. `include`: lifts the user added to the gym — they know them. */
 export interface BuildContext { available?: Set<string>; include?: string[] }
 
-const historyScores = (m: Muscle, entries: SetEntry[], today: string): Map<string, number> => {
-  const yearAgo = addDays(today, -365), painSince = addDays(today, -120);
-  const score = new Map<string, number>();
-  for (const e of entries) {
-    if (e.flags.includes('warmup') || muscleVector(e.exercise)?.[m] !== 1) continue;
-    let v = e.date >= yearAgo ? 1 : 0.25;
-    if (e.flags.includes('pain') && e.date >= painSince) v -= 10;
-    score.set(e.exercise, (score.get(e.exercise) ?? 0) + v);
+/** Every logged spelling's score as of `today`, in the order first logged: one pass per log array and day, for every muscle. */
+const scoresOf = perLog(() => new Map<string, Map<string, number>>());
+function exerciseScores(entries: SetEntry[], today: string): Map<string, number> {
+  const byDay = scoresOf(entries);
+  let score = byDay.get(today);
+  if (!score) {
+    const yearAgo = addDays(today, -365), painSince = addDays(today, -120);
+    score = new Map<string, number>();
+    for (const e of entries) {
+      if (e.flags.includes('warmup')) continue;
+      let v = e.date >= yearAgo ? 1 : 0.25;
+      if (e.flags.includes('pain') && e.date >= painSince) v -= 10;
+      score.set(e.exercise, (score.get(e.exercise) ?? 0) + v);
+    }
+    byDay.set(today, score);
   }
   return score;
-};
+}
+// Whether a set counts for a muscle depends on its name alone, so this is the per-muscle pass: the same sums in the same order.
+const historyScores = (m: Muscle, entries: SetEntry[], today: string): Map<string, number> =>
+  new Map([...exerciseScores(entries, today)].filter(([ex]) => muscleVector(ex)?.[m] === 1));
 
 /**
  * Lifts for a muscle, best first: the ones the user actually does (most-used in the last year, older sets a quarter,
@@ -120,8 +130,8 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   const perDay = Array.from({ length: days }, () => new Map<string, number>());
   const totals = Array(days).fill(0) as number[];
   const room = (ex: string, d: number) => (perDay[d].get(ex) ?? 0) + UNIT <= MAX_SETS_PER_DAY;
-  const known = new Set([...entries.map((e) => e.exercise), ...(ctx.include ?? [])].map((x) => normalizeName(x).toLowerCase()));
-  const isKnown = (ex: string) => known.has(normalizeName(ex).toLowerCase());
+  const known = new Set([...entries.map((e) => e.exercise), ...(ctx.include ?? [])].map(liftKey));
+  const isKnown = (ex: string) => known.has(liftKey(ex));
   // The lift for muscle m on day d, best candidate first within each step: a lift you know that no other day uses,
   // then a lift you know (repeated), then a new one no other day uses, then any with room. Varied days, familiar lifts.
   const pick = (m: Muscle, d: number): string | undefined => {
@@ -192,7 +202,8 @@ export function programVolume(p: Program): Record<Muscle, number> {
 
 /** A day counts as trained with a working set or a cardio bout, so a cardio-only day still moves the rotation. */
 const counts = (e: SetEntry) => isWorking(e) || !!e.cardio;
-const trainedOn = (entries: SetEntry[], date: string) => entries.some((e) => e.date === date && counts(e));
+const trainedDates = perLog((entries) => new Set(entries.filter(counts).map((e) => e.date)));
+const trainedOn = (entries: SetEntry[], date: string) => trainedDates(entries).has(date);
 
 /** The day after the last one actually trained; a plan with nothing logged doesn't count. */
 export function nextDay(p: Program, plans: DayPlan[], entries: SetEntry[], today: string): number {
@@ -207,7 +218,7 @@ export function adherence(p: Program, plans: DayPlan[], entries: SetEntry[], sin
     const slots = x.slots ?? p.days[x.day]?.slots;
     if (x.date < since || x.date > today || !slots || !trainedOn(entries, x.date)) continue;
     // Each logged set counts toward one slot, so a swap onto an exercise already planned can't be counted twice.
-    const left = entries.filter((e) => e.date === x.date && counts(e));
+    const left = daySets(entries, x.date).filter(counts);
     for (const slot of slots) {
       planned += slot.sets;
       if (x.skips.includes(slot.exercise)) continue;

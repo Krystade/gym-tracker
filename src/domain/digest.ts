@@ -3,7 +3,7 @@ import { isCardioEntry, weeklyCardioMinutes } from './cardio';
 import { MUSCLES, type Muscle } from './muscles';
 import type { Profile } from './profile';
 import { prIds } from './records';
-import { normalizeName } from './ids';
+import { liftKey, normalizeName } from './ids';
 import type { SetEntry } from './types';
 
 // The weekly digest: one week looked back on, on Today and Stats. Nothing new is stored; it reads the same counts as
@@ -24,18 +24,20 @@ export interface Digest {
 export const digestWeek = (today: string, recap = false): string =>
   recap && weekStart(addDays(today, 1)) !== weekStart(today) ? weekStart(today) : addDays(weekStart(today), -7);
 
-const key = (s: string) => normalizeName(s).toLowerCase();
-const inWeek = (e: SetEntry, week: string) => e.date >= week && e.date < addDays(week, 7);
+const key = liftKey;
+/** A test for sets in the week starting `week` (its end worked out once, not per set). */
+const inWeek = (week: string) => { const end = addDays(week, 7); return (e: SetEntry) => e.date >= week && e.date < end; };
 
 export function weekDigest(entries: SetEntry[], profile: Profile, week: string): Digest {
   const end = addDays(week, 6);
   const [prev, cur] = weeklySummary(entries, 2, end);
   const prs = prIds(entries);
-  const prsIn = (w: string) => entries.filter((e) => inWeek(e, w) && prs.has(e.id)).length;
+  const prsIn = (w: string) => { const has = inWeek(w); return entries.filter((e) => has(e) && prs.has(e.id)).length; };
 
   const lifts = new Map<string, DigestLift>();
+  const inThisWeek = inWeek(week);
   for (const e of entries) {
-    if (!inWeek(e, week)) continue;
+    if (!inThisWeek(e)) continue;
     const cardio = isCardioEntry(e);
     const k = key(e.exercise);
     const l = lifts.get(k) ?? lifts.set(k, { exercise: normalizeName(e.exercise), sets: 0, prs: 0, cardio }).get(k)!;

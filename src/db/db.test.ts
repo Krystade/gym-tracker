@@ -5,7 +5,7 @@ import { openDB } from 'idb';
 import { addSet, getReplaced, putReplaced, deleteReplaced, pruneReplaced, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, deleteSyncConfig, getSyncConfig, getTombstones, getTombstoneTimes, deleteSettings, deleteDayPlan, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
-import { buildAppSet } from '../domain/buildSet';
+import { buildAppSet, buildNamedSet } from '../domain/buildSet';
 import { KEEP_MS, type Replaced } from '../domain/replaced';
 
 const CSV = 'date,exercise,set,weight_lb,reps,note,source\n2026-01-05,Cable Curl,1,52.5,12,"a, ""b""",s\n2026-01-05,Cable Curl,2,60,,,s\n';
@@ -109,9 +109,18 @@ describe('addSet', () => {
   it('numbers the new set from what is stored, not from a stale copy', async () => {
     const input = { date: '2026-10-02', exercise: 'Bench Press', weight: 100, reps: 8, flags: [] };
     await putSet(buildAppSet([], input, new Date('2026-10-02T18:00:00')));
-    const second = await addSet((stored) => buildAppSet(stored, { ...input, weight: 200, reps: 3 }, new Date('2026-10-02T18:01:00')));
+    const second = await addSet(input.date, (stored) => buildAppSet(stored, { ...input, weight: 200, reps: 3 }, new Date('2026-10-02T18:01:00')));
     expect(second.setNo).toBe(2);
     expect((await getAllSets()).map((e) => [e.setNo, e.weight]).sort()).toEqual([[1, 100], [2, 200]]);
+  });
+  it('reads only the day’s stored sets, not the whole log', async () => {
+    const input = { date: '2026-10-02', exercise: 'Bench Press', weight: 100, reps: 8, flags: [] };
+    await putMany([buildAppSet([], { ...input, date: '2026-10-01' }, new Date('2026-10-01T18:00:00')), buildAppSet([], input, new Date('2026-10-02T18:00:00')),
+      buildAppSet([], { ...input, date: '2026-10-03' }, new Date('2026-10-03T18:00:00'))]);
+    let read: string[] = [];
+    const e = await addSet(input.date, (sameDay) => { read = sameDay.map((x) => x.date); return buildNamedSet(sameDay, input, new Date('2026-10-02T18:05:00')); });
+    expect(read).toEqual(['2026-10-02']);
+    expect([e.date, e.setNo, e.id]).toEqual(['2026-10-02', 2, 'app|2026-10-02|bench press|2']);
   });
 });
 

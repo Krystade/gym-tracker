@@ -5,7 +5,18 @@ import type { SetEntry } from './types';
 const toDate = (d: string) => { const [y, m, day] = d.split('-').map(Number); return new Date(Date.UTC(y, m - 1, day)); };
 const fromDate = (d: Date) => d.toISOString().slice(0, 10);
 export const addDays = (d: string, n: number): string => { const x = toDate(d); x.setUTCDate(x.getUTCDate() + n); return fromDate(x); };
-export const weekStart = (d: string): string => addDays(d, -((toDate(d).getUTCDay() + 6) % 7));
+// Read for every set in weekly passes (Stats, the digest, push activity): a pure function of the date, so each date is
+// worked out once. Bounded: a log has a few thousand dates.
+const WEEKS = new Map<string, string>();
+export const weekStart = (d: string): string => {
+  let w = WEEKS.get(d);
+  if (w === undefined) {
+    w = addDays(d, -((toDate(d).getUTCDay() + 6) % 7));
+    if (WEEKS.size >= 20_000) WEEKS.clear();
+    WEEKS.set(d, w);
+  }
+  return w;
+};
 
 const zero = (): Record<Muscle, number> => Object.fromEntries(MUSCLES.map((m) => [m, 0])) as Record<Muscle, number>;
 const SESSION_CAP = 11;
