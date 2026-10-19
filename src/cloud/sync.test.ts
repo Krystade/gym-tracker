@@ -55,6 +55,9 @@ describe('syncCloud: this phone’s copies a sync replaces (round 10)', () => {
       docs[r.path] = o?.merge ? { ...docs[r.path], ...data, months: { ...(docs[r.path]?.months as object), ...(data.months as object) } } : structuredClone(data);
     };
     const F = { doc: (_db: unknown, path: string) => ({ path }), getDoc: async (r: { path: string }) => snap(r.path),
+      // The day-plan archive (meta/plans-YYYY), read on a phone's first sync with the build that ages plans out.
+      collection: (_db: unknown, path: string) => ({ path }), documentId: () => '__name__', where: () => null, query: (c: { path: string }) => c,
+      getDocs: async (q: { path: string }) => ({ docs: Object.keys(docs).filter((p) => p.startsWith(`${q.path}/plans-`)).map(snap) }),
       runTransaction: async (_db: unknown, fn: (tx: unknown) => Promise<unknown>) => fn({ get: async (r: { path: string }) => snap(r.path), set }) };
     return { F, db: {} } as unknown as Cloud;
   }

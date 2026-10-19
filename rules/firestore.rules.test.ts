@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
+import { collection, deleteDoc, doc, documentId, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
 
 // Synthetic users: alice owns the data, bob is her friend, eve is a stranger.
 let env: RulesTestEnvironment;
@@ -406,5 +406,33 @@ describe('Crew status phrase (in the synced settings)', () => {
     await assertFails(updateDoc(doc(as('bob'), 'users/alice/meta/profile'), { 'items.status': JSON.stringify('hacked') }));
     await assertFails(getDoc(doc(as('eve'), 'users/alice/meta/profile')));
     await assertFails(setDoc(doc(as('eve'), 'users/alice/meta/profile'), settings('hacked')));
+  });
+});
+
+// The reads that ask only for what changed (round 14): no rule changed for them, and these keep it so.
+describe('reading only what changed', () => {
+  const months = (db: Firestore, owner: string) =>
+    getDocs(query(collection(db, `users/${owner}/months`), where(documentId(), '>=', '2026-08'), where(documentId(), '<=', '2026-10')));
+  it('a friend reads a run of your months in one query (Crew); a stranger can’t', async () => {
+    await seed((db) => setDoc(doc(db, 'users/alice/months/2026-09'), { sets: [], body: [], deleted: {}, updatedAt: 1 }));
+    expect((await assertSucceeds(months(as('bob'), 'alice'))).docs.map((d) => d.id)).toEqual(['2026-09', '2026-10']);
+    await assertFails(months(as('eve'), 'alice'));
+    await assertFails(months(as(null), 'alice'));
+  });
+  it('your old day plans’ archive (meta/plans-YYYY): yours to write and list; a friend reads it like your settings; a stranger can’t', async () => {
+    const archive = (db: Firestore) => getDocs(query(collection(db, 'users/alice/meta'), where(documentId(), '>=', 'plans-'), where(documentId(), '<', 'plans.')));
+    await assertSucceeds(setDoc(doc(as('alice'), 'users/alice/meta/plans-2025'), { items: { 'day:2025-06-02': '{}' }, updatedAt: 1 }, { merge: true }));
+    expect((await assertSucceeds(archive(as('alice')))).docs.map((d) => d.id)).toEqual(['plans-2025']);
+    await assertSucceeds(getDoc(doc(as('bob'), 'users/alice/meta/plans-2025')));
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/meta/plans-2025'), { items: {} }));
+    await assertFails(archive(as('eve')));
+    await assertFails(setDoc(doc(as('eve'), 'users/alice/meta/plans-2025'), { items: {} }));
+  });
+  it('your inbox from a time on (the news reads only what’s new); nobody else’s', async () => {
+    await seed((db) => setDoc(doc(db, 'users/alice/inbox/m1'), { from: 'bob', kind: 'p', e: 'strong', at: Timestamp.fromMillis(Date.now()) }));
+    const since = (db: Firestore) => getDocs(query(collection(db, 'users/alice/inbox'), where('at', '>', Timestamp.fromMillis(Date.now() - 60_000))));
+    expect((await assertSucceeds(since(as('alice')))).size).toBe(1);
+    await assertFails(since(as('bob'))); // a sender reads back only their own, asking with where from == them
+    await assertFails(since(as('eve')));
   });
 });

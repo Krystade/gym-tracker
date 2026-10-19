@@ -2,11 +2,16 @@ import type { BodyDay } from '../domain/body';
 import { mergeMeta, mergeMonth, metaHash, monthHash, monthsToSync, splitByMonth, type CloudMonth, type MetaItems, type Seen } from '../domain/cloud';
 import type { SetEntry } from '../domain/types';
 import type { Replaced, Taken } from '../domain/replaced';
+import { addDays } from '../domain/analytics';
+import { localDate } from '../domain/ids';
 import type { Cloud } from './firebase';
 import type { ProfileDb } from '../db/db';
 
-/** What the last sync left your settings as: each item's fingerprint, and the cloud copy's time. */
-export interface MetaSeen { items: Record<string, string>; at: number }
+/**
+ * What the last sync left your settings as: each item's fingerprint, and the cloud copy's time. `plansFrom`: the first date whose
+ * day plan still syncs (see syncMeta); unset until this phone's first sync with a build that ages plans out.
+ */
+export interface MetaSeen { items: Record<string, string>; at: number; plansFrom?: string }
 /** `tombAt`: when each set deleted on this phone went (see db getTombstoneTimes). */
 export interface SyncInput { sets: SetEntry[]; body: BodyDay[]; tombstones: Set<string>; tombAt?: Record<string, number>; seen: Seen; meta: MetaItems; metaSeen: MetaSeen }
 /** What a month's save took (`taken`), this phone's values it kept aside (`replaced`), and how many sets and body fields it left. */
@@ -89,26 +94,73 @@ export async function syncCloud({ F, db }: Cloud, uid: string, input: SyncInput,
   return { seen, ...out, metaSeen: meta.metaSeen, metaPulled: meta.metaPulled, skipped: out.skipped + meta.skipped };
 }
 
-/** Your settings live in one document, stored as JSON per item (Firestore can't hold arrays of arrays, or undefined). */
+/**
+ * Day plans this many days old and more leave the settings document for the archive (see syncMeta). The rotation and adherence
+ * read only recent ones (a friend's view of you too), and each phone keeps its own.
+ */
+export const PLAN_DAYS = 90;
+/** The first date whose day plan stays in the settings document on `now`'s day. */
+const planCutoff = (now: number) => addDays(localDate(new Date(now)), -PLAN_DAYS);
+const later = (a: string, b: string | undefined) => (b && b > a ? b : a);
+/** A day plan from before `cut`: 'day:YYYY-MM-DD'. */
+const aged = (k: string, cut: string) => k.startsWith('day:') && k.slice(4) < cut;
+const split = <T,>(x: Record<string, T>, cut: string) => {
+  const recent: Record<string, T> = {}, old: Record<string, T> = {};
+  for (const [k, v] of Object.entries(x)) (aged(k, cut) ? old : recent)[k] = v;
+  return { recent, old };
+};
+const parsed = (x: Record<string, string>) => Object.fromEntries(Object.entries(x).map(([k, v]) => [k, JSON.parse(v) as unknown]));
+const stringified = (x: MetaItems) => Object.fromEntries(Object.entries(x).map(([k, v]) => [k, JSON.stringify(v)]));
+/** The settings document. `plansFrom`: the cutoff the last write used (an older build's write leaves it out). */
+interface MetaDoc { items: Record<string, string>; updatedAt: number; plansFrom?: string }
+
+/** The archive of old day plans, one document a year (meta/plans-YYYY), as JSON per item like the settings document. */
+async function readArchive({ F, db }: Pick<Cloud, 'F' | 'db'>, uid: string): Promise<Record<string, string>> {
+  const q = F.query(F.collection(db, `users/${uid}/meta`), F.where(F.documentId(), '>=', 'plans-'), F.where(F.documentId(), '<', 'plans.'));
+  return Object.assign({}, ...(await F.getDocs(q)).docs.map((d) => (d.data().items ?? {}) as Record<string, string>));
+}
+
+/**
+ * Your settings live in one document, stored as JSON per item (Firestore can't hold arrays of arrays, or undefined), and every
+ * sync that changes one reads and writes it whole. A day plan is saved each training day, so plans older than PLAN_DAYS leave it
+ * for an archive document per year, written in the same transaction; the phone keeps its own. Only plans from the cutoff on are
+ * merged: an old plan is never taken as deleted on either side, and a phone with a later date (time zone) sets the cutoff for
+ * all, through `plansFrom`. Old plans this phone lacks it takes from the document as they leave it. A phone's first sync with
+ * this build also reads the archive, takes what it lacks, and archives its own old plans the account lacks (a first sign-in, or
+ * plans an older build dropped here), so old plans end up the same on every phone and in the cloud.
+ */
 async function syncMeta({ F, db }: Pick<Cloud, 'F' | 'db'>, uid: string, input: SyncInput, apply: SyncApply, remoteAt: number, now: number) {
   const { meta: local, metaSeen } = input;
-  const same = Object.keys(local).length === Object.keys(metaSeen.items).length && Object.entries(local).every(([k, v]) => metaSeen.items[k] === metaHash(v));
+  const first = metaSeen.plansFrom === undefined;
+  const cut0 = later(planCutoff(now), metaSeen.plansFrom);
+  const mine = split(local, cut0).recent, seen = split(metaSeen.items, cut0).recent;
+  const same = !first && Object.keys(mine).length === Object.keys(seen).length && Object.entries(mine).every(([k, v]) => seen[k] === metaHash(v));
   if (same && remoteAt === metaSeen.at) return { metaSeen, metaPulled: 0, skipped: 0 };
+  const archived = first ? await readArchive({ F, db }, uid) : {};
   const ref = F.doc(db, `users/${uid}/meta/profile`), indexRef = F.doc(db, `users/${uid}/meta/index`);
-  const { merged, at } = await F.runTransaction(db, async (tx) => {
+  const { merged, at, cut, old } = await F.runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
-    const raw = snap.exists() ? (snap.data() as { items: Record<string, string>; updatedAt: number }) : null;
-    const remote = raw && Object.fromEntries(Object.entries(raw.items).map(([k, v]) => [k, JSON.parse(v) as unknown]));
-    const merged = mergeMeta(local, remote, metaSeen.items);
-    if (merged.changed) {
-      tx.set(ref, { items: Object.fromEntries(Object.entries(merged.items).map(([k, v]) => [k, JSON.stringify(v)])), updatedAt: now });
+    const raw = snap.exists() ? (snap.data() as MetaDoc) : null;
+    const cut = later(cut0, raw?.plansFrom);
+    const doc = split(raw?.items ?? {}, cut), here = split(local, cut);
+    const merged = mergeMeta(here.recent, raw && parsed(doc.recent), split(metaSeen.items, cut).recent);
+    const leaving = Object.keys(doc.old).length > 0;
+    if (merged.changed || leaving) {
+      tx.set(ref, { items: stringified(merged.items), updatedAt: now, plansFrom: cut });
       tx.set(indexRef, { meta: now }, { merge: true });
     }
-    return { merged, at: merged.changed ? now : raw?.updatedAt ?? 0 };
+    // To the archive: what leaves the document, and on a first sync this phone's old plans the archive lacks.
+    const keep = { ...(first ? Object.fromEntries(Object.entries(stringified(here.old)).filter(([k]) => !(k in archived))) : {}), ...doc.old };
+    const years = new Map<string, Record<string, string>>();
+    for (const [k, v] of Object.entries(keep)) years.set(k.slice(4, 8), { ...years.get(k.slice(4, 8)), [k]: v });
+    for (const [y, items] of years) tx.set(F.doc(db, `users/${uid}/meta/plans-${y}`), { items, updatedAt: now }, { merge: true });
+    const old = Object.fromEntries(Object.entries({ ...split(archived, cut).old, ...doc.old }).filter(([k]) => !(k in local)));
+    return { merged, at: merged.changed || leaving ? now : raw?.updatedAt ?? 0, cut, old: parsed(old) };
   });
   // A setting changed here meanwhile is left as it is: the fingerprint below no longer matches it, so the next sync sends it up.
-  const done = Object.keys(merged.pull).length || merged.remove.length ? await apply.applyMeta(local, merged.pull, merged.remove) : { pulled: 0, removed: 0, skipped: 0 };
-  return { metaSeen: { items: merged.seen, at }, metaPulled: done.pulled + done.removed, skipped: done.skipped };
+  const pull = { ...old, ...merged.pull };
+  const done = Object.keys(pull).length || merged.remove.length ? await apply.applyMeta(local, pull, merged.remove) : { pulled: 0, removed: 0, skipped: 0 };
+  return { metaSeen: { items: merged.seen, at, plansFrom: cut }, metaPulled: done.pulled + done.removed, skipped: done.skipped };
 }
 
 /**

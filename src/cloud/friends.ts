@@ -130,7 +130,7 @@ export async function removeFriend(c: Cloud, me: string, them: string): Promise<
   await clearInboxFrom(c, me, them).catch(() => {});
 }
 
-/** A friend's whole log and settings, read-only: every month in their index, and their settings document. */
+/** A friend's whole log and settings, read-only: every month in their index, and their settings document (day plans: the recent ones, cloud/sync PLAN_DAYS). */
 export interface FriendData { sets: SetEntry[]; body: BodyDay[]; meta: MetaItems }
 export async function readFriend({ F, db }: Cloud, uid: string): Promise<FriendData> {
   const index = ((await F.getDoc(F.doc(db, `users/${uid}/meta/index`))).data()?.months ?? {}) as Record<string, number>;
@@ -147,21 +147,48 @@ export async function readFriend({ F, db }: Cloud, uid: string): Promise<FriendD
 }
 
 /**
- * What Crew needs of a friend: their sets from `from` to `to` and their status phrase. Only the months that window touches are
- * read, never the whole history; nothing else in their settings is kept (and cycle data is never in what a friend can read).
+ * What Crew needs of a friend: their sets from `from` on, in the months up to `to`'s, and their status phrase. Only the months
+ * that window touches are read, never the whole history; nothing else in their settings is kept (and cycle data is never in what
+ * a friend can read). A set dated after `to` (a friend a time zone ahead) is kept: Crew shows up to today, and the month it's in
+ * may never change again to bring it back.
  */
 export interface FriendWindow { sets: SetEntry[]; status: string }
-export async function readFriendWindow({ F, db }: Cloud, uid: string, from: string, to: string): Promise<FriendWindow> {
-  const index = ((await F.getDoc(F.doc(db, `users/${uid}/meta/index`))).data()?.months ?? {}) as Record<string, number>;
-  const want = Object.keys(index).filter((m) => m >= monthOf(from) && m <= monthOf(to));
-  const [months, metaDoc] = await Promise.all([
-    Promise.all(want.map(async (m) => (await F.getDoc(F.doc(db, `users/${uid}/months/${m}`))).data() as CloudMonth | undefined)),
-    F.getDoc(F.doc(db, `users/${uid}/meta/profile`)),
+/** The times in a friend's index a window was read at: each month's, and their settings' (both written with what they time). */
+export interface WindowBasis { months: Record<string, number>; meta?: number }
+/**
+ * `prev`: the window the last read kept, with the times it was read at. Their index is read first; only the months whose time
+ * moved are read again (several in one query), and their settings only when theirs moved, so a friend with nothing new costs
+ * the index alone. An index without a settings time (an account from before it) has the status read every time.
+ */
+export async function readFriendWindow(c: Cloud, uid: string, from: string, to: string, prev?: { from: string; win: FriendWindow; basis?: WindowBasis }): Promise<FriendWindow & { basis: WindowBasis }> {
+  const { F, db } = c;
+  const index = (await F.getDoc(F.doc(db, `users/${uid}/meta/index`))).data() ?? {};
+  const times = (index.months ?? {}) as Record<string, number>, metaAt = index.meta as number | undefined;
+  const want = Object.keys(times).filter((m) => m >= monthOf(from) && m <= monthOf(to)).sort();
+  // The kept window holds every set of its months from its own `from` on: enough, unless this one starts earlier.
+  const kept = prev?.basis && prev.from <= from ? { ...prev, basis: prev.basis } : null;
+  const need = want.filter((m) => kept?.basis.months[m] !== times[m]);
+  const [months, status] = await Promise.all([
+    readMonths(c, uid, need, want),
+    metaAt !== undefined && kept?.basis.meta === metaAt ? kept.win.status : readStatus(c, uid),
   ]);
-  const raw = (metaDoc.data()?.items as Record<string, string> | undefined)?.status;
-  let status = '';
-  try { status = raw ? cleanStatus(JSON.parse(raw)) : ''; } catch { /* not a phrase */ }
-  return { sets: months.flatMap((m) => m?.sets ?? []).filter((x) => x.date >= from && x.date <= to), status };
+  const sets = want.flatMap((m) => months.get(m) ?? kept?.win.sets.filter((s) => monthOf(s.date) === m) ?? []).filter((s) => s.date >= from);
+  return { sets, status, basis: { months: Object.fromEntries(want.map((m) => [m, times[m]])), ...(metaAt !== undefined && { meta: metaAt }) } };
+}
+/** Months of a friend's log, by month: one read for one, one query for several (any between them it returns are fresh too). */
+async function readMonths({ F, db }: Cloud, uid: string, need: string[], want: string[]): Promise<Map<string, SetEntry[]>> {
+  const out = new Map<string, SetEntry[]>(need.map((m) => [m, []]));
+  if (need.length === 1) {
+    out.set(need[0], ((await F.getDoc(F.doc(db, `users/${uid}/months/${need[0]}`))).data() as CloudMonth | undefined)?.sets ?? []);
+  } else if (need.length > 1) {
+    const q = F.query(F.collection(db, `users/${uid}/months`), F.where(F.documentId(), '>=', need[0]), F.where(F.documentId(), '<=', need[need.length - 1]));
+    for (const d of (await F.getDocs(q)).docs) if (want.includes(d.id)) out.set(d.id, (d.data() as CloudMonth).sets ?? []);
+  }
+  return out;
+}
+async function readStatus({ F, db }: Cloud, uid: string): Promise<string> {
+  const raw = ((await F.getDoc(F.doc(db, `users/${uid}/meta/profile`))).data()?.items as Record<string, string> | undefined)?.status;
+  try { return raw ? cleanStatus(JSON.parse(raw)) : ''; } catch { return ''; } // not a phrase
 }
 
 /** A gym a friend sent you, waiting under Friends until you add it or dismiss it. */
@@ -309,15 +336,27 @@ export interface FriendNews {
   /** Friends you muted, for the notification settings. */
   muted: string[];
 }
-export async function friendNews(c: Cloud, me: string, now = Date.now()): Promise<FriendNews> {
+/** How far before the newest item held a read of what's new starts: two sends moments apart may commit out of order. */
+const OVERLAP_MS = 60_000;
+/**
+ * `known`: your inbox as the last read left it (state/friendCache keeps it), so only what came after its newest is read, not the
+ * whole 30 days each time; without it, the whole inbox. Every read hands back the inbox as it now stands. What's held needs no
+ * re-read for deletes: only this phone, or another of yours, ever deletes in your inbox, and only what's over 30 days old or
+ * from someone no longer a friend, which `toClear` finds again here. `names`: your friends' usernames as kept, for the banner.
+ */
+export async function friendNews(c: Cloud, me: string, now = Date.now(), known?: { inbox?: InboxDoc[]; names?: Record<string, string> }): Promise<FriendNews & { inbox: InboxDoc[] }> {
   const { F, db } = c;
+  const held = known?.inbox?.length ? known.inbox : null;
+  const all = F.collection(db, `users/${me}/inbox`);
+  const since = held && F.query(all, F.where('at', '>', F.Timestamp.fromMillis(Math.max(...held.map((d) => d.at)) - OVERLAP_MS)));
   const [friendDocs, requests, gyms, inboxSnap] = await Promise.all([
-    F.getDocs(F.collection(db, `users/${me}/friends`)), listRequests(c, me), listSentGyms(c, me),
-    F.getDocs(F.collection(db, `users/${me}/inbox`)),
+    F.getDocs(F.collection(db, `users/${me}/friends`)), listRequests(c, me), listSentGyms(c, me), F.getDocs(since ?? all),
   ]);
   const friends = new Set(friendDocs.docs.map((d) => d.id));
   const readAt = Object.fromEntries(friendDocs.docs.map((d) => [d.id, (d.data().readAt as { toMillis?(): number } | undefined)?.toMillis?.()]));
-  const inbox = docs(inboxSnap);
+  const byId = new Map((held ?? []).map((d) => [d.id, d]));
+  for (const d of docs(inboxSnap)) byId.set(d.id, d);
+  const inbox = [...byId.values()];
   // Spark has no automatic expiry: this phone clears what's over 30 days old, or from someone who's no longer a friend.
   const stale = toClear(inbox, friends, now);
   if (stale.length) void clearIds(c, me, stale).catch(() => {});
@@ -325,11 +364,12 @@ export async function friendNews(c: Cloud, me: string, now = Date.now()): Promis
   const unread = unreadOf(kept, readAt, friends);
   const latest = Object.fromEntries(Object.entries(latestOf(kept)).map(([uid, d]) => [uid, { text: itemShort(d), at: d.at }]));
   const newest = kept.filter((d) => (unread[d.from] ?? 0) > 0).sort((a, b) => b.at - a.at)[0];
-  const top = newest ? { uid: newest.from, name: await nameOf(c, newest.from), text: itemShort(newest) } : null;
+  const top = newest ? { uid: newest.from, name: known?.names?.[newest.from] ?? await nameOf(c, newest.from), text: itemShort(newest) } : null;
   const n = Object.values(unread).reduce((a, b) => a + b, 0);
   return {
     requests: requests.length, gyms: gyms.length, total: requests.length + gyms.length + n, unread, latest, top,
     muted: friendDocs.docs.filter((d) => d.data().muted === true).map((d) => d.id),
+    inbox: kept,
   };
 }
 

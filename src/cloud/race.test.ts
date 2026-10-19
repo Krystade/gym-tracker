@@ -28,6 +28,9 @@ function fakeStore(docs: Record<string, Record<string, unknown>>, hold = -1) {
   };
   const F = {
     doc: (_db: unknown, path: string) => ({ path }), getDoc: async (r: { path: string }) => snap(r.path),
+    // The day-plan archive (meta/plans-YYYY), read on a phone's first sync with the build that ages plans out.
+    collection: (_db: unknown, path: string) => ({ path }), documentId: () => '__name__', where: () => null, query: (c: { path: string }) => c,
+    getDocs: async (q: { path: string }) => ({ docs: Object.keys(docs).filter((p) => p.startsWith(`${q.path}/plans-`)).map(snap) }),
     runTransaction: async (_db: unknown, fn: (tx: unknown) => Promise<unknown>) => {
       const out = await fn({ get: async (r: { path: string }) => snap(r.path), set });
       if (n++ === hold) { reached(); await gate; }

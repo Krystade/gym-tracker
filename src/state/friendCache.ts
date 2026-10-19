@@ -3,11 +3,11 @@ import { deleteFriendCaches, getFriendCache, putFriendCache } from '../db/db';
 import { loadCloud, type Cloud } from '../cloud/firebase';
 import {
   friendNews, listBlocked, listFriends, listRequests, listSentGyms, listThread, liveInvite, myUsername, readFriendWindow,
-  type Friend, type FriendNews, type FriendWindow, type Request, type SentGym,
+  type Friend, type FriendNews, type FriendWindow, type Request, type SentGym, type WindowBasis,
 } from '../cloud/friends';
 import { addDays } from '../domain/analytics';
 import type { Invite } from '../domain/invite';
-import type { ThreadItem } from '../domain/messages';
+import type { InboxDoc, ThreadItem } from '../domain/messages';
 
 // Friends as last read, for one account, kept on the phone: Friends, Crew, the threads and the Friends tab's dot show
 // it at once and read Firestore again quietly behind it (stale-while-revalidate). It's read in the background after the
@@ -16,6 +16,8 @@ import type { ThreadItem } from '../domain/messages';
 
 /** How long a friend's Crew line, a thread, or the whole background read counts as fresh. */
 export const STALE_MS = 5 * 60_000;
+/** How often the news reads your whole inbox rather than only what's new: a safety net, not needed for anything to show right. */
+export const FULL_INBOX_MS = 24 * 3600_000;
 /** Crew's span: eight weeks back, today included. */
 export const CREW_SPAN = 56;
 export const crewRange = (today: string) => ({ from: addDays(today, -(CREW_SPAN - 1)), to: today });
@@ -25,12 +27,15 @@ export interface Lists {
   /** Your username; null: none chosen yet. */ me: string | null;
   friends: Friend[]; requests: Request[]; invite: (Invite & { expires: number }) | null; sentGyms: SentGym[]; blocked: Friend[];
 }
-export interface CachedWindow { at: number; from: string; to: string; win: FriendWindow }
+/** `basis`: the times in their index it was read at, so the next read fetches only what changed (cloud/friends readFriendWindow). */
+export interface CachedWindow { at: number; from: string; to: string; win: FriendWindow; basis?: WindowBasis }
 export interface CachedThread { at: number; items: ThreadItem[]; gyms: SentGym[] }
 export interface FriendCache {
   uid: string;
   lists?: Lists;
   news?: FriendNews & { at: number };
+  /** Your inbox as the news last read it (cloud/friends friendNews), so the next read asks only for what's new; `full`, when it was last read whole. */
+  inbox?: { items: InboxDoc[]; full: number };
   /** Per friend's uid. */ windows: Record<string, CachedWindow>;
   /** Per friend's uid. */ threads: Record<string, CachedThread>;
 }
@@ -39,13 +44,25 @@ export interface FriendCache {
 
 export const staleWindow = (w: CachedWindow | undefined, from: string, to: string, now: number) => !w || w.from !== from || w.to !== to || now - w.at > STALE_MS;
 
-/** Friends who sent something newer than the newest of theirs in the thread kept here (or whose thread was never read). */
+/**
+ * Friends whose thread kept here is behind what the news and lists already read say: they sent something newer than the newest
+ * of theirs in it (or it was never read), or the gyms they sent aren't the ones it holds (one sent, added or dismissed since),
+ * by lists read after the thread. What only a read of the thread itself would show (a message you sent from another phone, one
+ * expiring) waits for it to open.
+ */
 export function threadsBehind(c: FriendCache): string[] {
-  return Object.entries(c.news?.latest ?? {}).filter(([uid, l]) => {
+  const out = new Set(Object.entries(c.news?.latest ?? {}).filter(([uid, l]) => {
     const t = c.threads[uid];
     const theirs = t ? Math.max(0, ...t.items.filter((i) => !i.mine && i.kind !== 'gym').map((i) => i.at)) : -1;
     return l.at > theirs;
-  }).map(([uid]) => uid);
+  }).map(([uid]) => uid));
+  const lists = c.lists;
+  if (lists) {
+    const ids = (xs: { id: string }[]) => xs.map((g) => g.id).sort().join();
+    for (const [uid, t] of Object.entries(c.threads)) if (t.at < lists.at && ids(t.gyms) !== ids(lists.sentGyms.filter((g) => g.from === uid))) out.add(uid);
+    for (const g of lists.sentGyms) if (!c.threads[g.from]) out.add(g.from);
+  }
+  return [...out];
 }
 
 /** Nothing kept of someone who's no longer a friend: their log is theirs again. */
@@ -75,6 +92,7 @@ const asCache = (uid: string, x: Partial<FriendCache> | undefined): FriendCache 
   ...fresh(uid), ...x, uid,
   windows: x?.windows && typeof x.windows === 'object' ? x.windows : {},
   threads: x?.threads && typeof x.threads === 'object' ? x.threads : {},
+  inbox: Array.isArray(x?.inbox?.items) && typeof x.inbox.full === 'number' ? x.inbox : undefined,
 });
 
 export const peekFriendCache = (uid: string | null | undefined) => (uid ? mem.get(uid) : undefined);
@@ -211,17 +229,20 @@ export function refreshLists(c: Cloud, uid: string, join = false): Promise<Lists
 /** Requests, gyms and each friend's unread, with the newest: the Friends tab's dot, the badge and Today's banner. */
 export function refreshNews(c: Cloud, uid: string, join = false): Promise<FriendNews> {
   return once(`news:${uid}`, async () => {
-    const n = await friendNews(c, uid);
-    await patchFriendCache(uid, (x) => ({ ...x, news: { ...n, at: Date.now() } }));
+    const kept = await hydrateFriendCache(uid), now = Date.now();
+    const whole = !kept.inbox || now - kept.inbox.full > FULL_INBOX_MS;
+    const names = Object.fromEntries((kept.lists?.friends ?? []).map((f) => [f.uid, f.name]));
+    const { inbox, ...n } = await friendNews(c, uid, now, { inbox: whole ? undefined : kept.inbox?.items, names });
+    await patchFriendCache(uid, (x) => ({ ...x, news: { ...n, at: Date.now() }, inbox: { items: inbox, full: whole ? now : x.inbox?.full ?? now } }));
     return n;
   }, join);
 }
 
-/** One friend's Crew line: their sets over Crew's span, and their status. */
+/** One friend's Crew line: their sets over Crew's span, and their status; only what changed since the line kept here is read. */
 export function refreshWindow(c: Cloud, uid: string, f: string, from: string, to: string, join = false): Promise<FriendWindow> {
   return once(`window:${uid}:${f}:${from}`, async () => {
-    const win = await readFriendWindow(c, f, from, to);
-    await patchFriendCache(uid, (x) => ({ ...x, windows: { ...x.windows, [f]: { at: Date.now(), from, to, win } } }));
+    const { basis, ...win } = await readFriendWindow(c, f, from, to, (await hydrateFriendCache(uid)).windows[f]);
+    await patchFriendCache(uid, (x) => ({ ...x, windows: { ...x.windows, [f]: { at: Date.now(), from, to, win, basis } } }));
     return win;
   }, join);
 }
@@ -243,14 +264,18 @@ export async function refreshChangedThreads(c: Cloud, uid: string): Promise<void
   await Promise.all(threadsBehind(cache).filter((f) => friends.has(f)).map((f) => refreshThread(c, uid, f, true).catch(() => {})));
 }
 
-/** Everything Friends shows, read again: lists and news always; Crew lines and threads when stale (or `force`). */
+/**
+ * Everything Friends shows, read again: lists and news always; Crew lines when stale; threads never read, and those the news
+ * and lists say are behind (threadsBehind), not every thread each time: a thread is read whole, and opening it reads it again
+ * anyway. `force`: all of it.
+ */
 export async function prefetchFriends(uid: string, today: string, force = false): Promise<void> {
   const c = await loadCloud();
   const [lists] = await Promise.all([refreshLists(c, uid, !force), refreshNews(c, uid, !force)]);
   const { from, to } = crewRange(today), now = Date.now(), cache = peekFriendCache(uid);
   await Promise.all(lists.friends.flatMap((f) => [
     force || staleWindow(cache?.windows[f.uid], from, to, now) ? refreshWindow(c, uid, f.uid, from, to, !force).catch(() => {}) : null,
-    force || !cache?.threads[f.uid] || now - cache.threads[f.uid].at > STALE_MS ? refreshThread(c, uid, f.uid, !force).catch(() => {}) : null,
+    force || !cache?.threads[f.uid] ? refreshThread(c, uid, f.uid, !force).catch(() => {}) : null,
   ]));
   await refreshChangedThreads(c, uid);
 }
