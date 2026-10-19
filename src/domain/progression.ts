@@ -93,9 +93,13 @@ export interface Target { kind: 'increase' | 'reps' | 'repeat' | 'maxed' | 'test
 
 const lb = (w: number) => (w === 0 ? 'BW' : `${Math.round(w * 100) / 100} lb`);
 
-const isTest = (s: SetEntry) => s.flags.includes('test');
-/** A set double progression works from: a working set that isn't a test (a test recalibrates instead). */
-export const isProgressionSet = (s: SetEntry): boolean => isWorking(s) && !isTest(s);
+export const isTest = (s: SetEntry): boolean => s.flags.includes('test');
+/**
+ * A set double progression works from: any working set, a test included (owner, 2026-10-19). A session of only tests
+ * recalibrates instead (see `nextTarget`): a lone max-effort set isn't a session to add reps to.
+ */
+export const isProgressionSet = (s: SetEntry): boolean => isWorking(s);
+const isTraining = (s: SetEntry) => isWorking(s) && !isTest(s);
 
 export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string): Target | null {
   const before = sessionsFor(entries, exercise).filter((x) => x.date < date);
@@ -106,7 +110,7 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
   }
   if (!before.length) return null;
   // The session to progress from: the last one that isn't only test sets.
-  const at = before.findIndex((x) => x.sets.some(isProgressionSet) || !x.sets.some(isTest));
+  const at = before.findIndex((x) => x.sets.some(isTraining) || !x.sets.some(isTest));
   // A test newer than it resets the working weight: the weight its e1RM (reps in reserve counted) gives at the top of the range.
   const tests = (at < 0 ? before : before.slice(0, at)).flatMap((x) => x.sets.filter((t) => isTest(t) && isWorking(t)));
   const best = Math.max(0, ...tests.map((t) => e1rm({ ...t, reps: (t.reps as number) + (t.rir ?? 0) }) ?? 0));

@@ -1,5 +1,5 @@
 import { isHold, isHoldLift } from './care';
-import { defaultSettings, isProgressionSet, isWorking, nextTarget, type ExerciseSettings, type Target } from './progression';
+import { defaultSettings, isTest, isWorking, nextTarget, type ExerciseSettings, type Target } from './progression';
 import type { DayPlan, Program } from './program';
 import { daySets, sameExercise, sessionsFor } from './stats';
 import type { SetEntry } from './types';
@@ -55,9 +55,10 @@ const warmAlready = (entries: SetEntry[], exercise: string, date: string) =>
 /** What to do next time: weight and reps from double progression, sets from the program or last session. Ignores `date`'s own sets. */
 export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null): Suggestion {
   const t = nextTarget(entries, exercise, st, date);
-  // Sets as in the last session of working sets: a test day's single isn't the set count.
-  const last = sessionsFor(entries, exercise).find((x) => x.date < date && !(x.sets.some((e) => e.flags.includes('test')) && !x.sets.some(isProgressionSet)));
-  const lastWorking = last ? last.sets.filter(isProgressionSet).length : 0;
+  // Sets as in the last session of working sets: a test counts toward the weight, not the set count.
+  const training = (e: SetEntry) => isWorking(e) && !isTest(e);
+  const last = sessionsFor(entries, exercise).find((x) => x.date < date && !(x.sets.some(isTest) && !x.sets.some(training)));
+  const lastWorking = last ? last.sets.filter(training).length : 0;
   const [sets, setsFrom]: [number, Suggestion['setsFrom']] =
     planned != null ? [planned, 'program'] : lastWorking ? [lastWorking, 'last'] : [3, 'default'];
   const clamped = Math.min(6, Math.max(1, sets));

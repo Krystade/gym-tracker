@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { defaultSettings, estimateRir, isWorking, nextTarget, priorE1rm, rirOffset, settingsKey } from './progression';
+import { defaultSettings, estimateRir, isProgressionSet, isWorking, nextTarget, priorE1rm, rirOffset, settingsKey } from './progression';
 import { prKinds } from './records';
 
 let seq = 0;
@@ -75,13 +75,18 @@ describe('nextTarget', () => {
 
 describe('test sets', () => {
   const test = (date: string, setNo: number, weight: number, reps: number, rir = 0) => s(date, setNo, weight, reps, { flags: ['test'], rir });
-  it('are not working sets for double progression', () => {
-    // A heavy single after the working sets: not the top weight, and not a set short of the range.
-    const e = [s('2026-01-01', 1, 30, 12), s('2026-01-01', 2, 30, 12), s('2026-01-01', 3, 30, 10), test('2026-01-01', 4, 50, 1)];
-    expect(nextTarget(e, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'increase', weight: 35, reps: 8 });
+  it('count as working sets for double progression (owner, 2026-10-19)', () => {
+    // An AMRAP test after the working sets tops the range with them: 12 + 10 + 12 = 34, within 2 of 3 × 12. Without it, 22 of 2 × 12 − 1.
+    const e = [s('2026-01-01', 1, 30, 12), s('2026-01-01', 2, 30, 10), test('2026-01-01', 3, 30, 12)];
+    expect(nextTarget(e, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'increase', weight: 35, reps: 8, done: { total: 34, sets: 3 } });
+    // A heavier test is the session's top weight, as any heavier set is: 35 × 9 → 35 × 10.
+    const heavier = [s('2026-01-01', 1, 30, 12), s('2026-01-01', 2, 30, 12), test('2026-01-01', 3, 35, 9)];
+    expect(nextTarget(heavier, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 35, reps: 10 });
     // An older test doesn't override working sets done since.
     const later = [test('2025-12-20', 1, 60, 1), s('2026-01-01', 1, 30, 10), s('2026-01-01', 2, 30, 10)];
     expect(nextTarget(later, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 30, reps: 11 });
+    expect(isProgressionSet(test('2026-01-01', 1, 30, 12))).toBe(true);
+    expect(isProgressionSet(s('2026-01-01', 1, 30, 12, { flags: ['test', 'warmup'] }))).toBe(false);
   });
   it('a test newer than the last working session resets the weight to its e1RM at the top of the range', () => {
     const base = [s('2026-01-01', 1, 30, 10), s('2026-01-01', 2, 30, 10)];

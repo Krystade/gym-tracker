@@ -132,15 +132,16 @@ describe('stall', () => {
     const zig: [string, string[]][] = [...PLATEAU.slice(0, 2), ['2026-09-15', ['180x9', '180x9', '180x9']], ['2026-09-22', ['185x9', '185x8', '185x8']], ['2026-09-29', ['180x9', '180x9', '180x9']]];
     expect(stall(log('Bench Press', zig), 'Bench Press', TODAY)).not.toBeNull();
   });
-  it('warm-ups, partials and test sets are left out', () => {
+  it('warm-ups and partials are left out; test sets count (owner, 2026-10-19)', () => {
     const entries = [...log('Bench Press', PLATEAU),
       ...session('2026-09-29', 'Bench Press', ['225x5'], ['warmup']),
-      ...session('2026-09-29', 'Bench Press', ['225x6'], ['partial']),
-      ...session('2026-09-29', 'Bench Press', ['230x3'], ['test'])];
+      ...session('2026-09-29', 'Bench Press', ['225x6'], ['partial'])];
     expect(stall(entries, 'Bench Press', TODAY)).toMatchObject({ since: '2026-09-08', sessions: 3 });
-    // A session of only test sets isn't a session to judge by.
-    const tested = [...entries, ...session('2026-09-30', 'Bench Press', ['235x2'], ['test'])];
-    expect(stall(tested, 'Bench Press', TODAY)).toMatchObject({ sessions: 3, last: '2026-09-29' });
+    // A heavier test is a weight step-up, in a session of working sets or on its own.
+    expect(stall([...entries, ...session('2026-09-29', 'Bench Press', ['230x3'], ['test'])], 'Bench Press', TODAY)).toBeNull();
+    expect(stall([...entries, ...session('2026-09-30', 'Bench Press', ['235x2'], ['test'])], 'Bench Press', TODAY)).toBeNull();
+    // A test no better than the sessions before it is one more flat session.
+    expect(stall([...entries, ...session('2026-09-30', 'Bench Press', ['185x8'], ['test'])], 'Bench Press', TODAY)).toMatchObject({ sessions: 4, last: '2026-09-30' });
   });
   it('after a break of more than six weeks the first session back is a fresh start', () => {
     const back: [string, string[]][] = [['2026-06-01', ['225x8', '225x8']], ['2026-06-08', ['225x8', '225x8']],

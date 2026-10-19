@@ -80,7 +80,7 @@ export interface Stall { since: string; sessions: number; weeks: number; last: s
 /**
  * A lift that has stopped progressing: 3 or more sessions in a row, spanning 2 weeks or more, none better than the sessions
  * before it (see `progressed`), the latest within 6 weeks of `today`. Working sets only, as double progression reads them:
- * warm-ups, partials and test sets are left out, and a session of only those isn't a session here. Holds and cardio never stall.
+ * warm-ups and partials are left out, and a session of only those isn't a session here; test sets count. Holds and cardio never stall.
  */
 export function stall(entries: SetEntry[], exercise: string, today: string): Stall | null {
   if (isHoldLift(exercise, entries) || isCardio(exercise)) return null;

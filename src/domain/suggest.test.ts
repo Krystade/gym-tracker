@@ -43,6 +43,9 @@ describe('suggest', () => {
     // 225 / (1 + 12/30) ≈ 160.7 → 160.
     expect(x).toMatchObject({ weight: 160, reps: 8, sets: 2, setsFrom: 'last', kind: 'test' });
     expect(x.reason).toBe('Your test set puts 12 reps at about 160 lb, so that’s the working weight now.');
+    // A test done after the working sets counts toward the weight, not the set count: 10 + 12 + 12 = 34 of 3 × 12 → up, 2 sets.
+    const mixed = [s('2026-09-28', 'Bench Press', 135, 10), s('2026-09-28', 'Bench Press', 135, 12), s('2026-09-28', 'Bench Press', 135, 12, ['test'])];
+    expect(suggest(mixed, 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: 140, reps: 8, sets: 2, setsFrom: 'last', kind: 'increase' });
   });
   it('with no history: reps and 3 sets, no weight', () => {
     expect(suggest([], 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: null, reps: 8, sets: 3, setsFrom: 'default', kind: 'new', warmups: [] });
