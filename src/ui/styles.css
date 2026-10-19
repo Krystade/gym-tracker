@@ -283,6 +283,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .picker-list li:last-child > button { border-radius: 0 0 var(--r-group) var(--r-group); }
 .picker-list li:only-child > button { border-radius: var(--r-group); }
 .picker-list button:focus-visible { outline-offset: -2px; }
+.picker-list .picker-add { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding-top: 8px; padding-bottom: 8px; }
+.picker-counts { font-size: var(--fs-sub); font-weight: 400; color: var(--text-2); }
+.picker-list button.primary .picker-counts { color: inherit; opacity: 0.85; }
+.gear-new { display: flex; align-items: center; gap: 12px; }
+.gear-new p { flex: 1; margin: 0; }
+.works { margin-top: -4px; }
 .picker-list button.primary { font-weight: 700; background: var(--accent); color: var(--accent-ink); border-radius: var(--r-group); margin-bottom: 8px; }
 .picker-title { grid-column: 1 / -1; margin: 0; font-size: var(--fs-lg); line-height: 22px; font-weight: 600; letter-spacing: 0; }
 

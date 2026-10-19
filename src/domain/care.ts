@@ -1,6 +1,6 @@
 import { CARDIO_NAMES, isCardio } from './cardio';
 import { addDays, weekStart } from './analytics';
-import { CATALOG } from './catalog';
+import { PROGRAM_LIFTS } from './catalog';
 import { gearOf } from './equipment';
 import { liftKey } from './ids';
 import { muscleVector, MUSCLES } from './muscles';
@@ -82,7 +82,7 @@ export function swapSuggestions(exercise: string, entries: SetEntry[], today: st
   if (isCardio(exercise)) return CARDIO_NAMES.filter((n) => !sameExercise(n, exercise) && (!available || available.has(n))).map((name) => ({ name, score: 1, why: 'cardio machine' })).slice(0, limit);
   const pain = recentPain(entries, today);
   const logged = exerciseNames(entries);
-  const pool = [...logged, ...CATALOG.filter((c) => !logged.some((l) => sameExercise(l, c)))].filter((n) => !sameExercise(n, exercise) && (!available || available.has(n)));
+  const pool = [...logged, ...PROGRAM_LIFTS.filter((c) => !logged.some((l) => sameExercise(l, c)))].filter((n) => !sameExercise(n, exercise) && (!available || available.has(n)));
   const out: Suggestion[] = [];
   for (const name of pool) {
     const sim = similarity(exercise, name);

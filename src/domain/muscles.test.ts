@@ -1,6 +1,6 @@
 import { isCardio } from './cardio';
 import { describe, expect, it } from 'vitest';
-import { muscleVector, MUSCLES } from './muscles';
+import { countsFor, muscleVector, MUSCLES, musclesText, worksLine } from './muscles';
 import { CATALOG } from './catalog';
 
 describe('muscleVector', () => {
@@ -89,5 +89,24 @@ describe('new catalog lifts', () => {
   it('and their logged spellings read the same', () => {
     for (const n of ['Dumbbell Shoulder Press', 'Seated DB Shoulder Press']) expect(muscleVector(n), n).toEqual(muscleVector('DB Shoulder Press'));
     for (const n of ['Barbell Front Squat', 'Pendulum Squat Machine']) expect(muscleVector(n), n).toEqual(muscleVector('Front Squat'));
+  });
+});
+
+describe('muscles in words (round 15)', () => {
+  it('most-worked first, fractions as written, nothing tracked or unknown said so', () => {
+    expect(musclesText({ Chest: 1, Triceps: 0.5, 'Front Delts': 0.5 })).toBe('chest · triceps ½ · front delts ½');
+    expect(musclesText({ Biceps: 0.75, Lats: 1 })).toBe('lats · biceps ¾');
+    expect(musclesText({})).toBe('no muscle the app tracks');
+    expect(musclesText(null)).toBe('muscles unknown');
+  });
+  it('the Add row: what a new name will count for', () => {
+    expect(countsFor('Paused Incline DB Press')).toBe('counts for chest · triceps ½ · front delts ½');
+    expect(countsFor('Zercher Thing')).toBe('muscles unknown');
+  });
+  it('the lift page: muscles, pattern, gear, and a guess said to be one', () => {
+    expect(worksLine('Incline DB Press')).toBe('Works chest · triceps ½ · front delts ½ · horizontal press · dumbbells');
+    expect(worksLine('Spider Curl Cable')).toBe('Works biceps · cable · guessed from the name');
+    expect(worksLine('Hex Bar Deadlift')).toBe('Works hamstrings · glutes ½ · erectors ½ · quads ½ · hinge · trap bar');
+    expect(worksLine('Zercher Thing')).toBe('Muscles unknown');
   });
 });

@@ -51,9 +51,9 @@ test('a gym without machines gets a plan it can do; exclusions and inclusions st
   for (const e of ['dumbbells', 'flat bench', 'incline bench', 'cable stack', 'lat pulldown', 'pull-up bar']) await page.getByRole('checkbox', { name: e, exact: true }).check();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Cable Curl');
   await page.getByRole('button', { name: 'Exclude Cable Curl' }).click();
-  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Zercher Squat');
-  await page.getByRole('button', { name: 'I can do “Zercher Squat” here' }).click();
-  await expect(page.getByText('Zercher Squat')).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Zercher Pause Squat');
+  await page.getByRole('button', { name: 'I can do “Zercher Pause Squat” here' }).click();
+  await expect(page.getByText('Zercher Pause Squat')).toBeVisible();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('');
   await page.screenshot({ path: 'screenshots/16-gyms.png', fullPage: true });
   await page.getByRole('button', { name: '‹ Back' }).click();

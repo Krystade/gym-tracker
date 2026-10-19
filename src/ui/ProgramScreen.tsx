@@ -11,7 +11,7 @@ import { ExercisePicker } from './ExercisePicker';
 import { BACK_BLOCK, isHoldLift } from '../domain/care';
 import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
-import { CATALOG } from '../domain/catalog';
+import { PROGRAM_LIFTS } from '../domain/catalog';
 import { DEFAULT_LOW_SHARE } from '../domain/profile';
 import { GymsScreen } from './GymsScreen';
 import { estimateSeconds, paces, perSessionForMinutes } from '../domain/timing';
@@ -113,7 +113,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel
         </div>
         <p className="muted small">The most of each week spent on priority 3–4 muscles while priority 1–2 still need sets.</p>
         <button className="primary wide" disabled={!valid} onClick={() => {
-          const ctx = gym ? { available: availableSet(gym, [...CATALOG, ...exerciseNames(entries), ...gym.include]), include: gym.include } : {};
+          const ctx = gym ? { available: availableSet(gym, [...PROGRAM_LIFTS, ...exerciseNames(entries), ...gym.include]), include: gym.include } : {};
           const build = (perSession: number) => buildProgram(profile.profile, entries, { days: d, perSession }, new Date(), ctx);
           setRemoved(null); // an undo for the old program must not land in the new one
           setPrev(p); // no confirm: the old program, edits and all, is one tap away

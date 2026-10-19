@@ -10,23 +10,35 @@ export const EQUIPMENT = [
   'shoulder press machine', 'lateral raise machine', 'row machine', 'seated calf machine', 'standing calf machine', 'glute press',
   'hip abduction machine', 'hip adduction machine', 'ab crunch machine', 'biceps curl machine', 'triceps machine', 'torso rotation machine',
   'treadmill', 'stair climber', 'exercise bike', 'elliptical', 'landmine',
+  // Round 15: gear the larger catalog needs. A gym set up before it counts it as not yet asked (see unasked).
+  'ez bar', 'trap bar', 'kettlebells', 'glute-ham developer', 'hack squat', 'belt squat', 'hip thrust machine', 'reverse hyper machine',
 ] as const;
 export type Equipment = (typeof EQUIPMENT)[number];
 
 export const EQUIPMENT_GROUPS: [string, Equipment[]][] = [
-  ['Free weights', ['barbell', 'squat rack', 'plates', 'dumbbells', 'landmine']],
-  ['Benches & stations', ['flat bench', 'incline bench', 'decline bench', 'preacher bench', 'pull-up bar', 'dip station', 'captain’s chair', 'back extension bench', 'hip thrust bench']],
+  ['Free weights', ['barbell', 'squat rack', 'plates', 'dumbbells', 'landmine', 'ez bar', 'trap bar', 'kettlebells']],
+  ['Benches & stations', ['flat bench', 'incline bench', 'decline bench', 'preacher bench', 'pull-up bar', 'dip station', 'captain’s chair', 'back extension bench', 'hip thrust bench', 'glute-ham developer']],
   ['Cables', ['cable stack', 'dual cable', 'lat pulldown']],
-  ['Machines', ['smith machine', 'leg press', 'pendulum squat', 'leg extension', 'seated leg curl', 'lying leg curl', 'chest press machine', 'pec deck',
+  ['Machines', ['smith machine', 'leg press', 'pendulum squat', 'hack squat', 'belt squat', 'hip thrust machine', 'reverse hyper machine', 'leg extension', 'seated leg curl', 'lying leg curl', 'chest press machine', 'pec deck',
     'shoulder press machine', 'lateral raise machine', 'row machine', 'seated calf machine', 'standing calf machine', 'glute press',
     'hip abduction machine', 'hip adduction machine', 'ab crunch machine', 'biceps curl machine', 'triceps machine', 'torso rotation machine']],
   ['Cardio', ['treadmill', 'stair climber', 'exercise bike', 'elliptical']],
 ];
 
-export interface Gym { id: string; name: string; equipment: Equipment[]; exclude: string[]; include: string[] }
+/**
+ * `gearVersion`: the gear list the gym was last checked against (see GEAR_VERSION). Older gyms haven't been asked about the gear
+ * added since, so it counts as maybe there.
+ */
+export interface Gym { id: string; name: string; equipment: Equipment[]; exclude: string[]; include: string[]; gearVersion?: number }
+
+/** The gear list's version: 2 added NEW_GEAR (round 15). A gym without one predates it. */
+export const GEAR_VERSION = 2;
+export const NEW_GEAR: Equipment[] = ['ez bar', 'trap bar', 'kettlebells', 'glute-ham developer', 'hack squat', 'belt squat', 'hip thrust machine', 'reverse hyper machine'];
+/** Gear added since this gym was set up that it doesn't have ticked: not yet asked, so neither there nor missing. */
+export const unasked = (gym: Gym): Equipment[] => ((gym.gearVersion ?? 1) >= GEAR_VERSION ? [] : NEW_GEAR.filter((e) => !gym.equipment.includes(e)));
 
 /** Every catalog lift → alternative gear sets; any one set, fully present, is enough. [[]] = nothing needed. */
-export const NEEDS: Record<string, Needs> = Object.fromEntries(LIFTS.flatMap((l) => (l.needs && !l.hidden ? [[l.name, l.needs]] : [])));
+export const NEEDS: Record<string, Needs> = Object.fromEntries(LIFTS.flatMap((l) => (l.needs ? [[l.name, l.needs]] : [])));
 
 const key = liftKey;
 
@@ -47,7 +59,10 @@ export function gearOf(exercise: string): string | null {
   return main === 'smith machine' ? 'Smith machine' : CARDIO_GEAR.has(main) ? 'cardio machine' : MACHINES.has(main) ? 'machine' : CABLES.has(main) ? 'cable' : main;
 }
 
-/** Whether this gym can do the lift: an exclusion or inclusion decides first, then the gear. Null = gear unknown (not a catalog lift). */
+/**
+ * Whether this gym can do the lift: an exclusion or inclusion decides first, then the gear. Null = not known: the lift's gear is
+ * unknown, or only gear the gym hasn't been asked about yet would make it possible.
+ */
 export function canDo(gym: Gym | null, exercise: string): boolean | null {
   if (!gym) return true;
   const k = key(exercise);
@@ -57,7 +72,9 @@ export function canDo(gym: Gym | null, exercise: string): boolean | null {
   if (!needs) return null;
   // A dual cable station is two cable stacks.
   const has = (e: Equipment) => gym.equipment.includes(e) || (e === 'cable stack' && gym.equipment.includes('dual cable'));
-  return needs.some((alt) => alt.every(has));
+  if (needs.some((alt) => alt.every(has))) return true;
+  const maybe = unasked(gym);
+  return maybe.length > 0 && needs.some((alt) => alt.every((e) => has(e) || maybe.includes(e))) ? null : false;
 }
 
 export const availableSet = (gym: Gym | null, names: string[]): Set<string> => new Set(names.filter((n) => canDo(gym, n) === true));

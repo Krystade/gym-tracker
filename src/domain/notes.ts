@@ -1,4 +1,5 @@
 import { machineFor, readCardio } from './cardio';
+import { resolveLift } from './lifts';
 import type { CardioData } from './types';
 import { nameKey, nameSimilarity, normalizeName, setId } from './ids';
 
@@ -245,6 +246,13 @@ export function matchExercise(name: string, known: string[], aliases: Record<str
   if (aliases[key]) return { exercise: aliases[key], how: 'alias', suggestions };
   const exact = known.find((k) => nameKey(k) === key) ?? (ABBR[key] && known.find((k) => nameKey(k) === nameKey(ABBR[key])));
   if (exact) return { exercise: exact, how: 'exact', suggestions };
+  // A catalog lift by another name it goes by, or its words in another order ("Dumbbell Bench Press" is Flat DB Press): exact
+  // too, and a logged name that stands for the same lift wins, since known lists the logged names first (round 15).
+  const r = resolveLift(name);
+  if (r.lift && (r.how === 'alias' || r.how === 'catalog')) {
+    const same = known.find((k) => resolveLift(k).lift === r.lift);
+    if (same) return { exercise: same, how: 'exact', suggestions };
+  }
   // A bare name is not a variant that moves differently: "Deadlift" is not "Romanian Deadlift" (still offered as a suggestion),
   // but "Bench" is still Bench Press and "Lateral raise" DB Lateral Raise.
   const variant = (k: string) => {

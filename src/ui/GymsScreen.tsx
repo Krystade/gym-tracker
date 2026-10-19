@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { GymsStore } from '../state/useGyms';
-import { canDo, EQUIPMENT_GROUPS, type Equipment, type Gym } from '../domain/equipment';
-import { CATALOG } from '../domain/catalog';
+import { canDo, EQUIPMENT_GROUPS, GEAR_VERSION, unasked, type Equipment, type Gym } from '../domain/equipment';
+import { searchLifts } from '../domain/search';
 import { normalizeName } from '../domain/ids';
 import { sameExercise } from '../domain/stats';
 import { copyGym, gymText, parseGymText } from '../domain/share';
@@ -9,7 +9,7 @@ import { cloudError, loadCloud } from '../cloud/firebase';
 import { listFriends, myUsername, sendGym, type Friend } from '../cloud/friends';
 import { Input, TextArea } from './Field';
 
-const newGym = (n: number): Gym => ({ id: `g${Date.now().toString(36)}`, name: n ? `Gym ${n + 1}` : 'My gym', equipment: [], exclude: [], include: [] });
+const newGym = (n: number): Gym => ({ id: `g${Date.now().toString(36)}`, name: n ? `Gym ${n + 1}` : 'My gym', equipment: [], exclude: [], include: [], gearVersion: GEAR_VERSION });
 const ALL_GEAR = EQUIPMENT_GROUPS.flatMap(([, items]) => items);
 const without = (xs: string[], name: string) => xs.filter((x) => !sameExercise(x, name));
 
@@ -104,9 +104,10 @@ export function GymsScreen({ gyms, logged, fresh, uid, backLabel = '‹ Back', o
   );
 
   const query = normalizeName(q);
-  const names = [...new Set([...logged, ...g.include, ...CATALOG.filter((c) => !logged.some((l) => sameExercise(l, c)))])];
-  const shown = (query ? names.filter((n) => n.toLowerCase().includes(query.toLowerCase())) : names.filter((n) => g.include.some((x) => sameExercise(x, n)) || g.exclude.some((x) => sameExercise(x, n)))).slice(0, 40);
-  const listed = names.some((n) => sameExercise(n, query));
+  const mine = [...new Set([...logged, ...g.include])];
+  const shown = (query ? searchLifts(query, mine) : mine.filter((n) => g.include.some((x) => sameExercise(x, n)) || g.exclude.some((x) => sameExercise(x, n)))).slice(0, 40);
+  const listed = shown.some((n) => sameExercise(n, query));
+  const toCheck = unasked(g);
 
   return (
     <>
@@ -122,8 +123,13 @@ export function GymsScreen({ gyms, logged, fresh, uid, backLabel = '‹ Back', o
       <section className="card">
         <label className="field">Gym name<Input value={g.name} onChange={(e) => update((x) => ({ ...x, name: e.target.value }))} /></label>
       </section>
+      {/* Gear the app added after this gym was set up: neither there nor missing until he says (owner, Q5). */}
+      {toCheck.length > 0 && <section className="card gear-new" aria-label="New equipment to check">
+        <p><b>New equipment to check:</b> {toCheck.join(', ')}. Tick what this gym has.</p>
+        <button className="mini" onClick={() => update((x) => ({ ...x, gearVersion: GEAR_VERSION }))}>Checked</button>
+      </section>}
       <button className="wide" disabled={ALL_GEAR.every((e) => g.equipment.includes(e))}
-        onClick={() => update((x) => ({ ...x, equipment: [...ALL_GEAR] }))}>Full gym: tick all gear</button>
+        onClick={() => update((x) => ({ ...x, equipment: [...ALL_GEAR], gearVersion: GEAR_VERSION }))}>Full gym: tick all gear</button>
       {EQUIPMENT_GROUPS.map(([label, items]) => {
         const all = items.every((e) => g.equipment.includes(e));
         return (

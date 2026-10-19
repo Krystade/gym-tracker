@@ -6,6 +6,7 @@ import { e1rm } from './stats';
 import { fmtSet } from './format';
 import { nextTarget } from './progression';
 import { weeklySummary } from './analytics';
+import { PROGRAM_LIFTS } from './catalog';
 
 let seq = 0;
 const s = (date: string, exercise: string, over: Partial<SetEntry> = {}): SetEntry => ({
@@ -192,5 +193,13 @@ describe('the new squats and a sore lower back', () => {
     const r = swapSuggestions('Leg Press', e, '2026-09-30', 200);
     expect(r.find((x) => x.name === 'Front Squat')?.why).toContain('loads your lower back');
     expect(r.find((x) => x.name === 'Pendulum Squat')?.why).not.toContain('loads your lower back');
+  });
+});
+
+describe('swaps from the larger catalog (round 15)', () => {
+  it('suggest only program lifts unless logged', () => {
+    for (const ex of ['Barbell Squat', 'Cable Curl', 'Bench Press', 'Lat Pulldown'])
+      for (const x of swapSuggestions(ex, [], '2026-09-30', 20)) expect(PROGRAM_LIFTS, `${ex}: ${x.name}`).toContain(x.name);
+    expect(swapSuggestions('Barbell Squat', [s('2026-09-20', 'Hack Squat')], '2026-09-30', 20).map((x) => x.name)).toContain('Hack Squat');
   });
 });

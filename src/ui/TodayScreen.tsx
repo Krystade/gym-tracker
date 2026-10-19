@@ -24,7 +24,7 @@ import { RestTimer, revertSwitch } from './RestTimer';
 import type { BodyStore } from '../state/useBody';
 import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
-import { CATALOG } from '../domain/catalog';
+import { PROGRAM_LIFTS } from '../domain/catalog';
 import { addDays } from '../domain/analytics';
 import type { ThreadWith } from './ThreadSheet';
 import { TodayDigest } from './WeekDigest';
@@ -137,7 +137,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
     return () => { ro.disconnect(); removeEventListener('scroll', onScroll); };
   }, [shown]);
 
-  const available = useMemo(() => (gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined),
+  const available = useMemo(() => (gyms.active ? availableSet(gyms.active, [...PROGRAM_LIFTS, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined),
     [gyms.active, store.entries]);
 
   // A stalled lift's next variation, on its card: today only, for a lift in the program, before its first working set

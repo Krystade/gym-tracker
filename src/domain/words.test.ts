@@ -72,7 +72,7 @@ const CASES: Case[] = [
   ['Leg Extensions', 'catalog', { Quads: 1 }, null, { lift: 'Leg Extension' }],
   ['Seated Calf Raises', 'catalog', CALF, null, { lift: 'Seated Calf Raise' }],
   ['Face Pulls', 'catalog', { 'Rear Delts': 1, 'Mid-Back': 0.5, Traps: 0.5 }, null, { lift: 'Face Pull' }],
-  ['Dips', 'catalog', PRESS, null, { needs: [['dip station']] }],
+  ['Dips', 'alias', PRESS, null, { needs: [['dip station']], lift: 'Forward-Lean Dips' }],
 
   // The bugs the first-match keywords had.
   ['Leg Press Calf Raise', 'built', CALF, null, { iso: true, needs: [['leg press']] }],
@@ -135,7 +135,7 @@ const CASES: Case[] = [
   ['Seal Row', 'built', ROW_MID, HL],
   ['Single-Arm Cable Row', 'built', ROW_MID, HL, { needs: [['cable stack']] }],
   ['One Arm DB Row', 'built', ROW_MID, HL, { needs: [['dumbbells']] }],
-  ['Meadows Row', 'built', ROW_MID, HL],
+  ['Meadows Row', 'built', ROW_LAT, HL, { needs: [['landmine', 'barbell']] }],
   ['Landmine Meadows Row', 'built', ROW_LAT, HL, { needs: [['landmine', 'barbell']] }],
   ['Lat Row', 'built', ROW_LAT, HL],
   ['Underhand Row', 'built', ROW_MID, HL],
@@ -168,7 +168,7 @@ const CASES: Case[] = [
   ['Smith Shoulder Press', 'built', OHP, VP, { needs: [['smith machine']] }],
   ['Dumbbell Shoulder Press', 'catalog', OHP, VP, { lift: 'DB Shoulder Press' }],
   ['Seated DB Shoulder Press', 'built', OHP, VP, { needs: [['dumbbells']] }],
-  ['Overhead DB Press', 'catalog', OHP, VP, { needs: [['dumbbells']] }],
+  ['Overhead DB Press', 'alias', OHP, VP, { needs: [['dumbbells']], lift: 'DB Shoulder Press' }],
   ['DB Press', 'built', PRESS, HP, { needs: [['dumbbells']] }],
   ['Floor Press', 'built', PRESS, HP],
   ['DB Floor Press', 'built', PRESS, HP, { needs: [['dumbbells']] }],
@@ -298,6 +298,16 @@ const CASES: Case[] = [
   ['Flutter Kicks', 'built', A, null],
   ['Dumbbell Scaption', 'built', SD, null, { needs: [['dumbbells']] }],
 
+  // Stage 3: new gear the words name, and a few movements the evaluation found.
+  ['Trap Bar RDL', 'built', HINGE, 'Hinge', { needs: [['trap bar']] }],
+  ['KB Goblet Squat Paused', 'built', SQUAT, 'Squat', { needs: [['kettlebells']] }],
+  ['Seated EZ Curl', 'built', B, null, { iso: true, needs: [['ez bar']] }],
+  ['Hack Squat Calf Raise', 'built', CALF, null, { iso: true }],
+  ['Kneeling Hip Thrust Machine', 'built', GLUTE, null, { needs: [['hip thrust machine']] }],
+  ['Middle Back Shrug', 'built', { 'Mid-Back': 1, Traps: 0.5 }, null, { iso: true }],
+  ['Hanging Pike', 'built', A, null, { iso: true, needs: [['pull-up bar']] }],
+  ['Alternate Heel Touchers', 'built', A, null, { iso: true, needs: [[]] }],
+  ['Standing Cable Lift', 'built', A, null, { iso: true, needs: [['cable stack']] }],
   // Nothing to go on: no muscles, no pattern, no gear.
   ['Zercher Thing', 'none', null, null, { iso: false, needs: null }],
   ['Atlas Stone', 'none', null, null],
@@ -316,7 +326,14 @@ describe('resolveLift: what a name counts as, and how it was found', () => {
   });
   for (const [name, how, m, p, more] of CASES) {
     it(name, () => {
-      const r = resolveLift(name);
+      // A 'built' case is the builder's: the words alone give it. Since the catalog grew (stage 3) the table may list the name
+      // too, and then its record counts the same muscles, with the gear the record names.
+      const listed = how === 'built' && resolveLift(name).how !== 'built';
+      if (listed) {
+        expect(['catalog', 'alias'], 'how').toContain(resolveLift(name).how);
+        expect(resolveLift(name).m, 'the record’s muscles').toEqual(m);
+      }
+      const r = how === 'built' ? { ...fromWords(name), how: 'built', lift: undefined } : resolveLift(name);
       expect(r.how, 'how').toBe(how);
       expect(r.m, 'muscles').toEqual(m);
       if (p !== undefined) expect(r.p, 'pattern').toBe(p);

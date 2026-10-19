@@ -6,8 +6,7 @@ import { fmtDay, fmtSet, plural } from '../domain/format';
 import { isWorking } from '../domain/progression';
 import { topSet } from '../domain/summary';
 import { localDate } from '../domain/ids';
-import { CATALOG } from '../domain/catalog';
-import { sameExercise } from '../domain/stats';
+import { searchLifts } from '../domain/search';
 import { Input } from './Field';
 
 /** `loggedOnly`: a friend's lifts, without the catalogue's never-logged ones. */
@@ -16,9 +15,11 @@ export function LiftsScreen({ store, onOpen, loggedOnly }: { store: SetsStore; o
   const today = localDate(new Date());
   const query = q.trim().toLowerCase();
   const logged = exerciseNames(store.entries);
-  const names = logged.filter((n) => n.toLowerCase().includes(query));
-  // Searching also finds lifts never logged, so any exercise can be opened for a suggestion.
-  const fresh = query && !loggedOnly ? CATALOG.filter((c) => c.toLowerCase().includes(query) && !logged.some((l) => sameExercise(l, c))) : [];
+  // Searching also finds lifts never logged (by any name they go by), so any exercise can be opened for a suggestion.
+  const found = query ? searchLifts(query, logged) : null;
+  const mine = new Set(logged);
+  const names = found ? found.filter((n) => mine.has(n)) : logged;
+  const fresh = found && !loggedOnly ? found.filter((n) => !mine.has(n)).slice(0, 40) : [];
   return (
     <>
       <h1>Lifts</h1>

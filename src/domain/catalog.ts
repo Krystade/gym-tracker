@@ -3,7 +3,14 @@ import { LIFTS, PATTERNS, type Pattern } from './lifts';
 export { PATTERNS, type Pattern };
 
 /** Generic exercise names offered by the picker (no user data), in its order. */
-export const CATALOG: string[] = LIFTS.filter((l) => !l.hidden).map((l) => l.name);
+export const CATALOG: string[] = LIFTS.map((l) => l.name);
+/** Listed before searching: the lifts most gyms and most people do. */
+export const COMMON: string[] = LIFTS.filter((l) => l.common).map((l) => l.name);
+/**
+ * What the program builder, swaps and rotation may offer unasked (round 15): the lifts listed before the catalog grew, and the
+ * shrugs for traps. Any other lift joins them once it's logged or added to a gym.
+ */
+export const PROGRAM_LIFTS: string[] = LIFTS.filter((l) => l.program).map((l) => l.name);
 
 /**
  * Each pattern's lifts, in the order a new variation is offered when a lift has plateaued (src/domain/rotation). Every lift here

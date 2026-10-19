@@ -28,7 +28,7 @@ test('a typed name to add as a new lift comes after the lifts it matches, not be
   await expect(add).not.toHaveClass(/primary/);
   // With nothing matching, it is the one thing to do, so it leads.
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('zzqx');
-  await expect(list.getByRole('button').first()).toHaveText('Add “zzqx” as a new lift');
+  await expect(list.getByRole('button').first()).toHaveAccessibleName('Add “zzqx” as a new lift');
   await expect(list.getByRole('button').first()).toHaveClass(/primary/);
 });
 

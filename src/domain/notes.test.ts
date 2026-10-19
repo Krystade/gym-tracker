@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { matchExercise, parseAliasesJson, nameKey, nameSimilarity, parseNoteDate, parseNotes, readSets, toEntries } from './notes';
+import { CATALOG } from './catalog';
 import { setId } from './ids';
 import type { SetEntry } from './types';
 
@@ -271,9 +272,26 @@ describe('UX round 3: notes as written', () => {
     expect(matchExercise('Deadlifts', ['Romanian Deadlift', 'Deadlift'], {})).toMatchObject({ exercise: 'Deadlift', how: 'exact' });
     expect(matchExercise('Pushdown', ['Cable Pushdown'], {})).toMatchObject({ exercise: 'Cable Pushdown', how: 'fuzzy' });
     expect(matchExercise('Bench', ['Bench Press', 'Romanian Deadlift'], {})).toMatchObject({ exercise: 'Bench Press', how: 'fuzzy' });
-    expect(matchExercise('Lateral raise', ['DB Lateral Raise'], {})).toMatchObject({ exercise: 'DB Lateral Raise', how: 'fuzzy' });
+    // Since round 15 "Lateral Raise" is another name DB Lateral Raise goes by: exact.
+    expect(matchExercise('Lateral raise', ['DB Lateral Raise'], {})).toMatchObject({ exercise: 'DB Lateral Raise', how: 'exact' });
     expect(matchExercise('Deadlift', ['Romanian Deadlift'], {})).toMatchObject({ how: 'new' });
     // Not a variant of the name as written: a word in between is still a close match.
     expect(matchExercise('Incline curl', ['Incline DB Curl'], {})).toMatchObject({ exercise: 'Incline DB Curl', how: 'fuzzy' });
+  });
+});
+
+describe('matchExercise with the catalog’s other names (round 15)', () => {
+  const known = [...CATALOG];
+  it('another name a catalog lift goes by is an exact match, listed by its own name', () => {
+    expect(matchExercise('Dumbbell Bench Press', known, {})).toMatchObject({ exercise: 'Flat DB Press', how: 'exact' });
+    expect(matchExercise('Yates Row', known, {})).toMatchObject({ exercise: 'Reverse-Grip Barbell Row', how: 'exact' });
+    expect(matchExercise('Press Incline DB', known, {})).toMatchObject({ exercise: 'Incline DB Press', how: 'exact' });
+  });
+  it('a logged name for the same lift wins the tie', () => {
+    expect(matchExercise('Chest Dip', ['dips', ...known], {})).toMatchObject({ exercise: 'dips', how: 'exact' });
+    expect(matchExercise('Chest Dip', known, {})).toMatchObject({ exercise: 'Forward-Lean Dips', how: 'exact' });
+  });
+  it('a name the table only reads from its words is not exact', () => {
+    expect(matchExercise('Paused Kroc Row', known, {}).how).not.toBe('exact');
   });
 });

@@ -10,7 +10,8 @@ import { records } from '../domain/records';
 import { Records } from './Records';
 import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
-import { CATALOG } from '../domain/catalog';
+import { CATALOG, PROGRAM_LIFTS } from '../domain/catalog';
+import { worksLine } from '../domain/muscles';
 import { calibrate, calibratedE1rm, testDue, weightForReps } from '../domain/estimators';
 import { localDate } from '../domain/ids';
 import { addDays } from '../domain/analytics';
@@ -192,13 +193,14 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
   // A stalled lift's next variation. Switched from here, the note stays (with its undo) while this screen is open.
   const [owner] = useState(activeProfileDb);
   const [switched, setSwitched] = useState<{ to: string; undo: () => Promise<void> } | null>(null);
-  const available = gyms.active ? availableSet(gyms.active, [...CATALOG, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined;
+  const available = gyms.active ? availableSet(gyms.active, [...PROGRAM_LIFTS, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined;
   const rot = readOnly || hold || switched ? null : rotation(store.entries, name, today, { available, include: gyms.active?.include, program: programs.program });
   const carry = rot && carryOver(store.entries, rot.from, rot.to, today, settings.get(rot.to));
   return (
     <>
       <button className="back" onClick={onBack}>‹ Back</button>
       <h1>{name}</h1>
+      <p className="muted small works">{worksLine(name)}</p>
       {!readOnly && <SuggestionCard s={sug} onLog={trainedToday ? undefined : onLog} />}
       {rot && <RotationSuggestion owner={owner} r={rot} carry={carry} known={store.entries.some((e) => sameExercise(e.exercise, rot.to))} today={today}
         onSwitch={inProgram(programs, name) ? async () => setSwitched({ to: rot.to, undo: await applyRotation(rot, carry, programs, settings, today, todayPlanFor(programs, store.entries, today)) }) : undefined} />}

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Profile } from '../domain/profile';
 import { quickDay } from '../domain/program';
 import { availableSet, type Gym } from '../domain/equipment';
-import { CATALOG } from '../domain/catalog';
+import { PROGRAM_LIFTS } from '../domain/catalog';
 import { isWorking } from '../domain/progression';
 import { exerciseNames, sameExercise } from '../domain/stats';
 import { estimateSeconds, paces, usualMinutes } from '../domain/timing';
@@ -28,7 +28,7 @@ export function SuggestedToday({ profile, entries, date, gym, loadFor, onOpen }:
   const slots = useMemo(() => {
     // Warm-ups as the day started: a lift logged today would drop them from the estimate and grow the list under you.
     const before = entries.filter((e) => e.date < date);
-    const available = gym ? availableSet(gym, [...CATALOG, ...exerciseNames(entries), ...gym.include]) : undefined;
+    const available = gym ? availableSet(gym, [...PROGRAM_LIFTS, ...exerciseNames(entries), ...gym.include]) : undefined;
     const cache = new Map<string, number>();
     const warm = (ex: string) => { const k = ex.toLowerCase(); if (!cache.has(k)) cache.set(k, warmupCount(before, ex, date)); return cache.get(k)!; };
     // quickDay reads only the days before today, so a set logged now never moves the list.

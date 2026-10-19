@@ -1,7 +1,7 @@
 process.env.TZ = 'America/New_York'; // before any Date: CI runs in UTC, where a UTC 'today' bug can't show
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { CATALOG } from './catalog';
+import { CATALOG, PROGRAM_LIFTS } from './catalog';
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
 import { defaultProfile, type Profile, type Tier } from './profile';
 import { PREFERENCE, addSlot, adherence, buildProgram, candidates, cardioSlot, DEFAULT_PICK, nextDay, primaryExercise, programVolume, type DayPlan, type Program } from './program';
@@ -306,5 +306,22 @@ describe('round 13 lifts and pull bias', () => {
     expect(chin).toMatchObject({ Lats: 4, 'Mid-Back': 2, Biceps: 3, Forearms: 2 });
     // Short of direct work: a chin-up is never the program's biceps lift.
     expect(candidates('Biceps', [], '2026-09-30')).not.toContain('Chin-up');
+  });
+});
+
+describe('round 15: a larger catalog, the same program pool', () => {
+  it('the builder offers only program lifts unasked, and any lift once logged', () => {
+    for (const m of MUSCLES) for (const n of candidates(m, [], '2026-09-30')) expect(PROGRAM_LIFTS, `${m}: ${n}`).toContain(n);
+    expect(candidates('Quads', [], '2026-09-30')).not.toContain('Hack Squat');
+    const logged = [s('2026-09-20', 'Hack Squat'), s('2026-09-21', 'Hack Squat')];
+    expect(candidates('Quads', logged, '2026-09-30')[0]).toBe('Hack Squat');
+  });
+  it('a lift added to the gym joins too, even one the builder wouldn’t offer', () => {
+    const r = candidates('Quads', [], '2026-09-30', { available: new Set([...PROGRAM_LIFTS, 'Belt Squat']), include: ['Belt Squat'] });
+    expect(r[0]).toBe('Belt Squat');
+  });
+  it('traps get a shrug (owner, Q4); Face Pull stays after them', () => {
+    expect(DEFAULT_PICK.Traps).toBe('DB Shrug');
+    expect(candidates('Traps', [], '2026-09-30').slice(0, 3)).toEqual(['DB Shrug', 'Barbell Shrug', 'Face Pull']);
   });
 });

@@ -44,8 +44,8 @@ test('the add row is bold and the placeholder fits', async ({ page }) => {
   await page.getByRole('button', { name: 'Add exercise' }).click();
   const box = page.getByRole('searchbox', { name: 'Search exercises' });
   await expect(box).toHaveAttribute('placeholder', 'Search or add new');
-  await box.fill('Zercher Squat');
-  const add = page.getByRole('button', { name: 'Add “Zercher Squat”' });
+  await box.fill('Zercher Pause Squat');
+  const add = page.getByRole('button', { name: 'Add “Zercher Pause Squat”' });
   await expect(add).toBeVisible();
   expect(await add.evaluate((el) => getComputedStyle(el).fontWeight)).toBe('700');
   await page.screenshot({ path: 'screenshots/39-picker-add.png' });

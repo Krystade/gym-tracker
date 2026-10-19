@@ -1,6 +1,7 @@
 // The facts every lift name had before src/domain/lifts.ts (round 15): the 97 catalog lifts, then the 12 names muscles.ts
 // knew without listing them. A change to any of these is a change to past weeks' volume, so it is made here by hand, on purpose.
 // Round 15 stage 2: nine of the twelve gained the gear their words name, and two presses their pattern; no muscles moved.
+// Stage 3: the twelve became catalog lifts or other names of one; the last three gained gear (dumbbells, a decline bench, none).
 /** `listed`: in the picker's catalog. `gear`: gearOf's word. `iso`: the 10–15 rep default. */
 export interface Golden { name: string; listed: boolean; m: Record<string, number> | null; p: string | null; needs: string[][] | null; gear: string | null; iso: boolean }
 
@@ -107,12 +108,12 @@ export const GOLDEN: Golden[] = [
   {"name": "dips", "listed": false, "m": {"Chest": 1, "Triceps": 0.5, "Front Delts": 0.5}, "p": null, "needs": [["dip station"]], "gear": "dip station", "iso": false},
   {"name": "incline bench pushdown", "listed": false, "m": {"Triceps": 1}, "p": null, "needs": [["cable stack"]], "gear": "cable", "iso": true},
   {"name": "db reverse curl", "listed": false, "m": {"Forearms": 1, "Biceps": 0.5}, "p": null, "needs": [["dumbbells"]], "gear": "dumbbells", "iso": true},
-  {"name":"zottman curl","listed":false,"m":{"Biceps":1,"Forearms":0.5},"p":null,"needs":null,"gear":null,"iso":true},
+  {"name":"zottman curl","listed":false,"m":{"Biceps":1,"Forearms":0.5},"p":null,"needs":[["dumbbells"]],"gear":"dumbbells","iso":true},
   {"name": "db wrist curl", "listed": false, "m": {"Forearms": 1}, "p": null, "needs": [["dumbbells"]], "gear": "dumbbells", "iso": true},
   {"name": "db reverse wrist curl", "listed": false, "m": {"Forearms": 1}, "p": null, "needs": [["dumbbells"]], "gear": "dumbbells", "iso": true},
   {"name": "overhead db press", "listed": false, "m": {"Front Delts": 1, "Triceps": 0.5, "Side Delts": 0.5}, "p": "Vertical press", "needs": [["dumbbells"]], "gear": "dumbbells", "iso": false},
-  {"name":"decline crunch (weighted)","listed":false,"m":{"Abs":1},"p":null,"needs":null,"gear":null,"iso":true},
-  {"name":"leg raise","listed":false,"m":{"Abs":1},"p":null,"needs":null,"gear":null,"iso":true},
+  {"name":"decline crunch (weighted)","listed":false,"m":{"Abs":1},"p":null,"needs":[["decline bench"]],"gear":null,"iso":true},
+  {"name":"leg raise","listed":false,"m":{"Abs":1},"p":null,"needs":[[]],"gear":"no equipment","iso":true},
   {"name": "db calf raise", "listed": false, "m": {"Calves": 1}, "p": null, "needs": [["dumbbells"]], "gear": "dumbbells", "iso": true},
 ];
 

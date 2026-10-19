@@ -5,7 +5,7 @@ import { defaultSettings, isWorking } from './progression';
 import { daySets, perLog, sameExercise } from './stats';
 import { addDays } from './analytics';
 import type { SetEntry } from './types';
-import { CATALOG } from './catalog';
+import { PROGRAM_LIFTS } from './catalog';
 import { CARDIO_TARGETS, cardioSlots, cardioTierOf, pickMachine, weeklyCardioMinutes } from './cardio';
 import { weekStart } from './analytics';
 
@@ -23,7 +23,7 @@ export const MAX_SETS_PER_DAY = 4;
 const UNIT = 2;
 const TIER_WEIGHT: Record<Tier, number> = { 1: 4, 2: 3, 3: 2, 4: 1 };
 
-/** Catalog lifts per muscle, most suitable first: the fallback when the history has no lift for it that this gym can do. All train the muscle directly, except Traps. */
+/** Catalog lifts per muscle, most suitable first: the fallback when the history has no lift for it that this gym can do. All train the muscle directly, except Face Pull for Traps. */
 export const PREFERENCE: Record<Muscle, string[]> = {
   Chest: ['Machine Chest Press', 'Flat DB Press', 'Bench Press', 'Incline DB Press', 'Smith Flat Press', 'Push-up'],
   Triceps: ['Cable Pushdown', 'Overhead Cable Extension', 'Rope Pushdown', 'Overhead DB Triceps Extension', 'DB Kickback', 'Triceps Press Machine'],
@@ -33,7 +33,8 @@ export const PREFERENCE: Record<Muscle, string[]> = {
   'Rear Delts': ['Reverse Pec Deck', 'Cable Rear Delt Fly', 'Face Pull'],
   Lats: ['Lat Pulldown', 'Pull-up', 'Close-Grip Lat Pulldown', 'Straight-Arm Pulldown', 'Lat Pull-In'],
   'Mid-Back': ['Chest-Supported Row', 'Seated Cable Row', 'Kneeling DB Row', 'T-Bar Row'],
-  Traps: ['Face Pull'], // no catalog lift trains traps directly; kept as the long-standing default
+  // Shrugs train them directly (added round 15, owner); Face Pull, the long-standing default, after them.
+  Traps: ['DB Shrug', 'Barbell Shrug', 'Face Pull'],
   Erectors: ['Back Extension', 'Bird Dog'],
   Quads: ['Leg Press', 'Leg Extension', 'Smith Squat', 'Pendulum Squat', 'Bulgarian Split Squat', 'Barbell Squat', 'Front Squat'],
   Hamstrings: ['Seated Leg Curl', 'Lying Leg Curl', 'DB Romanian Deadlift', 'Romanian Deadlift'],
@@ -74,7 +75,7 @@ const historyScores = (m: Muscle, entries: SetEntry[], today: string): Map<strin
 /**
  * Lifts for a muscle, best first: the ones the user actually does (most-used in the last year, older sets a quarter,
  * minus a heavy penalty for recent pain), then lifts added to the gym, then catalog lifts in PREFERENCE order, then any
- * other lift that trains it directly. Only what `available` allows.
+ * other program lift (PROGRAM_LIFTS) that trains it directly. Only what `available` allows.
  */
 export function candidates(m: Muscle, entries: SetEntry[], today: string, ctx: BuildContext = {}): string[] {
   const ok = (ex: string) => !ctx.available || ctx.available.has(ex);
@@ -83,7 +84,7 @@ export function candidates(m: Muscle, entries: SetEntry[], today: string, ctx: B
   const add = (xs: Iterable<string>) => { for (const ex of xs) if (ok(ex) && !out.some((u) => sameExercise(u, ex))) out.push(ex); };
   add((ctx.include ?? []).filter(direct));
   add(PREFERENCE[m]);
-  if (m !== 'Traps') add([...(ctx.available ?? CATALOG)].filter(direct));
+  if (m !== 'Traps') add([...(ctx.available ?? PROGRAM_LIFTS)].filter(direct));
   return out;
 }
 
