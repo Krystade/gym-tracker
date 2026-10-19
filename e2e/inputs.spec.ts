@@ -80,8 +80,8 @@ test('a friends read coming back mid-keystroke keeps the username typed in Add a
 });
 
 // What's read and synced in the background renders only what shows it. The app's top subscribed to all of friends' cache and
-// kept the sync's status and the news counter, so each of them took every screen through a render. (The app also renders
-// everything when the minute changes, on purpose: screens read the clock. The clock stands still here so that can't count.)
+// kept the sync's status and the news counter, so each of them took every screen through a render. (A minute going by
+// renders only what shows the time, e2e/quiet; the clock stands still here all the same.)
 test('reads, a push and a sync in the background don’t render the set form', async ({ page }) => {
   await page.clock.setFixedTime(new Date());
   await watchRenders(page);

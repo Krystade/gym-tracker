@@ -115,6 +115,32 @@ test('Today: last week from Monday; it folds and stays folded, hides until next 
   await expect(card).toHaveCount(0);
 });
 
+test('Today: a set logged today leaves last week as it was; a set gone from last week moves it', async ({ page }) => {
+  await seed(page, '2026-10-12T18:00:00'); // a Monday
+  await goto(page, 'Today');
+  const card = page.getByRole('region', { name: 'Last week' });
+  await expect(line(card, 'Sets')).toHaveText(/Sets\s*8\s*↑5/);
+  // A heavier bench today: a PR of today's, not last week's.
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
+  await page.getByRole('button', { name: /^Bench Press/ }).first().click();
+  const bench = page.locator('[data-card="bench press"]');
+  await bench.getByRole('textbox', { name: 'Weight' }).fill('200');
+  await bench.getByRole('textbox', { name: 'Reps' }).fill('8');
+  await bench.getByRole('button', { name: /^Add set/ }).click();
+  await expect(bench.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(1);
+  await expect(line(card, 'Sets')).toHaveText(/Sets\s*8\s*↑5/);
+  await expect(line(card, 'PRs')).toHaveText(/PRs\s*1\s*↑1/);
+  // Friday's leg press, one set deleted: last week had 7.
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Previous day' }).click();
+  await expect(page.getByRole('heading', { name: 'Fri, Oct 9' })).toBeVisible();
+  await page.getByRole('list', { name: 'Sets for Leg Press' }).getByRole('listitem').first().getByRole('button').click();
+  await page.getByRole('button', { name: 'Delete' }).click();
+  await expect(page.getByRole('list', { name: 'Sets for Leg Press' }).getByRole('listitem')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Back to today' }).click();
+  await expect(line(card, 'Sets')).toHaveText(/Sets\s*7\s*↑4/);
+});
+
 test('Stats: last week next to this week, always open', async ({ page }) => {
   await seed(page, '2026-10-14T18:00:00');
   await goto(page, 'Stats');

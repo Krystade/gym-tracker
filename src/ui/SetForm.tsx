@@ -10,6 +10,7 @@ import { Icon } from './icons';
 import { BUILT_IN, type TagPrefs } from '../domain/tags';
 import { TagEditor } from './TagEditor';
 import { fmtPerSide } from '../domain/plates';
+import { useMinute } from '../state/clock';
 import { Input } from './Field';
 
 export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3; at?: string | null; tags?: string[] }
@@ -85,7 +86,8 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   // The time as first shown: a stored time already past "now" (a clock change) must not block fixing the weight.
   const [time0] = useState(d?.at !== undefined ? '' : time); // a time restored from a draft was typed, so it is checked
   const timeId = useId();
-  // Asked on every render, so "now" stays current as the user types.
+  // Asked on every render, so "now" stays current as the user types and as the minute moves.
+  useMinute(whenOpen && !!when?.max);
   const latest = whenOpen ? when?.max?.() ?? null : null;
   const tooLate = !!time && time !== time0 && latest != null && time > latest;
   const unit = hold ? 'Seconds' : 'Reps';

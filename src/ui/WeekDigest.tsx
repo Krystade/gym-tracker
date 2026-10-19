@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { addDays } from '../domain/analytics';
 import { digestWeek, weekDigest, type Digest } from '../domain/digest';
 import { plural } from '../domain/format';
@@ -55,10 +55,37 @@ export function DigestBody({ d }: { d: Digest }) {
   </>);
 }
 
+/** What a digest was last worked out from, kept by the component showing it. */
+export interface KeptDigest { week?: string; past?: SetEntry[]; goal?: number; base?: Digest; profile?: Profile; d?: Digest }
+
+/**
+ * `week`'s digest, worked out from the whole log (every set's PRs, two years of weeks for the streak) again only when a set
+ * up to the week's end changes: a set logged today can't move last week's numbers. The fitted targets do move with today's
+ * sets, so what reads them (the muscles under target) is redone, from the week's own sets. `logged`: anything by its end.
+ */
+export function keptDigest(k: KeptDigest, entries: SetEntry[], profile: Profile, week: string): { d: Digest; logged: boolean } {
+  const end = addDays(week, 6), xs = entries.filter((e) => e.date <= end);
+  // The same sets as last time, in a new log array (useSets keeps every set it didn't change).
+  const same = k.week === week && k.past?.length === xs.length && xs.every((e, i) => e === k.past![i]);
+  // Of the profile, only the goal reads the whole log: the streak counts the weeks that met it.
+  if (!same || k.goal !== profile.weeklyGoal) Object.assign(k, { week, past: xs, goal: profile.weeklyGoal, base: weekDigest(xs, profile, week), d: undefined });
+  if (!k.d || k.profile !== profile) {
+    const under = weekDigest(k.past!.filter((e) => e.date >= week), profile, week).under;
+    Object.assign(k, { profile, d: { ...k.base!, goal: profile.weeklyGoal, under } });
+  }
+  return { d: k.d!, logged: k.past!.length > 0 };
+}
+
+/** The digest, kept between renders (see keptDigest). Off (dismissed): nothing is worked out. */
+function useWeekDigest(entries: SetEntry[], profile: Profile, week: string, on = true): { d: Digest; logged: boolean } | null {
+  const [kept] = useState<KeptDigest>(() => ({}));
+  return on ? keptDigest(kept, entries, profile, week) : null;
+}
+
 /** Stats: the week just gone, always open, next to This week. */
 export function LastWeekCard({ entries, profile, today }: { entries: SetEntry[]; profile: Profile; today: string }) {
   const week = digestWeek(today);
-  const d = useMemo(() => weekDigest(entries, profile, week), [entries, profile, week]);
+  const { d } = useWeekDigest(entries, profile, week)!;
   return (
     <section className="card digest" aria-label="Last week">
       <h2>Last week <span className="muted small">· {weekRange(week)}</span></h2>
@@ -84,9 +111,10 @@ export function TodayDigest({ owner, entries, profile, today, recap }: { owner: 
   }
   const folded = getPref<boolean>(owner, 'digest:folded') ?? false;
   const dismissed = getPref<string>(owner, 'digest:dismissed') === week;
-  const d = useMemo(() => weekDigest(entries, profile, week), [entries, profile, week]);
+  const w = useWeekDigest(entries, profile, week, !dismissed);
   // Nothing to look back on before the first week with anything logged.
-  if (dismissed || !entries.some((e) => e.date <= d.end)) return null;
+  if (!w?.logged) return null;
+  const { d } = w;
   const title = week === digestWeek(today) ? 'Last week' : 'This week';
   const set = (name: string, v: unknown) => { setPref(owner, name, v); bump((n) => n + 1); };
   return (

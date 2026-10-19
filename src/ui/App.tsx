@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { useSets } from '../state/useSets';
 import { useSettings } from '../state/useSettings';
 import { useProfile } from '../state/useProfile';
@@ -15,6 +15,7 @@ import { ProfileDbProvider } from '../state/profileDb';
 import { useFittedProfile } from '../state/useFittedProfile';
 import { useStatus } from '../state/useStatus';
 import { useBox, useOwnBox, type Box } from '../state/box';
+import { onMinute } from '../state/clock';
 import { getDraft, saveDraft } from '../state/drafts';
 import { exerciseNames, sameExercise } from '../domain/stats';
 import { sessionDay } from '../domain/timing';
@@ -133,7 +134,6 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
     setThread(r.startsWith('friend.') ? { uid: r.slice('friend.'.length) } : null);
   });
   const [date, setDate] = useState(() => localDate(new Date()));
-  const [, setMinute] = useState(() => Math.floor(Date.now() / 60_000));
   // The day Today logs to, when it isn't today (a forgotten set); cleared on any profile switch, so a past day never resurfaces.
   const pid = people.active!.id;
   const [chosen, setChosen] = useState<{ id: string; day: string } | null>(null);
@@ -141,14 +141,8 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   if (seenPid !== pid) { setSeenPid(pid); setChosen(null); }
   const logDay = chosen?.id === pid ? chosen.day : null;
   const setLogDay = (d: string | null) => setChosen(d ? { id: pid, day: d } : null);
-  useEffect(() => {
-    // The minute ticks too: past midnight the day a workout carries to can end with the date unchanged.
-    const onVis = () => { setDate(localDate(new Date())); setMinute(Math.floor(Date.now() / 60_000)); };
-    document.addEventListener('visibilitychange', onVis);
-    // An app left open across midnight gets no event, so look again every minute.
-    const id = setInterval(onVis, 60_000);
-    return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(id); };
-  }, []);
+  // An app left open across midnight gets no event, so look again every minute (and on coming back): the same date renders nothing.
+  useEffect(() => onMinute(() => setDate(localDate(new Date()))), []);
   const open = (name: string) => { setExercise(name); window.scrollTo(0, 0); };
   // The tab you're on. A screen opened over a tab (Program, Photos, Paste, Characters, Gym) keeps More lit when More opened it,
   // since its Back goes there; from Today or Stats it lights nothing. An exercise lights nothing.
@@ -233,7 +227,13 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const [historyAt, setHistoryAt] = useState<string | null>(null);
   // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.
   const [carryOff, setCarryOff] = useState<string | null>(null);
-  const day = carryOff === date ? date : sessionDay(store.entries, date, new Date());
+  const dayAt = (now: Date) => (carryOff === date ? date : sessionDay(store.entries, date, now));
+  const day = dayAt(new Date());
+  // That can end with the date unchanged, so each minute the day is looked at again; only a different day renders.
+  const [, recheck] = useReducer((n: number) => n + 1, 0);
+  const moved = useRef<() => boolean>(() => false);
+  moved.current = () => dayAt(new Date()) !== day;
+  useEffect(() => onMinute(() => { if (moved.current()) recheck(); }), []);
   // Every screen reads targets fitted to your week; More imports and exports the stored profile as it is.
   const profile = useFittedProfile(rawProfile, programs.program, store.entries, day);
   const error = store.error ?? programs.error ?? body.error ?? photos.error ?? gyms.error ?? people.error;

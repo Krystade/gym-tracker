@@ -72,16 +72,18 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
   const addCard = (n: string) => setExtra((xs) => (xs.some((x) => sameExercise(x, n)) ? xs : [...xs, n]));
   // Null = automatic: open while the day has lifts left, folded once every planned lift is done or skipped.
   const [planOpen, setPlanOpen] = useState<boolean | null>(null);
-  const [jump, setJump] = useState<string | null>(null);
-  // A folded (finished) card opens when the plan sends you to it; the card clears the request once it has used it.
-  const [openReq, setOpenReq] = useState<string | null>(null);
   // A new card lands at the bottom, off-screen: bring it up. The plan stays as it was; it's the list of what's next.
-  const goTo = (n: string) => { addCard(n); setOpenReq(n); setJump(n); };
+  // A folded (finished) card the plan sends you to opens. Each request is used once, by the render that shows its card,
+  // and stays in state after: clearing it would take Today through another render for nothing.
+  const [go, setGo] = useState<{ to: string; open: boolean } | null>(null);
+  const used = useRef<typeof go>(null);
+  const openReq = go !== used.current && go?.open ? go : null;
+  const goTo = (n: string) => { addCard(n); setGo({ to: n, open: true }); };
   useEffect(() => {
-    if (!jump || picking || swapFor) return;
-    document.querySelector(`[data-card="${CSS.escape(jump.toLowerCase())}"]`)?.scrollIntoView({ block: 'start' });
-    setJump(null);
-  }, [jump, picking, swapFor]);
+    if (!go || go === used.current || picking || swapFor) return;
+    used.current = go;
+    document.querySelector(`[data-card="${CSS.escape(go.to.toLowerCase())}"]`)?.scrollIntoView({ block: 'start' });
+  }, [go, picking, swapFor]);
   // The weight the card will suggest, worked out the same way, so the row tells you what to load before you open it.
   const loadFor = (ex: string, sets: number): number | null => {
     const st = settings.get(ex, isHoldLift(ex, store.entries));
@@ -103,12 +105,12 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
   const groups = groupsIn(store.entries);
   const groupOf = (n: string) => groups.find((g) => g.live && g.lifts.some((x) => sameExercise(x, n)));
   const dismiss = (g: Superset) => { markNotSuperset(owner, date, g.keys); setNotSuper(notSupersets(owner, date)); revertSwitch(); };
-  // After a set with another lift to go in the round, that lift's card comes up, ready for its set.
-  const [switchTo, setSwitchTo] = useState<string | null>(null);
+  // After a set with another lift to go in the round, that lift's card comes up, ready for its set. A new request each time,
+  // so the same lift comes up again; not cleared after, which would render Today again.
+  const [switchTo, setSwitchTo] = useState<{ to: string } | null>(null);
   useEffect(() => {
     if (!switchTo) return;
-    setSwitchTo(null);
-    const card = document.querySelector<HTMLElement>(`[data-card="${CSS.escape(switchTo.toLowerCase())}"]`);
+    const card = document.querySelector<HTMLElement>(`[data-card="${CSS.escape(switchTo.to.toLowerCase())}"]`);
     if (!card) return;
     card.scrollIntoView({ block: 'start' });
     card.querySelector<HTMLElement>('.card-head button')?.focus({ preventScroll: true });
@@ -155,7 +157,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
     const undo = await applyRotation(r, carry, programs, settings, today, plan);
     // The new lift's card takes the old one's place.
     setExtra((xs) => (xs.some((x) => sameExercise(x, r.from)) ? xs.map((x) => (sameExercise(x, r.from) ? r.to : x)) : [...xs, r.to]));
-    setOpenReq(r.to); setJump(r.to);
+    setGo({ to: r.to, open: true });
     setSwitched({ from: r.from, to: r.to, undo });
   };
   const undoRotate = async () => {
@@ -164,7 +166,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
     setSwitched(null);
     await undo();
     setExtra((xs) => xs.map((x) => (sameExercise(x, to) ? from : x)));
-    setJump(from);
+    setGo({ to: from, open: false });
   };
   const asideFor = (n: string) => {
     // Just switched: the new lift's card says so, with the undo, where you're looking.
@@ -216,9 +218,9 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
       {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} today={today} store={store} settings={settings} onOpen={onOpen}
         plannedSets={plannedSets(programs.program, plan, n)} plannedMinutes={plannedMinutes(programs.program, plan, n)} gym={gyms.active?.name} who={who} left={hasPlan ? left : []} onGo={goTo}
         swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
-        openReq={openReq != null && sameExercise(openReq, n)} onOpenReq={() => setOpenReq(null)}
+        openReq={openReq && sameExercise(openReq.to, n) ? openReq : null}
         supersetWith={groupOf(n)?.lifts.filter((x) => !sameExercise(x, n))} onNotSuperset={() => { const g = groupOf(n); if (g) dismiss(g); }}
-        switchAfter={(entries, id) => nextAfter(groupsIn(entries), id)} onSwitch={setSwitchTo} aside={asideFor(n)} />)}
+        switchAfter={(entries, id) => nextAfter(groupsIn(entries), id)} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} />)}
       {/* Below the cards, so the card you're logging on never moves down. */}
       <SessionSummary entries={store.entries} date={date} past={date < today} />
       <button className="wide add-exercise" data-tour="add" onClick={() => setPicking(true)}>Add exercise</button>

@@ -15,7 +15,8 @@ export function useProgram() {
     try { await db.putProgram(p); setProgram(p); setError(null); } catch (e) { setError(`Saving the program failed: ${String(e)}`); }
   }, []);
   const savePlan = useCallback(async (d: DayPlan) => {
-    try { await db.putDayPlan(d); setPlans((xs) => [...xs.filter((x) => x.key !== d.key), d]); setError(null); }
+    // The plan as it's kept (a planned lift tapped saves it again) changes nothing, so nothing renders.
+    try { await db.putDayPlan(d); setPlans((xs) => (xs.includes(d) ? xs : [...xs.filter((x) => x.key !== d.key), d])); setError(null); }
     catch (e) { setError(`Saving today's plan failed: ${String(e)}`); }
   }, []);
   return { program, plans, error, save, savePlan, reload };

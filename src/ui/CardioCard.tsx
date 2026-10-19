@@ -92,9 +92,10 @@ function CardioForm({ name, initial, submitLabel, onSubmit, onCancel, onDelete, 
 }
 
 /** A cardio machine on Today: its target, today's bouts and the form. Folds once the planned bout is logged. */
-export function CardioCard({ exercise, date, today: realToday = date, store, onOpen, plannedMinutes = null, gym, who, openReq = false, onOpenReq }: {
+export function CardioCard({ exercise, date, today: realToday = date, store, onOpen, plannedMinutes = null, gym, who, openReq = null }: {
   exercise: string; date: string; today?: string; store: SetsStore; onOpen: (name: string) => void; plannedMinutes?: number | null; gym?: string; who?: string;
-  openReq?: boolean; onOpenReq?: () => void;
+  /** Open it if it's folded: see LiftCard. */
+  openReq?: object | null;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
   const [opened, setOpened] = useState(false);
@@ -109,8 +110,8 @@ export function CardioCard({ exercise, date, today: realToday = date, store, onO
   const last = lastSession(store.entries.filter((e) => e.cardio), exercise, date);
   const target = cardioTarget(store.entries, exercise, plannedMinutes, date);
   const complete = plannedMinutes != null && bouts.length > 0;
-  if (openReq && complete && !opened) setOpened(true);
-  useEffect(() => { if (openReq) onOpenReq?.(); }, [openReq, onOpenReq]);
+  const [usedReq, setUsedReq] = useState<object | null>(null);
+  if (openReq && openReq !== usedReq) { setUsedReq(openReq); if (complete && !opened) setOpened(true); }
   const [owner] = useState(() => ({ profile: activeProfileDb(), date }));
   const prev = last?.sets.at(-1)?.cardio;
   const start: CardioData = { seconds: target.minutes * 60, ...(prev?.miles != null && { miles: prev.miles }), ...(target.aim != null && target.unit === 'mi' && { miles: target.aim }),

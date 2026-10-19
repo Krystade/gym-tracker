@@ -28,14 +28,15 @@ type CardProps = Parameters<typeof LiftCard>[0] & { plannedMinutes?: number | nu
 /** A cardio machine gets its own card: time and distance, not weight and reps. */
 export function ExerciseCard({ plannedMinutes, ...p }: CardProps) {
   return isCardio(p.exercise)
-    ? <CardioCard exercise={p.exercise} date={p.date} today={p.today} store={p.store} onOpen={p.onOpen} plannedMinutes={plannedMinutes} gym={p.gym} who={p.who} openReq={p.openReq} onOpenReq={p.onOpenReq} />
+    ? <CardioCard exercise={p.exercise} date={p.date} today={p.today} store={p.store} onOpen={p.onOpen} plannedMinutes={plannedMinutes} gym={p.gym} who={p.who} openReq={p.openReq} />
     : <LiftCard {...p} />;
 }
 
-function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = false, onOpenReq, who, swappedFrom, left = [], onGo,
+function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = null, who, swappedFrom, left = [], onGo,
   supersetWith, onNotSuperset, switchAfter, onSwitch, aside }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
-  openReq?: boolean; onOpenReq?: () => void;
+  /** The plan sent you to this card: open it if it's folded. Each request once (a render of the card's own keeps it). */
+  openReq?: object | null;
   /** Named on Add set when several people share the phone. */
   who?: string;
   /** The planned lift this one was swapped in for. */
@@ -122,8 +123,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
 
   const complete = plannedSets != null && plannedSets > 0 && working.length >= plannedSets;
   // The plan sent you here: open a folded card, but a card that isn't finished has nothing to open, so don't pin it open.
-  if (openReq && complete && !opened) setOpened(true);
-  useEffect(() => { if (openReq) onOpenReq?.(); }, [openReq, onOpenReq]);
+  const [usedReq, setUsedReq] = useState<object | null>(null);
+  if (openReq && openReq !== usedReq) { setUsedReq(openReq); if (complete && !opened) setOpened(true); }
   const folded = complete && !opened;
   // Finished while on screen: this card is where you are, so it offers what's left.
   const wasFolded = useRef(folded);

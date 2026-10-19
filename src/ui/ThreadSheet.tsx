@@ -4,6 +4,7 @@ import { blockFriend, clearSentGym, friendState, markRead, removeFriend, sendMes
 import { MAX_MESSAGE, messageOk, PRESET_KEYS, PRESETS, shortAgo, type PresetKey } from '../domain/messages';
 import { patchFriendCache, peekFriendCache, readLocally, refreshThread, useFriendCache } from '../state/friendCache';
 import { copyGym } from '../domain/share';
+import { useMinute } from '../state/clock';
 import type { GymsStore } from '../state/useGyms';
 import { Icon, initials } from './icons';
 
@@ -23,6 +24,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   me: string; friend: ThreadWith; gyms: GymsStore; onClose: () => void; onViewLog: (f: { uid: string; name: string }) => void; onChanged: () => void;
 }) {
   const cache = useFriendCache(me);
+  useMinute(); // each item's age ("5m") moves on by itself
   // A friend on the kept list is known at once (name, mute), so the pings work before anything is read.
   const known = cache?.lists?.friends.find((f) => f.uid === friend.uid);
   const [fetchedName, setName] = useState(friend.name ?? '');
