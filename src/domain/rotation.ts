@@ -1,11 +1,12 @@
 import { addDays } from './analytics';
 import { isCardio } from './cardio';
-import { isHold, isHoldLift, recentPain, similarity } from './care';
-import { CATALOG, PATTERNS, VARIATIONS, type Pattern } from './catalog';
+import { isHoldLift, recentPain, similarity } from './care';
+import { VARIATIONS, type Pattern } from './catalog';
 import { liftKey } from './ids';
+import { resolveLift } from './lifts';
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
 import type { Program } from './program';
-import { defaultSettings, isProgressionSet, isWorking, priorE1rm, type ExerciseSettings } from './progression';
+import { isProgressionSet, isWorking, priorE1rm, type ExerciseSettings } from './progression';
 import { renameInProgram } from './rename';
 import { e1rm, estimateWeightForReps, exerciseNames, liftSets, sameExercise, sessionsFor } from './stats';
 import type { SetEntry } from './types';
@@ -18,29 +19,8 @@ import type { SetEntry } from './types';
 const key = liftKey;
 const days = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
 
-const PATTERN_BY_KEY = new Map<string, Pattern>(PATTERNS.flatMap((p) => VARIATIONS[p].map((ex) => [key(ex), p] as const)));
-const CATALOG_KEYS = new Set(CATALOG.map(key));
-/** Words that make a lift not one of the six, though it has a pattern word in it ("Straight-Arm Pulldown", "Upright Row"). */
-const NOT_A_PATTERN = /straight[- ]?arm|pull-?over|upright row|face pull|\bshrug/i;
-/** A lift logged under its own name: its pattern from its words. First match wins: "Bench-Supported Row" is a row. */
-const WORDS: [RegExp, Pattern][] = [
-  [/deadlift|\brdl\b|good morning/i, 'Hinge'],
-  [/\bsquat|leg press|\bhack\b/i, 'Squat'],
-  [/\brows?\b/i, 'Horizontal pull'],
-  [/pull-?downs?\b|pull-?ups?\b|chin-?ups?\b/i, 'Vertical pull'],
-  [/overhead press|shoulder press|military|\bohp\b|push press|viking/i, 'Vertical press'],
-  [/bench|chest press|floor press|incline.*\bpress/i, 'Horizontal press'],
-];
-
-/** Which of the six movement patterns a lift is: the catalog table, else its words; null for anything outside them. */
-export function patternOf(name: string): Pattern | null {
-  const k = key(name);
-  const p = PATTERN_BY_KEY.get(k);
-  if (p) return p;
-  // A catalog lift left out of the table is left out on purpose; isolation, holds and cardio never rotate.
-  if (CATALOG_KEYS.has(k) || isHold(name) || isCardio(name) || NOT_A_PATTERN.test(k) || defaultSettings(name).repMin >= 10) return null;
-  return WORDS.find(([re]) => re.test(k))?.[1] ?? null;
-}
+/** Which of the six movement patterns a lift is (see resolveLift); null for anything outside them: isolation, holds, cardio. */
+export const patternOf = (name: string): Pattern | null => resolveLift(name).p;
 
 /** The muscle a lift trains most (the first at its top weight in muscles.ts): what "the same muscle bias" compares. */
 export function mainMuscle(name: string): Muscle | null {

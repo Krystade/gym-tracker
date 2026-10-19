@@ -1,4 +1,5 @@
 import { liftKey } from './ids';
+import { resolveLift } from './lifts';
 import { e1rm, estimateWeightForReps, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 import { isHold, isHoldLift } from './care';
@@ -13,13 +14,11 @@ export interface ExerciseSettings { key: string; repMin: number; repMax: number;
 
 export const settingsKey = (name: string): string => liftKey(name);
 
-const ISOLATION = /(curl|raise|fly|flye|extension|pushdown|push down|kickback|crunch|calf|face pull|rear delt|shrug|pec deck|pull-in|pullover|wrist|leg raise|sit-up|rotation|abduction|adduction)/i;
-
 /** `hold`: the lift is timed — known by name, or by its log (callers that have the log pass it). */
 export function defaultSettings(name: string, hold = isHold(name)): ExerciseSettings {
   // Holds count seconds: 20–40 s, as in the back-resilience block.
   if (hold) return { key: settingsKey(name), repMin: 20, repMax: 40, increment: 5 };
-  const iso = ISOLATION.test(name);
+  const iso = resolveLift(name).iso;
   return { key: settingsKey(name), repMin: iso ? 10 : 8, repMax: iso ? 15 : 12, increment: 5 };
 }
 

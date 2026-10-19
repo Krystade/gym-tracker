@@ -1,4 +1,5 @@
 import { liftKey } from './ids';
+import { LIFTS, resolveLift, type Needs } from './lifts';
 
 // What a gym has, and what each catalog lift needs. Generic gym gear only.
 
@@ -24,54 +25,17 @@ export const EQUIPMENT_GROUPS: [string, Equipment[]][] = [
 
 export interface Gym { id: string; name: string; equipment: Equipment[]; exclude: string[]; include: string[] }
 
-type Needs = Equipment[][];
-const NOTHING: Needs = [[]];
-const one = (...alts: Equipment[]): Needs => alts.map((e) => [e]);
-
 /** Every catalog lift → alternative gear sets; any one set, fully present, is enough. [[]] = nothing needed. */
-export const NEEDS: Record<string, Needs> = {
-  'Bench Press': [['barbell', 'flat bench']], 'Incline Bench Press': [['barbell', 'incline bench']], 'Smith Incline Press': [['smith machine', 'incline bench']],
-  'Smith Flat Press': [['smith machine', 'flat bench']], 'Incline DB Press': [['dumbbells', 'incline bench']], 'Flat DB Press': [['dumbbells', 'flat bench']],
-  'Machine Chest Press': one('chest press machine'), 'Machine Chest Fly': one('pec deck'), 'Cable Chest Fly': one('dual cable'),
-  'Low-to-High Cable Fly': one('dual cable'), 'Forward-Lean Dips': one('dip station'), 'Push-up': NOTHING, 'Weighted Push-up': one('plates', 'dumbbells'),
-  'Cable Pushdown': one('cable stack'), 'Rope Pushdown': one('cable stack'), 'Overhead Cable Extension': one('cable stack'),
-  'Overhead DB Triceps Extension': one('dumbbells'), 'Skullcrusher': [['barbell', 'flat bench'], ['dumbbells', 'flat bench']],
-  'Close-Grip Bench Press': [['barbell', 'flat bench'], ['smith machine', 'flat bench']], 'DB Kickback': one('dumbbells'), 'Cable Kickback': one('cable stack'),
-  'Triceps Press Machine': one('triceps machine'), 'Upright Dips': one('dip station'),
-  'DB Curl': one('dumbbells'), 'Incline DB Curl': [['dumbbells', 'incline bench']], 'Hammer Curl': one('dumbbells'), 'Cable Curl': one('cable stack'),
-  'Bayesian Cable Curl': one('cable stack'), 'Preacher Curl': [['preacher bench', 'dumbbells'], ['preacher bench', 'barbell']], 'Cross-Body DB Curl': one('dumbbells'),
-  'Machine Biceps Curl': one('biceps curl machine'), 'Reverse Curl': one('barbell', 'cable stack', 'dumbbells'), 'Wrist Curl': one('dumbbells', 'barbell'),
-  'Farmer’s Carry': one('dumbbells'), 'Plate Pinch Hold': one('plates'),
-  'Overhead Press': [['barbell', 'squat rack']], 'Machine Shoulder Press': one('shoulder press machine'), 'DB Shoulder Press': one('dumbbells'), 'Arnold Press': one('dumbbells'),
-  'DB Lateral Raise': one('dumbbells'), 'Cable Lateral Raise': one('cable stack'), 'Machine Lateral Raise': one('lateral raise machine'),
-  'Front Raise': one('dumbbells', 'plates', 'cable stack'), 'Face Pull': one('cable stack'), 'Cable Rear Delt Fly': one('dual cable', 'cable stack'), 'Reverse Pec Deck': one('pec deck'),
-  'Lat Pulldown': one('lat pulldown'), 'Close-Grip Lat Pulldown': one('lat pulldown'), 'Lat Pull-In': one('cable stack'), 'Pull-up': one('pull-up bar'),
-  'Chin-up': one('pull-up bar'), 'Seated Cable Row': one('cable stack'), 'Machine Row': one('row machine'),
-  'Chest-Supported Row': [['row machine'], ['dumbbells', 'incline bench']], 'Kneeling DB Row': [['dumbbells', 'flat bench']], 'Archer Pull': one('cable stack'),
-  'Straight-Arm Pulldown': one('cable stack', 'lat pulldown'),
-  'Cable Crunch': one('cable stack'), 'Ab Crunch Machine': one('ab crunch machine'), 'Decline Sit-up': one('decline bench'), 'Hanging Leg Raise': one('pull-up bar'),
-  'Supported Leg Raise': one('captain’s chair', 'dip station'), 'Torso Rotation Machine': one('torso rotation machine'), 'Plank': NOTHING, 'Side Plank': NOTHING,
-  'Bird Dog': NOTHING, 'McGill Curl-Up': NOTHING, 'Dead Bug': NOTHING, 'Back Extension': one('back extension bench'), 'Pallof Press': one('cable stack'),
-  'Leg Press': one('leg press'), 'Leg Extension': one('leg extension'), 'Seated Leg Curl': one('seated leg curl'), 'Lying Leg Curl': one('lying leg curl'),
-  'Deadlift': one('barbell'), 'Romanian Deadlift': one('barbell'), 'DB Romanian Deadlift': one('dumbbells'), 'Barbell Squat': [['barbell', 'squat rack']], 'Smith Squat': one('smith machine'),
-  'Front Squat': [['barbell', 'squat rack']], 'Pendulum Squat': one('pendulum squat'),
-  'Bulgarian Split Squat': one('flat bench'), 'Hip Thrust': [['barbell', 'hip thrust bench'], ['barbell', 'flat bench'], ['smith machine', 'flat bench']],
-  'Glute Press': one('glute press'), 'Hip Adduction Machine': one('hip adduction machine'), 'Hip Abduction Machine': one('hip abduction machine'),
-  'Standing Calf Raise': one('standing calf machine', 'smith machine', 'dumbbells'), 'Seated Calf Raise': one('seated calf machine'),
-  'Landmine Press': [['landmine', 'barbell']], 'Landmine Row': [['landmine', 'barbell']], 'T-Bar Row': [['landmine', 'barbell']],
-  'Landmine Squat': [['landmine', 'barbell']], 'Landmine Rotation': [['landmine', 'barbell']],
-  Treadmill: one('treadmill'), StairMaster: one('stair climber'), 'Exercise Bike': one('exercise bike'), Elliptical: one('elliptical'),
-};
+export const NEEDS: Record<string, Needs> = Object.fromEntries(LIFTS.flatMap((l) => (l.needs && !l.hidden ? [[l.name, l.needs]] : [])));
 
 const key = liftKey;
-const NEEDS_BY_KEY = new Map(Object.entries(NEEDS).map(([k, v]) => [key(k), v]));
 
 const MACHINES = new Set<Equipment>(EQUIPMENT_GROUPS.find(([g]) => g === 'Machines')![1]);
 const CARDIO_GEAR = new Set<Equipment>(EQUIPMENT_GROUPS.find(([g]) => g === 'Cardio')![1]);
 const CABLES = new Set<Equipment>(EQUIPMENT_GROUPS.find(([g]) => g === 'Cables')![1]);
 /** The main gear a catalog lift is done with, in a word ("dumbbells", "cable", "machine"); null when it isn't a catalog lift. */
 export function gearOf(exercise: string): string | null {
-  const needs = NEEDS_BY_KEY.get(key(exercise));
+  const needs = resolveLift(exercise).needs;
   if (!needs) return null;
   // Several kinds of gear work: no single one to name.
   if (needs.length > 1) return null;
@@ -89,7 +53,7 @@ export function canDo(gym: Gym | null, exercise: string): boolean | null {
   const k = key(exercise);
   if (gym.exclude.some((x) => key(x) === k)) return false;
   if (gym.include.some((x) => key(x) === k)) return true;
-  const needs = NEEDS_BY_KEY.get(k);
+  const needs = resolveLift(exercise).needs;
   if (!needs) return null;
   // A dual cable station is two cable stacks.
   const has = (e: Equipment) => gym.equipment.includes(e) || (e === 'cable stack' && gym.equipment.includes('dual cable'));
