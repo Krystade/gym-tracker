@@ -957,3 +957,6 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
   details.month > summary::after, details.day > summary::after,
   .chart-table > summary::after, details.builder > summary::after, .paste-help > summary::after { transition: none; }
 }
+.works .works-like { margin-left: 4px; vertical-align: baseline; }
+.works-pick { display: grid; gap: 10px; justify-items: start; }
+.works-pick input { width: 100%; }

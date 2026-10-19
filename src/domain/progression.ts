@@ -10,7 +10,8 @@ import { isHold, isHoldLift } from './care';
  */
 export interface Seed { weight: number; reps: number; from: string; date: string }
 // testSnoozedUntil: the "time for a test" banner stays hidden until this day.
-export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number; testSnoozedUntil?: string; seed?: Seed }
+/** `like`: the catalog lift this one works like, chosen on its page (round 15); its muscles, pattern and gear are that lift's. */
+export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number; testSnoozedUntil?: string; seed?: Seed; like?: string }
 
 export const settingsKey = (name: string): string => liftKey(name);
 

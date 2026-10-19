@@ -1,5 +1,6 @@
 import { liftKey, normalizeName } from './ids';
 import type { SetEntry } from './types';
+import { liftFactsVersion } from './lifts';
 
 const key = liftKey;
 export const sameExercise = (a: string, b: string) => a === b || key(a) === key(b);
@@ -7,14 +8,15 @@ export const sameExercise = (a: string, b: string) => a === b || key(a) === key(
 // Indexes of one log array, built on first use. The store never changes a log array in place: every add, edit, delete,
 // sync or reload makes a new one (state/useSets), so an index can't go stale; a changed log is a new array with its own.
 // The length is checked too, so an array pushed to after it was read is indexed again rather than read stale.
-interface Indexed<T> { n: number; v: T }
+// What a name counts as can change too ("Works like…"), so an index also remembers the version of the lift facts it read.
+interface Indexed<T> { n: number; f: number; v: T }
 export function perLog<T>(build: (entries: readonly SetEntry[]) => T): (entries: readonly SetEntry[]) => T {
   const cache = new WeakMap<readonly SetEntry[], Indexed<T>>();
   return (entries) => {
     const hit = cache.get(entries);
-    if (hit && hit.n === entries.length) return hit.v;
+    if (hit && hit.n === entries.length && hit.f === liftFactsVersion()) return hit.v;
     const v = build(entries);
-    cache.set(entries, { n: entries.length, v });
+    cache.set(entries, { n: entries.length, f: liftFactsVersion(), v });
     return v;
   };
 }

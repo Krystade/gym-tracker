@@ -1,5 +1,5 @@
 import type { Equipment } from './equipment';
-import { nameKey } from './ids';
+import { liftKey, nameKey } from './ids';
 import type { Muscle, Vector } from './muscles';
 
 // Every lift the app knows, one record each: its muscles, movement pattern, gear and rep range (round 15). The picker's
@@ -615,16 +615,36 @@ function build(ws: string[]): Built {
 export const fromWords = (name: string): Built => build(words(name));
 
 /** How a name's facts were found: its record in the table (by any spelling that folds to its name, or one of its other names), its words, or not at all. */
-export type How = 'catalog' | 'alias' | 'built' | 'none';
+export type How = 'like' | 'catalog' | 'alias' | 'built' | 'none';
 /** What a lift name counts as. `lift`: its record, when the table has one. */
 export interface Resolved extends Built { how: How; lift?: Lift }
 
 /** Folded words in any order: "Dumbbell Incline Press" is Incline DB Press. */
 export const wordKey = (name: string): string => words(name).sort().join(' ');
 const BY_KEY = new Map(LIFTS.map((l) => [wordKey(l.name), l]));
+const BY_NAME = new Map(LIFTS.map((l) => [l.name, l]));
 const BY_AKA = new Map(LIFTS.flatMap((l) => (l.aka ?? []).map((a) => [wordKey(a), l] as const)));
 
+// "Works like…": a lift he says works like a catalog lift counts as that lift (stage 4). Set from his settings (state/useSettings);
+// keyed like settings, by liftKey. A choice that names no catalog lift is ignored.
+const LIKE = new Map<string, Lift>();
+let factsVersion = 0;
+/** Bumped whenever what a name counts as can change: caches built from names (perLog) are rebuilt. */
+export const liftFactsVersion = (): number => factsVersion;
+/** The "Works like…" choices, as [lift name or settings key, catalog lift name]; replaces the previous ones. */
+export function setWorksLike(pairs: Iterable<readonly [string, string]>): void {
+  const next = new Map<string, Lift>();
+  for (const [name, like] of pairs) { const l = BY_NAME.get(like); if (l) next.set(liftKey(name), l); }
+  if (next.size === LIKE.size && [...next].every(([k, l]) => LIKE.get(k) === l)) return;
+  LIKE.clear();
+  for (const [k, l] of next) LIKE.set(k, l);
+  RESOLVED.clear();
+  factsVersion++;
+}
+
 function resolve(name: string): Resolved {
+  const like = LIKE.size ? LIKE.get(liftKey(name)) : undefined;
+  if (like) return { m: like.m, p: like.p ?? null, needs: like.needs, iso: !!like.iso, how: 'like', lift: like };
   const ws = words(name);
   const lift = BY_KEY.get([...ws].sort().join(' '));
   if (lift) return { m: lift.m, p: lift.p ?? null, needs: lift.needs, iso: !!lift.iso, how: 'catalog', lift };

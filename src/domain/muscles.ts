@@ -31,5 +31,6 @@ export function worksLine(name: string): string {
   if (!r.m) return 'Muscles unknown';
   const gear = gearOf(name);
   const parts = [musclesText(r.m), r.p?.toLowerCase(), gear].filter(Boolean);
+  if (r.how === 'like') return `Works like ${r.lift!.name}: ${parts.join(' · ')}`;
   return `Works ${parts.join(' · ')}${r.how === 'built' ? ' · guessed from the name' : ''}`;
 }

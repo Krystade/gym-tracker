@@ -1,4 +1,4 @@
-import { nameKey } from './ids';
+import { nameKey, nameSimilarity } from './ids';
 import { LIFTS, resolveLift, words, type Lift } from './lifts';
 
 // Finding a lift by name (round 15): one search for the picker, the Lifts tab and the gym's list. Names and other names (aka),
@@ -56,4 +56,12 @@ export function searchLifts(query: string, logged: string[]): string[] {
   }
   // Stable: the table's order within a rank.
   return ranked.sort((a, b) => a[1] - b[1]).map(([n]) => n);
+}
+
+/** The catalog lifts a name is most like, for "Works like…": most words in common, then the ones it already counts as, then common. */
+export function nearestLifts(name: string, n = 5): string[] {
+  const m = resolveLift(name).m;
+  const main = m && (Object.entries(m).find(([, w]) => w === 1)?.[0] as keyof typeof m | undefined);
+  const score = (l: Lift) => nameSimilarity(name, l.name) * 4 + (main && l.m?.[main] === 1 ? 1 : 0) + (l.common ? 0.5 : 0);
+  return LIFTS.filter((l) => l.m).map((l) => [l, score(l)] as const).sort((a, b) => b[1] - a[1]).slice(0, n).map(([l]) => l.name);
 }

@@ -12,6 +12,8 @@ import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
 import { CATALOG, PROGRAM_LIFTS } from '../domain/catalog';
 import { worksLine } from '../domain/muscles';
+import { resolveLift } from '../domain/lifts';
+import { nearestLifts, searchLifts } from '../domain/search';
 import { calibrate, calibratedE1rm, testDue, weightForReps } from '../domain/estimators';
 import { localDate } from '../domain/ids';
 import { addDays } from '../domain/analytics';
@@ -164,6 +166,38 @@ function RenameLift({ name, store, settings, gyms, programs, onRenamed }: {
   );
 }
 
+/**
+ * What the lift works, and for a name the catalog doesn't list, "Works like…": pick the catalog lift it counts as (the five
+ * nearest first, or search), or Automatic to read it from its name again. Optional, never asked.
+ */
+function WorksLine({ name, settings, readOnly }: { name: string; settings: SettingsStore; readOnly?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const how = resolveLift(name).how;
+  const custom = how === 'built' || how === 'none' || how === 'like';
+  const cur = settings.get(name);
+  const choose = async (like: string | undefined) => {
+    const { like: _old, ...rest } = cur;
+    await settings.save(like ? { ...rest, like } : rest);
+    setOpen(false); setQ('');
+  };
+  const options = q.trim() ? searchLifts(q, []).slice(0, 8) : nearestLifts(name);
+  return (
+    <>
+      <p className="muted small works">{worksLine(name)}
+        {custom && !readOnly && !open && <> <button className="mini works-like" onClick={() => setOpen(true)}>Works like…</button></>}</p>
+      {open && <section className="card works-pick" aria-label="Works like">
+        <Input type="search" aria-label="Search lifts it works like" placeholder="Search lifts" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="chips" role="group" aria-label="Lifts it works like">
+          <button className="chip" aria-pressed={!cur.like} onClick={() => void choose(undefined)}>Automatic</button>
+          {options.map((o) => <button key={o} className="chip" aria-pressed={cur.like === o} onClick={() => void choose(o)}>{o}</button>)}
+        </div>
+        <button className="mini" onClick={() => { setOpen(false); setQ(''); }}>Cancel</button>
+      </section>}
+    </>
+  );
+}
+
 /** `readOnly`: a friend's lift, charts and history only. `onDay`: a record tapped opens its day in History. */
 export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly }: {
   name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void;
@@ -200,7 +234,7 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
     <>
       <button className="back" onClick={onBack}>‹ Back</button>
       <h1>{name}</h1>
-      <p className="muted small works">{worksLine(name)}</p>
+      <WorksLine name={name} settings={settings} readOnly={readOnly} />
       {!readOnly && <SuggestionCard s={sug} onLog={trainedToday ? undefined : onLog} />}
       {rot && <RotationSuggestion owner={owner} r={rot} carry={carry} known={store.entries.some((e) => sameExercise(e.exercise, rot.to))} today={today}
         onSwitch={inProgram(programs, name) ? async () => setSwitched({ to: rot.to, undo: await applyRotation(rot, carry, programs, settings, today, todayPlanFor(programs, store.entries, today)) }) : undefined} />}
