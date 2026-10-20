@@ -26,7 +26,7 @@ test('a forgotten set goes into yesterday at the suggested time, and the workout
   await page.clock.setFixedTime(new Date('2026-10-02T09:00:00'));
   await page.reload();
   await goto(page, 'History');
-  await expect(page.locator('details.day').filter({ hasText: 'Thu, Oct 1' })).toContainText('1 exercise · 5 sets · 18 min');
+  await expect(page.locator('details.day').filter({ hasText: 'Thu, Oct 1' })).toContainText('1 exercise · 5 sets · 17 min');
   await page.getByRole('button', { name: 'Add to this day' }).click();
   await expect(page.getByText('Logging to a past day')).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('18:09');
@@ -142,7 +142,7 @@ test('switching day with the same lift on both days gives each day its own time 
   await page.getByRole('button', { name: 'Previous day' }).click();
   await logBench(page, '135', '8');
   await goto(page, 'History');
-  await expect(page.locator('details.day').filter({ hasText: 'Thu, Oct 1' })).toContainText('1 exercise · 4 sets · 8 min');
+  await expect(page.locator('details.day').filter({ hasText: 'Thu, Oct 1' })).toContainText('1 exercise · 4 sets · 7 min');
 });
 
 test('a card added but not logged stays on its own day', async ({ page }) => {

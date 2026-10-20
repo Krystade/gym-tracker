@@ -14,13 +14,15 @@ import { availableSet } from '../domain/equipment';
 import { PROGRAM_LIFTS } from '../domain/catalog';
 import { DEFAULT_LOW_SHARE } from '../domain/profile';
 import { GymsScreen } from './GymsScreen';
-import { estimateSeconds, paces, perSessionForMinutes } from '../domain/timing';
+import { perSessionForMinutes } from '../domain/timing';
+import { sessionLengths } from '../domain/learn/session';
+import { atPace } from './TodayPlan';
 import { warmupCount } from '../domain/suggest';
 import { localDate } from '../domain/ids';
 import type { ProgramDay } from '../domain/program';
 import { Input } from './Field';
 
-export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel = '‹ Back', onBack, onOpenPriorities }: { programs: ProgramStore; profile: ProfileStore; entries: SetEntry[]; gyms: GymsStore; uid?: string | null; backLabel?: string; onBack: () => void; onOpenPriorities: () => void }) {
+export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel = '‹ Back', keptRest, onBack, onOpenPriorities }: { programs: ProgramStore; profile: ProfileStore; entries: SetEntry[]; gyms: GymsStore; uid?: string | null; backLabel?: string; /** His rest setting for a lift, if any: the plan's rests. */ keptRest?: (exercise: string) => number | undefined; onBack: () => void; onOpenPriorities: () => void }) {
   const p = programs.program;
   const [days, setDays] = useState(String(p?.days.length ?? profile.profile.weeklyGoal));
   const [per, setPer] = useState(String(p?.perSession ?? 14));
@@ -45,7 +47,6 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel
   const d = Number(days), s = Number(per), m = Number(mins);
   const valid = Number.isInteger(d) && d >= 1 && d <= 6 && (mode === 'sets' ? Number.isInteger(s) && s >= 8 && s <= 20 : Number.isInteger(m) && m >= 20 && m <= 150);
   const today = localDate(new Date());
-  const pace = useMemo(() => paces(entries), [entries]);
   // Warm-up counts per lift, worked out once per log change: the builder estimates many candidate programs.
   const warm = useMemo(() => {
     const cache = new Map<string, number>();
@@ -55,7 +56,9 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel
       return cache.get(k)!;
     };
   }, [entries, today]);
-  const dayMinutes = (day: ProgramDay) => Math.round(estimateSeconds(day.slots, pace, warm) / 60);
+  // A day's plan length (the timer's rests, warm-ups, his switch overhead), and his recent pace for it.
+  const lengths = (day: ProgramDay) => sessionLengths(entries, today, day.slots, { warmups: warm, kept: keptRest, fresh: true });
+  const dayMinutes = (day: ProgramDay) => Math.round(lengths(day).plan / 60);
 
   // What the program was built for, not the input: the minutes box can change without a rebuild. Only at the 8-set floor is it a miss the builder couldn't fix.
   const budget = p?.minutes;
@@ -141,9 +144,9 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel
       {bare ? <p className="warn small">No gear ticked at {gym.name}: only bodyweight lifts are used.</p>
         : p?.unavailable?.length ? <p className="warn small">Nothing at this gym trains: {p.unavailable.join(', ')}.</p> : null}
       {p?.cardioUnavailable && <p className="warn small">Cardio has a weekly goal, but no cardio machine is ticked at this gym.</p>}
-      {p && p.days.map((day, di) => (
+      {p && p.days.map((day, di) => { const L = lengths(day); return (
         <section className="card" key={day.name}>
-          <h2>{day.name} · {day.slots.reduce((a, x) => a + (x.minutes == null ? x.sets : 0), 0)} sets · ≈ {dayMinutes(day)} min</h2>
+          <h2>{day.name} · {day.slots.reduce((a, x) => a + (x.minutes == null ? x.sets : 0), 0)} sets · ≈ {Math.round(L.plan / 60)} min{L.both && <span className="muted small day-pace">{atPace(L.pace!)}</span>}</h2>
           <ol className="prog-slots" aria-label={`${day.name} exercises`}>
             {day.slots.map((slot, si) => slot.minutes != null ? (
               <li key={slot.exercise}>
@@ -168,7 +171,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel
           )}
           <button className="wide" onClick={() => setAddTo(di)}>Add exercise to {day.name}</button>
         </section>
-      ))}
+      ); })}
       {p && (
         <section className="card">
           <h2>Back resilience</h2>

@@ -5,12 +5,17 @@ import { nextDay, type DayPlan, type Program, type Slot } from '../domain/progra
 import { sameExercise } from '../domain/stats';
 import { isHoldLift } from '../domain/care';
 import type { ProgramStore } from '../state/useProgram';
-import { estimateSeconds, hhmm, paces, timedDay } from '../domain/timing';
+import { hhmm, planSeconds, stepsOf } from '../domain/timing';
+import { paceBefore, sessionLengths, type Forecast } from '../domain/learn/session';
 import { warmupCount } from '../domain/suggest';
 import { fmtLoad } from './SuggestionCard';
 import { cardioTarget } from '../domain/cardio';
 import { Icon } from './icons';
 import { Input } from './Field';
+
+const toMin = (s: number) => Math.round(s / 60);
+/** His pace for a plan, as shown beside its length: the forecast and its middle 80 %. */
+export const atPace = (f: Forecast) => `at your recent pace ≈ ${toMin(f.seconds)} min (${toMin(f.lo)}–${toMin(f.hi)})`;
 
 /** Done for the plan: a working set, or a cardio bout. */
 const doneEntry = (e: SetEntry) => isWorking(e) || !!e.cardio;
@@ -41,7 +46,7 @@ export function leftToDo(program: Program, plan: DayPlan, entries: SetEntry[]): 
 }
 
 /** `buildQuick`: a one-off day of lifts that fits, for the Quick chip. */
-export function TodayPlan({ program, plan, entries, past, open, onToggle, onChange, onOpen, onSwap, buildQuick, loadFor, rangeFor }: {
+export function TodayPlan({ program, plan, entries, past, open, onToggle, onChange, onOpen, onSwap, buildQuick, loadFor, rangeFor, keptRest }: {
   program: Program; plan: DayPlan; entries: SetEntry[]; past?: boolean; open: boolean; onToggle: () => void;
   onChange: (p: DayPlan) => void; onOpen: (exercise: string) => void; onSwap: (original: string) => void;
   buildQuick: (fits: (slots: Slot[]) => boolean) => Slot[];
@@ -49,13 +54,14 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
   loadFor?: (exercise: string, sets: number) => number | null;
   /** A lift's rep range from its settings, for one swapped in. */
   rangeFor?: (exercise: string, hold: boolean) => { repMin: number; repMax: number };
+  /** His rest setting for a lift (the timer's base), if he's set one: the plan's rests. */
+  keptRest?: (exercise: string) => number | undefined;
 }) {
   const quick = plan.quick != null;
   const day = quick ? { name: 'Quick', slots: plan.slots ?? [] } : program.days[plan.day] ?? program.days[0];
   const [minutes, setMinutes] = useState(String(plan.quick ?? program.minutes ?? 30));
   const doneOf = (ex: string) => entries.filter((e) => e.date === plan.date && sameExercise(e.exercise, ex) && doneEntry(e)).length;
   const title = past ? 'Plan' : 'Today’s plan';
-  const pace = useMemo(() => paces(entries), [entries]);
   // Warm-up counts per lift, worked out once per log change.
   const warm = useMemo(() => {
     const cache = new Map<string, number>();
@@ -65,9 +71,10 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
       return cache.get(k)!;
     };
   }, [entries, plan.date]);
-  // Quick: as many pairs of sets as fit the minutes, from your own pace with warm-ups.
+  // Quick: as many pairs of sets as fit the minutes at the plan's length (the timer's rests, warm-ups, his switch overhead).
+  const overhead = useMemo(() => paceBefore(entries, plan.date)?.overhead ?? 0, [entries, plan.date]);
   const pickQuick = (mins: number) => onChange({ ...plan, quick: mins, skips: [], swaps: {},
-    slots: buildQuick((slots) => estimateSeconds(slots, pace, warm) <= mins * 60) });
+    slots: buildQuick((slots) => planSeconds(stepsOf(slots, warm), { kept: keptRest, overhead }) <= mins * 60) });
   // A swapped-in lift's own range (a hold swapped for a lift counts seconds), as its card will show.
   const range = (slot: Slot, target: string) => {
     const hold = isHoldLift(target, entries);
@@ -80,13 +87,14 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
   const total = live.reduce((n, s) => n + s.sets, 0);
   const setsDone = live.reduce((n, s) => n + Math.min(s.sets, doneOf(plan.swaps[s.exercise] ?? s.exercise)), 0);
   // The second line of the header: how long it runs when open, how far along when folded. Inside the
-  // toggle, so it fills the 44 px tap area instead of sitting under it.
+  // toggle, so it fills the 44 px tap area instead of sitting under it. The plan's length, and his recent pace beside it when
+  // the two are over 10 min apart (owner); once started, when it ends at his pace.
   const length = () => {
     const todo = live.map((s) => ({ exercise: plan.swaps[s.exercise] ?? s.exercise, sets: s.sets, minutes: s.minutes }));
-    const mins = Math.round(estimateSeconds(todo, pace, warm) / 60);
-    const first = timedDay(entries, plan.date)[0];
-    const start = first ? new Date(first.loggedAt!) : null;
-    return <span className="muted small" aria-label="Plan length">≈ {mins} min{start && ` · started ${hhmm(start)} · ends ≈ ${hhmm(new Date(start.getTime() + mins * 60_000))}`}</span>;
+    const L = sessionLengths(entries, plan.date, todo, { warmups: warm, kept: keptRest });
+    const when = L.started != null && `started ${hhmm(new Date(L.started))} · ends ≈ ${hhmm(new Date(L.endsAt!))}`;
+    // With his pace beside the length, when it started and ends goes on a line of its own.
+    return <span className="muted small" aria-label="Plan length">≈ {toMin(L.plan)} min{L.both && ` · ${atPace(L.pace!)}`}{when && (L.both ? <><br />{when}</> : ` · ${when}`)}</span>;
   };
   return (
     <section className="card plan" aria-label={title}>

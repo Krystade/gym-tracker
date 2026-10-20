@@ -6,7 +6,7 @@ import { parseCsv, toCsv } from './csv';
 import { defaultProfile } from './profile';
 import { adherence, buildProgram, nextDay, quickDay, type DayPlan } from './program';
 import { parseNotes, toEntries } from './notes';
-import { estimateSeconds, perSessionForMinutes, DEFAULT_PACE } from './timing';
+import { perSessionForMinutes, planSeconds, stepsOf } from './timing';
 
 let seq = 0;
 const bout = (date: string, exercise: string, cardio: CardioData): SetEntry => ({
@@ -107,8 +107,7 @@ describe('program', () => {
     expect(p.cardioUnavailable).toBe(true);
   });
   it('cardio minutes come out of a minutes budget', () => {
-    const pace = { perSet: new Map<string, number>(), transition: DEFAULT_PACE.transition };
-    const est = (d: { slots: { exercise: string; sets: number; minutes?: number }[] }) => estimateSeconds(d.slots, pace) / 60;
+    const est = (d: { slots: { exercise: string; sets: number; minutes?: number }[] }) => planSeconds(stepsOf(d.slots)) / 60;
     const per = (t: 1 | 4) => perSessionForMinutes(50, (n) => buildProgram(tier(t), [], { days: 2, perSession: n }, NOW), est);
     expect(per(1)).toBeLessThan(per(4));
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PACE, estimateSeconds, restFor, paces, switchFor, perSessionForMinutes, perSetSeconds, restAfter, restSeconds, sessionDay, sessionMinutes, suggestTime, usualGap, usualMinutes } from './timing';
+import { DEFAULT_PACE, planSeconds, restFor, paces, switchFor, perSessionForMinutes, perSetSeconds, restAfter, restSeconds, sessionDay, sessionMinutes, SET_WORK, stepsLeft, stepsOf, suggestTime, usualGap, usualMinutes } from './timing';
 import type { SetEntry } from './types';
 import type { Program } from './program';
 
@@ -37,17 +37,36 @@ describe('paces', () => {
   });
 });
 
-describe('estimates', () => {
-  it('adds sets, switches between lifts and warm-ups', () => {
-    const p = paces([]);
-    // 3 bench (180 s) + 2 curls (120 s) + 1 switch (120 s) + 2 warm-ups (60 s)
-    expect(estimateSeconds([{ exercise: 'Bench Press', sets: 3 }, { exercise: 'Cable Curl', sets: 2 }], p, (ex) => (ex === 'Bench Press' ? 2 : 0)))
-      .toBe(3 * 180 + 2 * 120 + 120 + 2 * 60);
+describe('plan length (prescribed: the timer’s rests, not his habit)', () => {
+  it('is the first set, then each set’s prescribed rest before it and the set: one rest fewer than sets, none counted twice', () => {
+    // 3 bench, 2 curls: 40 + 2 × (180 + 40) [bench to bench] + (180 + 40) [bench to curls] + (120 + 40) [curl to curl].
+    const steps = stepsOf([{ exercise: 'Bench Press', sets: 3 }, { exercise: 'Cable Curl', sets: 2 }]);
+    expect(planSeconds(steps)).toBe(SET_WORK + 2 * (180 + SET_WORK) + (180 + SET_WORK) + (120 + SET_WORK));
+    // His ±30 s setting for a lift is the rest the timer gives: the plan sums that.
+    expect(planSeconds(steps, { kept: (ex) => (ex === 'Bench Press' ? 240 : undefined) }) - planSeconds(steps)).toBe(3 * 60);
+    // What a switch costs him (learn/session) goes in once per switch.
+    expect(planSeconds(steps, { overhead: 50 }) - planSeconds(steps)).toBe(50);
   });
-  it('measures a session from first to last timed set plus one typical set', () => {
+  it('a warm-up rests its own 60/90 s; only the first lift that warms up does', () => {
+    const steps = stepsOf([{ exercise: 'Bench Press', sets: 2 }, { exercise: 'Leg Press', sets: 1 }], () => 1);
+    expect(steps.map((s) => `${s.exercise}${s.warmup ? ' w' : ''}`)).toEqual(['Bench Press w', 'Bench Press', 'Bench Press', 'Leg Press']);
+    expect(planSeconds(steps)).toBe(SET_WORK + (90 + SET_WORK) + (180 + SET_WORK) + (180 + SET_WORK));
+  });
+  it('a cardio bout takes its minutes, and has no rest after it', () => {
+    const steps = stepsOf([{ exercise: 'Bench Press', sets: 1 }, { exercise: 'Treadmill', sets: 1, minutes: 10 }, { exercise: 'Cable Curl', sets: 1 }]);
+    expect(planSeconds(steps)).toBe(SET_WORK + (180 + 600) + SET_WORK);
+  });
+  it('what’s left: the lift going now first, then the plan’s order; warm-ups only for a lift not started', () => {
+    const slots = [{ exercise: 'Bench Press', sets: 3 }, { exercise: 'Lat Pulldown', sets: 2 }, { exercise: 'Cable Curl', sets: 2 }];
+    const done = (ex: string) => ({ 'Lat Pulldown': 1 } as Record<string, number>)[ex] ?? 0;
+    expect(stepsLeft(slots, done, 'Lat Pulldown', (ex) => (ex === 'Bench Press' ? 1 : 0)).map((s) => `${s.exercise}${s.warmup ? ' w' : ''}`))
+      .toEqual(['Lat Pulldown', 'Bench Press w', 'Bench Press', 'Bench Press', 'Bench Press', 'Cable Curl', 'Cable Curl']);
+    expect(stepsLeft(slots, (ex) => (ex === 'Bench Press' ? 3 : 0), 'Bench Press', () => 1).map((s) => s.exercise)).toEqual(['Lat Pulldown', 'Lat Pulldown', 'Cable Curl', 'Cable Curl']);
+  });
+  it('measures a session from the start of its first timed set to its last: what the forecast predicts', () => {
     const log = [at('2026-09-28', '18:00'), at('2026-09-28', '18:40', 'Cable Curl'), at('2026-09-28', '23:59', 'Cable Curl', false)];
-    expect(sessionMinutes(log, '2026-09-28', paces([]))).toBe(42); // 40 min + 120 s curl
-    expect(sessionMinutes([at('2026-09-28', '18:00')], '2026-09-28', paces([]))).toBeNull();
+    expect(sessionMinutes(log, '2026-09-28')).toBe(41); // 40 min and the first set's 40 s
+    expect(sessionMinutes([at('2026-09-28', '18:00')], '2026-09-28')).toBeNull();
   });
   it('picks the most sets per session whose every day fits the minutes', () => {
     const build = (per: number): Program => ({ key: 'program', perSession: per, createdAt: '', days: [{ name: 'A', slots: [{ exercise: 'Bench Press', sets: per, repMin: 8, repMax: 12 }] }] });
@@ -91,31 +110,21 @@ describe('suggestTime', () => {
   });
 });
 
-describe('warm-ups in a time estimate', () => {
-  it('count once a session: only the first lift that warms up', () => {
-    const p = { perSet: new Map<string, number>(), transition: 0 };
-    const one = estimateSeconds([{ exercise: 'Bench Press', sets: 1 }], p, () => 1);
-    const two = estimateSeconds([{ exercise: 'Bench Press', sets: 1 }, { exercise: 'Leg Press', sets: 1 }], p, () => 1);
-    expect(two - one).toBe(perSetSeconds(p, 'Leg Press'));
-  });
-});
-
 describe('usualMinutes', () => {
-  // A day of sets from `start`, one every 3 minutes: n sets last (n - 1) × 3 min plus one set.
+  // A day of sets from `start`, one every 3 minutes: n sets last (n - 1) × 3 min and the first set.
   const day = (date: string, n: number) => Array.from({ length: n }, (_, i) => at(date, `18:${String(i * 3).padStart(2, '0')}`));
   const TODAY = '2026-10-17';
   it('is the median of the last 8 weeks’ timed sessions, today and older days left out', () => {
     const log = [...day('2026-10-01', 11), ...day('2026-10-05', 16), ...day('2026-10-09', 6), ...day('2026-10-17', 20), ...day('2026-07-01', 20)];
-    const p = paces(log);
-    const mins = ['2026-10-01', '2026-10-05', '2026-10-09'].map((d) => sessionMinutes(log, d, p)!).sort((a, b) => a - b);
-    expect(usualMinutes(log, TODAY, p)).toBe(mins[1]);
-    expect(mins[1]).not.toBe(sessionMinutes(log, '2026-10-17', p));
+    const mins = ['2026-10-01', '2026-10-05', '2026-10-09'].map((d) => sessionMinutes(log, d)!).sort((a, b) => a - b);
+    expect(usualMinutes(log, TODAY)).toBe(mins[1]);
+    expect(mins[1]).not.toBe(sessionMinutes(log, '2026-10-17'));
   });
   it('is 45 with fewer than 3 timed sessions, and keeps to 15–120', () => {
     const two = [...day('2026-10-01', 11), ...day('2026-10-05', 16)];
-    expect(usualMinutes(two, TODAY, paces(two))).toBe(45);
+    expect(usualMinutes(two, TODAY)).toBe(45);
     const short = ['2026-10-01', '2026-10-03', '2026-10-05'].flatMap((d) => day(d, 2));
-    expect(usualMinutes(short, TODAY, paces(short))).toBe(15);
+    expect(usualMinutes(short, TODAY)).toBe(15);
   });
 });
 

@@ -451,6 +451,8 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 .plan h2:last-child { margin-bottom: 0; } /* folded: nothing under the title */
 .plan-toggle { width: 100%; padding: 0; border: 0; background: none; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left; font-size: inherit; font-weight: inherit; }
 .plan-toggle .muted { font-weight: 400; }
+/* A program day's heading: his recent pace for it on a line of its own, under the plan's length. */
+.day-pace { display: block; margin-top: 2px; font-weight: 400; }
 /* B's scoreboard line: sets done of planned, big and tabular, over a bar with a segment per set. */
 .sets-progress { margin: 8px 0 12px; }
 .sets-num { margin: 0 0 6px; font-size: var(--fs-xl); line-height: 28px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
@@ -958,6 +960,7 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 .suggested h2:last-child { margin-bottom: 0; }
 .suggested .suggested-minutes { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; }
 .suggested .suggested-minutes input { width: 72px; }
+.suggested .suggested-pace { margin: 0 0 8px; }
 .suggested .suggested-slots { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .suggested .suggested-name { width: 100%; min-height: 44px; padding: 6px 10px; display: grid; gap: 1px; justify-items: start; justify-content: stretch; text-align: left; line-height: 1.25; }
 .suggested .suggested-name b { overflow-wrap: anywhere; font-weight: 600; }

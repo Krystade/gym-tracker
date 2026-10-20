@@ -5,8 +5,8 @@ import type { Program, ProgramDay } from './program';
 import type { SetEntry } from './types';
 import { supersets, type Superset } from './superset';
 
-/** Seconds, until your own data takes over: a set plus its rest, a switch between lifts, a warm-up set. */
-export const DEFAULT_PACE = { compound: 180, isolation: 120, transition: 120, warmup: 60 } as const;
+/** Seconds, until your own data takes over: a set plus its rest, a switch between lifts (paces: suggestTime's fallback). */
+export const DEFAULT_PACE = { compound: 180, isolation: 120, transition: 120 } as const;
 const MAX_SAME = 10 * 60, MAX_SWITCH = 15 * 60, MIN_SAMPLES = 3;
 
 const secs = (e: SetEntry) => doneAt(e) / 1000;
@@ -19,8 +19,8 @@ export const timedDay = (entries: SetEntry[], date: string): SetEntry[] =>
 
 /**
  * `superSwitch`: inside a superset, the median time from a set of one lift to the next lift's set (once there are 3).
- * `perSet`: per lift, every gap's median, for estimates. A lift's rest goes by none of these (restFor): they describe the
- * habit, not what's best.
+ * `perSet`: per lift, every gap's median, for a late set's time and telling a superset's switch from a rest. A lift's rest goes
+ * by none of these (restFor): they describe the habit, not what's best. How long a session takes is learn/session's.
  */
 export interface Paces { perSet: Map<string, number>; transition: number; superSwitch?: number }
 
@@ -86,14 +86,18 @@ function pacesOf(entries: readonly SetEntry[]): Paces {
 export const perSetSeconds = (p: Paces, exercise: string): number =>
   p.perSet.get(settingsKey(exercise)) ?? (defaultSettings(exercise).repMin >= 10 ? DEFAULT_PACE.isolation : DEFAULT_PACE.compound);
 
-/** About how long a set itself takes; the learned set-to-set time includes it. */
-const SET_WORK = 40;
+/**
+ * (a) About how long a set itself takes: ~10 reps at 2–4 s a rep is 20–40 s (Schoenfeld, Ogborn & Krieger 2015, Sports Med
+ * 45:577: repetitions of 0.5–8 s in the trials); the upper end. The learned set-to-set time includes it.
+ */
+export const SET_WORK = 40;
 /**
  * The research default rest (owner, 2026-10-19): 2:00 for an isolation (small) lift, 3:00 for a compound (big) one. It
  * prescribes; his own set-to-set gaps (5 – 7:30) are a habit, and never move it (owner, 2026-10-20).
  */
 const REST = { isolation: 120, compound: 180 } as const;
-const isIsolation = (exercise: string) => defaultSettings(exercise).repMin >= 10;
+/** A small (isolation) lift, by its default range: the rest timer's two classes, and the session forecast's two kinds. */
+export const isIsolation = (exercise: string) => defaultSettings(exercise).repMin >= 10;
 const defaultRest = (exercise: string) => (isIsolation(exercise) ? REST.isolation : REST.compound);
 
 /** Where a lift's base rest came from: his setting, kept from the timer's ±30 s, or the research default. */
@@ -103,6 +107,9 @@ function baseRest(exercise: string, kept?: number): { base: number; from: RestFr
 }
 /** A lift's base rest: the one he kept for it with the timer's ±30 s (`kept`, ExerciseSettings.rest); else the research default. */
 export const restSeconds = (exercise: string, kept?: number): number => baseRest(exercise, kept).base;
+
+/** (c) A warm-up's rest: 60 s for an isolation lift, 90 s for a compound one (no study; 00-core §4.1). */
+export const warmupRest = (exercise: string): number => (isIsolation(exercise) ? 60 : 90);
 
 /** The rest's bounds, and what effort can move it by. */
 export const REST_MIN_S = 45, REST_MAX_S = 300, REST_STEP = 30;
@@ -126,7 +133,7 @@ export function restFor(set: SetEntry, o: { kept?: number } = {}): { seconds: nu
   const { base, from } = baseRest(set.exercise, o.kept);
   const iso = isIsolation(set.exercise);
   if (set.flags.includes('warmup')) {
-    const seconds = iso ? 60 : 90;
+    const seconds = warmupRest(set.exercise);
     return { seconds, why: { base, from, effort: 0, warmup: true }, parts: [{ what: 'Warm-up', s: seconds, note: iso ? 'isolation lift' : 'compound lift' }] };
   }
   const effort = set.rir === 0 ? REST_STEP : set.rir != null && set.rir >= 3 ? -REST_STEP : 0;
@@ -158,19 +165,61 @@ export function switchFor(p: Paces): { seconds: number; parts: RestPart[] } {
   return { seconds, parts: [{ what: 'Superset switch', s: seconds, note: p.superSwitch == null ? 'default until 3 switches are timed' : 'your usual switch, less the set itself' }] };
 }
 
-/** A list of lifts and sets, in seconds: every set, a switch between lifts, and the warm-up of the first lift that has one (`warmups(ex)` sets). */
-export function estimateSeconds(slots: { exercise: string; sets: number; minutes?: number }[], p: Paces, warmups: (ex: string) => number = () => 0): number {
-  const warm = slots.filter((s) => s.minutes == null).map((s) => warmups(s.exercise)).find((n) => n > 0) ?? 0; // only the session's first compound warms up
-  // A cardio slot takes its minutes.
-  const work = warm * DEFAULT_PACE.warmup + slots.reduce((a, s) => a + (s.minutes != null ? s.minutes * 60 : s.sets * perSetSeconds(p, s.exercise)), 0);
-  return work + Math.max(0, slots.length - 1) * p.transition;
+/**
+ * One set of a session, in the order it's done: a lift's warm-up or working set, or a cardio bout (`seconds`: its planned
+ * time). What a plan's length and the session forecast (learn/session) are summed over.
+ */
+export interface Step { exercise: string; warmup?: boolean; seconds?: number }
+export interface PlanSlot { exercise: string; sets: number; minutes?: number }
+
+/**
+ * A day's slots as the sets they'll be done as: each lift's warm-ups, then its working sets; a cardio slot is one bout. Only
+ * the session's first lift that warms up (`warmups(ex)` sets) does (the others are warm by then).
+ */
+export function stepsOf(slots: readonly PlanSlot[], warmups: (ex: string) => number = () => 0): Step[] {
+  const first = slots.find((s) => s.minutes == null && warmups(s.exercise) > 0);
+  return slots.flatMap((s): Step[] => s.minutes != null ? [{ exercise: s.exercise, seconds: s.minutes * 60 }]
+    : [...Array.from({ length: s === first ? warmups(s.exercise) : 0 }, () => ({ exercise: s.exercise, warmup: true })),
+      ...Array.from({ length: s.sets }, () => ({ exercise: s.exercise }))]);
 }
 
-/** How long a logged day took: first to last timed set, plus one typical set for the last. Null with fewer than 2 timed sets. */
-export function sessionMinutes(entries: SetEntry[], date: string, p: Paces): number | null {
+/** The steps still to do: each slot's sets not done yet (`done(ex)`), the lift being done now (`now`) first; its warm-ups only if it isn't started. */
+export function stepsLeft(slots: readonly PlanSlot[], done: (ex: string) => number, now: string | null, warmups: (ex: string) => number = () => 0): Step[] {
+  const first = slots.find((s) => s.minutes == null && warmups(s.exercise) > 0);
+  const left = slots.map((s) => ({ ...s, sets: s.minutes != null ? (done(s.exercise) > 0 ? 0 : 1) : Math.max(0, s.sets - done(s.exercise)) }))
+    .filter((s) => s.sets > 0);
+  const at = now == null ? -1 : left.findIndex((s) => s.exercise.toLowerCase() === now.toLowerCase());
+  const order = at < 0 ? left : [left[at], ...left.filter((_, i) => i !== at)];
+  return stepsOf(order, (ex) => (first && ex === first.exercise && done(ex) === 0 ? warmups(ex) : 0));
+}
+
+/**
+ * How long a plan should take (owner, 2026-10-20: sized for good training, not his habit): the first set, then before each set
+ * the rest the timer prescribes after the one before it (restSeconds: his ±30 s setting `kept(ex)`, else the research default;
+ * a warm-up's warmupRest; none after cardio, which has no timer) and the set itself (SET_WORK, a cardio bout its minutes), plus
+ * `overhead` (learn/session, b: what a switch to another lift takes him beyond a set-to-set gap) at each switch. Effort isn't
+ * known before a set, so the RIR ±30 s is not in it.
+ */
+export function planSeconds(steps: readonly Step[], o: { kept?: (ex: string) => number | undefined; overhead?: number } = {}): number {
+  if (!steps.length) return 0;
+  const work = (s: Step) => s.seconds ?? SET_WORK;
+  let t = work(steps[0]);
+  for (let k = 1; k < steps.length; k++) {
+    const a = steps[k - 1], b = steps[k];
+    const rest = a.seconds != null ? 0 : a.warmup ? warmupRest(a.exercise) : restSeconds(a.exercise, o.kept?.(a.exercise));
+    t += rest + work(b) + (a.exercise.toLowerCase() !== b.exercise.toLowerCase() ? o.overhead ?? 0 : 0);
+  }
+  return t;
+}
+
+/**
+ * How long a logged day took: from the start of its first timed set (its done-time less SET_WORK) to the done-time of its
+ * last. Null with fewer than 2 timed sets. The session forecast (learn/session) predicts the same span.
+ */
+export function sessionMinutes(entries: SetEntry[], date: string): number | null {
   const day = timedDay(entries, date);
   if (day.length < 2) return null;
-  return Math.round((secs(day.at(-1)!) - secs(day[0]) + perSetSeconds(p, day.at(-1)!.exercise)) / 60);
+  return Math.round((secs(day.at(-1)!) - secs(day[0]) + SET_WORK) / 60);
 }
 
 /**
@@ -205,9 +254,9 @@ export function perSessionForMinutes(minutes: number, build: (per: number) => Pr
 }
 
 /** How long your sessions usually run: the median over the last 8 weeks (today left out) with 3 or more timed, else 45; 15–120. */
-export function usualMinutes(entries: SetEntry[], today: string, p: Paces): number {
+export function usualMinutes(entries: SetEntry[], today: string): number {
   const from = addDays(today, -56);
   const dates = [...new Set(entries.filter((e) => e.date >= from && e.date < today && e.loggedAt).map((e) => e.date))];
-  const mins = dates.map((d) => sessionMinutes(entries, d, p)).filter((m): m is number => m != null);
+  const mins = dates.map((d) => sessionMinutes(entries, d)).filter((m): m is number => m != null);
   return mins.length < 3 ? 45 : Math.min(120, Math.max(15, Math.round(median(mins))));
 }

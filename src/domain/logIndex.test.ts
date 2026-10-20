@@ -99,8 +99,8 @@ describe('paces and the session day', () => {
     expect(q).not.toBe(p);
     expect(q.perSet.get('leg press')).toBe(180);
     expect(p.perSet.has('leg press')).toBe(false);
-    expect(sessionMinutes(more, '2026-09-22', q)).toBe(15);
-    expect(sessionMinutes(E, '2026-09-22', p)).toBeNull();
+    expect(sessionMinutes(more, '2026-09-22')).toBe(13); // 12 min and the first set
+    expect(sessionMinutes(E, '2026-09-22')).toBeNull();
   });
   it('the session day follows the latest timed set of the array it is given', () => {
     const E = log();

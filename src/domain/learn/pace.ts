@@ -18,7 +18,7 @@ export const PERSON_MIN = 3;
  * (c) Prior for the pooling only: a lift's usual gap may sit ~30 % from the person's (log SD 0.3); the pool learns the actual
  * spread. The person's own level needs no prior: it is the median of their gaps.
  */
-const LIFT_LOG_SD = 0.3;
+export const LIFT_LOG_SD = 0.3;
 
 export interface Pace {
   /** The person's typical gap between sets of one lift, s (median), and its log SD across gaps; n gaps. */

@@ -225,7 +225,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       {programs.program && plan && hasPlan && (
         <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today} open={open} onToggle={() => setPlanOpen(!open)}
           buildQuick={(fits) => quickDay(profile, store.entries, date, fits, available ? { available, include: gyms.active!.include } : {})}
-          onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} loadFor={loadFor} rangeFor={settings.get} />
+          onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} loadFor={loadFor} rangeFor={settings.get} keptRest={(ex) => settings.get(ex).rest} />
       )}
       {/* No program: a quick session from what the week is behind on, once there's a history to go by. Never on a past day. */}
       {!programs.program && date === today && store.entries.some((e) => e.date < date) && (

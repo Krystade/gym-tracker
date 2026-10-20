@@ -5,7 +5,7 @@ import { fmtDay, fmtSet, plural } from '../domain/format';
 import { localDate } from '../domain/ids';
 import type { SetEntry } from '../domain/types';
 import { Fragment, memo, useEffect, useMemo, useState } from 'react';
-import { paces, sessionMinutes, usualGap, type Paces } from '../domain/timing';
+import { paces, sessionMinutes, usualGap } from '../domain/timing';
 import { prIds } from '../domain/records';
 import { andList, supersets } from '../domain/superset';
 import { notSupersets } from '../state/notSuperset';
@@ -82,7 +82,7 @@ export function HistoryScreen({ store, onOpen, onAddTo, focus = null, onFocused 
           <details className="month" key={mo.key} open={open} onToggle={rendered ? undefined : (e) => { if (e.currentTarget.open) show(mo.key); }}>
             <summary onClick={rendered ? undefined : () => show(mo.key)}><span>{monthName(mo.key)} · {plural(mo.days.length, 'session')}</span></summary>
             {rendered && mo.days.map((s) => (
-              <Day key={s.date} s={s} open={s === sessions[0] || s.date === at} today={today} pace={pace} prs={prs} supersetsOn={supersetsOn} onOpen={onOpen} onAddTo={onAddTo} />
+              <Day key={s.date} s={s} open={s === sessions[0] || s.date === at} today={today} prs={prs} supersetsOn={supersetsOn} onOpen={onOpen} onAddTo={onAddTo} />
             ))}
           </details>
         );
@@ -92,13 +92,13 @@ export function HistoryScreen({ store, onOpen, onAddTo, focus = null, onFocused 
 }
 
 /** A day: what it was in a line, and each lift's sets under it. Rendered again only when something it shows changes. */
-const Day = memo(function Day({ s, open, today, pace, prs, supersetsOn, onOpen, onAddTo }: {
-  s: Session; open: boolean; today: string; pace: Paces; prs: Set<string>; supersetsOn: (date: string) => Map<string, string[]>;
+const Day = memo(function Day({ s, open, today, prs, supersetsOn, onOpen, onAddTo }: {
+  s: Session; open: boolean; today: string; prs: Set<string>; supersetsOn: (date: string) => Map<string, string[]>;
   onOpen: (name: string) => void; onAddTo?: (date: string) => void;
 }) {
   const groups = byExercise(s.sets);
   // The day's own sets are all of its date's: no need to read the whole log for each day.
-  const mins = sessionMinutes(s.sets, s.date, pace);
+  const mins = sessionMinutes(s.sets, s.date);
   const grouped = supersetsOn(s.date);
   // Cardio counts in minutes, not sets.
   const bouts = s.sets.filter((x) => x.cardio), lifts = s.sets.length - bouts.length;

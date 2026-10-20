@@ -5,7 +5,9 @@ import { availableSet, type Gym } from '../domain/equipment';
 import { PROGRAM_LIFTS } from '../domain/catalog';
 import { isWorking } from '../domain/progression';
 import { exerciseNames, sameExercise } from '../domain/stats';
-import { estimateSeconds, paces, usualMinutes } from '../domain/timing';
+import { planSeconds, stepsOf, usualMinutes } from '../domain/timing';
+import { paceBefore, sessionLengths } from '../domain/learn/session';
+import { atPace } from './TodayPlan';
 import { warmupCount } from '../domain/suggest';
 import { cardioTarget } from '../domain/cardio';
 import { isHoldLift } from '../domain/care';
@@ -22,18 +24,24 @@ export function SuggestedToday({ profile, entries, date, gym, loadFor, onOpen }:
   profile: Profile; entries: SetEntry[]; date: string; /** The gym you're at: only what it has. */ gym?: Gym | null;
   loadFor: (exercise: string, sets: number) => number | null; onOpen: (exercise: string) => void;
 }) {
-  const pace = useMemo(() => paces(entries), [entries]);
-  const [minutes, setMinutes] = useState(() => String(usualMinutes(entries, date, pace)));
+  const [minutes, setMinutes] = useState(() => String(usualMinutes(entries, date)));
   const [mins, setMins] = useState(() => Number(minutes));
-  const slots = useMemo(() => {
-    // Warm-ups as the day started: a lift logged today would drop them from the estimate and grow the list under you.
+  // Warm-ups as the day started: a lift logged today would drop them from the length and grow the list under you.
+  const warm = useMemo(() => {
     const before = entries.filter((e) => e.date < date);
-    const available = gym ? availableSet(gym, [...PROGRAM_LIFTS, ...exerciseNames(entries), ...gym.include]) : undefined;
     const cache = new Map<string, number>();
-    const warm = (ex: string) => { const k = ex.toLowerCase(); if (!cache.has(k)) cache.set(k, warmupCount(before, ex, date)); return cache.get(k)!; };
+    return (ex: string) => { const k = ex.toLowerCase(); if (!cache.has(k)) cache.set(k, warmupCount(before, ex, date)); return cache.get(k)!; };
+  }, [entries, date]);
+  // His switch overhead, from the days before today.
+  const overhead = useMemo(() => paceBefore(entries, date)?.overhead ?? 0, [entries, date]);
+  const slots = useMemo(() => {
+    const available = gym ? availableSet(gym, [...PROGRAM_LIFTS, ...exerciseNames(entries), ...gym.include]) : undefined;
+    // Sized at the plan's length: the timer's research rests (not his rest settings, which a tap on the timer changes mid-session).
     // quickDay reads only the days before today, so a set logged now never moves the list.
-    return quickDay(profile, entries, date, (s) => estimateSeconds(s, pace, warm) <= mins * 60, available ? { available, include: gym!.include } : {});
-  }, [profile, entries, date, mins, pace, gym]);
+    return quickDay(profile, entries, date, (s) => planSeconds(stepsOf(s, warm), { overhead }) <= mins * 60, available ? { available, include: gym!.include } : {});
+  }, [profile, entries, date, mins, warm, overhead, gym]);
+  // His recent pace for it, when over 10 min from the plan's length (owner).
+  const L = useMemo(() => slots.length ? sessionLengths(entries, date, slots, { warmups: warm }) : null, [entries, date, slots, warm]);
   const doneOf = (ex: string) => entries.filter((e) => e.date === date && sameExercise(e.exercise, ex) && (isWorking(e) || !!e.cardio)).length;
   const finished = slots.filter((s) => doneOf(s.exercise) >= s.sets).length;
   const [openPick, setOpen] = useState<boolean | null>(null);
@@ -53,6 +61,7 @@ export function SuggestedToday({ profile, entries, date, gym, loadFor, onOpen }:
             if (Number.isInteger(n) && n >= 5 && n <= 180) setMins(n);
           }} />
         </label>
+        {L?.both && <p className="muted small suggested-pace" aria-label="Plan length">≈ {Math.round(L.plan / 60)} min · {atPace(L.pace!)}</p>}
         <ol className="suggested-slots" aria-label="Suggested exercises">
           {slots.map((s) => {
             const done = doneOf(s.exercise);
