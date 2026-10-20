@@ -8,8 +8,8 @@ import type { Activity } from './activity';
 export interface PushPrefs {
   /** `activity`: a friend request, a request or invite accepted, a gym sent to you. `friends`: their pings and messages. */
   kinds: { rest: boolean; remind: boolean; recap: boolean; activity: boolean; friends: boolean };
-  /** Days 0 = Sunday … 6 = Saturday, at local "HH:MM". */
-  reminder: { days: number[]; at: string };
+  /** Days 0 = Sunday … 6 = Saturday, at local "HH:MM". `learn`: fitted to his log (src/domain/learn/remind); unset is on. */
+  reminder: { days: number[]; at: string; learn?: boolean };
   recap: { day: number; at: string };
 }
 interface Local {

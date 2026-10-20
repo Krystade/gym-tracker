@@ -1,4 +1,9 @@
 // Wall-clock times in the account's own time zone. Cron triggers only know UTC, so each account's alarm is computed here.
+// The reminder's rule per day (remindTime) is shared with the app's card, in src/push/payload.ts.
+
+import { remindTime } from '../../src/push/payload';
+
+export { remindTime };
 
 const fmt = new Map<string, Intl.DateTimeFormat>();
 function parts(tz: string, ms: number) {
@@ -54,6 +59,20 @@ export function nextAt(tz: string, days: readonly number[], at: string, after: n
   for (let i = 0; i <= 8; i++) {
     const day = new Date(Date.UTC(p.y, p.m - 1, p.d + i));
     if (!days.includes(day.getUTCDay())) continue;
+    const t = zonedTime(tz, day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), hh, mm);
+    if (t > after) return t;
+  }
+  return null;
+}
+
+/** The first instant after `after` that is a reminder time (remindTime) on its local day; null with none in the next week. */
+export function nextRemind(tz: string, reminder: { days: readonly number[]; at: string; learn?: boolean }, learned: readonly (string | null)[] | undefined, after: number): number | null {
+  const p = parts(tz, after);
+  for (let i = 0; i <= 8; i++) {
+    const day = new Date(Date.UTC(p.y, p.m - 1, p.d + i));
+    const at = remindTime(reminder, learned, day.getUTCDay());
+    if (at == null) continue;
+    const [hh, mm] = at.split(':').map(Number);
     const t = zonedTime(tz, day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), hh, mm);
     if (t > after) return t;
   }

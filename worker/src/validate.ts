@@ -35,8 +35,11 @@ export interface Prefs {
    * they existed) means on.
    */
   kinds: { rest: boolean; remind: boolean; recap: boolean; activity?: boolean; friends?: boolean };
-  /** Days 0 = Sunday … 6 = Saturday, at local "HH:MM". */
-  reminder: { days: number[]; at: string };
+  /**
+   * Days 0 = Sunday … 6 = Saturday, at local "HH:MM". `learn`: fitted to his log (the app's learned days and times, and quiet once
+   * the week's goal is met); it can only make the reminder quieter or later, never add one. Missing (an older app) means on.
+   */
+  reminder: { days: number[]; at: string; learn?: boolean };
   recap: { day: number; at: string };
   /** Friends whose pushes this person has muted (in the app, on that friend). They're never told. */
   muted?: string[];
@@ -54,7 +57,7 @@ export function prefs(v: unknown): Prefs {
     tz: o.tz as string,
     kinds: { rest: bool(k.rest, 'rest'), remind: bool(k.remind, 'remind'), recap: bool(k.recap, 'recap'), activity: k.activity == null ? true : bool(k.activity, 'activity'),
       friends: k.friends == null ? true : bool(k.friends, 'friends') },
-    reminder: { days: days.sort(), at: hhmm(r.at, 'at') },
+    reminder: { days: days.sort(), at: hhmm(r.at, 'at'), learn: r.learn == null ? true : bool(r.learn, 'learn') },
     recap: { day: int(c.day, 0, 6, 'day'), at: hhmm(c.at, 'at') },
     muted: o.muted == null ? [] : Array.isArray(o.muted) && o.muted.length <= 500 ? [...new Set(o.muted.map((u) => docId(u, 'muted')))] : bad('muted'),
   };
@@ -66,11 +69,21 @@ export function timer(v: unknown): Timer {
   return { sub: deviceId(o.sub), seconds: int(o.seconds, 5, 3600, 'seconds'), label: o.label == null ? '' : text(o.label, 200, 'label').slice(0, MAX_LABEL) };
 }
 
-/** `week.cardio`: cardio-only days, apart from sessions; an app from before it sends none, read as 0. */
-export interface Activity { date: string; next: string | null; week: { start: string; sessions: number; sets: number; prs: number; cardio: number } }
+/**
+ * `week.cardio`: cardio-only days, apart from sessions; an app from before it sends none, read as 0. `goal`: his sessions a week.
+ * `remind`: per weekday (0 = Sunday), the app's learned reminder time "HH:MM", 'off' (not one of his days), or null (nothing
+ * learned): src/domain/learn/remind.ts. An app from before them sends neither.
+ */
+export interface Activity {
+  date: string; next: string | null; week: { start: string; sessions: number; sets: number; prs: number; cardio: number };
+  goal?: number; remind?: (string | null)[];
+}
+const learned = (v: unknown) => (v === null || v === 'off' ? v : hhmm(v, 'remind'));
 export function activity(v: unknown): Activity {
   const o = obj(v, 'body'), w = obj(o.week, 'week');
   return {
+    ...(o.goal != null && { goal: int(o.goal, 1, 7, 'goal') }),
+    ...(o.remind != null && { remind: Array.isArray(o.remind) && o.remind.length === 7 ? o.remind.map(learned) : bad('remind') }),
     date: date(o.date, 'date'),
     next: o.next == null ? null : text(o.next, 40, 'next'),
     week: { start: date(w.start, 'start'), sessions: int(w.sessions, 0, 7, 'sessions'), sets: int(w.sets, 0, 10_000, 'sets'), prs: int(w.prs, 0, 10_000, 'prs'),

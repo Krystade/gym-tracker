@@ -22,8 +22,10 @@ describe('activityOf', () => {
       s('2026-10-12', 'Bench Press', 95, 5, ['warmup']),
       s('2026-10-13', 'Squat', 185, 5),
     ];
-    const a = activityOf(entries, program, [plan('2026-10-12', 0), plan('2026-10-13', 1)], TODAY);
-    expect(a).toEqual({ date: '2026-10-13', next: 'Day A', week: { start: '2026-10-12', sessions: 2, sets: 3, prs: 1, cardio: 0 } });
+    const a = activityOf(entries, program, [plan('2026-10-12', 0), plan('2026-10-13', 1)], TODAY, undefined, 'UTC');
+    // Untimed sets, two weeks: no routine shown yet and no times, so nothing learned. No goal is sent without one.
+    expect(a).toEqual({ date: '2026-10-13', next: 'Day A', week: { start: '2026-10-12', sessions: 2, sets: 3, prs: 1, cardio: 0 },
+      remind: [null, null, null, null, null, null, null] });
   });
 
   it('cardio-only days are not sessions; they go separately', () => {
@@ -37,6 +39,21 @@ describe('activityOf', () => {
     expect(activityOf(entries, program, [plan('2026-10-12', 0), plan(TODAY, 1)], TODAY).next).toBe('Day A');
     expect(activityOf(entries, program, [plan('2026-10-12', 0)], TODAY)).toMatchObject({ date: TODAY, next: 'Day B' });
     expect(activityOf(entries, null, [], TODAY).next).toBeNull();
-    expect(activityOf([], null, [], TODAY)).toEqual({ date: '0000-00-00', next: null, week: { start: '2026-10-12', sessions: 0, sets: 0, prs: 0, cardio: 0 } });
+    expect(activityOf([], null, [], TODAY, 3, 'UTC')).toEqual({ date: '0000-00-00', next: null, week: { start: '2026-10-12', sessions: 0, sets: 0, prs: 0, cardio: 0 },
+      goal: 3, remind: [null, null, null, null, null, null, null] });
+    expect(activityOf([], null, [], TODAY, 9, 'UTC').goal).toBeUndefined();
+  });
+
+  it('carries the learned reminder schedule: days and times only, the same as the fit', () => {
+    const at = (date: string, hhmm: string): SetEntry => ({ ...s(date, 'Bench Press', 100, 8), loggedAt: `${date}T${hhmm}:00.000Z`, source: 'app' });
+    // Five weeks of Monday and Thursday at 19:00 UTC, never Tuesday.
+    const entries: SetEntry[] = [];
+    for (let w = 0; w < 5; w++) for (const d of [0, 3]) { const date = new Date(Date.UTC(2026, 8, 7 + 7 * w + d)).toISOString().slice(0, 10); entries.push(at(date, '19:00')); }
+    const a = activityOf(entries, null, [], TODAY, 3, 'UTC');
+    expect(a.remind).toHaveLength(7);
+    expect(a.remind![1]).toMatch(/^(19|2\d):\d\d$/); // Monday: after his 19:00
+    expect(a.remind![2]).toBe('off'); // Tuesday: never
+    expect(JSON.stringify(a)).not.toMatch(/Bench/);
   });
 });
+

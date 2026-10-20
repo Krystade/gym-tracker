@@ -231,3 +231,84 @@ describe('reminder and recap', () => {
     expect((await phone.read(pushes(net)[0].body)).notification.body).toBe('This week: no sessions logged');
   });
 });
+
+describe('the reminder fitted to his log (item 16)', () => {
+  const TUE_NOON = Date.parse('2026-10-20T16:00:00Z');
+  const TUE_6PM = Date.parse('2026-10-20T22:00:00Z');
+  const TUE_740PM = Date.parse('2026-10-20T23:40:00Z');
+  const week = { start: '2026-10-19', sessions: 1, sets: 15, prs: 0 };
+  const learned = [null, null, '19:40', null, null, 'off', null]; // Tuesday 19:40, Friday not one of his days
+  const alarm = (uid: string) => runInDurableObject(box(uid), (_o, st) => st.storage.getAlarm());
+  const remindAt = (uid: string) => runInDurableObject(box(uid), async (_o, st) => (await st.storage.get<{ remindAt: number | null }>('plan'))?.remindAt);
+
+  async function on(prefs: Record<string, unknown> = PREFS) {
+    const e = await enrolled(undefined, TUE_NOON);
+    await call(e.uid, 'PUT', '/prefs', prefs);
+    return e;
+  }
+
+  it('waits for the learned time, re-planned when the app sends it, and an older app keeps his time', async () => {
+    const { uid, net, phone } = await on();
+    await call(uid, 'POST', '/activity', { date: '2026-10-19', next: 'Day B', week });
+    expect(await alarm(uid)).toBe(TUE_6PM);
+    expect((await call(uid, 'POST', '/activity', { date: '2026-10-19', next: 'Day B', week, goal: 3, remind: learned })).status).toBe(200);
+    expect(await alarm(uid)).toBe(TUE_740PM);
+    await setClock(uid, TUE_740PM);
+    await runDurableObjectAlarm(box(uid));
+    expect(pushes(net)).toHaveLength(1);
+    expect((await phone.read(pushes(net)[0].body)).notification.title).toBe('Time to train');
+    // Friday is off: next is the Tuesday after, 19:40.
+    expect(await remindAt(uid)).toBe(Date.parse('2026-10-27T23:40:00Z'));
+  });
+
+  it('learning off: his days and time, whatever the app learned', async () => {
+    const { uid } = await on({ ...PREFS, reminder: { ...PREFS.reminder, learn: false } });
+    await call(uid, 'POST', '/activity', { date: '2026-10-19', next: null, week, remind: learned });
+    expect(await alarm(uid)).toBe(TUE_6PM);
+    expect(((await call(uid, 'GET', '/status')).json as { prefs: { reminder: { learn: boolean } } }).prefs.reminder.learn).toBe(false);
+  });
+
+  it("quiet once the week's sessions reach his goal; not before", async () => {
+    const met = await on();
+    await call(met.uid, 'POST', '/activity', { date: '2026-10-19', next: null, week: { ...week, sessions: 3 }, goal: 3 });
+    await setClock(met.uid, TUE_6PM);
+    await runDurableObjectAlarm(box(met.uid));
+    expect(pushes(met.net)).toHaveLength(0);
+    const short = await on();
+    await call(short.uid, 'POST', '/activity', { date: '2026-10-19', next: null, week: { ...week, sessions: 2 }, goal: 3 });
+    await setClock(short.uid, TUE_6PM);
+    await runDurableObjectAlarm(box(short.uid));
+    expect(pushes(short.net)).toHaveLength(1);
+    // Last week's count says nothing about this week's goal.
+    const old = await on();
+    await call(old.uid, 'POST', '/activity', { date: '2026-10-16', next: null, week: { start: '2026-10-12', sessions: 3, sets: 40, prs: 0 }, goal: 3 });
+    await setClock(old.uid, TUE_6PM);
+    await runDurableObjectAlarm(box(old.uid));
+    expect(pushes(old.net)).toHaveLength(1);
+  });
+
+  it("one a day: a later learned time for today after today's went out sends nothing more", async () => {
+    const { uid, net } = await on();
+    await call(uid, 'POST', '/activity', { date: '2026-10-19', next: null, week });
+    await setClock(uid, TUE_6PM);
+    await runDurableObjectAlarm(box(uid));
+    expect(pushes(net)).toHaveLength(1);
+    await setClock(uid, TUE_6PM + 60_000);
+    await call(uid, 'POST', '/activity', { date: '2026-10-19', next: null, week, remind: learned });
+    expect(await alarm(uid)).toBe(TUE_740PM);
+    await setClock(uid, TUE_740PM);
+    await runDurableObjectAlarm(box(uid));
+    expect(pushes(net)).toHaveLength(1);
+    expect(await remindAt(uid)).toBe(Date.parse('2026-10-27T23:40:00Z'));
+  });
+
+  it('refuses a malformed learned schedule or goal', async () => {
+    const { uid } = await on();
+    const body = { date: '2026-10-19', next: null, week };
+    expect((await call(uid, 'POST', '/activity', { ...body, remind: learned.slice(1) })).status).toBe(400);
+    expect((await call(uid, 'POST', '/activity', { ...body, remind: [...learned.slice(1), '25:00'] })).status).toBe(400);
+    expect((await call(uid, 'POST', '/activity', { ...body, remind: [...learned.slice(1), 'on'] })).status).toBe(400);
+    expect((await call(uid, 'POST', '/activity', { ...body, goal: 8 })).status).toBe(400);
+    expect((await call(uid, 'PUT', '/prefs', { ...PREFS, reminder: { ...PREFS.reminder, learn: 'yes' } })).status).toBe(400);
+  });
+});

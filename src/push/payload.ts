@@ -26,6 +26,19 @@ export interface PushNote {
   data: { kind: Kind; route: Route; from?: string; name?: string };
 }
 
+/**
+ * The reminder's time on weekday `wd` (0 = Sunday), or null for none that day; the Worker plans by it and the app's card shows
+ * it. Only on a day he picked; with learning on (`learn` not false), none on a day the app learned isn't one of his ('off'),
+ * and the later of his time and the learned one (src/domain/learn/remind.ts). So learning only ever takes a reminder away or
+ * makes it later: never a day he didn't pick, never earlier than his time.
+ */
+export function remindTime(reminder: { days: readonly number[]; at: string; learn?: boolean }, learned: readonly (string | null)[] | null | undefined, wd: number): string | null {
+  if (!reminder.days.includes(wd)) return null;
+  const l = reminder.learn === false ? null : learned?.[wd] ?? null;
+  if (l === 'off') return null;
+  return l != null && l > reminder.at ? l : reminder.at;
+}
+
 /** Declarative Web Push (iOS 18.4+): shown by the system as is; older iOS, Chrome and Firefox hand it to the service worker. */
 export interface PushPayload { web_push: 8030; notification: PushNote; mutable: true }
 

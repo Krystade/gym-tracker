@@ -3,7 +3,7 @@ import { ACTIVITY_KINDS, buildPayload, DELIVERY, friendTopic, recapNote, remindN
 import type { Env } from './env';
 import type { FriendPush } from './notify';
 import { sendOne } from './send';
-import { localDate, nextAt, weekStart } from './schedule';
+import { localDate, nextAt, nextRemind, weekStart } from './schedule';
 import { DEFAULT_PREFS, on, type Activity, type Prefs, type Subscription } from './validate';
 import { parseVapid, vapidAuth } from './vapid';
 
@@ -15,7 +15,8 @@ export interface Device extends Subscription {
   lastAt?: number; lastStatus?: number; lastOkAt?: number; backoffUntil?: number;
 }
 interface Rest { device: string; due: number; label: string }
-interface Plan { remindAt: number | null; recapAt: number | null; pruneAt: number | null }
+/** `remindedOn`: the local date the last reminder went out (one a day, however often the plan moves). */
+interface Plan { remindAt: number | null; recapAt: number | null; pruneAt: number | null; remindedOn?: string }
 export interface Status {
   devices: { id: string; ua: string; created: number; lastSeen: number; lastAt: number | null; lastStatus: number | null; lastOkAt: number | null }[];
   prefs: Prefs; alarm: number | null; rest: { due: number } | null; configured: boolean;
@@ -77,14 +78,14 @@ export class UserBox extends DurableObject<Env> {
   async setPrefs(p: Prefs): Promise<void> {
     await this.ctx.storage.put('prefs', p);
     const now = this.now(), plan = await this.plan();
-    await this.ctx.storage.put('plan', { ...plan, ...this.timesFor(p, now) });
+    await this.ctx.storage.put('plan', { ...plan, ...this.timesFor(p, now, await this.ctx.storage.get<Activity>('activity')) });
     if (!p.kinds.rest) await this.ctx.storage.delete('rest');
     await this.schedule();
   }
 
-  private timesFor(p: Prefs, now: number) {
+  private timesFor(p: Prefs, now: number, act: Activity | undefined) {
     return {
-      remindAt: p.kinds.remind ? nextAt(p.tz, p.reminder.days, p.reminder.at, now) : null,
+      remindAt: p.kinds.remind ? nextRemind(p.tz, p.reminder, act?.remind, now) : null,
       recapAt: p.kinds.recap ? nextAt(p.tz, [p.recap.day], p.recap.at, now) : null,
     };
   }
@@ -103,9 +104,17 @@ export class UserBox extends DurableObject<Env> {
     await this.schedule();
   }
 
-  /** What the reminder and recap need: the last day anything was logged, the next program day, this week's counts. */
+  /**
+   * What the reminder and recap need: the last day anything was logged, the next program day, this week's counts, his goal and
+   * the learned reminder times. The reminder is planned again from them.
+   */
   async activity(a: Activity): Promise<void> {
     await this.ctx.storage.put('activity', a);
+    const prefs = await this.prefs(), plan = await this.plan();
+    const remindAt = prefs.kinds.remind ? nextRemind(prefs.tz, prefs.reminder, a.remind, this.now()) : null;
+    if (remindAt === plan.remindAt) return;
+    await this.ctx.storage.put('plan', { ...plan, remindAt });
+    await this.schedule();
   }
 
   /** One push to one device, now. Returns the push service's status (0: unreachable or not configured). */
@@ -166,13 +175,18 @@ export class UserBox extends DurableObject<Env> {
     const today = localDate(prefs.tz, now);
     const act = await this.ctx.storage.get<Activity>('activity');
     if (plan.remindAt != null && plan.remindAt <= now) {
-      // Nothing logged today is the whole point: a day with a set in it gets no reminder.
-      if (prefs.kinds.remind && act?.date !== today) await this.send('remind', remindNote(act?.next));
-      plan.remindAt = this.timesFor(prefs, now).remindAt;
+      // Nothing logged today is the whole point: a day with a set in it gets no reminder. One a day, however the plan moved.
+      // Learning on: none once this week's sessions reach his goal (a JITAI rule, Nahum-Shani 2018: only when needed).
+      const met = prefs.reminder.learn !== false && act?.goal != null && act.week.start === weekStart(today) && act.week.sessions >= act.goal;
+      if (prefs.kinds.remind && act?.date !== today && !met && plan.remindedOn !== today) {
+        await this.send('remind', remindNote(act?.next));
+        plan.remindedOn = today;
+      }
+      plan.remindAt = this.timesFor(prefs, now, act).remindAt;
     }
     if (plan.recapAt != null && plan.recapAt <= now) {
       if (prefs.kinds.recap) await this.send('recap', recapNote(act && act.week.start === weekStart(today) ? act.week : null));
-      plan.recapAt = this.timesFor(prefs, now).recapAt;
+      plan.recapAt = this.timesFor(prefs, now, act).recapAt;
     }
     if (plan.pruneAt != null && plan.pruneAt <= now) {
       const all = await this.devices();

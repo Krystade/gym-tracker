@@ -169,7 +169,7 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
       </section>
       <CycleCard name={people.active?.name ?? 'Me'} />
       <AccountCard cloud={cloud} people={people.people} replaced={cloud.mine ? replacedList : undefined} />
-      <NotificationsCard signedIn={cloud.mine} goal={profile.profile.weeklyGoal} />
+      <NotificationsCard signedIn={cloud.mine} goal={profile.profile.weeklyGoal} entries={store.entries} />
       <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} replaced={cloud.mine ? undefined : replacedList} />
       <PeopleCard people={people} />
       <h2>Help</h2>

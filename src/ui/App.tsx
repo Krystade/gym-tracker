@@ -217,7 +217,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const { setMe } = nav;
   useEffect(() => { setMe(uid ?? null); }, [uid, setMe]);
   // Push: the reminder and recap numbers, for the person whose account this is (signed out: this phone's subscription goes).
-  usePushSync(store.entries, programs.program, programs.plans, date, cloud.link === null ? false : cloud.mine ? true : null);
+  usePushSync(store.entries, programs.program, programs.plans, date, cloud.link === null ? false : cloud.mine ? true : null, rawProfile.profile.weeklyGoal);
   // A record tapped on a lift's screen: History opens at its day.
   const [historyAt, setHistoryAt] = useState<string | null>(null);
   // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.

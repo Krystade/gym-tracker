@@ -9,6 +9,8 @@ import { volumeAdvice } from './volume';
 import { defaultProfile } from '../profile';
 import { paceFit, sessionLengths } from './session';
 import { paceLog, PACE_TRUTH } from './sessionSim.sample';
+import { fitReminder } from './remind';
+import { addDays } from '../analytics';
 
 // Phone budget (00-core §1.3): with 5 years of training (1,000 sessions, ~4 a week: ~14k sets) a refit after one more set stays
 // under 50 ms on an iPhone 13 mini. The new set rebuilds only today's session block and copies only its rows (learn/capacity);
@@ -186,4 +188,36 @@ it('the volume steps stay cheap after a set is logged', () => {
   times.sort((a, b) => a - b);
   expect(asked).toBeGreaterThan(3);
   expect(times[0], `per set (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(15);
+}, 120000);
+
+// Item 16's reminder fit (learn/remind) reads only the days before today, so it refits once a day (or after an edit to a past
+// day), 3 s after the log changes, off any tap's path; a set logged today reuses it. 5 years of timed sessions (1,000, each with
+// a first-entry time): the prequential kernel score is pairs × half-lives, ~50 ms on desktop Node. Gated at 100 ms: twice the
+// phone's per-set budget, once a day. Best of several, each a new day (so a real refit).
+it('fits 5 years of reminder history in under 100 ms, once a day; a set logged today reuses it in under 5 ms', () => {
+  const { entries } = paceLog(3, { sessions: 1000, breaks: 0.02 });
+  const last = entries.reduce((d, e) => (e.date > d ? e.date : d), '');
+  for (let k = 0; k < 3; k++) fitReminder([...entries], addDays(last, 1 + k), 'UTC');
+  const times: number[] = [];
+  for (let k = 0; k < 7; k++) {
+    const next = [...entries];
+    const t = performance.now();
+    fitReminder(next, addDays(last, 10 + k), 'UTC');
+    times.push(performance.now() - t);
+  }
+  times.sort((a, b) => a - b);
+  const today = addDays(last, 10);
+  expect(fitReminder(entries, today, 'UTC').timed).toBeGreaterThan(990);
+  expect(times[0], `fits (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(100);
+  const per: number[] = [];
+  const log = [...entries];
+  for (let k = 0; k < 9; k++) {
+    log.push({ ...log[0], id: `remind${k}`, date: today, seq: 1e7 + k, loggedAt: `${today}T18:0${k}:00.000Z` });
+    const next = [...log];
+    const t = performance.now();
+    fitReminder(next, today, 'UTC');
+    per.push(performance.now() - t);
+  }
+  per.sort((a, b) => a - b);
+  expect(per[0], `per set (ms): ${per.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5);
 }, 120000);

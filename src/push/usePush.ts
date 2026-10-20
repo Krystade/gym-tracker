@@ -14,12 +14,12 @@ import { take } from './store';
  * Keeps the Worker current for the signed-in person: the reminder and recap numbers after the log changes, and the
  * subscription each time the app comes back. Signed out, this phone's subscription goes.
  */
-export const usePushSync = PUSH_ON ? function usePushSync(entries: SetEntry[], program: Program | null | undefined, plans: DayPlan[], today: string, signedIn: boolean | null) {
+export const usePushSync = PUSH_ON ? function usePushSync(entries: SetEntry[], program: Program | null | undefined, plans: DayPlan[], today: string, signedIn: boolean | null, goal?: number) {
   useEffect(() => {
     if (!signedIn) return;
-    const t = setTimeout(() => { void postActivity(activityOf(entries, program, plans, today)).catch(() => {}); }, 3000);
+    const t = setTimeout(() => { void postActivity(activityOf(entries, program, plans, today, goal)).catch(() => {}); }, 3000);
     return () => clearTimeout(t);
-  }, [entries, program, plans, today, signedIn]);
+  }, [entries, program, plans, today, signedIn, goal]);
   useEffect(() => {
     if (signedIn === false) { void forgetDevice(); return; }
     if (!signedIn) return;

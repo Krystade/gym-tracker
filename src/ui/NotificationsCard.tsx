@@ -1,6 +1,11 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { localDate } from '../domain/ids';
+import { fitReminder, type ReminderFit } from '../domain/learn/remind';
+import type { SetEntry } from '../domain/types';
+import { zone } from '../push/activity';
 import { PUSH_ON } from '../push/config';
 import { disablePush, enablePush, getStatus, localState, PushError, resyncPush, sendTest, setPrefs, standalone, subscribeLocal, supported, type PushPrefs, type Status, withDefaults } from '../push/client';
+import { remindTime } from '../push/payload';
 import { read } from '../push/store';
 import { Input } from './Field';
 
@@ -11,10 +16,29 @@ const plain = (e: unknown) => (e instanceof PushError ? (e.status === 401 ? 'Sig
   : (e as Error)?.name === 'NotAllowedError' ? 'Notifications weren’t allowed.' : 'No connection to the notification server. Try again when you’re online.');
 
 /**
+ * The reminder as it will go out, per day he picked (Monday first): "Mon 21:55 · Wed off · Fri 18:00", why a day is off, and
+ * the days he usually trains that he didn't pick (shown only: learning never adds a day).
+ */
+export function reminderPlan(reminder: { days: number[]; at: string; learn?: boolean }, fit: ReminderFit | null): { line: string; notes: string[] } {
+  const sched = fit?.schedule;
+  const line = WEEK.filter((d) => reminder.days.includes(d)).map((d) => `${DAYS[d]} ${remindTime(reminder, sched, d) ?? 'off'}`).join(' · ');
+  const notes: string[] = [];
+  if (fit && reminder.learn !== false) {
+    const off = (why: string) => WEEK.filter((d) => reminder.days.includes(d) && fit.days[d].why === why).map((d) => DAYS[d]);
+    const rest = off('not his day'), late = off('late all day');
+    if (rest.length) notes.push(`${rest.join(', ')}: off, you don’t usually train then.`);
+    if (late.length) notes.push(`${late.join(', ')}: off, you’re usually still to come at midnight.`);
+    const also = WEEK.filter((d) => !reminder.days.includes(d) && fit.days[d].pOff < 0.5 && fit.days[d].p > 0.5).map((d) => DAYS[d]);
+    if (also.length) notes.push(`You usually train ${also.join(', ')} too; tap ${also.length > 1 ? 'them' : 'it'} above to be reminded.`);
+  }
+  return { line, notes };
+}
+
+/**
  * Notifications, on the More screen. Shows nothing at all in a build without a Worker (src/push/config.ts).
  * `signedIn`: this person is the one the account on this phone belongs to. `goal`: sessions per week, for the reminder days.
  */
-function Card({ signedIn, goal }: { signedIn: boolean; goal: number }) {
+function Card({ signedIn, goal, entries }: { signedIn: boolean; goal: number; entries: SetEntry[] }) {
   const local = useSyncExternalStore(subscribeLocal, () => JSON.stringify(localState()));
   const { device, prefs: saved, lost } = JSON.parse(local) as ReturnType<typeof localState>;
   const prefs = withDefaults(saved, goal);
@@ -25,6 +49,12 @@ function Card({ signedIn, goal }: { signedIn: boolean; goal: number }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [last, setLast] = useState<{ at: number; kind: string | null } | null>(null);
   const home = supported() && standalone();
+  const learn = prefs.reminder.learn !== false;
+  const fit = useMemo(() => {
+    if (!prefs.kinds.remind || !learn) return null;
+    try { return fitReminder(entries, localDate(new Date()), zone()); } catch { return null; }
+  }, [entries, prefs.kinds.remind, learn]);
+  const plan = reminderPlan(prefs.reminder, fit);
   const on = !!device && perm === 'granted';
 
   // Fetched ahead, so the tap's subscribe() is the first thing it waits for (iOS only prompts from a tap).
@@ -83,6 +113,10 @@ function Card({ signedIn, goal }: { signedIn: boolean; goal: number }) {
                 ))}
               </div>
               <div className="when"><label>Time<Input type="time" aria-label="Reminder time" value={prefs.reminder.at} onChange={(e) => e.target.value && change({ ...prefs, reminder: { ...prefs.reminder, at: e.target.value } })} /></label></div>
+              <label className="check"><input type="checkbox" checked={learn} onChange={(e) => change({ ...prefs, reminder: { ...prefs.reminder, learn: e.target.checked } })} />
+                <span>Fit to my training<br /><span className="muted small">Learned from your log: skips days you don’t usually train, waits while you’re usually still to come, quiet once the week’s goal is met. Never earlier than your time.</span></span></label>
+              {plan.line && <p className="muted small" data-testid="reminder-plan">Reminder: {plan.line}</p>}
+              {plan.notes.map((n) => <p key={n} className="muted small">{n}</p>)}
             </div>
           )}
           {kind('recap', 'Weekly recap', 'Sessions, sets and PRs for the week.')}
