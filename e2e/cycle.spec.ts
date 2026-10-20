@@ -200,11 +200,14 @@ test('a friend’s view shows no cycle data and never asks for it', async ({ bro
   await tab(b.page, 'Today');
   await tab(b.page, 'Friends');
   await b.page.getByRole('region', { name: 'Crew' }).getByRole('button', { name: `@${a.name}`, exact: true }).click();
-  await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing @${a.name}`);
+  const page = b.page.getByRole('region', { name: `@${a.name}`, exact: true });
+  await expect(page.getByRole('heading', { name: `@${a.name}`, level: 1 })).toBeVisible();
+  await expect(b.page.locator('body')).not.toContainText(/period|follicular|ovulation|luteal|cycle/i);
   for (const t of ['Stats', 'History', 'Lifts'] as const) {
-    await tab(b.page, t);
+    await page.getByRole('button', { name: t, exact: true }).click();
     await expect(b.page.getByRole('heading', { name: t, level: 1 })).toBeVisible();
     await expect(b.page.locator('body')).not.toContainText(/period|follicular|ovulation|luteal|cycle/i);
+    await b.page.getByRole('button', { name: `@${a.name}`, exact: true }).click();
   }
   expect(asked.some((x) => x.includes(`users/${a.uid}/`))).toBe(true); // the view did read a's log
   expect(asked.filter((x) => x.includes(`users/${a.uid}/private`))).toEqual([]);

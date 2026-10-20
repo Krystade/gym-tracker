@@ -310,9 +310,9 @@ test('your status: set inline, capped at 24, seen on your friend’s feed; Invit
   await invite.click();
   await expect(friends(a.page).getByRole('region', { name: 'Add a friend' })).toBeInViewport();
 
-  // Tapping B's name opens B.
+  // Tapping B's name opens B's page.
   await card.getByRole('button', { name: `@${b.name}`, exact: true }).click();
-  await expect(a.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing @${b.name}`);
+  await expect(a.page.getByRole('heading', { name: `@${b.name}`, level: 1 })).toBeVisible();
 
   // B's own status: editable and clearable.
   await b.page.reload();

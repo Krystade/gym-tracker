@@ -1,13 +1,14 @@
 import { addDays, streak, weekStart, weeklyMuscleSets, weeklySummary } from './analytics';
 import { isCardio, isCardioEntry } from './cardio';
 import { monthOf } from './cloud';
-import { isWorking, KINDS, sessionOn, type Kind, type LiftDone } from './crew';
+import { dayKinds, isWorking, KINDS, sessionOn, type Kind, type LiftDone } from './crew';
 import { liftKey, normalizeName } from './ids';
 import { resolveLift } from './lifts';
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
 import { targetFor, type Profile } from './profile';
 import { prIds, prKinds, prToast, type RecordKind } from './records';
 import { byOrderDone, doneAt, e1rm, liftIndex, sessionsFor } from './stats';
+import { stall, type Stall } from './rotation';
 import type { SetEntry } from './types';
 
 // Friends as a feed and Stats as answers (round 18): what each person did today, who's training now, each one's week against
@@ -306,4 +307,51 @@ export function prCard(entries: SetEntry[], today: string): PrCard | null {
     return { set, kinds: k, detail: prior > 0 ? `e1RM ${Math.round(v)} lb, up ${Math.round(v - prior)} lb on your best` : `e1RM ${Math.round(v)} lb` };
   }
   return { set, kinds: k, detail: prToast(entries, set)?.replace(/^PR! /, '') ?? 'A new record' };
+}
+
+/** A day on a friend's board: its kinds (one, or two close), its working sets (cardio: one per 3 min), and marks. */
+export interface Tile { date: string; kinds: Kind[]; sets: number; pr: boolean; live: boolean; today: boolean; future: boolean }
+/**
+ * The last `weeks` weeks as rows, oldest first, each Monday to Sunday: this week's row runs past today (those tiles `future`).
+ * `prs`: the PR set ids to star (a friend's, as their phone wrote them).
+ */
+export function board(sets: readonly SetEntry[], today: string, prs: ReadonlySet<string>, now: number, weeks = 8): Tile[][] {
+  const start = addDays(weekStart(today), -7 * (weeks - 1));
+  const byDay = new Map<string, SetEntry[]>();
+  for (const e of sets) if (e.date >= start && e.date <= today) byDay.set(e.date, [...(byDay.get(e.date) ?? []), e]);
+  return Array.from({ length: weeks }, (_, w) => Array.from({ length: 7 }, (_, d) => {
+    const date = addDays(start, w * 7 + d), day = byDay.get(date) ?? [];
+    return {
+      date, kinds: dayKinds(day).kinds, sets: ringSets(day).length, pr: day.some((e) => prs.has(e.id)),
+      live: date === today && liveSince(day, now) != null, today: date === today, future: date > today,
+    };
+  }));
+}
+
+/** The newest PR set of each lift among `prs`, newest first, at most `n`. */
+export function recentPrs(sets: readonly SetEntry[], prs: ReadonlySet<string>, n = 3): SetEntry[] {
+  const best = new Map<string, SetEntry>();
+  for (const e of sets) {
+    if (!prs.has(e.id)) continue;
+    const k = liftKey(e.exercise), was = best.get(k);
+    if (!was || e.date > was.date || (e.date === was.date && byOrderDone(e, was) > 0)) best.set(k, e);
+  }
+  return [...best.values()].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : byOrderDone(b, a))).slice(0, n);
+}
+
+/** A lift on Stats: each session's best e1RM over 12 weeks (oldest first), its latest top set, the change from your own start, a stall. */
+export interface Trend { name: string; points: { date: string; v: number }[]; top: SetEntry; delta: number | null; stall: Stall | null }
+export function liftTrend(entries: SetEntry[], name: string, today: string): Trend | null {
+  const from = addDays(today, -83);
+  const ss = sessionsFor(entries, name).filter((x) => x.date >= from && x.date <= today).reverse();
+  const points: { date: string; v: number }[] = [];
+  let top: SetEntry | null = null;
+  for (const x of ss) {
+    let best = -Infinity, set: SetEntry | null = null;
+    for (const e of x.sets) { const v = e1rm(e); if (v != null && v > best) { best = v; set = e; } }
+    if (set) { points.push({ date: x.date, v: best }); top = set; }
+  }
+  if (!top) return null;
+  const ch = e1rmChange(entries, name, from, today);
+  return { name, points, top, delta: ch ? ch.delta : null, stall: stall(entries, name, today) };
 }

@@ -49,9 +49,9 @@ test('a tag only you see follows a friend through a change of username, with “
   await b.page.getByRole('button', { name: 'Add a tag' }).click();
   await b.page.getByRole('textbox', { name: `Your tag for @${a.name}` }).fill('  Sam   (gym) ');
   await b.page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing Sam (gym) @${a.name}`);
+  await expect(b.page.getByRole('heading', { level: 1 })).toHaveText(`Sam (gym) @${a.name}`);
   await expect(b.page.getByText('Only you see it.')).toBeVisible();
-  await b.page.getByRole('button', { name: 'Back to you' }).click();
+  await b.page.locator('.fp-back').click();
   await expect(crew(b.page).getByRole('button', { name: `Sam (gym) · @${a.name}`, exact: true })).toBeVisible();
 
   // a sees no tag anywhere: it's b's alone.
@@ -95,6 +95,6 @@ test('a tag only you see follows a friend through a change of username, with “
   await b.page.getByRole('button', { name: 'Edit tag' }).click();
   await b.page.getByRole('button', { name: 'Remove' }).click();
   await expect(b.page.getByRole('button', { name: 'Add a tag' })).toBeVisible();
-  await b.page.getByRole('button', { name: 'Back to you' }).click();
+  await b.page.locator('.fp-back').click();
   await expect(crew(b.page).getByRole('button', { name: `@${next}`, exact: true })).toBeVisible();
 });

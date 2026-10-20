@@ -64,7 +64,7 @@ test('cards are inset evenly and sub-screens give their title room under Back', 
   expect(bad).toEqual([]);
 });
 
-test('Stats: the wide program tile keeps the tile grid gap', async ({ page }) => {
+test('Stats: the program line sits in the week’s card, inside it, under the ring', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
   await goto(page, 'More');
@@ -85,8 +85,11 @@ test('Stats: the wide program tile keeps the tile grid gap', async ({ page }) =>
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(1);
   await goto(page, 'Stats');
-  const tiles = page.locator('.tiles').first().locator('.tile');
-  await expect(tiles.last()).toHaveClass(/wide/);
-  const last = (await tiles.last().boundingBox())!, above = (await tiles.nth(-2).boundingBox())!;
-  expect(Math.round(last.y - (above.y + above.height))).toBe(8);
+  const week = page.getByRole('region', { name: 'This week', exact: true });
+  const line = week.locator('.st-program');
+  await expect(line).toContainText('Program, 4 weeks');
+  const [l, ring, card] = [(await line.boundingBox())!, (await week.locator('.st-week-top').boundingBox())!, (await week.boundingBox())!];
+  expect(Math.round(l.y - (ring.y + ring.height))).toBe(12);
+  expect(l.x).toBeGreaterThanOrEqual(card.x);
+  expect(l.x + l.width).toBeLessThanOrEqual(card.x + card.width);
 });

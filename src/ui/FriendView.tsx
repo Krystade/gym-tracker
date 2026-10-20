@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { cloudError, loadCloud } from '../cloud/firebase';
-import { readFriend, type Friend, type FriendData } from '../cloud/friends';
+import { useMemo, useState } from 'react';
+import type { FriendData } from '../cloud/friends';
 import { defaultProfile, type Profile } from '../domain/profile';
 import type { DayPlan, Program } from '../domain/program';
 import { defaultSettings, settingsKey, type ExerciseSettings } from '../domain/progression';
@@ -17,46 +16,12 @@ import { StatsScreen } from './StatsScreen';
 import { ExerciseScreen } from './ExerciseScreen';
 import type { Gym } from '../domain/equipment';
 import { copyGym } from '../domain/share';
-import { MessageButton } from './MessageButton';
-import { FriendName, FriendTagEditor } from './FriendName';
 
 export type FriendTab = 'history' | 'lifts' | 'stats';
 const noop = async () => {};
 
-/** A friend's log on the same screens, read-only. It's read once when opened; their phone is where it changes. */
-export function FriendView({ me, friend, tab, exercise, today, gyms, unread = 0, onOpen, onBack, onExerciseBack, onMessage }: {
-  /** Your uid, for your tag for them; none signed out. */ me?: string | null;
-  friend: Friend; tab: FriendTab; exercise: string | null; today: string; gyms: GymsStore; unread?: number; onOpen: (n: string) => void; onBack: () => void; onExerciseBack: () => void;
-  /** Their thread, for kudos while you look at their log. */ onMessage?: () => void;
-}) {
-  const [state, setState] = useState<{ data?: FriendData; error?: string }>({});
-  useEffect(() => {
-    let live = true;
-    void loadCloud().then((c) => readFriend(c, friend.uid)).then(
-      (data) => { if (live) setState({ data }); },
-      (e) => { if (live) setState({ error: (e as { code?: string }).code === 'permission-denied' ? `You can’t see @${friend.name}’s log any more.` : cloudError(e) }); });
-    return () => { live = false; };
-  }, [friend]);
-  return (
-    <>
-      <div className="viewing-bar" role="region" aria-label="Viewing a friend">
-        <span className="viewing-who">Viewing <b><FriendName me={me} friend={friend} /></b></span>
-        <span className="bar-actions">
-          {onMessage && <MessageButton name={friend.name} unread={unread} onClick={onMessage} />}
-          <button className="mini" onClick={onBack}>Back to you</button>
-        </span>
-      </div>
-      <main className="screen">
-        {me && !exercise && <FriendTagEditor me={me} friend={friend} />}
-        {state.error ? <p role="alert" className="warn">{state.error}</p>
-          : !state.data ? <p className="muted">Loading @{friend.name}’s log…</p>
-          : <Screens data={state.data} tab={tab} exercise={exercise} today={today} gyms={gyms} onOpen={onOpen} onExerciseBack={onExerciseBack} />}
-      </main>
-    </>
-  );
-}
-
-function Screens({ data, tab, exercise, today, gyms, onOpen, onExerciseBack }: {
+/** A friend's whole log on your own screens, read-only (opened from their page: readFriend reads it then). */
+export function Screens({ data, tab, exercise, today, gyms, onOpen, onExerciseBack }: {
   data: FriendData; tab: FriendTab; exercise: string | null; today: string; gyms: GymsStore; onOpen: (n: string) => void; onExerciseBack: () => void;
 }) {
   // Stand-ins for the phone's stores, built from what they synced; nothing on them writes.

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
 import { defaultProfile } from './profile';
 import {
-  behindMuscles, e1rmChange, friendPrs, goalWeek, LIVE_MS, liftKind, liveSince, milestone, prCard, ringSets, sessionCard, setKind, sharedChanges,
-  streakNudge, topLifts, usualSession, weekSets, weekStreak,
+  behindMuscles, board, e1rmChange, liftTrend, friendPrs, goalWeek, LIVE_MS, liftKind, liveSince, milestone, prCard, ringSets, sessionCard, setKind, sharedChanges,
+  recentPrs, streakNudge, topLifts, usualSession, weekSets, weekStreak,
 } from './feed';
 
 // Synthetic sets only. Today is Thu 15 Oct 2026, 6:40 PM.
@@ -256,3 +256,56 @@ function addDay(d: string, k: number): string {
   x.setUTCDate(x.getUTCDate() + k);
   return x.toISOString().slice(0, 10);
 }
+
+describe('board: a friend’s last 8 weeks as tiles, a row a week from Monday', () => {
+  it('gives each day its kinds, working-set count, PR and live marks; days after today are empty and flagged', () => {
+    const squat = s('Barbell Squat', 3, { loggedAt: at('18:30') });
+    const old = s('Bench Press', 2, {}, '2026-08-24'); // Monday, 8 weeks back: the first row's first tile
+    const before = s('Bench Press', 1, {}, '2026-08-23'); // the day before the board
+    const warm = s('Barbell Squat', 1, { flags: ['warmup'] });
+    const rows = board([...squat, ...old, ...before, ...warm], TODAY, new Set([squat[2].id]), NOW);
+    expect(rows).toHaveLength(8);
+    expect(rows.every((r) => r.length === 7)).toBe(true);
+    expect(rows[0][0]).toMatchObject({ date: '2026-08-24', kinds: ['push'], sets: 2, pr: false, live: false, future: false });
+    const today = rows[7][3];
+    expect(today).toMatchObject({ date: TODAY, kinds: ['legs'], sets: 3, pr: true, live: true, today: true, future: false });
+    expect(rows[7][4]).toMatchObject({ date: '2026-10-16', sets: 0, kinds: [], future: true });
+    expect(rows[7][2]).toMatchObject({ sets: 0, kinds: [], future: false, today: false });
+  });
+  it('is live only on today’s tile and only within 20 minutes', () => {
+    const late = s('Barbell Squat', 1, { loggedAt: at('18:00') });
+    expect(board(late, TODAY, new Set(), NOW)[7][3].live).toBe(false);
+  });
+});
+
+describe('recentPrs: one PR per lift, newest first', () => {
+  it('keeps each lift’s newest PR set and orders by date', () => {
+    const a = s('Bench Press', 1, { weight: 100 }, '2026-10-01');
+    const b = s('Bench Press', 1, { weight: 110 }, '2026-10-08');
+    const c = s('Barbell Squat', 1, { weight: 150 }, '2026-10-05');
+    const d = s('Lat Pulldown', 1, {}, '2026-10-12');
+    const got = recentPrs([...a, ...b, ...c, ...d], new Set([a[0].id, b[0].id, c[0].id]), 2);
+    expect(got.map((e) => e.id)).toEqual([b[0].id, c[0].id]);
+  });
+});
+
+describe('liftTrend: a lift over 12 weeks, for Getting stronger', () => {
+  it('gives each session’s best e1RM oldest first, the change from your own start, and the latest top set', () => {
+    const e = [
+      ...s('Bench Press', 1, { weight: 100, reps: 5 }, '2026-07-10'), // before the 12 weeks: left out
+      ...s('Bench Press', 1, { weight: 150, reps: 5 }, '2026-08-20'),
+      ...s('Bench Press', 2, { weight: 160, reps: 5 }, '2026-09-20'),
+      ...s('Bench Press', 1, { weight: 170, reps: 5 }, '2026-10-14'),
+      ...s('Bench Press', 1, { weight: 150, reps: 5 }, '2026-10-14'),
+    ];
+    const t = liftTrend(e, 'Bench Press', TODAY)!;
+    expect(t.points.map((p) => p.date)).toEqual(['2026-08-20', '2026-09-20', '2026-10-14']);
+    expect(t.points[2].v).toBeCloseTo(170 * (1 + 5 / 30));
+    expect(t.top).toMatchObject({ weight: 170, reps: 5, date: '2026-10-14' });
+    expect(Math.round(t.delta!)).toBe(Math.round(20 * (1 + 5 / 30)));
+    expect(t.stall).toBeNull();
+  });
+  it('is null for a lift with no weighted sets in the 12 weeks', () => {
+    expect(liftTrend(s('Plank', 1, { weight: 0, reps: 60 }), 'Plank', TODAY)).toBeNull();
+  });
+});

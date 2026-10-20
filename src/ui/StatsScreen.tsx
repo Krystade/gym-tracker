@@ -4,7 +4,7 @@ import type { SetsStore } from '../state/useSets';
 import type { FittedProfileStore } from '../state/useFittedProfile';
 import type { ProgramStore } from '../state/useProgram';
 import { adherence } from '../domain/program';
-import { addDays, calendarDays, streak, weekStart, weeklyMuscleSets, weeklySummary } from '../domain/analytics';
+import { addDays, calendarDays, weekStart, weeklyMuscleSets, weeklySummary } from '../domain/analytics';
 import { MUSCLES } from '../domain/muscles';
 import type { Tier } from '../domain/profile';
 import { fmtWeight, plural } from '../domain/format';
@@ -22,6 +22,7 @@ import { GoalSuggestion, PrioritySuggestion } from './TargetSuggestions';
 import type { SetEntry } from '../domain/types';
 import { activeProfileDb } from '../db/db';
 import { Input } from './Field';
+import { BehindCard, PrCardView, Stronger, WeekRing } from './StatsCards';
 
 const tons = (n: number) => (n >= 1000 ? `${fmtWeight(Math.round(n / 100) / 10)}k` : fmtWeight(Math.round(n)));
 const fmt = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
@@ -97,15 +98,14 @@ function Priorities({ profile, readOnly, cardioMinutes, entries, today }: { prof
 }
 
 /** A friend's Stats: no photos, and their priorities shown but not editable. */
-export function StatsScreen({ store, profile, programs, body, photos, today, onOpenPhotos, readOnly }: {
+export function StatsScreen({ store, profile, programs, body, photos, today, onOpenPhotos, readOnly, onOpenLift }: {
   store: SetsStore; profile: FittedProfileStore; programs: ProgramStore; body: BodyStore; photos: PhotosStore | null; today: string; onOpenPhotos: () => void; readOnly?: boolean;
+  /** A lift named on a card (Getting stronger, a muscle's fix): its screen. */ onOpenLift?: (name: string) => void;
 }) {
   const p = profile.profile;
   // A new user sets priorities before the first workout, so they're here with an empty log too.
   if (!store.entries.length) return (<><h1>Stats</h1><p className="muted">No sessions yet — log a workout or import your history under More.</p><BodyCard body={body} today={today} />{photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}<Priorities profile={profile} readOnly={readOnly} cardioMinutes={0} entries={store.entries} today={today} /></>);
   const weeks = weeklySummary(store.entries, 12, today);
-  const st = streak(weeklySummary(store.entries, 104, today), p.weeklyGoal);
-  const thisWeek = weeks.at(-1)!;
   const muscle = weeklyMuscleSets(store.entries, weekStart(today));
   const lastWeek = weeklyMuscleSets(store.entries, weeks.at(-2)!.week);
   // 12 whole Monday–Sunday columns, the last one running to today.
@@ -114,16 +114,11 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
   return (
     <>
       <h1>Stats</h1>
-      <section className="card">
-        <h2>This week</h2>
-        <div className="tiles">
-          <div className="tile"><span>Sessions</span><b>{thisWeek.sessions} of {p.weeklyGoal}</b>{thisWeek.cardioDays > 0 && <span>+ {plural(thisWeek.cardioDays, 'cardio day')}</span>}</div>
-          <div className="tile"><span>Weekly streak</span><b>{plural(st.current, 'week')}</b></div>
-          <div className="tile"><span>Sets</span><b>{thisWeek.sets}</b></div>
-          <div className="tile"><span>Best streak</span><b>{plural(st.best, 'week')}</b></div>
-          {adh && adh.planned > 0 && <div className="tile wide"><span>Program, 4 weeks</span><b>{Math.round((100 * adh.done) / adh.planned)}% · {adh.done} / {adh.planned} sets</b></div>}
-        </div>
-      </section>
+      <p className="st-sub">Week of <b>{new Date(`${weekStart(today)}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</b> · {new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long' })}</p>
+      <WeekRing entries={store.entries} profile={p} today={today} program={adh} />
+      <PrCardView entries={store.entries} today={today} juice={!readOnly} />
+      <Stronger entries={store.entries} today={today} onOpen={onOpenLift} />
+      <BehindCard entries={store.entries} profile={p} today={today} onOpen={onOpenLift} />
       <LastWeekCard entries={store.entries} profile={p} today={today} />
       <section className="card">
         <h2>Muscle volume</h2>

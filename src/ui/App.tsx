@@ -42,7 +42,7 @@ import { DataScreen } from './DataScreen';
 import { StatsScreen } from './StatsScreen';
 import { Walkthrough, walkthroughPending } from './Walkthrough';
 import { FriendsScreen } from './FriendsScreen';
-import { FriendView, type FriendTab } from './FriendView';
+import { FriendPage } from './FriendPage';
 import { CharactersScreen } from './CharactersScreen';
 import { GymsScreen } from './GymsScreen';
 import type { Friend, FriendNews } from '../cloud/friends';
@@ -66,7 +66,6 @@ const TABS: [Tab, string][] = [['today', 'Today'], ['history', 'History'], ['lif
 const TAB_ICON: Record<Tab, [IconName, IconName]> = {
   today: ['today', 'today-on'], history: ['history', 'history-on'], lifts: ['lifts', 'lifts-on'], stats: ['stats', 'stats-on'], friends: ['friends', 'friends-on'], more: ['more', 'more'],
 };
-const FRIEND_TABS = TABS.filter(([t]) => t === 'history' || t === 'lifts' || t === 'stats');
 
 export default function App() {
   const people = usePeople();
@@ -151,28 +150,24 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const nav = { recapAt, tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, gymOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, setGymOpen, open,
     // The walkthrough points at Today, so it opens there.
     pending, waiting, news, newsRev, bumpNews, setMe, openThread: (f: ThreadWith) => setThread(f), clearPending: () => { launchInvite = null; setPending(null); },
-    view: (f: Friend) => { setViewing(f); setTab('stats'); setExercise(null); window.scrollTo(0, 0); },
+    viewing, view: (f: Friend) => { setViewing(f); setTab('friends'); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); window.scrollTo(0, 0); },
+    unview: () => { setViewing(null); window.scrollTo(0, 0); },
     showTour: () => { setViewing(null); setTab('today'); setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); window.scrollTo(0, 0); setTour(true); } };
 
   return (
     <div className="app">
       {/* Under the clock and battery: with no sticky bar on top, a scrolled card would show through the status bar. */}
       <div className="status-backdrop" aria-hidden="true" />
-      {/* Your screens stay mounted while you look at a friend's, so your log keeps syncing and Back finds you where you were. */}
-      <div hidden={!!viewing}>
-        <ProfileDbProvider key={people.active!.id} id={people.active!.id}>
-          <PersonScreens person={people.active!} people={people} gyms={gyms} nav={nav} />
-        </ProfileDbProvider>
-      </div>
-      {viewing && <FriendView key={viewing.uid} me={me} friend={viewing} tab={tab as FriendTab} exercise={exercise} today={date} gyms={gyms} onOpen={open}
-        unread={news?.unread[viewing.uid] ?? 0} onMessage={me ? () => setThread(viewing) : undefined}
-        onExerciseBack={() => setExercise(null)} onBack={() => { setViewing(null); setExercise(null); setTab('friends'); window.scrollTo(0, 0); }} />}
+      {/* A friend's page opens inside Friends (FriendPage), on the same tab bar. */}
+      <ProfileDbProvider key={people.active!.id} id={people.active!.id}>
+        <PersonScreens person={people.active!} people={people} gyms={gyms} nav={nav} />
+      </ProfileDbProvider>
       {thread && me && <ThreadSheet key={thread.uid} me={me} friend={thread} gyms={gyms} onClose={() => setThread(null)} onChanged={bumpNews}
         onViewLog={(f) => { setThread(null); nav.view(f); }} />}
       {tour && <Walkthrough onClose={() => setTour(false)} />}
       <nav className="tabs" aria-label="Sections">
-        {(viewing ? FRIEND_TABS : TABS).map(([t, label]) => (
-          <button key={t} data-tour={t} aria-current={current(t) ? 'page' : undefined} onClick={() => { setTab(t); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); }}>
+        {TABS.map(([t, label]) => (
+          <button key={t} data-tour={t} aria-current={current(t) ? 'page' : undefined} onClick={() => { setTab(t); setViewing(null); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); }}>
             <Icon name={TAB_ICON[t][current(t) ? 1 : 0]} size={26} />
             {label}{t === 'friends' && waiting > 0 && <span className="tab-dot" aria-hidden="true" />}
           </button>
@@ -186,7 +181,7 @@ interface Nav {
   recapAt: number; tab: Tab; exercise: string | null; date: string; logDay: string | null; setLogDay: (d: string | null) => void; programOpen: boolean; photosOpen: boolean; pasteOpen: boolean; charsOpen: boolean; gymOpen: boolean;
   setTab: (t: Tab) => void; setExercise: (x: string | null) => void; setProgramOpen: (b: boolean) => void; setPhotosOpen: (b: boolean) => void; setPasteOpen: (b: boolean) => void; setCharsOpen: (b: boolean) => void; setGymOpen: (b: boolean) => void;
   open: (name: string) => void; showTour: () => void;
-  pending: Invite | null; clearPending: () => void; waiting: number; view: (f: Friend) => void;
+  pending: Invite | null; clearPending: () => void; waiting: number; viewing: Friend | null; view: (f: Friend) => void; unview: () => void;
   news: FriendNews | null; newsRev: Box<number>; bumpNews: () => void; setMe: (uid: string | null) => void; openThread: (f: ThreadWith) => void;
 }
 
@@ -261,10 +256,12 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
             onDay={(d) => { setLogDay(d === day ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={top(() => setProgramOpen(true))} onOpenGym={top(() => setGymOpen(true))} />
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} focus={historyAt} onFocused={() => setHistoryAt(null)} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
+          : tab === 'friends' && nav.viewing && uid ? <FriendPage key={nav.viewing.uid} uid={uid} friend={nav.viewing} entries={store.entries} today={date} gyms={gyms} news={nav.news}
+            onBack={nav.unview} onMessage={() => nav.openThread(nav.viewing!)} />
           : tab === 'friends' ? <FriendsScreen cloud={cloud} gyms={gyms} pending={nav.pending} entries={store.entries} status={status} today={date} onPendingDone={nav.clearPending} onView={nav.view}
             news={nav.news} newsRev={nav.newsRev} onChanged={nav.bumpNews} onMessage={nav.openThread}
             onSignIn={top(() => setTab('more'))} onOpenMine={top(() => setTab('history'))} myName={person.name} goal={profile.profile.weeklyGoal} />
-          : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} />
+          : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} onOpenLift={open} />
           : <DataScreen store={store} profile={rawProfile} body={body} sync={sync} cloud={cloud} people={people} onOpenPaste={top(() => setPasteOpen(true))} onShowWalkthrough={showTour}
             onOpenCharacters={top(() => setCharsOpen(true))} onOpenGym={top(() => setGymOpen(true))} onOpenProgram={top(() => setProgramOpen(true))} onOpenPhotos={top(() => setPhotosOpen(true))} />}
       </main>

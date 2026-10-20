@@ -16,6 +16,7 @@ import type { StatusStore } from '../state/useStatus';
 import { Input } from './Field';
 import { Icon, initials } from './icons';
 import { Latest, MessageButton } from './MessageButton';
+import { Formerly, useFriendLabel } from './FriendName';
 import { kindColour, Ring } from './Ring';
 
 // Friends, told as today's stories (round 18, direction A "Feed"): a ring per person filling with today's sets, a card per
@@ -34,7 +35,7 @@ interface Person {
   last: { date: string; kinds: string; sets: number } | null;
 }
 
-const clock = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+export const clock = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 const dayStart = (now: number) => new Date(new Date(now).setHours(0, 0, 0, 0)).getTime();
 const kindsLabel = (sets: SetEntry[]) => dayKinds(sets).kinds.map((k) => KIND_SHORT[k]).join(' + ') || 'Training';
 /** How far into their own goal this week: what the rings are ordered by. */
@@ -51,6 +52,8 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
   const cache = useFriendCache(uid);
   const windows = cache?.windows;
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Your private tag beside their @username ("Sam (gym) · @sam_k"), as the names round keeps it.
+  const label = useFriendLabel(uid);
 
   // Each friend's line as the phone kept it, read again quietly when 5 minutes old or for a new day. A failed read shows only
   // where nothing was kept; a kept line stays as it was.
@@ -92,12 +95,12 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
     const theirs = (friends ?? []).map((f) => {
       const w = windows?.[f.uid], error = w ? undefined : errors[f.uid];
       const sets = (w?.win.sets ?? []).filter((x) => x.date >= from && x.date <= today);
-      return build({ id: f.uid, me: false, friend: f, label: `@${f.name}`, handle: f.name, status: w?.win.status ?? '', loading: !w && !error, error },
+      return build({ id: f.uid, me: false, friend: f, label: label(f.uid, f.name), handle: f.name, status: w?.win.status ?? '', loading: !w && !error, error },
         sets, w ? friendPrs(w.win) : new Set(), w?.win.goal ?? null);
     });
     return [me, ...theirs];
     // `minute`: live and today's cards move on with the clock.
-  }, [entries, friends, windows, errors, status.status, from, today, goal, myName, myPrs, minute]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [entries, friends, windows, errors, status.status, from, today, goal, myName, myPrs, minute, label]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rail = [people[0], ...people.slice(1).sort((a, b) => goalShare(b) - goalShare(a) || a.label.localeCompare(b.label))];
   const trained = people.filter((p) => p.card);
@@ -111,23 +114,7 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
   const [draw] = useState(() => getPref<string>(owner, 'feed:drawn') !== today);
   useEffect(() => { setPref(owner, 'feed:drawn', today); }, [owner, today]);
 
-  // Reactions: one at a time; the button that sent one bursts (social.css), and the card says so.
-  const [sending, setSending] = useState<string | null>(null);
-  const [burst, setBurst] = useState<{ uid: string; k: PresetKey; at: number } | null>(null);
-  const [sendError, setSendError] = useState<{ uid: string; text: string } | null>(null);
-  const react = async (f: Friend, k: PresetKey) => {
-    if (sending) return;
-    setSending(f.uid); setSendError(null);
-    const t0 = Date.now();
-    try {
-      const id = await sendPing(await loadCloud(), uid, f.uid, k);
-      setBurst({ uid: f.uid, k, at: Date.now() });
-      await notePing(uid, f.uid, { id, from: uid, kind: 'p', e: k, at: Date.now() });
-    } catch (e) {
-      setSendError({ uid: f.uid, text: (e as { plain?: boolean }).plain ? (e as Error).message : 'Couldn’t send.' });
-    } finally { setTimeout(() => setSending(null), Math.max(0, 2000 - (Date.now() - t0))); } // the rules want 2 s between sends
-  };
-  useEffect(() => { if (!burst) return; const t = setTimeout(() => setBurst(null), 1000); return () => clearTimeout(t); }, [burst]);
+  const { sending, burst, sendError, react } = useReactions(uid);
 
   // What you sent each friend today, and what each sent you: from the threads and inbox kept, no read.
   const start = dayStart(Date.now());
@@ -194,8 +181,8 @@ function RailPerson({ p, draw, delay, onOpen }: { p: Person; draw: boolean; dela
   );
 }
 
-const topText = (l: CardLift) => (l.seconds != null ? fmtClock(l.seconds) : `${l.weight === 0 ? 'BW' : fmtWeight(l.weight)} × ${l.reps ?? '?'}${l.hold ? 's' : ''}`);
-const subText = (l: CardLift) => (l.seconds != null ? (l.miles != null ? `${fmtMiles(l.miles)} mi` : '') : `${l.sets} set${l.sets === 1 ? '' : 's'}`);
+export const topText = (l: CardLift) => (l.seconds != null ? fmtClock(l.seconds) : `${l.weight === 0 ? 'BW' : fmtWeight(l.weight)} × ${l.reps ?? '?'}${l.hold ? 's' : ''}`);
+export const subText = (l: CardLift) => (l.seconds != null ? (l.miles != null ? `${fmtMiles(l.miles)} mi` : '') : `${l.sets} set${l.sets === 1 ? '' : 's'}`);
 
 /** One person's session today: who, when, the kinds as a bar, each lift's top set, and reactions (yours to send, or theirs to you). */
 function SessionCard({ p, now, news, onOpen, onMessage, sending, burst, error, sent, got, onReact }: {
@@ -227,6 +214,7 @@ function SessionCard({ p, now, news, onOpen, onMessage, sending, burst, error, s
         <div className="fd-who-text">
           <div className="fd-name-line">
             <button className="link fd-name" onClick={onOpen}>{p.label}</button>
+            {p.friend && <Formerly friend={p.friend} />}
             {p.friend?.muted && <span className="crew-muted" role="img" aria-label="Muted"><Icon name="bell-off" size={15} /></span>}
             {p.status && !p.me && <span className="fd-status">{p.status}</span>}
           </div>
@@ -247,13 +235,7 @@ function SessionCard({ p, now, news, onOpen, onMessage, sending, burst, error, s
       </ul>
       {p.friend ? (
         <div className="fd-react" role="group" aria-label={`React to @${p.friend.name}`}>
-          {REACTIONS.map((k) => (
-            <button key={k} className={`fd-rbtn${burst === k ? ' fire' : ''}${sent?.e === k ? ' sent' : ''}`} aria-label={`Send ${PRESETS[k].emoji} ${PRESETS[k].copy} to @${p.friend!.name}`}
-              disabled={!!sending} onClick={() => onReact(k)}>
-              <span aria-hidden="true">{PRESETS[k].emoji}</span>
-              {burst === k && <span className="fd-particles" aria-hidden="true">{Array.from({ length: BURST }, (_, i) => <span key={i} style={PARTICLE[i]}>{PRESETS[k].emoji}</span>)}</span>}
-            </button>
-          ))}
+          {REACTIONS.map((k) => <ReactButton key={k} k={k} name={p.friend!.name} burst={burst === k} sent={sent?.e === k} disabled={!!sending} onClick={() => onReact(k)} />)}
           <span className="fd-said" role="status">
             {error ? <span className="warn">{error}</span>
               : burst ? <span className="fd-sentmsg"><b>Sent {PRESETS[burst].emoji}</b> · just now</span>
@@ -276,7 +258,7 @@ function SessionCard({ p, now, news, onOpen, onMessage, sending, burst, error, s
   );
 }
 /** The day's kinds in words, from the card's own count: the top kind, and a second within 20% of it (domain/crew dayKinds). */
-function kindsFromCard(c: Card): string {
+export function kindsFromCard(c: Card): string {
   const ranked = (Object.entries(c.kinds) as [keyof typeof KIND_SHORT, number][]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
   if (!ranked.length) return 'Training';
   const [[top, n], next] = ranked;
@@ -290,6 +272,38 @@ const PARTICLE = ([
   { '--i': 4, '--dx': '-48px', '--dy': '-48px', '--r': '-30deg', '--s': 0.8 }, { '--i': 5, '--dx': '6px', '--dy': '-60px', '--r': '-6deg', '--s': 0.9 },
   { '--i': 6, '--dx': '-22px', '--dy': '-120px', '--r': '12deg', '--s': 0.7 },
 ] as Record<string, string | number>[]) as CSSProperties[];
+
+/** Reactions: one at a time; the button that sent one bursts (social.css), and what sent it says so. Each is a ping (sendPing). */
+export function useReactions(uid: string) {
+  const [sending, setSending] = useState<string | null>(null);
+  const [burst, setBurst] = useState<{ uid: string; k: PresetKey; at: number } | null>(null);
+  const [sendError, setSendError] = useState<{ uid: string; text: string } | null>(null);
+  const react = async (f: Friend, k: PresetKey) => {
+    if (sending) return;
+    setSending(f.uid); setSendError(null);
+    const t0 = Date.now();
+    try {
+      const id = await sendPing(await loadCloud(), uid, f.uid, k);
+      setBurst({ uid: f.uid, k, at: Date.now() });
+      await notePing(uid, f.uid, { id, from: uid, kind: 'p', e: k, at: Date.now() });
+    } catch (e) {
+      setSendError({ uid: f.uid, text: (e as { plain?: boolean }).plain ? (e as Error).message : 'Couldn’t send.' });
+    } finally { setTimeout(() => setSending(null), Math.max(0, 2000 - (Date.now() - t0))); } // the rules want 2 s between sends
+  };
+  useEffect(() => { if (!burst) return; const t = setTimeout(() => setBurst(null), 1000); return () => clearTimeout(t); }, [burst]);
+
+  return { sending, burst, sendError, react };
+}
+
+/** One reaction button, with its burst of emoji while `burst`. */
+export function ReactButton({ k, name, burst, sent, disabled, onClick }: { k: PresetKey; name: string; burst: boolean; sent: boolean; disabled: boolean; onClick: () => void }) {
+  return (
+    <button className={`fd-rbtn${burst ? ' fire' : ''}${sent ? ' sent' : ''}`} aria-label={`Send ${PRESETS[k].emoji} ${PRESETS[k].copy} to @${name}`} disabled={disabled} onClick={onClick}>
+      <span aria-hidden="true">{PRESETS[k].emoji}</span>
+      {burst && <span className="fd-particles" aria-hidden="true">{Array.from({ length: BURST }, (_, i) => <span key={i} style={PARTICLE[i]}>{PRESETS[k].emoji}</span>)}</span>}
+    </button>
+  );
+}
 
 /** A friend with no session today: their last one, and their week against their own goal. */
 function EarlierRow({ p, today, news, onOpen, onMessage }: { p: Person; today: string; news?: FriendNews | null; onOpen: () => void; onMessage?: () => void }) {
@@ -305,7 +319,8 @@ function EarlierRow({ p, today, news, onOpen, onMessage }: { p: Person; today: s
       <span className={`avatar${gone != null && gone >= 7 ? ' faded' : ''}`} aria-hidden="true">{initials(f.name)}</span>
       <div className="fd-who-text">
         <div className="fd-name-line">
-          <button className="link fd-name" onClick={onOpen}>@{f.name}</button>
+          <button className="link fd-name" onClick={onOpen}>{p.label}</button>
+          <Formerly friend={f} />
           {f.muted && <span className="crew-muted" role="img" aria-label="Muted"><Icon name="bell-off" size={15} /></span>}
           {p.status && <span className="fd-status">{p.status}</span>}
         </div>

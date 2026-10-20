@@ -111,14 +111,14 @@ test('a friend’s message push opens their thread: on a launch, on a tap with t
       await expect(tab(b.page, 'Stats')).toHaveAttribute('aria-current', 'page');
     } else {
       await crew(b.page).getByTestId(`crew-${a.name}`).getByRole('button', { name: `@${a.name}`, exact: true }).click();
-      await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing @${a.name}`);
+      await expect(b.page.getByRole('heading', { name: `@${a.name}`, level: 1 })).toBeVisible();
     }
     await b.page.evaluate((u) => { location.href = u; }, navigate(route));
     await expect(sheet).toBeVisible();
     await expect(sheet.getByRole('list', { name: 'Messages' }).locator('.bubble-text')).toHaveText(['leg day?']);
     await expect(tab(b.page, 'Friends')).toHaveAttribute('aria-current', 'page');
     await onScreen(b.page, sheet);
-    await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toHaveCount(0);
+    await expect(b.page.getByRole('heading', { name: `@${a.name}`, level: 1 })).toHaveCount(0);
     expect(new URL(b.page.url()).hash).toBe('');
   }
 

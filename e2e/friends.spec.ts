@@ -81,19 +81,26 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   await expect(session).toContainText('135 × 8');
   await expect(crew(b.page).getByTestId('crew-me')).toHaveCount(0);
   await crew(b.page).getByRole('button', { name: `@${a.name}`, exact: true }).click();
-  await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing @${a.name}`);
+  // Their page, inside Friends: the tab bar stays yours. Their whole log on your screens, read-only, one tap further.
+  const fp = b.page.getByRole('region', { name: `@${a.name}`, exact: true });
+  await expect(fp.getByRole('heading', { name: `@${a.name}`, level: 1 })).toBeVisible();
+  await expect(b.page.getByRole('navigation', { name: 'Sections' }).getByRole('button')).toHaveText(['Today', 'History', 'Lifts', 'Stats', 'Friends', 'More']);
+  await fp.getByRole('button', { name: 'Stats', exact: true }).click();
   await expect(b.page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
   await expect(b.page.getByRole('combobox', { name: 'Chest' })).toBeDisabled();
-  await expect(b.page.getByRole('navigation', { name: 'Sections' }).getByRole('button')).toHaveText(['History', 'Lifts', 'Stats']);
-  await goto(b.page, 'History');
+  await b.page.getByRole('button', { name: `@${a.name}`, exact: true }).click();
+  await fp.getByRole('button', { name: 'History', exact: true }).click();
   await expect(b.page.getByRole('button', { name: /Bench Press/ })).toContainText('135 × 8');
   await expect(b.page.getByRole('button', { name: 'Add to this day' })).toHaveCount(0);
-  await goto(b.page, 'Lifts');
+  await b.page.getByRole('button', { name: `@${a.name}`, exact: true }).click();
+  await fp.getByRole('button', { name: 'Lifts', exact: true }).click();
   await b.page.getByRole('button', { name: /Bench Press/ }).click();
   await expect(b.page.getByRole('heading', { name: 'Bench Press', level: 1 })).toBeVisible();
   await expect(b.page.getByRole('button', { name: 'Save settings' })).toHaveCount(0);
   await expect(b.page.getByRole('button', { name: 'Rename' })).toHaveCount(0);
-  await b.page.getByRole('button', { name: 'Back to you' }).click();
+  await b.page.locator('.fp-back').click(); // back from the lift
+  await b.page.getByRole('button', { name: `@${a.name}`, exact: true }).click();
+  await fp.getByRole('button', { name: 'Friends', exact: true }).click();
   await expect(b.page.getByRole('heading', { name: 'Friends', level: 1 })).toBeVisible();
   await goto(b.page, 'Today');
   await expect(b.page.getByRole('list', { name: 'Sets for Bench Press' })).toHaveCount(0); // b's own Today, still empty
@@ -140,7 +147,7 @@ test('an invite link asks before it befriends, says what each side sees, and wor
   await friends(c.page).getByRole('region', { name: 'Invite' }).getByRole('button', { name: 'Accept' }).click();
   await expect(note(c.page)).toHaveText(`You and @${a.name} are now friends.`);
   await crew(c.page).getByRole('button', { name: `@${a.name}`, exact: true }).click();
-  await goto(c.page, 'History');
+  await c.page.getByRole('region', { name: `@${a.name}`, exact: true }).getByRole('button', { name: 'History', exact: true }).click();
   await expect(c.page.getByRole('button', { name: /Bench Press/ })).toContainText('135 × 8');
 
   // Used once: the next person holding the same link is turned away before anything is asked.
@@ -174,11 +181,11 @@ test('a friend’s gym can be added to yours from their Stats', async ({ browser
   const b = await person(browser);
   await befriend(a, b);
   await crew(b.page).getByRole('button', { name: `@${a.name}`, exact: true }).click();
+  await b.page.getByRole('region', { name: `@${a.name}`, exact: true }).getByRole('button', { name: 'Stats', exact: true }).click();
   const theirs = b.page.getByRole('region', { name: 'Their gyms' });
   await expect(theirs).toContainText('Garage · 2 pieces of gear');
   await theirs.getByRole('button', { name: 'Add to my gyms' }).click();
   await expect(theirs.getByRole('status')).toHaveText('Added Garage to your gyms.');
-  await b.page.getByRole('button', { name: 'Back to you' }).click();
   await goto(b.page, 'Today');
   await openGyms(b.page);
   await expect(b.page.getByLabel('Gym name')).toHaveValue('Garage');

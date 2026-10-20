@@ -151,11 +151,11 @@ test('a ping from a Crew row and a message from the friend view land in the othe
   await goto(b.page, 'Today');
   await expect(b.page.locator('.today-news')).toHaveCount(0);
 
-  // B looks at A's log, and answers from its bar.
+  // B opens A's page, and answers from its Chat.
   await goto(b.page, 'Friends');
   await aRow.getByRole('button', { name: `@${a.name}`, exact: true }).click();
-  const bar = b.page.getByRole('region', { name: 'Viewing a friend' });
-  await expect(bar).toContainText(`Viewing @${a.name}`);
+  const bar = b.page.getByRole('region', { name: `@${a.name}`, exact: true });
+  await expect(bar.getByRole('heading', { name: `@${a.name}`, level: 1 })).toBeVisible();
   expect(await noSideScroll(b.page)).toBe(true);
   await bar.getByRole('button', { name: `Message @${a.name}` }).click();
   await bSheet.getByRole('button', { name: 'Send 👏 Nice work' }).click();
