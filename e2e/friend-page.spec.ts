@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test';
 import { account, befriend, iso, log, session, signedIn, type Seeded } from './seed';
+import { FIRESTORE } from './emu';
 
 // A friend's page inside Friends (round 18) against the local emulators: synthetic accounts and numbers only (e2e/seed.ts).
 // Today at 18:00 (Sunday when today is a Monday, so yesterday is in the same week).
@@ -60,7 +61,7 @@ test('a friend’s page opens inside Friends from what the phone keeps, compares
 
   // Opening the page reads nothing: it's built from the line the list already has.
   const reads: string[] = [];
-  page.on('request', (r) => { if (r.url().startsWith('http://127.0.0.1:8080/')) reads.push(`${r.url()} ${r.postData() ?? ''}`); });
+  page.on('request', (r) => { if (r.url().startsWith(`${FIRESTORE}/`)) reads.push(`${r.url()} ${r.postData() ?? ''}`); });
   await card.getByRole('button', { name: `@${fr.name}`, exact: true }).click();
   const fp = page.getByRole('region', { name: `@${fr.name}`, exact: true });
   await expect(fp.getByRole('heading', { name: `@${fr.name}`, level: 1 })).toBeVisible();

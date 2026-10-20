@@ -1,9 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 import { generateKeyPairSync } from 'node:crypto';
+import { EMU_HOST, FIRESTORE, emu } from './e2e/emu';
 
 // The local push run: the app built against `wrangler dev` (local mode, accepting the Auth emulator's tokens), a fake
 // push service in the spec, and Chromium (CDP delivers the push to the service worker). The Auth and Firestore emulators
-// must already be running (as with E2E_EMULATORS=external). Run: npx playwright test -c playwright.push.config.ts
+// must already be running (as with E2E_EMULATORS=external), on 8080/9099 or at E2E_EMU_BASE (e2e/emu.ts).
+// Run: npx playwright test -c playwright.push.config.ts
 //
 // The VAPID key is a throwaway made for this run, held in memory and handed to the two servers through their environment.
 const jwk = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey.export({ format: 'jwk' });
@@ -29,13 +31,14 @@ export default defineConfig({
     {
       command: `node node_modules/vite/bin/vite.js build --outDir dist-push --emptyOutDir && node node_modules/vite/bin/vite.js preview --outDir dist-push --host 127.0.0.1 --port ${appPort} --strictPort`,
       url: `${app}/`, reuseExistingServer: false, timeout: 180_000,
-      env: { ...env, PUSH_TEST_WORKER_URL: `http://127.0.0.1:${workerPort}`, PUSH_TEST_VAPID_KEY: pub },
+      env: { ...env, PUSH_TEST_WORKER_URL: `http://127.0.0.1:${workerPort}`, PUSH_TEST_VAPID_KEY: pub,
+        VITE_EMU_HOST: EMU_HOST, VITE_EMU_FIRESTORE_PORT: String(emu.firestore), VITE_EMU_AUTH_PORT: String(emu.auth) },
     },
     {
       command: `node node_modules/wrangler/bin/wrangler.js dev --ip 127.0.0.1 --port ${workerPort} --show-interactive-dev-session=false`,
       cwd: 'worker', url: `http://127.0.0.1:${workerPort}/status`, reuseExistingServer: false, timeout: 180_000,
       // Local mode: the demo project and the emulator's unsigned tokens. Taken from the environment, not a file.
-      env: { ...env, CLOUDFLARE_INCLUDE_PROCESS_ENV: 'true', WRANGLER_SEND_METRICS: 'false', AUTH_EMULATOR: '1', FIREBASE_PROJECT: 'demo-gym-tracker', FIRESTORE_EMULATOR: 'http://127.0.0.1:8080', APP_URL: `${app}/`, VAPID_PRIVATE_JWK: JSON.stringify(jwk) },
+      env: { ...env, CLOUDFLARE_INCLUDE_PROCESS_ENV: 'true', WRANGLER_SEND_METRICS: 'false', AUTH_EMULATOR: '1', FIREBASE_PROJECT: 'demo-gym-tracker', FIRESTORE_EMULATOR: FIRESTORE, APP_URL: `${app}/`, VAPID_PRIVATE_JWK: JSON.stringify(jwk) },
     },
   ],
 });

@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { goto as tab } from './nav';
+import { DOCS, FIRESTORE } from './emu';
 
 // Cycle phase: opt-in per profile, one tap under Energy, private. Synthetic data only.
 const DATA = 'More';
@@ -147,7 +148,7 @@ test('with enough logged cycles, the predicted phase is outlined, not pressed, a
 const PASSWORD = 'synthetic-pass-1';
 const rand = () => Math.random().toString(36).slice(2, 10);
 const friends = (page: Page) => page.getByRole('region', { name: 'Friends', exact: true });
-const EMU = 'http://127.0.0.1:8080/v1/projects/demo-gym-tracker/databases/(default)/documents';
+const EMU = DOCS;
 
 async function person(browser: Browser) {
   const ctx = await browser.newContext({ storageState: { cookies: [], origins: [{ origin: `http://127.0.0.1:${process.env.E2E_PORT ?? 4173}`, localStorage: [{ name: 'gym-tracker:walkthrough', value: 'done' }] }] } });
@@ -189,7 +190,7 @@ test('a friend’s view shows no cycle data and never asks for it', async ({ bro
   expect(put.ok()).toBe(true);
 
   const asked: string[] = [];
-  b.page.on('request', (r) => { if (r.url().startsWith('http://127.0.0.1:8080/')) asked.push(`${decodeURIComponent(r.url())} ${r.postData() ?? ''}`); });
+  b.page.on('request', (r) => { if (r.url().startsWith(`${FIRESTORE}/`)) asked.push(`${decodeURIComponent(r.url())} ${r.postData() ?? ''}`); });
   await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(`@${a.name}`);
   await friends(b.page).getByRole('button', { name: 'Send request' }).click();
   await expect(friends(b.page).getByRole('status')).toHaveText(`Request sent to @${a.name}.`);

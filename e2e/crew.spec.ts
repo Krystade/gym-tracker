@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test';
 import { goto } from './nav';
 import { account, befriend, EMU, iso, log, ping, session, signedIn, type Seeded } from './seed';
+import { FIRESTORE } from './emu';
 
 // Friends as a feed (round 18) against the local Auth and Firestore emulators: synthetic accounts and numbers, put there as an
 // admin (e2e/seed.ts). Today at 18:00 (Sunday when today is a Monday, so the day before is in the same week); the emulator's
@@ -158,7 +159,7 @@ test('live means a set in the last 20 minutes: the pill goes by itself, with no 
   const pill = crew(page).getByTestId(`ring-${c.live.name}`).locator('.fd-live');
   await expect(pill).toBeVisible({ timeout: 15_000 });
   const reads: string[] = [];
-  page.on('request', (r) => { if (r.url().startsWith('http://127.0.0.1:8080/')) reads.push(r.url()); });
+  page.on('request', (r) => { if (r.url().startsWith(`${FIRESTORE}/`)) reads.push(r.url()); });
   // Their last set was at 17:53; at 18:12 it's 19 minutes old, at 18:14 it's 21.
   await page.clock.runFor(12 * 60_000);
   await expect(pill).toBeVisible();
@@ -342,7 +343,7 @@ test('Friends opens from what the phone saved: with Firestore unreachable, frien
   await expect.poll(() => saved(a.page, b.name), { message: 'Friends saved on the phone' }).toBe(true);
 
   // Next time, offline from Firestore: everything comes from the phone, at once.
-  await a.page.route(/127\.0\.0\.1:8080/, (r) => r.abort());
+  await a.page.route((u) => u.origin === FIRESTORE, (r) => r.abort());
   await a.page.reload();
   await expect(a.page.getByRole('button', { name: 'Add exercise' })).toBeVisible();
   await a.page.evaluate(() => {

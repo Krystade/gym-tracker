@@ -3,6 +3,7 @@ node_modules
 dist
 dist-ssr
 dist-push
+.e2e
 *.local
 .DS_Store
 .vite

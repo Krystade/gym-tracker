@@ -1,11 +1,12 @@
 import { expect, type APIRequestContext, type Browser, type Page } from '@playwright/test';
 import { goto } from './nav';
+import { DOCS, EMU_HOST, emu } from './emu';
 
 // Synthetic accounts put straight into the local emulators as an admin (rules don't apply), so a screen can be shown with a
 // full crew in seconds instead of logging every set through the UI. Synthetic users and numbers only.
 
-export const EMU = 'http://127.0.0.1:8080/v1/projects/demo-gym-tracker/databases/(default)/documents';
-const AUTH = 'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=demo-key';
+export const EMU = DOCS;
+const AUTH = `http://${EMU_HOST}:${emu.auth}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=demo-key`;
 export const PASSWORD = 'synthetic-pass-1';
 export const rand = () => Math.random().toString(36).slice(2, 10);
 export const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

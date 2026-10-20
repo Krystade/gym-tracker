@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { goto } from './nav';
+import { DOCS } from './emu';
 
 // Pings and messages between two synthetic accounts on the local Auth and Firestore emulators, on the iPhone 13 mini's
 // 375×812 with its notch and home-bar insets served into the CSS (headless browsers report 0).
@@ -232,7 +233,7 @@ test('mute is quiet and private; block stops the sender and lists them to unbloc
 
 // ---- The sheet on a notched phone, with a thread long enough to reach its full height ----
 
-const EMU = 'http://127.0.0.1:8080/v1/projects/demo-gym-tracker/databases/(default)/documents';
+const EMU = DOCS;
 /** The signed-in account's uid, as this phone keeps it. */
 const uidOf = (page: Page) => page.evaluate(async () => {
   const db: IDBDatabase = await new Promise((ok, no) => { const r = indexedDB.open('gym-tracker-shared'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });

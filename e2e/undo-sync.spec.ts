@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { goto } from './nav';
+import { DOCS } from './emu';
 
 // Undo after a delete that has already synced, against the local Auth and Firestore emulators. Synthetic users only.
 const T = new Date(new Date().setHours(18, 0, 0, 0));
@@ -14,7 +15,7 @@ async function cloudMonth(page: Page): Promise<{ sets: number; deleted: string[]
     r.onerror = () => no(r.error);
     r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('cloud'); g.onsuccess = () => ok((g.result as { uid: string }).uid); g.onerror = () => no(g.error); };
   }));
-  const res = await page.request.get(`http://127.0.0.1:8080/v1/projects/demo-gym-tracker/databases/(default)/documents/users/${uid}/months/${MONTH}`, { headers: { Authorization: 'Bearer owner' } });
+  const res = await page.request.get(`${DOCS}/users/${uid}/months/${MONTH}`, { headers: { Authorization: 'Bearer owner' } });
   if (!res.ok()) return { sets: 0, deleted: [] };
   const f = ((await res.json()) as { fields: { sets?: { arrayValue: { values?: unknown[] } }; deleted?: { mapValue: { fields?: Record<string, unknown> } } } }).fields;
   return { sets: f.sets?.arrayValue.values?.length ?? 0, deleted: Object.keys(f.deleted?.mapValue.fields ?? {}) };

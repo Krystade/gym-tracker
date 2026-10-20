@@ -12,6 +12,10 @@ const CONFIG = {
 };
 /** Served from this machine (dev server, tests): the local emulators under a demo project, never the real one. */
 const LOCAL = typeof location !== 'undefined' && ['127.0.0.1', 'localhost'].includes(location.hostname);
+/** Where those emulators listen: firebase.json's ports, unless an e2e build was given its own (e2e/emu.ts). Unused off this machine. */
+const EMU_HOST = import.meta.env.VITE_EMU_HOST || '127.0.0.1';
+const EMU_AUTH_PORT = Number(import.meta.env.VITE_EMU_AUTH_PORT || 9099);
+const EMU_FIRESTORE_PORT = Number(import.meta.env.VITE_EMU_FIRESTORE_PORT || 8080);
 
 export interface Cloud { auth: Auth; db: Firestore; A: typeof import('firebase/auth'); F: typeof import('firebase/firestore/lite') }
 let loading: Promise<Cloud> | null = null;
@@ -25,8 +29,8 @@ export function loadCloud(): Promise<Cloud> {
     const auth = A.initializeAuth(app, { persistence: [A.indexedDBLocalPersistence, A.browserLocalPersistence] });
     const db = F.getFirestore(app);
     if (LOCAL) {
-      A.connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
-      F.connectFirestoreEmulator(db, '127.0.0.1', 8080);
+      A.connectAuthEmulator(auth, `http://${EMU_HOST}:${EMU_AUTH_PORT}`, { disableWarnings: true });
+      F.connectFirestoreEmulator(db, EMU_HOST, EMU_FIRESTORE_PORT);
     }
     return { auth, db, A, F };
   })();

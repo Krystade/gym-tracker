@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { goto } from './nav';
+import { DOCS } from './emu';
 
 // A set edited on a phone while that phone's sync is out (round 10): the sync's import or delete was worked out before the edit,
 // so it must not land on it. The phone's Firestore commit is held, as a slow connection would hold it, while the edit is made.
@@ -70,7 +71,7 @@ async function cloudDoc(page: Page, path: string): Promise<Record<string, unknow
     r.onerror = () => no(r.error);
     r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('cloud'); g.onsuccess = () => ok((g.result as { uid: string }).uid); g.onerror = () => no(g.error); };
   }));
-  const res = await page.request.get(`http://127.0.0.1:8080/v1/projects/demo-gym-tracker/databases/(default)/documents/users/${uid}/${path}`, { headers: { Authorization: 'Bearer owner' } });
+  const res = await page.request.get(`${DOCS}/users/${uid}/${path}`, { headers: { Authorization: 'Bearer owner' } });
   return res.ok() ? ((await res.json()) as { fields: Record<string, unknown> }).fields : null;
 }
 type Value = { integerValue?: string; doubleValue?: number; mapValue?: { fields?: Record<string, Value> }; arrayValue?: { values?: Value[] } };
