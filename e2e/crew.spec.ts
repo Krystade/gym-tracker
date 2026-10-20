@@ -34,12 +34,16 @@ async function lift(page: Page, name: string, sets: [number, number][]) {
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill(name);
   await page.getByRole('button', { name, exact: true }).click();
-  for (const [w, r] of sets) {
+  // A set's row shows once its save has landed: wait for it before the next tap or a reload. A tap while a save is still out is
+  // dropped as a double tap (SetForm), and a reload then can lose the save; the last set's numbers can't tell one 185 × 5 from two.
+  const rows = page.getByRole('list', { name: `Sets for ${name}` }).getByRole('listitem');
+  for (const [i, [w, r]] of sets.entries()) {
     await page.getByRole('textbox', { name: 'Weight' }).first().fill(String(w));
     await page.getByRole('textbox', { name: 'Reps' }).first().fill(String(r));
     await page.getByRole('button', { name: 'Add set' }).first().click();
+    await expect(rows).toHaveCount(i + 1);
+    await expect(rows.nth(i)).toContainText(`${w} × ${r}`);
   }
-  await expect(page.getByText(`${sets.at(-1)![0]} × ${sets.at(-1)![1]}`).first()).toBeVisible();
 }
 
 /** A phone with an account and a username; `days` are logged first, oldest first, each on its own day. */
