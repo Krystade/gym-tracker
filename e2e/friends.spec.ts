@@ -74,13 +74,12 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   // b looks at a's log: the same screens, nothing to edit.
   await goto(b.page, 'Today');
   await goto(b.page, 'Friends');
-  // What a did today, under their line: read from what Crew already has, two lines, a tap for the rest.
-  const session = crew(b.page).getByTestId(`crew-${a.name}`).getByRole('button', { name: /^Today:/ });
-  await expect(session).toHaveText('Today: Bench Press 1×135×8');
-  await expect(session).toHaveAttribute('aria-expanded', 'false');
-  await session.click();
-  await expect(session).toHaveAttribute('aria-expanded', 'true');
-  await expect(crew(b.page).getByTestId('crew-me').getByRole('button', { name: /^Today:/ })).toHaveCount(0);
+  // What a did today: their session card, from what Crew already has; b logged nothing, so b has no card.
+  const session = crew(b.page).getByTestId(`crew-${a.name}`).locator('.fd-lifts li');
+  await expect(session).toHaveCount(1);
+  await expect(session).toContainText('Bench Press');
+  await expect(session).toContainText('135 × 8');
+  await expect(crew(b.page).getByTestId('crew-me')).toHaveCount(0);
   await crew(b.page).getByRole('button', { name: `@${a.name}`, exact: true }).click();
   await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing @${a.name}`);
   await expect(b.page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();

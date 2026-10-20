@@ -725,18 +725,32 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .notify select { min-height: 44px; font-size: var(--fs-md); width: 100%; min-width: 0; }
 .notify-diag > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--muted); }
 
-/* Crew (top of Friends): a line per person across the days, coloured by what they trained. Its own block. */
+/* What a day or a set trained, by kind: Friends' rings and cards, a friend's board, Stats' calendar. THE PLACE TO SWAP THE
+   PALETTE: every kind colour in the app reads these five (and --kind-other), nothing else.
+   Steel + Ember (round 18, .superpowers/redesign/social-stats/palettes): passes the dataviz validator in dark mode against
+   --surface, all pairs, normal and colour-blind ΔE; each is 3:1 or more on --surface and on --bg. White on them: legs 5.85,
+   push 5.77, cardio 5.59 (any text); pull 3.30 and arms & core 3.15 (large text only: numerals on them are 18.66px bold or more).
+   Colour is never the only signal: each card names its kind in words. */
 :root {
-  /* Shared by the three redesign directions and checked as a set: the closest pair is OKLab ΔE×100 24.8 in full colour, and
-     18.4 / 17.9 / 18.0 under protan / deutan / tritan simulation (Machado 2009); the old set's was 4.5. Each is 3:1 or more
-     on --surface. Colour is never the only signal: the table under the lines names each day's kind. */
-  --crew-legs: #0075d2;   /* oklch(0.560 0.167 252.0) */
-  --crew-push: #c42c65;   /* oklch(0.550 0.191 3.8) */
-  --crew-pull: #7cfbbd;   /* oklch(0.899 0.144 160.2) */
-  --crew-core: #f8910e;   /* oklch(0.750 0.170 62.1) */
-  --crew-cardio: #bda7ff; /* oklch(0.780 0.125 294.8) */
-  --crew-other: #8e929a;  /* oklch(0.659 0.013 264.5) */
-  --crew-rest: var(--hairline);
+  --kind-legs: #0067b3;   /* Legs */
+  --kind-push: #832ff1;   /* Push */
+  --kind-pull: #1f9d9d;   /* Pull */
+  --kind-core: #7f88ef;   /* Arms & core */
+  --kind-cardio: #c03421; /* Cardio */
+  --kind-other: #8e929a;  /* lifts no kind maps: oklch(0.659 0.013 264.5) */
+  --kind-ink: #ffffff;    /* numerals on a kind tile */
+  /* Training right now (= --ok), and its ink: 9.5:1. A solid pill, never a tint over an avatar. */
+  --live: #69d98d; --live-ink: #062312;
+  /* The PR card's ground, authored opaque (accent mixed into a dark surface goes brown): --text 12.7:1, --accent-text 8.9:1. */
+  --gold-deep: #3a2a0c; --gold-ink-2: #d9c8a4;
+  --flame: #ff7a3d;       /* oklch(0.72 0.18 45): the streak's flame */
+  /* Motion: a spring that overshoots once, a softer one, and an ease-out. Transform and opacity only; all of it off under reduced motion. */
+  --spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.067, 1.099 24.3%, 1.104 26.9%, 1.099, 1.083 32.1%, 1.002 43.6%, 0.985 49.4%, 0.996 62.3%, 1);
+  --spring-soft: linear(0, 0.06 3%, 0.25 8%, 0.62 18%, 0.9 30%, 1.03 42%, 1.05 50%, 1.01 68%, 1);
+  --out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* The names Crew used. */
+  --crew-legs: var(--kind-legs); --crew-push: var(--kind-push); --crew-pull: var(--kind-pull); --crew-core: var(--kind-core);
+  --crew-cardio: var(--kind-cardio); --crew-other: var(--kind-other); --crew-rest: var(--hairline);
 }
 /* Friends leans Quiet (direction C, in amber): a flat page, round avatars, pill buttons, lighter weights. */
 /* A tab's large title with its one action beside it (Friends: Add a friend). */

@@ -87,7 +87,11 @@ export interface SessionDone { date: string; lifts: LiftDone[] }
 export function latestSession(entries: SetEntry[]): SessionDone | null {
   let date = '';
   for (const e of entries) if (e.date > date && (isWorking(e) || isCardioEntry(e))) date = e.date;
-  if (!date) return null;
+  return date ? sessionOn(entries, date) : null;
+}
+
+/** One day's session, each lift once in the order it was started (see latestSession). Null for a day with no working set or cardio. */
+export function sessionOn(entries: SetEntry[], date: string): SessionDone | null {
   const lifts = new Map<string, LiftDone>();
   for (const e of entries.filter((x) => x.date === date).sort((a, b) => a.seq - b.seq)) {
     const cardio = isCardioEntry(e);
@@ -103,7 +107,7 @@ export function latestSession(entries: SetEntry[]): SessionDone | null {
     l.sets++;
     if (e.weight > l.weight || (e.weight === l.weight && (e.reps ?? -1) > (l.reps ?? -1))) Object.assign(l, top);
   }
-  return { date, lifts: [...lifts.values()] };
+  return lifts.size ? { date, lifts: [...lifts.values()] } : null;
 }
 
 /** "Bench Press 3×185×8 · Pull-up 3×BW×10 · Treadmill 20:00": sets × top weight × reps, a lift each. */

@@ -1,5 +1,6 @@
 import type { BodyDay } from '../domain/body';
-import { mergeMeta, mergeMonth, metaHash, monthHash, monthsToSync, splitByMonth, type CloudMonth, type MetaItems, type Seen } from '../domain/cloud';
+import { mergeMeta, mergeMonth, metaHash, monthHash, monthOf, monthsToSync, splitByMonth, type CloudMonth, type MetaItems, type Seen } from '../domain/cloud';
+import { prIds } from '../domain/records';
 import type { SetEntry } from '../domain/types';
 import type { Replaced, Taken } from '../domain/replaced';
 import { addDays } from '../domain/analytics';
@@ -71,7 +72,9 @@ export async function syncCloud({ F, db }: Cloud, uid: string, input: SyncInput,
       const remote = snap.exists() ? (snap.data() as CloudMonth) : null;
       const merged = mergeMonth(here, remote, now);
       if (merged.changed) {
-        tx.set(ref, merged.doc);
+        // The month's PRs go with it, for friends' badges: from this phone's whole log, with the month as merged. Only on a write
+        // the sets make anyway, so two phones that see a PR differently never trade the month back and forth over it.
+        tx.set(ref, { ...merged.doc, prs: monthPrs(input.sets, m, merged.doc.sets) });
         tx.set(indexRef, { months: { [m]: merged.doc.updatedAt } }, { merge: true });
       }
       return { merged, at: merged.changed ? merged.doc.updatedAt : remote?.updatedAt ?? 0 };
@@ -92,6 +95,12 @@ export async function syncCloud({ F, db }: Cloud, uid: string, input: SyncInput,
   }
   const meta = await syncMeta({ F, db }, uid, input, apply, (indexDoc?.meta ?? 0) as number, now);
   return { seen, ...out, metaSeen: meta.metaSeen, metaPulled: meta.metaPulled, skipped: out.skipped + meta.skipped };
+}
+
+/** The PR set ids among `month`'s sets (`sets`), judged against the whole log as this phone has it (domain/records). */
+function monthPrs(log: SetEntry[], month: string, sets: SetEntry[]): string[] {
+  const ids = prIds([...log.filter((s) => monthOf(s.date) !== month), ...sets]);
+  return sets.filter((s) => ids.has(s.id)).map((s) => s.id);
 }
 
 /**

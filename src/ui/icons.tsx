@@ -31,6 +31,10 @@ const P = {
   minus: <path d="M5.5 12h13" />,
   timer: <><circle cx="12" cy="13.25" r="7.25" /><path d="M12 9.5v3.75l2.5 1.5M9.75 2.75h4.5" /></>,
   switch: <><path d="M4.75 8.75h14.5M15.75 5.25l3.5 3.5-3.5 3.5" /><path d="M19.25 15.25H4.75M8.25 11.75l-3.5 3.5 3.5 3.5" /></>,
+  // A week's goal met, a PR: the cup on its stem and foot.
+  trophy: <><path d="M7.5 4.25h9v4.5a4.5 4.5 0 0 1-9 0z" /><path d="M7.5 6H4.75v1.25A3 3 0 0 0 7.6 10.2M16.5 6h2.75v1.25a3 3 0 0 1-2.85 2.95" /><path d="M12 13.25v3.5M8.5 20h7l-.75-3.25h-5.5z" /></>,
+  // A streak.
+  flame: <path d="M12 21c3.6 0 6-2.5 6-5.9 0-3.3-2.2-5.1-3.4-7.6-.5 1.6-1.4 2.6-2.4 3.1C12.6 7.4 11 4.6 8.6 3c.3 2.9-1 4.8-2.2 6.6C5.4 11.1 6 12.9 6 15.1 6 18.5 8.4 21 12 21z" />,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof P;

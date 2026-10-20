@@ -349,6 +349,19 @@ export function prefetchSoon(uid: string, today: string): void {
   idle(() => { void prefetchFriends(uid, today).catch(() => lastRun.delete(uid)); });
 }
 
+/**
+ * A ping you just sent from a card (a reaction): into their thread as kept, with no read. Only a thread already kept takes it, so
+ * a thread never read is still read whole when it opens.
+ */
+export function notePing(uid: string, f: string, doc: InboxDoc): Promise<FriendCache> {
+  return patchFriendCache(uid, (x) => {
+    const t = x.threads[f];
+    if (!t?.mine) return x;
+    const mine = [...t.mine.filter((d) => d.id !== doc.id), doc];
+    return { ...x, threads: { ...x.threads, [f]: { ...t, mine, items: threadOf(mine, x.inbox?.items ?? [], f, t.gyms).items } } };
+  });
+}
+
 /** A push came in while the app was open: the thread it's about (and the lists, for a request, a new friend or a gym). */
 export async function readAfterPush(uid: string, kind: string | null | undefined, route: string | null | undefined): Promise<void> {
   const c = await loadCloud();

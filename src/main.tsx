@@ -6,6 +6,7 @@ import { anyDirty } from './state/drafts';
 import { reloadWhenSafe } from './state/appUpdate';
 import { tapShowing } from './push/usePush';
 import './ui/styles.css';
+import './ui/social.css';
 import { pinChromeToVisualViewport } from './ui/viewportPin';
 
 void storagePersistence();

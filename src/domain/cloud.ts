@@ -5,7 +5,11 @@ import type { SetEntry } from './types';
  * One month of a log in the cloud. `deleted` maps a deleted set's id to when it went (epoch ms), so a delete on one phone
  * reaches the others, while a set logged again later under the same id (ids are reused) survives it.
  */
-export interface CloudMonth { sets: SetEntry[]; body: BodyDay[]; deleted: Record<string, number>; updatedAt: number }
+export interface CloudMonth {
+  sets: SetEntry[]; body: BodyDay[]; deleted: Record<string, number>; updatedAt: number;
+  /** The month's PR set ids, worked out by the phone that wrote it from its whole log (cloud/sync), for friends' PR badges. */
+  prs?: string[];
+}
 /** `tombAt`: when this phone deleted a set (epoch ms); a tombstone from before round 10, or one a sync brought, has none. */
 export interface LocalMonth { sets: SetEntry[]; body: BodyDay[]; tombstones: Set<string>; tombAt?: Record<string, number> }
 export interface Merged { doc: CloudMonth; importSets: SetEntry[]; deleteIds: string[]; importBody: BodyDay[]; changed: boolean }

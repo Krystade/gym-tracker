@@ -84,6 +84,46 @@ describe('readFriendWindow', () => {
     expect(w.log).toEqual([{ path: 'users/b/meta/index', n: 1 }, { path: 'users/b/meta/profile', n: 1 }]);
   });
 
+  it('keeps their weekly goal from the settings read it already makes, and nothing else of their profile', async () => {
+    const w = world();
+    w.docs['users/b/meta/profile'] = { items: { status: JSON.stringify('cut'), profile: JSON.stringify({ key: 'profile', weeklyGoal: 4, tiers: { Chest: 1 } }) } };
+    const r = await readFriendWindow(w.cloud, 'b', FROM, TO);
+    expect(w.log.filter((l) => l.path === 'users/b/meta/profile')).toHaveLength(1);
+    expect(r.goal).toBe(4);
+    expect(JSON.stringify(r)).not.toContain('tiers');
+    // Not changed since: kept, no read. A profile with no goal (or a bad one) is the app's default, 2.
+    w.take();
+    const again = await readFriendWindow(w.cloud, 'b', FROM, TO, { from: FROM, win: r, basis: r.basis });
+    expect(w.log).toEqual([{ path: 'users/b/meta/index', n: 1 }]);
+    expect(again.goal).toBe(4);
+    w.docs['users/b/meta/profile'] = { items: { profile: JSON.stringify({ weeklyGoal: 'lots' }) } };
+    expect((await readFriendWindow(w.cloud, 'b', FROM, TO)).goal).toBe(2);
+  });
+
+  it('a window kept by an older version, with no goal, reads their settings once more for it', async () => {
+    const w = world();
+    const first = await readFriendWindow(w.cloud, 'b', FROM, TO);
+    const { goal: _none, ...old } = first;
+    w.take();
+    const r = await readFriendWindow(w.cloud, 'b', FROM, TO, { from: FROM, win: old, basis: first.basis });
+    expect(w.log).toEqual([{ path: 'users/b/meta/index', n: 1 }, { path: 'users/b/meta/profile', n: 1 }]);
+    expect(r.goal).toBe(2);
+  });
+
+  it('keeps the PR ids each month’s document carries, per month, through a read that skips the month', async () => {
+    const w = world();
+    w.docs['users/b/months/2026-10'] = { sets: [set('2026-10-16'), set('2026-10-18')], prs: ['app|2026-10-18|squat|1'] };
+    const first = await readFriendWindow(w.cloud, 'b', FROM, TO);
+    // September's document has none (an older app wrote it): not there, so the PRs there are worked out from the sets.
+    expect(first.prs).toEqual({ '2026-10': ['app|2026-10-18|squat|1'] });
+    touch(w, '2026-09', 2, [set('2026-09-10'), set('2026-09-12')]);
+    w.docs['users/b/months/2026-09'].prs = [];
+    w.take();
+    const r = await readFriendWindow(w.cloud, 'b', FROM, TO, { from: FROM, win: first, basis: first.basis });
+    expect(w.log).toEqual([{ path: 'users/b/meta/index', n: 1 }, { path: 'users/b/months/2026-09', n: 1 }]);
+    expect(r.prs).toEqual({ '2026-09': [], '2026-10': ['app|2026-10-18|squat|1'] });
+  });
+
   it('has no status when none was set, and a window with no months reads none', async () => {
     const w = fakeFirestore({ 'users/b/meta/index': { months: {} } });
     const r = await readFriendWindow(w.cloud, 'b', FROM, TO);

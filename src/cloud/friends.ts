@@ -3,6 +3,7 @@ import type { Gym } from '../domain/equipment';
 import { monthOf, type CloudMonth, type MetaItems } from '../domain/cloud';
 import { itemShort, latestOf, messageOk, thread, toClear, unreadOf, type InboxDoc, type PresetKey, type ThreadItem } from '../domain/messages';
 import { cleanStatus } from '../domain/crew';
+import { defaultProfile } from '../domain/profile';
 import { newToken, type Invite } from '../domain/invite';
 import { CHANGE_GAP_MS, nextChangeAt } from '../domain/friendNames';
 import type { SetEntry } from '../domain/types';
@@ -191,7 +192,13 @@ export async function readFriend({ F, db }: Cloud, uid: string): Promise<FriendD
  * a friend can read). A set dated after `to` (a friend a time zone ahead) is kept: Crew shows up to today, and the month it's in
  * may never change again to bring it back.
  */
-export interface FriendWindow { sets: SetEntry[]; status: string }
+export interface FriendWindow {
+  sets: SetEntry[]; status: string;
+  /** Their sessions-a-week goal, from the settings read that brings the status (none: a window kept by an older version). */
+  goal?: number;
+  /** Per month, the PR set ids their phone wrote into that month's document (cloud/sync); a month written by an older app isn't here. */
+  prs?: Record<string, string[]>;
+}
 /** The times in a friend's index a window was read at: each month's, and their settings' (both written with what they time). */
 export interface WindowBasis { months: Record<string, number>; meta?: number }
 /**
@@ -207,27 +214,44 @@ export async function readFriendWindow(c: Cloud, uid: string, from: string, to: 
   // The kept window holds every set of its months from its own `from` on: enough, unless this one starts earlier.
   const kept = prev?.basis && prev.from <= from ? { ...prev, basis: prev.basis } : null;
   const need = want.filter((m) => kept?.basis.months[m] !== times[m]);
-  const [months, status] = await Promise.all([
+  // Their goal came with the status from a newer version only: a window kept without it reads their settings once more.
+  const keptGoal = kept?.win.goal;
+  const [months, bits] = await Promise.all([
     readMonths(c, uid, need, want),
-    metaAt !== undefined && kept?.basis.meta === metaAt ? kept.win.status : readStatus(c, uid),
+    metaAt !== undefined && kept?.basis.meta === metaAt && keptGoal !== undefined ? { status: kept.win.status, goal: keptGoal } : readSettingsBits(c, uid),
   ]);
-  const sets = want.flatMap((m) => months.get(m) ?? kept?.win.sets.filter((s) => monthOf(s.date) === m) ?? []).filter((s) => s.date >= from);
-  return { sets, status, basis: { months: Object.fromEntries(want.map((m) => [m, times[m]])), ...(metaAt !== undefined && { meta: metaAt }) } };
+  const sets = want.flatMap((m) => months.get(m)?.sets ?? kept?.win.sets.filter((s) => monthOf(s.date) === m) ?? []).filter((s) => s.date >= from);
+  const prs: Record<string, string[]> = {};
+  for (const m of want) {
+    const p = months.has(m) ? months.get(m)!.prs : kept?.win.prs?.[m];
+    if (p) prs[m] = p;
+  }
+  return { sets, status: bits.status, goal: bits.goal, prs, basis: { months: Object.fromEntries(want.map((m) => [m, times[m]])), ...(metaAt !== undefined && { meta: metaAt }) } };
 }
+/** A month as a friend's window keeps it: its sets, and the PR ids its document carries (none: an older app wrote it). */
+interface MonthRead { sets: SetEntry[]; prs?: string[] }
+const monthRead = (d: CloudMonth | undefined): MonthRead => ({ sets: d?.sets ?? [], ...(Array.isArray(d?.prs) && { prs: d.prs.filter((x): x is string => typeof x === 'string') }) });
 /** Months of a friend's log, by month: one read for one, one query for several (any between them it returns are fresh too). */
-async function readMonths({ F, db }: Cloud, uid: string, need: string[], want: string[]): Promise<Map<string, SetEntry[]>> {
-  const out = new Map<string, SetEntry[]>(need.map((m) => [m, []]));
+async function readMonths({ F, db }: Cloud, uid: string, need: string[], want: string[]): Promise<Map<string, MonthRead>> {
+  const out = new Map<string, MonthRead>(need.map((m) => [m, { sets: [] }]));
   if (need.length === 1) {
-    out.set(need[0], ((await F.getDoc(F.doc(db, `users/${uid}/months/${need[0]}`))).data() as CloudMonth | undefined)?.sets ?? []);
+    out.set(need[0], monthRead((await F.getDoc(F.doc(db, `users/${uid}/months/${need[0]}`))).data() as CloudMonth | undefined));
   } else if (need.length > 1) {
     const q = F.query(F.collection(db, `users/${uid}/months`), F.where(F.documentId(), '>=', need[0]), F.where(F.documentId(), '<=', need[need.length - 1]));
-    for (const d of (await F.getDocs(q)).docs) if (want.includes(d.id)) out.set(d.id, (d.data() as CloudMonth).sets ?? []);
+    for (const d of (await F.getDocs(q)).docs) if (want.includes(d.id)) out.set(d.id, monthRead(d.data() as CloudMonth));
   }
   return out;
 }
-async function readStatus({ F, db }: Cloud, uid: string): Promise<string> {
-  const raw = ((await F.getDoc(F.doc(db, `users/${uid}/meta/profile`))).data()?.items as Record<string, string> | undefined)?.status;
-  try { return raw ? cleanStatus(JSON.parse(raw)) : ''; } catch { return ''; } // not a phrase
+/** From their settings document, only the status phrase and the sessions-a-week goal (2, the app's default, when unset or odd). */
+async function readSettingsBits({ F, db }: Cloud, uid: string): Promise<{ status: string; goal: number }> {
+  const items = (await F.getDoc(F.doc(db, `users/${uid}/meta/profile`))).data()?.items as Record<string, string> | undefined;
+  let status = '', goal = defaultProfile().weeklyGoal;
+  try { status = items?.status ? cleanStatus(JSON.parse(items.status)) : ''; } catch { /* not a phrase */ }
+  try {
+    const g = items?.profile ? (JSON.parse(items.profile) as { weeklyGoal?: unknown } | null)?.weeklyGoal : undefined;
+    if (typeof g === 'number' && Number.isInteger(g) && g >= 1 && g <= 7) goal = g;
+  } catch { /* not a profile */ }
+  return { status, goal };
 }
 
 /** A gym a friend sent you, waiting under Friends until you add it or dismiss it. */

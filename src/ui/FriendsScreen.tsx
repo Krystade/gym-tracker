@@ -6,7 +6,7 @@ import type { Invite } from '../domain/invite';
 import type { SetEntry } from '../domain/types';
 import type { StatusStore } from '../state/useStatus';
 import { FriendsCard } from './FriendsCard';
-import { Crew } from './Crew';
+import { Feed } from './Feed';
 import type { GymsStore } from '../state/useGyms';
 import type { Box } from '../state/box';
 import { loadCloud } from '../cloud/firebase';
@@ -20,11 +20,11 @@ const PULL = 70; // px down from the top of the page that reads everything again
  * Everything here shows from what the phone kept (state/friendCache) and is read again quietly behind it. A pull down at the
  * top reads it all again at once; so does a Refresh button a screen reader or keyboard finds (it shows when focused).
  */
-export function FriendsScreen({ cloud, gyms, pending, entries, status, today, news, newsRev, onPendingDone, onView, onChanged, onMessage, onSignIn, onOpenMine, myName }: {
+export function FriendsScreen({ cloud, gyms, pending, entries, status, today, news, newsRev, onPendingDone, onView, onChanged, onMessage, onSignIn, onOpenMine, myName, goal }: {
   cloud: CloudStore; gyms: GymsStore; pending: Invite | null; entries: SetEntry[]; status: StatusStore; today: string;
   /** Requests, gyms and unread messages; `newsRev` moves whenever they're read again. */ news: FriendNews | null; newsRev: Box<number>;
   onPendingDone: () => void; onView: (f: Friend) => void; onChanged: () => void; onMessage: (f: ThreadWith) => void; onSignIn: () => void; onOpenMine: () => void;
-  /** This phone's person, for your own avatar. */ myName?: string;
+  /** This phone's person, for your own avatar. */ myName?: string; /** Your sessions-a-week goal, for your ring. */ goal: number;
 }) {
   const uid = cloud.link && cloud.mine ? cloud.link.uid : null;
   const friends = useFriendCache(uid)?.lists?.friends ?? null;
@@ -73,7 +73,7 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
           </section>
         ) : !cloud.mine ? <p className="muted">The account on this phone belongs to another person here; switch to them to see friends.</p>
         : (<>
-          <Crew uid={cloud.link.uid} myName={myName} friends={friends} entries={entries} today={today} status={status} news={news} pulled={pulled} onOpenFriend={onView} onOpenMine={onOpenMine} onInvite={invite} onMessage={onMessage} />
+          <Feed uid={cloud.link.uid} myName={myName} friends={friends} entries={entries} goal={goal} today={today} status={status} news={news} pulled={pulled} onOpenFriend={onView} onOpenMine={onOpenMine} onInvite={invite} onMessage={onMessage} />
           <FriendsCard uid={cloud.link.uid} gyms={gyms} pending={pending} newsRev={newsRev} onPendingDone={onPendingDone} onChanged={onChanged} />
         </>)}
     </div>

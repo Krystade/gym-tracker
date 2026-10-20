@@ -1,22 +1,21 @@
 import { mkdirSync } from 'node:fs';
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test';
 import { goto } from './nav';
+import { account, befriend, EMU, iso, log, ping, session, signedIn, type Seeded } from './seed';
 
-// Crew against the local Auth and Firestore emulators. Synthetic users only.
-// Today at 18:00 (Sunday when today is a Monday, so the day before is in the same week); the emulator's tokens use the real clock.
+// Friends as a feed (round 18) against the local Auth and Firestore emulators: synthetic accounts and numbers, put there as an
+// admin (e2e/seed.ts). Today at 18:00 (Sunday when today is a Monday, so the day before is in the same week); the emulator's
+// tokens use the real clock.
 const now = new Date(new Date().setHours(18, 0, 0, 0));
 const T = new Date(now.getDay() === 1 ? now.getTime() - 864e5 : now.getTime());
-const Y = new Date(T.getTime() - 864e5);
-const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const PASSWORD = 'synthetic-pass-1';
+const at = (daysAgo: number, h: number, m = 0) => { const d = new Date(T.getTime() - daysAgo * 864e5); d.setHours(h, m, 0, 0); return d; };
 const SHOTS = 'screenshots/crew';
 mkdirSync(SHOTS, { recursive: true });
-const rand = () => Math.random().toString(36).slice(2, 10);
 const friends = (page: Page) => page.getByRole('region', { name: 'Friends', exact: true });
 const crew = (page: Page) => page.getByRole('region', { name: 'Crew' });
 const TOP = 47, BOTTOM = 34;
 
-// The notched phone's insets, served into the CSS (headless browsers report 0); a service worker would answer past the rewrite.
+// The notched phone's insets, served into the CSS (headless browsers report 0).
 test.use({ serviceWorkers: 'block' });
 async function notched(page: Page) {
   const inset = (s: string) => s.replace(/env\(\s*safe-area-inset-(top|right|bottom|left)\s*(?:,[^)]*)?\)/g, (_, side: string) => `${side === 'top' ? TOP : side === 'bottom' ? BOTTOM : 0}px`);
@@ -28,7 +27,202 @@ async function notched(page: Page) {
     return route.fulfill({ response: res, body: inset(await res.text()) });
   });
 }
+const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth);
 
+/**
+ * You and four friends, and a stranger: Live (training now, last set 4 minutes ago), Done (trained this morning, a PR, goal of 2
+ * met today, a status), Rest (trained 2 days ago), Gone (9 days ago). Done reacted 🔥 to your session. The stranger trained today.
+ */
+async function crewOf(request: APIRequestContext) {
+  const [me, live, done, rest, gone, stranger] = await Promise.all(['me', 'live', 'done', 'rest', 'gone', 'x'].map((p) => account(request, `${p}${Math.random().toString(36).slice(2, 8)}`)));
+  const history = (d: number) => session(at(d, 17), [['Barbell Squat', [[185, 5], [185, 5], [185, 5]]], ['Romanian Deadlift', [[155, 8], [155, 8]]]]);
+  await Promise.all([
+    log(request, me, [...history(9), ...history(4), ...session(at(0, 16), [['Bench Press', [[135, 8], [135, 8], [135, 7]]], ['Lat Pulldown', [[100, 10], [100, 10]]]])]),
+    log(request, live, [...history(6), ...session(at(0, 17, 26), [['Barbell Squat', [[135, 5], [155, 5], [175, 5]]], ['Leg Press', [[200, 10], [200, 10], [220, 8]]], ['Leg Curl', [[60, 12], [60, 12], [60, 12]]], ['Calf Raise', [[90, 15]]]])], { goal: 3 }),
+    log(request, done, [...session(at(1, 8), [['Lat Pulldown', [[90, 10], [90, 10]]]]), ...session(at(0, 7), [['Bench Press', [[95, 8], [105, 6]]], ['Cable Fly', [[20, 12], [20, 12]]]])],
+      { goal: 2, status: 'Deload week', prs: { [iso(T).slice(0, 7)]: [`app|${iso(T)}|bench press|2`] } }),
+    log(request, rest, session(at(2, 18), [['Barbell Squat', [[95, 8], [95, 8]]]]), { goal: 4 }),
+    log(request, gone, session(at(9, 18), [['Bench Press', [[65, 10]]]])),
+    log(request, stranger, session(at(0, 9), [['Lat Pulldown', [[80, 10]]]]), { status: 'stranger danger' }),
+  ]);
+  for (const f of [live, done, rest, gone]) await befriend(request, me, f);
+  await ping(request, done, me, 'fire', at(0, 16, 40).getTime());
+  return { me, live, done, rest, gone, stranger };
+}
+const open = (browser: Browser, who: Seeded, opts: { reduce?: boolean; width?: number } = {}) => signedIn(browser, who, T, async (page) => {
+  await page.setViewportSize({ width: opts.width ?? 375, height: 812 });
+  if (opts.reduce) await page.emulateMedia({ reducedMotion: 'reduce' });
+  await notched(page);
+});
+
+test('the feed: rings for today, a card per session, the rest below; LIVE is a solid pill under the ring; a stranger never shows', async ({ browser, request }, info) => {
+  const c = await crewOf(request);
+  const page = await open(browser, c.me);
+  const feed = crew(page);
+  await expect(feed.getByTestId(`crew-${c.live.name}`)).toBeVisible({ timeout: 15_000 });
+  await expect(feed.getByTestId(`crew-${c.gone.name}`)).toContainText('9 days since a session');
+
+  // Who trained today, in words.
+  await expect(feed.locator('.fd-dateline')).toHaveText('3 of 5 trained today · 1 training now');
+  // The rail: you first; then by each one's week against their own goal (Done met theirs), never by what anyone lifts.
+  const rail = feed.getByRole('list', { name: 'Everyone today' }).getByRole('button');
+  await expect(rail).toHaveCount(5);
+  await expect(rail.first()).toHaveAccessibleName(/^You, trained today/);
+  await expect(rail.nth(1)).toHaveAccessibleName(`@${c.done.name}, trained today, 2 of 2 this week, goal met`);
+  await expect(feed.getByTestId(`ring-${c.live.name}`)).toHaveAccessibleName(/training now, [12] of 3 this week$/);
+
+  // LIVE: opaque, 12px bold, wholly under the ring (never over the avatar), and inside the rail button.
+  const pill = feed.getByTestId(`ring-${c.live.name}`).locator('.fd-live');
+  await expect(pill).toHaveText('LIVE');
+  const look = await pill.evaluate((el) => { const s = getComputedStyle(el); return { bg: s.backgroundColor, size: parseFloat(s.fontSize), weight: Number(s.fontWeight), opacity: s.opacity }; });
+  expect(look).toEqual({ bg: 'rgb(105, 217, 141)', size: 12, weight: 700, opacity: '1' });
+  const [pb, rb] = [await pill.boundingBox(), await feed.getByTestId(`ring-${c.live.name}`).locator('.fd-ringwrap').boundingBox()];
+  expect(pb!.y).toBeGreaterThanOrEqual(rb!.y + rb!.height);
+  // Names stay on one row: a live friend's slot is reserved for everyone (measured once the rail has faded in).
+  await page.waitForTimeout(1200);
+  const names = await rail.locator('.fd-nm').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+  expect(new Set(names).size).toBe(1);
+
+  // The live card: first among today's, its lift going now marked, the last three shown and the rest one tap away.
+  const cards = feed.locator('article.fd-card');
+  await expect(cards).toHaveCount(3);
+  await expect(cards.first()).toHaveAttribute('data-testid', `crew-${c.live.name}`);
+  const live = feed.getByTestId(`crew-${c.live.name}`);
+  await expect(live).toContainText('since');
+  await expect(live.locator('.fd-lifts li').filter({ hasText: 'Calf Raise' })).toContainText('now');
+  await expect(live.locator('.fd-lifts li:not(.fd-more-row)')).toHaveCount(3);
+  await live.getByRole('button', { name: '+1 more lift' }).click();
+  await expect(live.locator('.fd-lifts li')).toHaveCount(4);
+  await expect(live.locator('.fd-lifts li').first()).toContainText('175 × 5');
+
+  // Done's card: their goal hit today, their status, their PR as their phone wrote it, and React buttons.
+  const done = feed.getByTestId(`crew-${c.done.name}`);
+  await expect(done.locator('.fd-goalrib')).toHaveText('Weekly goal hit · 2 of 2');
+  await expect(done.locator('.fd-status')).toHaveText('Deload week');
+  await expect(done.locator('.fd-lifts li').filter({ hasText: 'Bench Press' }).locator('.fd-pr')).toHaveText('PR');
+  await expect(done.locator('.fd-lifts li').filter({ hasText: 'Cable Fly' }).locator('.fd-pr')).toHaveCount(0);
+  await expect(done.getByRole('button', { name: `@${c.done.name}`, exact: true })).toBeVisible();
+  await expect(done.getByRole('button', { name: `Message @${c.done.name}` })).toBeVisible();
+
+  // Your card: what came back to you today.
+  await expect(feed.getByTestId('crew-me').locator('.fd-meta')).toContainText('Push · 4:00');
+  const got = feed.getByTestId('crew-me').locator('.fd-got');
+  await expect(got).toHaveText(`Reactions today: 🔥 @${c.done.name}`);
+  await expect(got.getByRole('img', { name: 'On fire' })).toBeVisible();
+
+  // Below: the friends with no session today.
+  await expect(feed.getByTestId(`crew-${c.rest.name}`)).toContainText(/Legs · 2 sets · [01] of 4 this week/);
+  await expect(feed.getByTestId(`crew-${c.rest.name}`).getByRole('button', { name: `Message @${c.rest.name}` })).toBeVisible();
+  await expect(feed).not.toContainText(c.stranger.name);
+  await expect(feed).not.toContainText('stranger danger');
+
+  // Fewer than three friends? Four here: no Invite in the page.
+  await expect(feed.getByRole('button', { name: 'Invite a friend' })).toHaveCount(0);
+  expect(await noSideScroll(page)).toBe(true);
+  // Tap targets: reactions and Message 44px tall at least.
+  for (const b of await done.locator('.fd-react button').all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  expect((await page.getByRole('heading', { name: 'Friends', level: 1 }).boundingBox())!.y).toBeGreaterThanOrEqual(TOP);
+  await page.waitForTimeout(900); // the rings' first draw
+  await page.screenshot({ path: `${SHOTS}/feed-375.png` });
+  await page.screenshot({ path: `${SHOTS}/feed-375-full.png`, fullPage: true });
+  await info.attach('feed', { path: `${SHOTS}/feed-375.png`, contentType: 'image/png' });
+
+  // Your own ring opens your History.
+  await feed.getByTestId('ring-me').click();
+  await expect(page.getByRole('heading', { name: 'History', level: 1 })).toBeVisible();
+});
+
+test('a reaction is the ping that already exists: it reaches their inbox, bursts, and the card says you sent it', async ({ browser, request }) => {
+  const c = await crewOf(request);
+  const page = await open(browser, c.me);
+  // Live: nothing from them in your inbox, so the card's line is free to say what you sent.
+  const done = crew(page).getByTestId(`crew-${c.live.name}`);
+  await expect(done.getByRole('group', { name: `React to @${c.live.name}` })).toBeVisible({ timeout: 15_000 });
+  await done.getByRole('button', { name: `Send 💪 Strong to @${c.live.name}` }).click();
+  await expect(done.locator('.fd-particles span')).toHaveCount(7);
+  await expect(done.getByRole('status')).toContainText('Sent 💪');
+  // The ping itself, in their inbox.
+  await expect.poll(async () => {
+    const res = await request.get(`${EMU}/users/${c.live.uid}/inbox`, { headers: { Authorization: 'Bearer owner' } });
+    return ((await res.json()).documents ?? []).map((d: { fields: { from: { stringValue: string }; e?: { stringValue: string } } }) => `${d.fields.from.stringValue === c.me.uid ? 'me' : 'other'}:${d.fields.e?.stringValue}`);
+  }).toEqual(['me:strong']);
+  // After the burst: "You sent 💪", from the thread this phone keeps (no read).
+  await expect(done.getByRole('status')).toContainText('You sent 💪', { timeout: 15_000 });
+  await expect(done.getByRole('button', { name: `Send 💪 Strong to @${c.live.name}` })).toHaveClass(/sent/);
+});
+
+test('live means a set in the last 20 minutes: the pill goes by itself, with no read', async ({ browser, request }) => {
+  const c = await crewOf(request);
+  const page = await open(browser, c.me);
+  const pill = crew(page).getByTestId(`ring-${c.live.name}`).locator('.fd-live');
+  await expect(pill).toBeVisible({ timeout: 15_000 });
+  const reads: string[] = [];
+  page.on('request', (r) => { if (r.url().startsWith('http://127.0.0.1:8080/')) reads.push(r.url()); });
+  // Their last set was at 17:53; at 18:12 it's 19 minutes old, at 18:14 it's 21.
+  await page.clock.runFor(12 * 60_000);
+  await expect(pill).toBeVisible();
+  await page.clock.runFor(2 * 60_000);
+  await expect(pill).toHaveCount(0);
+  await expect(crew(page).locator('.fd-dateline')).toHaveText('3 of 5 trained today');
+  await expect(crew(page).getByTestId(`crew-${c.live.name}`)).not.toHaveClass(/live/);
+  expect(reads.filter((u) => u.includes(c.live.uid))).toEqual([]);
+});
+
+test('a set landing on a live card slides in on the next refresh', async ({ browser, request }) => {
+  const c = await crewOf(request);
+  const page = await open(browser, c.me);
+  const live = crew(page).getByTestId(`crew-${c.live.name}`);
+  await expect(live).toContainText('10 sets', { timeout: 15_000 });
+  await log(request, c.live, [...session(at(6, 17), [['Barbell Squat', [[185, 5], [185, 5], [185, 5]]], ['Romanian Deadlift', [[155, 8], [155, 8]]]]),
+    ...session(at(0, 17, 26), [['Barbell Squat', [[135, 5], [155, 5], [175, 5]]], ['Leg Press', [[200, 10], [200, 10], [220, 8]]], ['Leg Curl', [[60, 12], [60, 12], [60, 12]]], ['Calf Raise', [[90, 15]]], ['Leg Extension', [[70, 12]]]])], { goal: 3 });
+  await page.getByRole('button', { name: 'Refresh friends' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(live).toContainText('11 sets');
+  await expect(live.locator('.fd-lifts li.new')).toHaveText(/Leg Extension/);
+  await expect(live.locator('.fd-lifts li').filter({ hasText: 'Leg Extension' })).toContainText('now');
+});
+
+test('under reduced motion nothing moves: no draw, no pulse, no burst, and LIVE still says it in words', async ({ browser, request }) => {
+  const c = await crewOf(request);
+  const page = await open(browser, c.me, { reduce: true });
+  const feed = crew(page);
+  await expect(feed.getByTestId(`ring-${c.live.name}`).locator('.fd-live')).toBeVisible({ timeout: 15_000 });
+  expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
+  await feed.getByTestId(`crew-${c.done.name}`).getByRole('button', { name: `Send 👏 Nice work to @${c.done.name}` }).click();
+  await expect(feed.getByTestId(`crew-${c.done.name}`).getByRole('status')).toContainText('Sent 👏');
+  expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
+  await page.screenshot({ path: `${SHOTS}/feed-375-reduced.png` });
+});
+
+test('with motion, the rings draw and the live ring pulses', async ({ browser, request }) => {
+  const c = await crewOf(request);
+  const page = await open(browser, c.me);
+  await expect(crew(page).getByTestId(`ring-${c.live.name}`).locator('.fd-live')).toBeVisible({ timeout: 15_000 });
+  const names = await page.evaluate(() => document.getAnimations().map((a) => (a as CSSAnimation).animationName));
+  expect(names).toContain('fd-pulse');
+});
+
+test('at 320 wide nothing spills sideways; the rail scrolls on its own', async ({ browser, request }) => {
+  const c = await crewOf(request);
+  const page = await open(browser, c.me, { width: 320 });
+  await expect(crew(page).getByTestId(`crew-${c.live.name}`)).toBeVisible({ timeout: 15_000 });
+  expect(await noSideScroll(page)).toBe(true);
+  for (const card of await crew(page).locator('article.fd-card').all()) {
+    const b = (await card.boundingBox())!;
+    expect(b.x).toBeGreaterThanOrEqual(0);
+    expect(b.x + b.width).toBeLessThanOrEqual(320);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: `${SHOTS}/feed-320.png` });
+  await page.screenshot({ path: `${SHOTS}/feed-320-full.png`, fullPage: true });
+});
+
+// ---- Friends made through the app's own flow: your status, Invite, and what the phone keeps ----
+
+const PASSWORD = 'synthetic-pass-1';
+const rand = () => Math.random().toString(36).slice(2, 10);
 async function lift(page: Page, name: string, sets: [number, number][]) {
   await goto(page, 'Today');
   await page.getByRole('button', { name: 'Add exercise' }).click();
@@ -45,68 +239,49 @@ async function lift(page: Page, name: string, sets: [number, number][]) {
     await expect(rows.nth(i)).toContainText(`${w} × ${r}`);
   }
 }
-
-/** A phone with an account and a username; `days` are logged first, oldest first, each on its own day. */
-async function person(browser: Browser, days: { at: Date; lift: string; sets: [number, number][] }[] = []) {
+/** A phone with a new account and a username, having logged `sets` today first. */
+async function person(browser: Browser, today: { lift: string; sets: [number, number][] } | null = null) {
   const ctx = await browser.newContext({ storageState: { cookies: [], origins: [{ origin: `http://127.0.0.1:${process.env.E2E_PORT ?? 4173}`, localStorage: [{ name: 'gym-tracker:walkthrough', value: 'done' }] }] } });
   const page = await ctx.newPage();
   await notched(page);
-  await page.clock.install({ time: days[0]?.at ?? T });
+  await page.clock.install({ time: T });
   await page.goto('/');
-  for (const d of days) {
-    if (d !== days[0]) { await page.clock.setSystemTime(d.at); await page.reload(); }
-    await lift(page, d.lift, d.sets);
-  }
-  if (days.length && days.at(-1)!.at !== T) { await page.clock.setSystemTime(T); await page.reload(); }
+  if (today) await lift(page, today.lift, today.sets);
   const name = `u${rand()}`;
   await goto(page, 'Friends');
   await page.getByRole('button', { name: 'Sign in or create an account' }).click();
-  const account = page.getByRole('region', { name: 'Account' });
-  await account.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
-  await account.getByLabel('Password').fill(PASSWORD);
-  await account.getByRole('button', { name: 'Create account' }).click();
-  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  const acct = page.getByRole('region', { name: 'Account' });
+  await acct.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
+  await acct.getByLabel('Password').fill(PASSWORD);
+  await acct.getByRole('button', { name: 'Create account' }).click();
+  await expect(acct.getByRole('status')).toHaveText(/^Synced/);
   await goto(page, 'Friends');
   await friends(page).getByRole('textbox', { name: 'Username' }).fill(name);
   await friends(page).getByRole('button', { name: 'Save username' }).click();
   await expect(friends(page)).toContainText(`You’re @${name}`);
   return { page, name };
 }
-
 async function setStatus(page: Page, text: string) {
-  await crew(page).getByTestId('crew-me').getByRole('button', { name: 'Status', exact: true }).click();
+  await crew(page).getByTestId('my-status').getByRole('button', { name: 'Status', exact: true }).click();
   const input = crew(page).getByRole('textbox', { name: 'Your status' });
   // 16px or more, so iOS doesn't zoom the page when it's focused.
   expect(parseFloat(await input.evaluate((el) => getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
   await input.fill(text);
   await crew(page).getByRole('button', { name: 'Save' }).click();
-  await expect(crew(page).getByTestId('crew-me').getByRole('button', { name: `Your status: ${text}. Change it` })).toBeVisible();
+  await expect(crew(page).getByRole('button', { name: `Your status: ${text}. Change it` })).toBeVisible();
 }
 
-const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth);
-
-test('Crew shows a friend’s week as kinds, their status and numbers, at 375×812; a stranger never appears', async ({ browser }, info) => {
-  // Three phones at once: each is independent until B asks A.
-  const [b, a, c] = await Promise.all([
-    person(browser, [
-      { at: Y, lift: 'Barbell Squat', sets: [[185, 5], [185, 5]] },
-      { at: T, lift: 'Bench Press', sets: [[135, 8], [135, 8], [135, 7]] },
-    ]),
-    person(browser),
-    person(browser, [{ at: T, lift: 'Lat Pulldown', sets: [[100, 10]] }]),
-  ]);
-
-  // B: their own row first, with this week's numbers; a status phrase set inline, capped at 24 characters.
-  await expect(crew(b.page).getByTestId('crew-me')).toContainText('2 sessions · 5 sets');
-  await crew(b.page).getByTestId('crew-me').getByRole('button', { name: 'Status', exact: true }).click();
+test('your status: set inline, capped at 24, seen on your friend’s feed; Invite sits in the page; your session card is yours', async ({ browser }, info) => {
+  const [b, a] = await Promise.all([person(browser, { lift: 'Bench Press', sets: [[135, 8], [135, 8], [135, 7]] }), person(browser)]);
+  await expect(crew(b.page).getByTestId('crew-me')).toContainText('Push');
+  await expect(crew(b.page).getByTestId('crew-me')).toContainText('3 sets');
+  await crew(b.page).getByTestId('my-status').getByRole('button', { name: 'Status', exact: true }).click();
   await crew(b.page).getByRole('textbox', { name: 'Your status' }).fill('x'.repeat(25));
   await expect(crew(b.page).getByRole('button', { name: 'Save' })).toBeDisabled();
   await expect(crew(b.page)).toContainText('25/24');
   await crew(b.page).getByRole('textbox', { name: 'Your status' }).press('Escape');
   await setStatus(b.page, 'Leg day survivor 🦵');
-  await setStatus(c.page, 'stranger danger');
 
-  // A and B become friends; C stays a stranger.
   await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(a.name);
   await friends(b.page).getByRole('button', { name: 'Send request' }).click();
   await a.page.reload();
@@ -114,108 +289,37 @@ test('Crew shows a friend’s week as kinds, their status and numbers, at 375×8
   await friends(a.page).getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
   await expect(friends(a.page).getByRole('status')).toHaveText(`You and @${b.name} are now friends.`);
 
-  const row = crew(a.page).getByTestId(`crew-${b.name}`);
-  // B's status syncs a few seconds after it's saved: refresh until it's there, by the keyboard's Refresh (touch pulls down).
+  const card = crew(a.page).getByTestId(`crew-${b.name}`);
+  // B's status syncs a few seconds after it's saved: refresh until it's there.
   await expect(async () => {
     await a.page.getByRole('button', { name: 'Refresh friends' }).focus();
     await a.page.keyboard.press('Enter');
-    await expect(row.locator('.crew-bubble')).toHaveText('Leg day survivor 🦵', { timeout: 1000 });
+    await expect(card.locator('.fd-status')).toHaveText('Leg day survivor 🦵', { timeout: 1000 });
   }).toPass({ timeout: 20_000 });
-  await expect(row.getByRole('button', { name: `@${b.name}`, exact: true })).toBeVisible();
-  await expect(row).toContainText('2 sessions · 5 sets');
-  await expect(row.locator(`[data-date="${iso(Y)}"]`)).toHaveAttribute('data-kind', 'legs');
-  await expect(row.locator(`[data-date="${iso(T)}"]`)).toHaveAttribute('data-kind', 'push');
-  await expect(row.locator('[data-date]')).toHaveCount(2);
-  // The same, not by colour: the table names each day's kind.
-  await crew(a.page).getByText('Table').click();
-  const tableRow = crew(a.page).getByRole('row', { name: new RegExp(`@${b.name}`) });
-  await expect(tableRow).toContainText(/Legs, .* Push$/);
-  // You first, then B; never C, who isn't a friend.
-  await expect(crew(a.page).locator('.crew-row')).toHaveCount(2);
-  await expect(crew(a.page).locator('.crew-row').first()).toHaveAttribute('data-testid', 'crew-me');
-  await expect(crew(a.page)).not.toContainText(c.name);
-  await expect(crew(a.page)).not.toContainText('stranger danger');
-  // Fewer than three friends: an Invite button in the page, under the lines (not floating: devices.spec checks what's under it).
-  const fab = crew(a.page).getByRole('button', { name: 'Invite a friend' });
-  await fab.scrollIntoViewIfNeeded();
-  const [fb, tabs] = [await fab.boundingBox(), await a.page.getByRole('navigation', { name: 'Sections' }).boundingBox()];
-  expect(fb!.y + fb!.height).toBeLessThanOrEqual(tabs!.y);
-  expect(await noSideScroll(a.page)).toBe(true);
-  // The heading starts below the notch.
-  expect((await a.page.getByRole('heading', { name: 'Friends', level: 1 }).boundingBox())!.y).toBeGreaterThanOrEqual(TOP);
-  await crew(a.page).getByText('Table').click();
+  await expect(card.locator('.fd-lifts')).toContainText('Bench Press');
+  await expect(card.locator('.fd-lifts')).toContainText('135 × 8');
+  await expect(crew(a.page).locator('.fd-dateline')).toHaveText('1 of 2 trained today · 1 training now'); // B's sets were logged at 18:00
+
+  // Fewer than three friends: an Invite button in the page, above the tab bar, and it brings the invite controls up.
+  const invite = crew(a.page).getByRole('button', { name: 'Invite a friend' });
+  await invite.scrollIntoViewIfNeeded();
+  const [ib, tabs] = [await invite.boundingBox(), await a.page.getByRole('navigation', { name: 'Sections' }).boundingBox()];
+  expect(ib!.y + ib!.height).toBeLessThanOrEqual(tabs!.y);
   await a.page.screenshot({ path: `${SHOTS}/crew-a.png` });
   await info.attach('crew-a', { path: `${SHOTS}/crew-a.png`, contentType: 'image/png' });
-
-  // Invite brings the invite controls up.
-  await fab.click();
+  await invite.click();
   await expect(friends(a.page).getByRole('region', { name: 'Add a friend' })).toBeInViewport();
 
-  // Tapping B's row opens B's log; your own row opens your History.
-  await row.getByRole('button', { name: `@${b.name}`, exact: true }).click();
+  // Tapping B's name opens B.
+  await card.getByRole('button', { name: `@${b.name}`, exact: true }).click();
   await expect(a.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing @${b.name}`);
-  await a.page.getByRole('button', { name: 'Back to you' }).click();
-  await crew(a.page).getByTestId('crew-me').getByRole('button', { name: 'You', exact: true }).click();
-  await expect(a.page.getByRole('heading', { name: 'History', level: 1 })).toBeVisible();
 
-  // B's own Crew: their bubble, editable and clearable.
+  // B's own status: editable and clearable.
   await b.page.reload();
   await goto(b.page, 'Friends');
-  await b.page.screenshot({ path: `${SHOTS}/crew-b-status.png` });
   await crew(b.page).getByRole('button', { name: 'Your status: Leg day survivor 🦵. Change it' }).click();
-  await b.page.screenshot({ path: `${SHOTS}/crew-b-editing.png` });
   await crew(b.page).getByRole('button', { name: 'Clear' }).click();
-  await expect(crew(b.page).getByTestId('crew-me').getByRole('button', { name: 'Status', exact: true })).toBeVisible();
-  await b.page.screenshot({ path: `${SHOTS}/crew-b.png` });
-});
-
-test('the lines scroll back together by dragging, up to 8 weeks, and Today jumps back', async ({ browser }) => {
-  const b = await person(browser, [{ at: T, lift: 'Bench Press', sets: [[135, 8]] }]);
-  const page = b.page;
-  const me = crew(page).getByTestId('crew-me');
-  const seg = me.locator(`[data-date="${iso(T)}"]`);
-  await expect(seg).toHaveCount(1);
-  await expect(crew(page).getByRole('button', { name: 'Today' })).toHaveCount(0);
-  const box = (await crew(page).locator('.crew-rows').boundingBox())!;
-  const x0 = (await seg.boundingBox())!.x;
-  const col = box.width / 14;
-
-  // Drag right three days: the line moves with it, snapped to whole days.
-  await page.mouse.move(box.x + 40, box.y + 60);
-  await page.mouse.down();
-  await page.mouse.move(box.x + 40 + col * 1.5, box.y + 62, { steps: 4 });
-  await page.mouse.move(box.x + 40 + col * 3, box.y + 62, { steps: 4 });
-  await page.mouse.up();
-  await expect(crew(page).getByRole('button', { name: 'Today' })).toBeVisible();
-  await page.screenshot({ path: `${SHOTS}/crew-dragged.png` });
-  // Today's segment is now off the right edge.
-  await expect(seg).toHaveCount(0);
-  // Dragging never scrolls the page sideways, and a drag isn't a tap: still on Friends.
-  expect(await noSideScroll(page)).toBe(true);
-  await expect(page.getByRole('heading', { name: 'Friends', level: 1 })).toBeVisible();
-
-  // Way further back stops at 8 weeks: the oldest day shown is 55 days ago.
-  for (let i = 0; i < 4; i++) {
-    await page.mouse.move(box.x + 20, box.y + 60);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width - 10, box.y + 60, { steps: 6 });
-    await page.mouse.up();
-  }
-  const oldest = new Date(T.getTime() - 55 * 864e5);
-  await crew(page).getByText('Table').click();
-  await expect(crew(page).locator('caption')).toContainText(oldest.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }));
-
-  await crew(page).getByRole('button', { name: 'Today' }).click();
-  await expect(crew(page).getByRole('button', { name: 'Today' })).toHaveCount(0);
-  await expect(seg).toHaveCount(1);
-  expect(Math.abs((await seg.boundingBox())!.x - x0)).toBeLessThan(1);
-
-  // The keyboard moves a week at a time.
-  await crew(page).locator('.crew-rows').focus();
-  await page.keyboard.press('ArrowLeft');
-  await expect(crew(page).getByRole('button', { name: 'Today' })).toBeVisible();
-  await page.keyboard.press('ArrowRight');
-  await expect(crew(page).getByRole('button', { name: 'Today' })).toHaveCount(0);
+  await expect(crew(b.page).getByTestId('my-status').getByRole('button', { name: 'Status', exact: true })).toBeVisible();
 });
 
 /** Whether this phone has saved Friends for its account (friends' lists, lines and news), as src/state/friendCache.ts keeps them. */
@@ -226,15 +330,15 @@ const saved = (page: Page, name: string) => page.evaluate(async (name) => {
   return all.some((x) => x.key.startsWith('friends:') && JSON.stringify(x).includes(name) && JSON.stringify(x).includes('"windows":{"'));
 }, name);
 
-test('Friends opens from what the phone saved: with Firestore unreachable, friends and their lines show at once, never Loading', async ({ browser }) => {
-  const [b, a] = await Promise.all([person(browser, [{ at: T, lift: 'Bench Press', sets: [[135, 8]] }]), person(browser)]);
+test('Friends opens from what the phone saved: with Firestore unreachable, friends and their sessions show at once, never Loading', async ({ browser }) => {
+  const [b, a] = await Promise.all([person(browser, { lift: 'Bench Press', sets: [[135, 8]] }), person(browser)]);
   await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(a.name);
   await friends(b.page).getByRole('button', { name: 'Send request' }).click();
   await a.page.reload();
   await goto(a.page, 'Friends');
   await friends(a.page).getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
-  const row = crew(a.page).getByTestId(`crew-${b.name}`);
-  await expect(row.locator(`[data-date="${iso(T)}"]`)).toHaveAttribute('data-kind', 'push');
+  const card = crew(a.page).getByTestId(`crew-${b.name}`);
+  await expect(card.locator('.fd-lifts')).toContainText('135 × 8');
   await expect.poll(() => saved(a.page, b.name), { message: 'Friends saved on the phone' }).toBe(true);
 
   // Next time, offline from Firestore: everything comes from the phone, at once.
@@ -248,15 +352,13 @@ test('Friends opens from what the phone saved: with Firestore unreachable, frien
       .observe(document.body, { subtree: true, childList: true, characterData: true });
   });
   await goto(a.page, 'Friends');
-  await expect(row.locator(`[data-date="${iso(T)}"]`)).toHaveAttribute('data-kind', 'push');
-  await expect(row).toContainText('1 session · 1 set');
+  await expect(card.locator('.fd-lifts')).toContainText('135 × 8');
   await expect(friends(a.page)).toContainText(`You’re @${a.name}`);
   await expect(crew(a.page).getByRole('button', { name: `@${b.name}`, exact: true })).toBeVisible();
   await a.page.waitForTimeout(500); // the quiet refresh fails meanwhile; what was saved stays
-  await expect(row.locator(`[data-date="${iso(T)}"]`)).toHaveAttribute('data-kind', 'push');
+  await expect(card.locator('.fd-lifts')).toContainText('135 × 8');
   await expect(a.page.locator('main.screen')).not.toContainText('Couldn’t load');
   expect(await a.page.evaluate(() => (window as unknown as { sawLoading: boolean }).sawLoading), 'Loading… showed').toBe(false);
-  // No Refresh button: a pull at the top reads again. A screen reader or keyboard still has one.
   await expect(crew(a.page).getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(0);
   await expect(a.page.getByRole('button', { name: 'Refresh friends' })).toHaveCount(1);
 });

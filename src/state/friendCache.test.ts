@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetDbForTests } from '../db/db';
 import { listThread, type FriendNews } from '../cloud/friends';
 import {
-  flushFriendCache, forgetFriendCaches, hydrateFriendCache, crewRange, FULL_INBOX_MS, patchFriendCache, peekFriendCache, prefetchFriends, pruneTo, readLocally, refreshChangedThreads, refreshNews, refreshThread, refreshWindow,
+  flushFriendCache, forgetFriendCaches, hydrateFriendCache, crewRange, FULL_INBOX_MS, notePing, patchFriendCache, peekFriendCache, prefetchFriends, pruneTo, readLocally, refreshChangedThreads, refreshNews, refreshThread, refreshWindow,
   resetFriendCacheForTests, sameNews, STALE_MS, staleWindow, threadsBehind, type FriendCache,
 } from './friendCache';
 import { fakeFirestore, ts } from '../cloud/fakeFirestore';
@@ -63,6 +63,20 @@ describe('friend cache: changes', () => {
     expect(r.news).toMatchObject({ total: 2, unread: { ana: 1 }, top: null, requests: 1 });
     expect(readLocally(c, 'ana').news).toMatchObject({ total: 3, unread: { jake: 2 }, top: { uid: 'jake' } });
     expect(readLocally(empty(), 'jake')).toEqual(empty());
+  });
+});
+
+describe('friend cache: a reaction sent from a card', () => {
+  it('goes into their kept thread with no read, once; a thread never read is left to be read whole', async () => {
+    const ping = { id: 'p1', from: 'me', kind: 'p' as const, e: 'fire', at: NOW };
+    await patchFriendCache('me', () => ({ ...empty(), threads: { ana: { at: NOW, items: [], gyms: [], mine: [] } } }));
+    await notePing('me', 'ana', ping);
+    await notePing('me', 'ana', ping);
+    const t = peekFriendCache('me')!.threads.ana;
+    expect(t.mine).toEqual([ping]);
+    expect(t.items.map((i) => [i.mine, i.text])).toEqual([[true, '🔥']]);
+    await notePing('me', 'sam', ping);
+    expect(peekFriendCache('me')!.threads.sam).toBeUndefined();
   });
 });
 
@@ -361,11 +375,11 @@ describe('friend cache: a Crew line read from Firestore (refreshWindow)', () => 
       'users/jake/meta/profile': { items: { status: JSON.stringify('cutting') } },
     });
     const { from, to } = crewRange('2026-10-17');
-    expect(await refreshWindow(w.cloud, 'me', 'jake', from, to)).toEqual({ sets: [s('2026-09-20'), s('2026-10-15')], status: 'cutting' });
+    expect(await refreshWindow(w.cloud, 'me', 'jake', from, to)).toEqual({ sets: [s('2026-09-20'), s('2026-10-15')], status: 'cutting', goal: 2, prs: {} });
     expect(w.take()).toBe(4); // index, two months in one query, profile
     await flushFriendCache();
     resetFriendCacheForTests();
-    expect(await refreshWindow(w.cloud, 'me', 'jake', from, to)).toEqual({ sets: [s('2026-09-20'), s('2026-10-15')], status: 'cutting' });
+    expect(await refreshWindow(w.cloud, 'me', 'jake', from, to)).toEqual({ sets: [s('2026-09-20'), s('2026-10-15')], status: 'cutting', goal: 2, prs: {} });
     expect(w.log).toEqual([{ path: 'users/jake/meta/index', n: 1 }]);
     expect(peekFriendCache('me')?.windows.jake.basis).toEqual({ months: { '2026-09': 3, '2026-10': 4 }, meta: 5 });
   });

@@ -83,3 +83,39 @@ describe('syncCloud: this phone’s copies a sync replaces (round 10)', () => {
     await expect(run(withCloudCopy(), async () => { throw new Error('disk full'); })).rejects.toThrow(/Saving the synced log on this phone failed: disk full/);
   });
 });
+
+describe('syncCloud: the PR ids a month carries for friends (round 18)', () => {
+  const NOW = Date.parse('2026-10-07T12:00:00Z');
+  const set = (date: string, weight: number): SetEntry => ({ id: `app|${date}|bench press|1`, date, seq: 1, exercise: 'Bench Press', setNo: 1, weight, reps: 8, flags: [], source: 'app' });
+  function store(docs: Record<string, Record<string, unknown>>) {
+    const snap = (path: string) => ({ exists: () => path in docs, data: () => (path in docs ? structuredClone(docs[path]) : undefined) });
+    const set = (r: { path: string }, data: Record<string, unknown>, o?: { merge?: boolean }) => {
+      docs[r.path] = o?.merge ? { ...docs[r.path], ...data, months: { ...(docs[r.path]?.months as object), ...(data.months as object) } } : structuredClone(data);
+    };
+    const F = { doc: (_db: unknown, path: string) => ({ path }), getDoc: async (r: { path: string }) => snap(r.path),
+      collection: (_db: unknown, path: string) => ({ path }), documentId: () => '__name__', where: () => null, query: (c: { path: string }) => c,
+      getDocs: async () => ({ docs: [] }),
+      runTransaction: async (_db: unknown, fn: (tx: unknown) => Promise<unknown>) => fn({ get: async (r: { path: string }) => snap(r.path), set }) };
+    return { F, db: {} } as unknown as Cloud;
+  }
+  const sync = (cloud: Cloud, sets: SetEntry[], seen = {}) => syncCloud(cloud, 'u1',
+    { sets, body: [], tombstones: new Set(), seen, meta: {}, metaSeen: { items: {}, at: 0 } },
+    { applyMonth: async (_b, taken) => ({ taken, replaced: [], skipped: 0 }), applyMeta: async () => ({ pulled: 0, removed: 0, skipped: 0 }) }, NOW);
+
+  it('writes the month’s PRs, worked out from the whole log: October’s 200 beats September’s 185', async () => {
+    const docs: Record<string, Record<string, unknown>> = {};
+    const log = [set('2026-09-02', 180), set('2026-09-20', 185), set('2026-10-01', 175), set('2026-10-05', 200)];
+    await sync(store(docs), log);
+    expect(docs['users/u1/months/2026-10'].prs).toEqual(['app|2026-10-05|bench press|1']);
+    expect(docs['users/u1/months/2026-09'].prs).toEqual(['app|2026-09-20|bench press|1']);
+  });
+  it('writes nothing for PRs alone: a month whose sets didn’t change is left as it is (two phones never trade it back and forth)', async () => {
+    const docs: Record<string, Record<string, unknown>> = {
+      'users/u1/meta/index': { months: { '2026-10': 5 } },
+      'users/u1/months/2026-10': { sets: [set('2026-10-05', 200)], body: [], deleted: {}, updatedAt: 5 },
+    };
+    const r = await sync(store(docs), [set('2026-10-05', 200)]);
+    expect(r.pushed).toBe(0);
+    expect(docs['users/u1/months/2026-10'].prs).toBeUndefined();
+  });
+});
