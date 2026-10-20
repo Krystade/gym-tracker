@@ -197,7 +197,7 @@ export function kneeFrom(core: Core, exercise: string, prior: readonly Prior[], 
  * new log, and the timer and the plan's length then read only today (as learn/session's paceBefore).
  */
 let LAST: { date: string; log: readonly SetEntry[]; facts: number; core: Core | null } | null = null;
-function coreFor(entries: readonly SetEntry[], date: string): Core | null {
+export function coreFor(entries: readonly SetEntry[], date: string): Core | null {
   const log = logBefore(entries, date), facts = liftFactsVersion();
   if (LAST && LAST.date === date && LAST.facts === facts && LAST.log.length === log.length) {
     let same = true;

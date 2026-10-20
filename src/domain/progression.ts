@@ -5,7 +5,8 @@ import type { SetEntry } from './types';
 import { isHold, isHoldLift } from './care';
 import { coreBefore, logBefore } from './learn';
 import { dropsOf, type Drop } from './learn/jump';
-import { ladderOf, nextRung, prevRung, type Ladder } from './learn/ladder';
+import { floorRung, ladderOf, nextRung, prevRung, type Ladder } from './learn/ladder';
+import { isLight, LIGHT } from './learn/deload';
 import { fitRange, type RangeFit } from './learn/range';
 import { painGate, type PainGate } from './painPlan';
 import { addedLoad, bodyShare } from './learn/bodyweight';
@@ -32,8 +33,12 @@ export function defaultSettings(name: string, hold = isHold(name)): ExerciseSett
 
 export const isWorking = (s: SetEntry): boolean => !s.flags.includes('warmup') && !s.flags.includes('partial') && s.reps != null && s.reps > 0;
 
+/** A light week's session (item 06): its working sets all light. Progression goes on from the session before it. */
+const lightSession = (sets: SetEntry[]): boolean => { const w = sets.filter(isWorking); return w.length > 0 && w.every(isLight); };
+
 export function priorE1rm(entries: SetEntry[], exercise: string, beforeDate: string): number | null {
-  const vals = sessionsFor(entries, exercise).filter((x) => x.date < beforeDate).slice(0, 3)
+  // A light week's sets (item 06) are stopped short on purpose: not a reading of the recent best.
+  const vals = sessionsFor(entries, exercise).filter((x) => x.date < beforeDate && !lightSession(x.sets)).slice(0, 3)
     .flatMap((x) => x.sets.map(e1rm)).filter((v): v is number => v != null);
   return vals.length ? Math.max(...vals) : null;
 }
@@ -101,7 +106,7 @@ export function estimateRir(set: SetEntry, sessionSets: SetEntry[], prior: numbe
  * own target, in order (`reps` is the lowest of them); `why`, the rule that made them, in a few words.
  */
 export interface Target {
-  kind: 'increase' | 'reps' | 'repeat' | 'maxed' | 'test' | 'carry' | 'hold' | 'ease'; weight: number; reps: number; last: SetEntry[]; text: string; done?: { total: number; sets: number };
+  kind: 'increase' | 'reps' | 'repeat' | 'maxed' | 'test' | 'carry' | 'hold' | 'ease' | 'light'; weight: number; reps: number; last: SetEntry[]; text: string; done?: { total: number; sets: number };
   perSet?: number[]; why?: string;
   /** The range progression used, when the learned drop moved it off the lift's own (learn/range). */
   range?: RangeFit;
@@ -187,9 +192,37 @@ const isTraining = (s: SetEntry) => isWorking(s) && !isTest(s);
 /**
  * `planned`: the sets the plan has for this lift today, where known. Last time's extra sets at the top weight don't hold the
  * target down: it goes from the best that many (owner, 2026-10-19: 11, 11, 8 with 2 planned is 12+, not 9+).
+ * `light`: a light week is on (item 06): the target it would be, lightened (see `lighten`). Sessions of a light week are never
+ * progressed from: the first target after it is the one before it.
  */
-export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned?: number | null): Target | null {
-  const before = sessionsFor(entries, exercise).filter((x) => x.date < date);
+export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned?: number | null, light = false): Target | null {
+  const t = baseTarget(entries, exercise, st, date, planned);
+  return light && t ? lighten(t, entries, exercise, st, date, planned) : t;
+}
+
+/**
+ * A light week's target (item 06; a: Bell 2025, SCJ, moderate recovery need): half the sets (volume down 40–60 %), the weight
+ * about 10 % lighter on the lift's loadable weights (a typed increment wins), the range's bottom, stopping about 3 short (1–3 RIR
+ * further from failure). Help or bodyweight keeps its load (the body can't be made lighter); a hold, its seconds' bottom.
+ */
+function lighten(t: Target, entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned?: number | null): Target {
+  const unit = isHoldLift(exercise, entries) ? ' s' : '';
+  const n = planned ?? t.perSet?.length ?? Math.max(1, t.last.filter((x) => isWorking(x) && !isTest(x)).length);
+  const sets = Math.max(1, Math.round(n * LIGHT.volume));
+  let w = t.weight;
+  if (!unit && t.weight > 0) {
+    const want = t.weight * (1 - LIGHT.load);
+    const ladder = st.increment === DEFAULT_INCREMENT ? learnedFor(entries, exercise, date).ladder : null;
+    const down = ladder ? floorRung(ladder, want) : Math.floor(want / st.increment + 1e-9) * st.increment;
+    if (down > 0 && down < t.weight) w = down;
+  }
+  const perSet = Array<number>(sets).fill(st.repMin);
+  return { kind: 'light', weight: w, reps: st.repMin, perSet, last: t.last, why: `Light week: about ${Math.round(LIGHT.load * 100)} % lighter, half the sets, stop about ${LIGHT.rir} short`,
+    text: `Light week: ${lb(w)} × ${perSet.join(' · ')}${unit}` };
+}
+
+function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned?: number | null): Target | null {
+  const before = sessionsFor(entries, exercise).filter((x) => x.date < date && !lightSession(x.sets));
   // Just rotated in: the carried-over estimate, until the first session since the switch.
   const seed = st.seed;
   if (seed && date >= seed.date && !before.some((x) => x.date >= seed.date && x.sets.some(isWorking))) {

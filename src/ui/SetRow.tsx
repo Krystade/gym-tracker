@@ -1,7 +1,7 @@
 import type { Flag, SetEntry } from '../domain/types';
 import { fmtSet } from '../domain/format';
 
-const TAG: Partial<Record<Flag, string>> = { warmup: 'warm-up', double_pulley: '2× pulley' };
+const TAG: Partial<Record<Flag, string>> = { warmup: 'warm-up', double_pulley: '2× pulley', light: 'light week' };
 const HOW_BAD = { 1: 'mild', 2: 'moderate', 3: 'sharp' } as const;
 
 /** `no`: the set's place in the session as done; setNo is part of its id and keeps entry order. */

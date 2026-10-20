@@ -667,6 +667,10 @@ p + .sync-form, p + .field { margin-top: 12px; }
 .day-switch .mini { grid-row: 1; min-width: 44px; padding: 0; background: none; color: var(--accent-text); }
 .day-switch .mini:disabled { color: var(--text-3); }
 .past-day { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+/* A light week on (item 06): the past-day banner's shape, its words quiet but for the name. */
+.light-week { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.note-card.light-week > span:first-child { color: var(--text-2); font-weight: 400; }
+.light-week b { color: var(--accent-text); font-weight: 600; }
 /* The hint goes under the field: iOS gives a time input its own width, and a hint beside it drew over it. */
 .when { display: grid; gap: 6px; }
 .when label { display: grid; gap: 6px; font-size: var(--fs-sm); color: var(--muted); }

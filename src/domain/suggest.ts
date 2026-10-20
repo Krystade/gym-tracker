@@ -54,16 +54,19 @@ export function warmups(weight: number, exercise: string): Ramp[] {
 const warmAlready = (entries: SetEntry[], exercise: string, date: string) =>
   daySets(entries, date).some((e) => isWorking(e) && !sameExercise(e.exercise, exercise) && warmups(e.weight, e.exercise).length > 0);
 
-/** What to do next time: weight and reps from double progression, sets from the program or last session. Ignores `date`'s own sets. */
-export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null): Suggestion {
-  const t = nextTarget(entries, exercise, st, date, planned);
+/**
+ * What to do next time: weight and reps from double progression, sets from the program or last session. Ignores `date`'s own sets.
+ * `light`: a light week is on (item 06): its target, and its sets (half).
+ */
+export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null, light = false): Suggestion {
+  const t = nextTarget(entries, exercise, st, date, planned, light);
   // Sets as in the last session of working sets: a test counts toward the weight, not the set count.
   const training = (e: SetEntry) => isWorking(e) && !isTest(e);
   const last = sessionsFor(entries, exercise).find((x) => x.date < date && !(x.sets.some(isTest) && !x.sets.some(training)));
   const lastWorking = last ? last.sets.filter(training).length : 0;
   const [sets, setsFrom]: [number, Suggestion['setsFrom']] =
     planned != null ? [planned, 'program'] : lastWorking ? [lastWorking, 'last'] : [3, 'default'];
-  const clamped = Math.min(6, Math.max(1, sets));
+  const clamped = t?.kind === 'light' ? t.perSet!.length : Math.min(6, Math.max(1, sets));
   const unit = isHoldLift(exercise, entries) ? ' s' : '';
   if (!t) return { unit, weight: null, reps: st.repMin, repMax: st.repMax, sets: clamped, setsFrom, kind: 'new', warmups: [],
     reason: `No history yet: pick a weight you can do about ${st.repMax} times, and log every set.` };
@@ -77,6 +80,7 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
     : t.kind === 'test' ? `Your test set puts ${st.repMax} reps at about ${t.weight} lb, so that’s the working weight now.`
     : t.kind === 'carry' ? `An estimate carried over from your ${st.seed?.from ?? 'last variation'}, on the light side: adjust after the first set.`
     : t.kind === 'hold' ? `${t.why}. Same weight and reps as last time.`
+    : t.kind === 'light' ? `${t.why}. Your normal targets pick up again after the week.`
     : t.kind === 'ease' ? `${t.why}, ${t.easeBy === 'reps' ? 'the same load' : 'the same reps'}. Once it’s mild or gone, it builds back up from here.`
     : t.perSet ? `Same weight; each set aims at last time’s same set. ${t.why}.`
       + (t.range?.how === 'top' ? ` Your increases cost about ${Math.round(Math.max(0, t.drop?.mean ?? 0) * 2) / 2} reps here, so ${t.range.repMin}–${t.range.repMax} before the next weight.` : '')
@@ -91,9 +95,9 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
  * For the exercise screen's "Next time": before training it today, today's suggestion (with today's program sets);
  * once it has working sets today, the session after — today counts as the last session.
  */
-export function nextTime(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null): { s: Suggestion; trainedToday: boolean } {
+export function nextTime(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null, light = false): { s: Suggestion; trainedToday: boolean } {
   const trainedToday = daySets(entries, date).some((e) => sameExercise(e.exercise, exercise) && isWorking(e));
-  return trainedToday ? { s: suggest(entries, exercise, st, addDays(date, 1), null), trainedToday } : { s: suggest(entries, exercise, st, date, planned), trainedToday };
+  return trainedToday ? { s: suggest(entries, exercise, st, addDays(date, 1), null, light), trainedToday } : { s: suggest(entries, exercise, st, date, planned, light), trainedToday };
 }
 
 /** How many warm-up sets the next session of this lift would suggest (default rep range), for time estimates. */

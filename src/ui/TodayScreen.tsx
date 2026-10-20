@@ -40,6 +40,9 @@ import { applyRotation, inProgram, RotationSuggestion } from './RotationSuggesti
 import { FriendName } from './FriendName';
 import { persistentPain } from '../domain/painPlan';
 import { PainPrompt } from './PainPrompt';
+import { systemic } from '../domain/learn/deload';
+import { deloadSnoozed, endLight, lightOn, snoozeDeload, startLight, tappedLight } from '../state/lightWeek';
+import { DeloadPrompt, LightWeekLine } from './DeloadPrompt';
 
 export function TodayScreen({ me, who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews }: {
   /** Whose sets these are, named only when several people share the phone. */
@@ -69,6 +72,14 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   const planSig = plan && JSON.stringify(plan);
   const restDelta = useMemo(() => (programs.program && plan ? dayRestDelta(programs.program, plan, store.entries, (ex) => settings.get(ex).rest) : DELTA),
     [programs.program, planSig, store.entries, settings]);
+  // Item 06: a light week on the day (started here, or read from the log's light sets), and, on today outside one, whether his
+  // strength is down across lifts with a second signal: then a light week is offered, and rotation offers wait.
+  const [deloadTaps, setDeloadTaps] = useState(0);
+  const tapped = tappedLight(owner);
+  const light = lightOn(owner, store.entries, date);
+  const sys = useMemo(() => (date === today ? systemic(store.entries, body.days, today, tapped) : null),
+    [store.entries, body.days, today, date, deloadTaps]); // `tapped` changes only with a tap, which bumps deloadTaps
+  const offerDeload = sys?.verdict === 'deload' && !deloadSnoozed(owner, today);
   // `extra` is the day's card order: logging a set must not move an added card. Lifts logged elsewhere come first.
   // Planned lifts keep the plan's order, whichever was opened first.
   const cards = inPlanOrder([...logged.filter((l) => !extra.some((x) => sameExercise(l, x))), ...extra], programs.program && plan ? plannedNames(programs.program, plan) : []);
@@ -97,7 +108,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   // The weight the card will suggest, worked out the same way, so the row tells you what to load before you open it.
   const loadFor = (ex: string, sets: number): number | null => {
     const st = settings.get(ex, isHoldLift(ex, store.entries));
-    return nextTarget(store.entries, ex, st, date) ? suggest(store.entries, ex, st, date, sets).weight : null;
+    return nextTarget(store.entries, ex, st, date) ? suggest(store.entries, ex, st, date, sets, !!light).weight : null;
   };
   const left = programs.program && plan ? leftToDo(programs.program, plan, store.entries) : [];
   const done = !!programs.program && !!plan && left.length === 0 && store.entries.some((e) => e.date === date && isWorking(e));
@@ -152,11 +163,11 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
 
   // A stalled lift's next variation, on its card: today only, for a lift in the program, before its first working set
   // (once it's started, switching would only muddle today's plan). Worked out once per lift per log change.
-  const rotations = useMemo(() => new Map<string, { r: Rotation; carry: Carry | null; known: boolean } | null>(), [store.entries, today, programs.program, available, settings.get]);
+  const rotations = useMemo(() => new Map<string, { r: Rotation; carry: Carry | null; known: boolean } | null>(), [store.entries, today, programs.program, available, settings.get, body.days, deloadTaps]);
   const rotationOf = (n: string) => {
     const k = n.toLowerCase();
     if (!rotations.has(k)) {
-      const r = rotation(store.entries, n, today, { available, include: gyms.active?.include, program: programs.program });
+      const r = rotation(store.entries, n, today, { available, include: gyms.active?.include, program: programs.program, body: body.days, light: tapped });
       rotations.set(k, r && { r, carry: carryOver(store.entries, r.from, r.to, today, settings.get(r.to)), known: store.entries.some((e) => sameExercise(e.exercise, r.to)) });
     }
     return rotations.get(k)!;
@@ -228,6 +239,8 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       <WeighIn body={body} date={date} />
       <Energy body={body} date={date} />
       <CycleRow date={date} />
+      {light && <LightWeekLine to={light.to} today={today} onEnd={() => { endLight(owner, store.entries, date); snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
+      {offerDeload && sys && <DeloadPrompt s={sys} onStart={() => { startLight(owner, today); setDeloadTaps((n) => n + 1); }} onLater={() => { snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
       {programs.program && plan && hasPlan && (
         <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today} open={open} onToggle={() => setPlanOpen(!open)}
           buildQuick={(fits) => quickDay(profile, store.entries, date, fits, available ? { available, include: gyms.active!.include } : {})}
@@ -243,7 +256,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
         swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
         openReq={openReq && sameExercise(openReq.to, n) ? openReq : null}
         supersetWith={groupOf(n)?.lifts.filter((x) => !sameExercise(x, n))} onNotSuperset={() => { const g = groupOf(n); if (g) dismiss(g); }}
-        switchAfter={(entries, id) => nextAfter(groupsIn(entries), id)} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} restDelta={restDelta} />)}
+        switchAfter={(entries, id) => nextAfter(groupsIn(entries), id)} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} restDelta={restDelta} light={!!light} />)}
       {/* Below the cards, so the card you're logging on never moves down. */}
       <SessionSummary entries={store.entries} date={date} past={date < today} />
       <button className="wide add-exercise" data-tour="add" onClick={() => setPicking(true)}>Add exercise</button>

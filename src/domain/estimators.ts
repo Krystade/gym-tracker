@@ -1,3 +1,4 @@
+import { lightWeek } from './learn/deload';
 import { addDays } from './analytics';
 import { isHoldLift } from './care';
 import { liftKey } from './ids';
@@ -101,6 +102,8 @@ export function testDue(entries: readonly SetEntry[], exercise: string, today: s
   if (isCardio(exercise) || isHoldLift(exercise, entries)) return null;
   // (a) One failure set a day: sets to failure need longer recovery (Morán-Navarro 2017), so not two tests in a workout.
   if (entries.some((e) => e.date === today && e.flags.includes('test'))) return null;
+  // Item 06 (a: Bell 2025): no test in a light week, which is for shedding fatigue, not for a max effort.
+  if (target?.kind === 'light' || lightWeek(entries, today)) return null;
   // Item 08 (a): not while pain holds or eases the lift (moderate or worse last time, or in a region it loads within 3 days:
   // painPlan), nor once it has hurt today.
   if (painGate(entries, exercise, today) || zoneOf(liftSets(entries, exercise).filter((e) => e.date === today)) > 0) return null;

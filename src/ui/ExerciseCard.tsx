@@ -38,7 +38,7 @@ export function ExerciseCard({ plannedMinutes, ...p }: CardProps) {
 }
 
 function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = null, who, swappedFrom, left = [], onGo,
-  supersetWith, onNotSuperset, switchAfter, onSwitch, aside, restDelta }: {
+  supersetWith, onNotSuperset, switchAfter, onSwitch, aside, restDelta, light = false }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
   /** The plan sent you to this card: open it if it's folded. Each request once (a render of the card's own keeps it). */
   openReq?: object | null;
@@ -57,6 +57,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   aside?: ReactNode;
   /** The day's δ for his rest knee (TodayPlan dayRestDelta); the plain one without a plan. */
   restDelta?: number;
+  /** A light week is on (item 06): its targets, and its working sets marked light. */
+  light?: boolean;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
   // Folded or open as the user last chose: true folded, false open; null, automatic: folded once the plan's sets are done.
@@ -91,8 +93,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   // The rest timer may be changed long after this render (or this card gone): it saves through the settings as they are then.
   const settingsNow = useRef(settings);
   settingsNow.current = settings;
-  const target = nextTarget(store.entries, exercise, st, date, plannedSets);
-  const sug = suggest(store.entries, exercise, st, date, plannedSets);
+  const target = nextTarget(store.entries, exercise, st, date, plannedSets, light);
+  const sug = suggest(store.entries, exercise, st, date, plannedSets, light);
   const pace = useMemo(() => paces(store.entries), [store.entries]);
   // The stepper moves by the lift's learned rung when that is finer than 5 lb, and a typed increment isn't set (item 01).
   const weightStep = useMemo(() => { const l = st.increment === 5 ? ladderOf(store.entries, exercise) : null; return l && l.step < 5 ? l.step : 5; }, [store.entries, exercise, st.increment]);
@@ -120,6 +122,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     setPr(null);
     // What was suggested rides along with every set, so suggested and done can be compared later.
     const { at, ...rest } = v;
+    // In a light week a working set is marked light (item 06): stopped short on purpose, so nothing reads it as his best.
+    if (light && !rest.flags.includes('warmup') && !rest.flags.includes('light')) rest.flags = [...rest.flags, 'light'];
     // A time for a late set is on the day being logged to.
     const e = await store.add({ date, exercise, ...rest, gym, ...(at !== undefined && { at: at ? new Date(`${date}T${at}:00`) : null }), target: { weight: sug.weight, reps: aim(working.length, sug.weight) ?? sug.reps, sets: sug.sets } });
     if (!e) return false;
@@ -223,7 +227,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       {aside}
       {last && <p className="muted card-last">Last ({fmtDay(last.date, realToday)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
       {swappedFrom && <p className="muted card-last">For {swappedFrom}{from && <> · last {from.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</>}</p>}
-      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.kind === 'test' && 'From your test: '}{sug.kind === 'carry' && 'Estimate: '}{sug.kind === 'hold' && 'Hold: '}{sug.kind === 'ease' && 'Lighter: '}{sug.perSet ? <>{sug.perSet.join(' · ')}{sug.unit}</> : <>{sug.sets} × {sug.reps}{sug.unit}{sug.kind !== 'maxed' && '+'}</>}{fmtLoad(sug.weight)}{fmtPerSide(sug.weight ?? 0, exercise) && <span className="target-warm muted">{fmtPerSide(sug.weight ?? 0, exercise)}</span>}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}{sug.why && <span className="target-warm muted target-why">{sug.why}</span>}</span></p>}
+      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.kind === 'test' && 'From your test: '}{sug.kind === 'carry' && 'Estimate: '}{sug.kind === 'hold' && 'Hold: '}{sug.kind === 'ease' && 'Lighter: '}{sug.kind === 'light' && 'Light week: '}{sug.perSet ? <>{sug.perSet.join(' · ')}{sug.unit}</> : <>{sug.sets} × {sug.reps}{sug.unit}{sug.kind !== 'maxed' && '+'}</>}{fmtLoad(sug.weight)}{fmtPerSide(sug.weight ?? 0, exercise) && <span className="target-warm muted">{fmtPerSide(sug.weight ?? 0, exercise)}</span>}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}{sug.why && <span className="target-warm muted target-why">{sug.why}</span>}</span></p>}
       <ol className="sets" aria-label={`Sets for ${exercise}`}>
         {today.map((s, i) => (
           <li key={s.id}>

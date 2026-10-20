@@ -34,6 +34,8 @@ import { Input } from './Field';
 import { carryOver, rotation } from '../domain/rotation';
 import { applyRotation, inProgram, RotationSuggestion } from './RotationSuggestion';
 import { activeProfileDb } from '../db/db';
+import { lightOn, tappedLight } from '../state/lightWeek';
+import type { BodyDay } from '../domain/body';
 
 /** A cardio machine: distance (or floors) per session over time, and each session's numbers with its pace. */
 function CardioScreen({ name, store, programs, date, onLog, onBack, onDay, readOnly }: { name: string; store: SetsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void; onDay?: (date: string) => void; readOnly?: boolean }) {
@@ -205,12 +207,14 @@ function WorksLine({ name, settings, readOnly }: { name: string; settings: Setti
 }
 
 /** `readOnly`: a friend's lift, charts and history only. `onDay`: a record tapped opens its day in History. */
-export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly }: {
+export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly, bodyDays }: {
   name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void;
   onRenamed: (to: string) => void; onDay?: (date: string) => void; readOnly?: boolean;
+  /** His energy by day (item 06: a suggested deload holds the rotation offer, as on Today). */
+  bodyDays?: readonly BodyDay[];
 }) {
   if (isCardio(name)) return <CardioScreen name={name} store={store} programs={programs} date={date} onLog={onLog} onBack={onBack} onDay={onDay} readOnly={readOnly} />;
-  return <LiftScreen {...{ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly }} />;
+  return <LiftScreen {...{ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly, bodyDays }} />;
 }
 
 /** A share of ln e1RM as a whole percent, at least 1. */
@@ -218,9 +222,12 @@ const pct = (u: number) => Math.max(1, Math.round(100 * u));
 /** An uncertainty in reps: a tenth below 10, so a test that halves it never reads "±1 to ±1". */
 const repsU = (x: number) => (x < 10 ? String(Math.round(x * 10) / 10) : String(Math.round(x)));
 
-function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly }: Parameters<typeof ExerciseScreen>[0]) {
+function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly, bodyDays }: Parameters<typeof ExerciseScreen>[0]) {
   const hold = isHoldLift(name, store.entries);
-  const { s: sug, trainedToday } = nextTime(store.entries, name, settings.get(name, hold), date, plannedSets(programs.program, todayPlanFor(programs, store.entries, date), name));
+  // Item 06: in a light week, "Next time" is its target, and no test is due.
+  const [owner] = useState(activeProfileDb);
+  const light = !readOnly && !!lightOn(owner, store.entries, date); // a friend's page isn't under this phone's tap
+  const { s: sug, trainedToday } = nextTime(store.entries, name, settings.get(name, hold), date, plannedSets(programs.program, todayPlanFor(programs, store.entries, date), name), light);
   const sessions = sessionsFor(store.entries, name);
   // A hold has no 1RM: its trend is the longest hold of each session, in seconds.
   const today = localDate(new Date());
@@ -242,10 +249,9 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
   const tested = new Set(store.entries.filter((e) => e.flags.includes('test') && sameExercise(e.exercise, name)).map((e) => e.date)).size;
   const offset = rirOffset(store.entries, name);
   // A stalled lift's next variation. Switched from here, the note stays (with its undo) while this screen is open.
-  const [owner] = useState(activeProfileDb);
   const [switched, setSwitched] = useState<{ to: string; undo: () => Promise<void> } | null>(null);
   const available = gyms.active ? availableSet(gyms.active, [...PROGRAM_LIFTS, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined;
-  const rot = readOnly || hold || switched ? null : rotation(store.entries, name, today, { available, include: gyms.active?.include, program: programs.program });
+  const rot = readOnly || hold || switched ? null : rotation(store.entries, name, today, { available, include: gyms.active?.include, program: programs.program, body: bodyDays, light: tappedLight(owner) });
   const carry = rot && carryOver(store.entries, rot.from, rot.to, today, settings.get(rot.to));
   return (
     <>

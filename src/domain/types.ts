@@ -1,4 +1,4 @@
-export const FLAGS = ['bodyweight', 'partial', 'unsure', 'pain', 'double_pulley', 'warmup', 'test', 'hold', 'cardio'] as const;
+export const FLAGS = ['bodyweight', 'partial', 'unsure', 'pain', 'double_pulley', 'warmup', 'test', 'hold', 'cardio', 'light'] as const;
 export type Flag = (typeof FLAGS)[number];
 export const isFlag = (s: string): s is Flag => (FLAGS as readonly string[]).includes(s);
 

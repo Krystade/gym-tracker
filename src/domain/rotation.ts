@@ -13,6 +13,8 @@ import { strengthOf } from './learn/strength';
 import { addedLoad, bodyShare } from './learn/bodyweight';
 import { painRisk } from './learn/pain';
 import { flatness, REACCLIMATION, runIndex, type Flatness } from './learn/trend';
+import { isLight, systemic } from './learn/deload';
+import type { BodyDay } from './body';
 import { painShaped, spillOver } from './painPlan';
 import { isProgressionSet, isWorking, type ExerciseSettings } from './progression';
 import { renameInProgram } from './rename';
@@ -95,11 +97,12 @@ export interface Stall { since: string; sessions: number; weeks: number; last: s
  * progression reads them: warm-ups and partials are left out, and a session of only those isn't a session here; test sets count.
  * A session pain shaped (it hurt, or the pain gate held or eased it: item 08) isn't counted among those with nothing better: its
  * sets are lower bounds, or the app held it on purpose, so it says nothing of a plateau (c: it can only withhold a stall). It still
- * counts as progress when it beat the sessions before it.
+ * counts as progress when it beat the sessions before it. A light week's session (item 06: its sets all light) isn't a session here:
+ * stopped short on purpose, it neither progressed nor stalled.
  */
 export function sinceProgress(entries: SetEntry[], exercise: string, today: string): { since: string; sessions: number; last: string } | null {
   const ss = sessionsFor(entries, exercise).filter((x) => x.date <= today)
-    .map((x) => ({ date: x.date, sets: x.sets.filter(isProgressionSet) })).filter((x) => x.sets.length).reverse();
+    .map((x) => ({ date: x.date, sets: x.sets.filter(isProgressionSet) })).filter((x) => x.sets.length && !x.sets.every(isLight)).reverse();
   if (!ss.length) return null;
   const run0 = runIndex(ss.map((x) => dayOf(x.date)));
   let last = 0;
@@ -129,8 +132,11 @@ export function stall(entries: SetEntry[], exercise: string, today: string): Sta
   return flat && flat.p > 0.5 ? { ...run, weeks: Math.floor(flat.slope.days / 7), flat } : null;
 }
 
-/** `available`: what this gym can do. `include`: lifts added to the gym by hand. `program`: its lifts aren't offered (no lift twice). */
-export interface RotationContext { available?: Set<string>; include?: string[]; program?: Program | null }
+/**
+ * `available`: what this gym can do. `include`: lifts added to the gym by hand. `program`: its lifts aren't offered (no lift twice).
+ * `body`: his energy, and `light`: a light week he started on this phone, for item 06 (see `rotation`).
+ */
+export interface RotationContext { available?: Set<string>; include?: string[]; program?: Program | null; body?: readonly BodyDay[]; light?: { from: string; end?: string } | null }
 
 /** Variations in a rotation: the lift and the two others. */
 const ROTATION = 3;
@@ -191,6 +197,10 @@ export function rotation(entries: SetEntry[], lift: string, today: string, ctx: 
   if (!pattern) return null;
   const s = stall(entries, lift, today);
   if (!s) return null;
+  // Item 06: while he is down across lifts with a second signal (a deload is suggested), or in a light week, a stall is his
+  // fatigue's, not the lift's: rotating would blame the wrong cause (a: Grandou 2020; 06 §3.2). Its offer waits.
+  const sys = systemic(entries, ctx.body ?? [], today, ctx.light);
+  if (sys && (sys.verdict === 'deload' || sys.verdict === 'light')) return null;
   const to = nextVariation(entries, lift, today, ctx);
   if (!to) return null;
   const muscle = mainMuscle(lift), bias = biasOf(lift);

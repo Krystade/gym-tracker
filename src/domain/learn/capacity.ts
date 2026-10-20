@@ -58,7 +58,7 @@ const B_LIFT_SD = 0.5;
  */
 const HABIT = { mean: 2, k: 2, sd: 1.5, kSd: 3 } as const;
 /** (a) Day-to-day readiness, 3 % of e1RM: most of the 4.2 % test–retest CV of a 1RM (Grgic 2020, Sports Med Open 6:31). */
-const READY = 0.03;
+export const READY = 0.03;
 /**
  * (a) Level drift per √week, a grid learned by marginal likelihood (b); prior weight on 1 %/√week (Latella 2020/2022: trained
  * lifters gain 0.1–0.3 %/week; 04 §2). Layoffs widen it by 3 % per week past two (Bosquet 2013 detraining meta-analysis).
@@ -232,6 +232,7 @@ function blockOf(date: string, hard: SetEntry[], gap: number): Block {
       const target = e.target && e.target.weight != null && e.target.weight === e.weight ? e.target.reps : null;
       let kind = K_HABIT, k = 0;
       if (e.flags.includes('pain')) { kind = K_BOUND; k = 0; } // pain limited the set, not strength (04 §7)
+      else if (e.flags.includes('light') && e.rir == null) { kind = K_BOUND; k = 0; } // a light week's set, stopped short on purpose (item 06)
       else if (e.rir != null && e.rir >= 4) { kind = K_BOUND; k = 3; } // "4+": at least 4, with a rep of slack (04 §3)
       else if (e.rir != null) { kind = e.flags.includes('test') ? K_TEST : K_RIR; k = e.rir; }
       else if (target != null && r === target) { kind = K_BOUND; k = 0; s.atTarget[i] = 1; } // stopped at the target: could have done more (00-core §1.2)

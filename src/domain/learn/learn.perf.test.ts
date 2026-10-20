@@ -4,6 +4,7 @@ import { simulate, SIM_LIFTS } from './coreSim.sample';
 import { learn } from './index';
 import { painFit } from './pain';
 import { DELTA, kneeAfter, restDelta } from './rest';
+import { systemic } from './deload';
 import { paceFit, sessionLengths } from './session';
 import { paceLog, PACE_TRUTH } from './sessionSim.sample';
 
@@ -130,4 +131,31 @@ it('the knee after a set, and the day’s δ, stay cheap as today’s sets are l
   knee.sort((a, b) => a - b); delta.sort((a, b) => a - b);
   expect(knee[0], `knee per set (ms): ${knee.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5);
   expect(delta[0], `δ per log (ms): ${delta.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(25);
+}, 120000);
+
+// Item 06's check (learn/deload) runs on Today with each change of the log: the core as of the days before today (kept while they're
+// the same sets, learn/rest coreFor), every lift's recent shift, the pool, and the shift scale over his past stretches (kept per
+// core). 5 years of training with a week off after every 24 training days; desktop ~1.5 ms a set; gated at 10 ms.
+it('the deload check stays cheap as today’s sets are logged', () => {
+  const { entries } = simulate(5, { sessions: 1000 });
+  const days = [...new Set(entries.map((e) => e.date))].sort();
+  // A week off after every 24th training day: about 40 stretches for the scale to learn from.
+  const shift = new Map(days.map((d, i) => [d, Math.floor(i / 24) * 7]));
+  const move = (d: string, n: number) => new Date(Date.parse(d) + n * 864e5).toISOString().slice(0, 10);
+  const log = entries.map((e) => ({ ...e, date: move(e.date, shift.get(e.date)!) }));
+  const date = move(log.reduce((d, e) => (e.date > d ? e.date : d), ''), 2);
+  const body = [{ date, energy: 3 as const }];
+  let n = 0;
+  const add = (): SetEntry[] => { n++; log.push({ ...log[0], id: `deload${n}`, date, seq: 1e7 + n, setNo: n }); return [...log]; };
+  systemic(add(), body, date);
+  const times: number[] = [];
+  for (let k = 0; k < 9; k++) {
+    const next = add();
+    const t = performance.now();
+    const s = systemic(next, body, date);
+    times.push(performance.now() - t);
+    expect(s).not.toBeNull();
+  }
+  times.sort((a, b) => a - b);
+  expect(times[0], `per set (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(10);
 }, 120000);
