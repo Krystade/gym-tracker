@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { cleanStatus, dayKinds, fmtWeek, lastTraining, crewDays, statusLength, weekNumbers } from './crew';
+import { cleanStatus, dayKinds, fmtSession, fmtWeek, lastTraining, latestSession, crewDays, sessionLabel, statusLength, weekNumbers } from './crew';
 
 let seq = 0;
 const s = (exercise: string, n = 1, over: Partial<SetEntry> = {}, date = '2026-10-14'): SetEntry[] =>
@@ -70,5 +70,58 @@ describe('status phrase', () => {
     expect(statusLength('leg day 🦵🏽')).toBe(9);
     expect(cleanStatus(`${'x'.repeat(23)}🏋️‍♀️🦵`)).toBe(`${'x'.repeat(23)}🏋️‍♀️`);
     expect(cleanStatus(7)).toBe('');
+  });
+});
+
+describe('latestSession', () => {
+  it('is the newest day with a working set: each lift once, in the order done, with its working sets and top set', () => {
+    const older = s('Barbell Squat', 5, { weight: 225 }, '2026-10-12');
+    const day = [
+      ...s('Bench Press', 2, { weight: 95, flags: ['warmup'] }, '2026-10-14'),
+      ...s('Bench Press', 1, { weight: 185, reps: 8 }, '2026-10-14'),
+      ...s('Barbell Row', 1, { weight: 135, reps: 10 }, '2026-10-14'),
+      ...s('Bench Press', 1, { weight: 185, reps: 9 }, '2026-10-14'),
+      ...s('Bench Press', 1, { weight: 175, reps: 12 }, '2026-10-14'),
+      ...s('Barbell Row', 2, { weight: 135, reps: 8 }, '2026-10-14'),
+    ];
+    // Shuffled: the order comes from when each set was done, not from the list.
+    const got = latestSession([...day].reverse().concat(older));
+    expect(got?.date).toBe('2026-10-14');
+    expect(got?.lifts.map((l) => [l.exercise, l.sets, l.weight, l.reps])).toEqual([
+      ['Bench Press', 3, 185, 9], // heaviest, then most reps at it; warm-ups don't count
+      ['Barbell Row', 3, 135, 10],
+    ]);
+  });
+  it('passes over a newer day of warm-ups only, and is null with nothing trained', () => {
+    const sets = [...s('Barbell Squat', 3, { weight: 200 }, '2026-10-12'), ...s('Bench Press', 2, { flags: ['warmup'] }, '2026-10-14')];
+    expect(latestSession(sets)?.date).toBe('2026-10-12');
+    expect(latestSession(s('Bench Press', 2, { flags: ['warmup'] }))).toBeNull();
+    expect(latestSession([])).toBeNull();
+  });
+  it('counts cardio as a session: one line per machine, its minutes added up', () => {
+    const got = latestSession([...cardio(20), ...cardio(10), ...s('DB Curl', 3, { weight: 30, reps: 12 })]);
+    expect(got?.lifts.map((l) => [l.exercise, l.sets, l.seconds])).toEqual([['Treadmill', 2, 1800], ['DB Curl', 3, undefined]]);
+  });
+});
+
+describe('fmtSession', () => {
+  it('reads as sets × top weight × reps, bodyweight as BW, holds in seconds, cardio as its time', () => {
+    const got = latestSession([
+      ...s('Bench Press', 3, { weight: 185, reps: 8 }),
+      ...s('Pull-up', 3, { weight: 0, reps: 10 }),
+      ...s('Plank', 2, { weight: 0, reps: 45, flags: ['hold'] }),
+      ...s('Dip', 1, { weight: 45, reps: null }),
+      ...cardio(20),
+    ])!;
+    expect(fmtSession(got)).toBe('Bench Press 3×185×8 · Pull-up 3×BW×10 · Plank 2×BW×45s · Dip 1×45×? · Treadmill 20:00');
+  });
+});
+
+describe('sessionLabel', () => {
+  it('says Today, Yesterday, the weekday within the week, then the date', () => {
+    expect(sessionLabel('2026-10-14', '2026-10-14')).toBe('Today');
+    expect(sessionLabel('2026-10-13', '2026-10-14')).toBe('Yesterday');
+    expect(sessionLabel('2026-10-09', '2026-10-14')).toBe('Fri');
+    expect(sessionLabel('2026-10-07', '2026-10-14')).toBe('Oct 7');
   });
 });

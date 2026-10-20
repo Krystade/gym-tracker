@@ -40,6 +40,11 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
   useEffect(() => { if (offer) offerBox.current?.scrollIntoView({ block: 'nearest' }); }, [offer]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
+  // The invite link's field: read-only (no keyboard, no AutoFill), and a tap selects all of it.
+  const linkField = useRef<HTMLInputElement>(null);
+  const selectLink = () => { const el = linkField.current; if (el) el.setSelectionRange(0, el.value.length); };
+  const [copied, setCopied] = useState(false);
+  useEffect(() => { if (!copied) return; const t = setTimeout(() => setCopied(false), 2000); return () => clearTimeout(t); }, [copied]);
 
   const refresh = useCallback(async (c: Cloud) => { await refreshLists(c, uid); }, [uid]);
   /** One action at a time; its outcome (or the error in plain words) shows under the card's heading. */
@@ -104,6 +109,16 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
     if (navigator.share) { try { await navigator.share({ title: 'Gym Tracker', text: `Be my friend on Gym Tracker (@${me})`, url: link }); } catch { /* closed */ } return; }
     try { await navigator.clipboard.writeText(link); setMsg({ ok: true, text: 'Link copied.' }); } catch { setMsg({ ok: false, text: 'Couldn’t copy. Select the link and copy it.' }); }
   };
+  const copy = async () => {
+    if (!link) return;
+    try { await navigator.clipboard.writeText(link); setCopied(true); }
+    catch {
+      // No clipboard, or it said no: the link selected in its field, to copy from there.
+      linkField.current?.focus();
+      selectLink();
+      setMsg({ ok: false, text: 'Couldn’t copy. The link is selected: copy it from there.' });
+    }
+  };
   return (
     <section className="card" aria-label="Friends">
       <p className="muted small">You’re @{me}. Friends see your log, notes, body weight, priorities and program. Never your photos.</p>
@@ -166,7 +181,12 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
         </form>
         {link ? (
           <div className="sync-form">
-            <label className="invite-link">Your invite link<input readOnly value={link} onFocus={(e) => e.target.select()} /></label>
+            <label className="invite-link" htmlFor="invite-link">Your invite link</label>
+            <div className="invite-row">
+              <input id="invite-link" ref={linkField} readOnly inputMode="none" autoComplete="off" autoCorrect="off" spellCheck={false} value={link} onClick={selectLink} />
+              {/* aria-live: "Copied" is read out where it shows. */}
+              <button type="button" className="mini" aria-live="polite" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</button>
+            </div>
             <p className="muted small">Send it to one friend: they see who it’s from and accept it. Works once, for 7 days.</p>
             <div className="form-actions">
               <button disabled={busy} onClick={() => void act(async (c) => { await revokeInvites(c, uid); return 'Invite link cancelled.'; })}>Cancel link</button>

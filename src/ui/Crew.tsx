@@ -3,7 +3,7 @@ import { cloudError, loadCloud } from '../cloud/firebase';
 import type { Friend, FriendNews } from '../cloud/friends';
 import { addDays, weekStart } from '../domain/analytics';
 import { CREW_SPAN, crewRange, peekFriendCache, refreshWindow, staleWindow, useFriendCache } from '../state/friendCache';
-import { fmtWeek, KIND_LABEL, KINDS, lastTraining, crewDays, statusLength, STATUS_MAX, weekNumbers, type Day, type Kind } from '../domain/crew';
+import { fmtSession, fmtWeek, KIND_LABEL, KINDS, lastTraining, latestSession, crewDays, sessionLabel, statusLength, STATUS_MAX, weekNumbers, type Day, type Kind } from '../domain/crew';
 import type { SetEntry } from '../domain/types';
 import type { StatusStore } from '../state/useStatus';
 import { ChartTable } from './charts/ChartTable';
@@ -177,6 +177,7 @@ export function Crew({ uid, myName, friends, entries, today, status, news, pulle
                 <p className="crew-week muted small">
                   {r.error ? <span className="warn">{r.error}</span> : r.loading ? 'Loading…' : quiet ? 'No sessions in 2 weeks' : fmtWeek(weekNumbers(r.sets, week))}
                 </p>
+                {r.friend && !r.error && <SessionLine sets={r.sets} today={today} />}
               </li>
             );
           })}
@@ -187,6 +188,18 @@ export function Crew({ uid, myName, friends, entries, today, status, news, pulle
       {friends && friends.length < 3 && <button className="crew-invite" onClick={onInvite}><Icon name="person-plus" size={20} />Invite a friend</button>}
       <ChartTable caption={`What each person trained, ${dayName(first)} to ${dayName(lastShown)}`} head={['Who', 'Days trained']} rows={table} />
     </section>
+  );
+}
+
+/** What a friend did in their latest session, from the line already read: two lines, a tap shows it all. */
+function SessionLine({ sets, today }: { sets: SetEntry[]; today: string }) {
+  const [open, setOpen] = useState(false);
+  const session = useMemo(() => latestSession(sets), [sets]);
+  if (!session?.lifts.length) return null;
+  return (
+    <button className={`crew-session${open ? ' open' : ''}`} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <span><b>{sessionLabel(session.date, today)}:</b> {fmtSession(session)}</span>
+    </button>
   );
 }
 

@@ -690,6 +690,10 @@ p + .sync-form, p + .field { margin-top: 12px; }
 .friend-list .link { flex: none; }
 /* Air between the card's forms: the invite link's Cancel/Share row isn't the paste field's. */
 .sub > .sync-form + .sync-form, .sub > .sync-form + button { margin-top: 16px; }
+/* The invite link and its Copy, side by side; the link's own field is what shrinks. */
+.invite-row { display: flex; gap: 8px; align-items: center; }
+.invite-row input { flex: 1; min-width: 0; }
+.invite-row button { flex: none; min-width: 76px; }
 .invite-offer { background: var(--surface-2); box-shadow: inset 3px 0 var(--accent); border-radius: var(--r-group); padding: 12px 16px; }
 .invite-offer > p:first-child { margin-top: 0; }
 .invite-offer .form-actions { margin-top: 10px; }
@@ -791,6 +795,11 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .crew-now { fill: var(--text); stroke: var(--bg); stroke-width: 1.5; }
 .crew-row.quiet .crew-line { opacity: 0.5; }
 .crew-week { margin: 4px 0 0; color: var(--text-3); }
+/* A friend's latest session under their numbers: two lines, a tap opens the rest. */
+.crew-session { display: block; width: 100%; min-height: 0; margin: 2px 0 0; padding: 2px 0; border: 0; background: none; color: var(--text-2); font: inherit; font-size: var(--fs-sm); line-height: 20px; text-align: left; border-radius: 0; }
+.crew-session > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.crew-session.open > span { display: block; }
+.crew-session b { color: var(--text); font-weight: 600; }
 .crew .chart-table { margin-top: 4px; }
 /* Invite sits in the page under the Crew lines (it floated over the page and covered "Add a friend"): a tonal pill. */
 .crew-invite { margin: 12px 0 4px; border-radius: var(--r-pill); padding: 0 20px 0 16px; background: var(--fill); color: var(--accent-text); gap: 8px; }

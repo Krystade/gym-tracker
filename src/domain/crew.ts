@@ -1,5 +1,5 @@
 import { addDays } from './analytics';
-import { isCardioEntry } from './cardio';
+import { fmtClock, isCardioEntry } from './cardio';
 import { muscleVector, type Muscle } from './muscles';
 import type { SetEntry } from './types';
 
@@ -74,6 +74,51 @@ export const fmtWeek = ({ sessions, sets }: { sessions: number; sets: number }) 
 export function lastTraining(days: Day[]): Day | null {
   for (let i = days.length - 1; i >= 0; i--) if (days[i].training) return days[i];
   return null;
+}
+
+/**
+ * One lift of a session at a glance: its working sets, and the top one (heaviest, then most reps at that weight). A cardio
+ * machine is one line with its minutes added up (`seconds`), `sets` its entries.
+ */
+export interface LiftDone { exercise: string; sets: number; weight: number; reps: number | null; hold: boolean; seconds?: number }
+export interface SessionDone { date: string; lifts: LiftDone[] }
+
+/** The newest day with a working set or cardio, each lift once in the order it was started. Null with nothing trained. */
+export function latestSession(entries: SetEntry[]): SessionDone | null {
+  let date = '';
+  for (const e of entries) if (e.date > date && (isWorking(e) || isCardioEntry(e))) date = e.date;
+  if (!date) return null;
+  const lifts = new Map<string, LiftDone>();
+  for (const e of entries.filter((x) => x.date === date).sort((a, b) => a.seq - b.seq)) {
+    const cardio = isCardioEntry(e);
+    if (!cardio && !isWorking(e)) continue;
+    const key = e.exercise.toLowerCase(), l = lifts.get(key);
+    if (cardio) {
+      const seconds = e.cardio?.seconds ?? 0;
+      if (l) { l.sets++; l.seconds = (l.seconds ?? 0) + seconds; } else lifts.set(key, { exercise: e.exercise, sets: 1, weight: 0, reps: null, hold: false, seconds });
+      continue;
+    }
+    const top = { weight: e.weight, reps: e.reps, hold: e.flags.includes('hold') };
+    if (!l) { lifts.set(key, { exercise: e.exercise, sets: 1, ...top }); continue; }
+    l.sets++;
+    if (e.weight > l.weight || (e.weight === l.weight && (e.reps ?? -1) > (l.reps ?? -1))) Object.assign(l, top);
+  }
+  return { date, lifts: [...lifts.values()] };
+}
+
+/** "Bench Press 3×185×8 · Pull-up 3×BW×10 · Treadmill 20:00": sets × top weight × reps, a lift each. */
+export const fmtSession = (s: SessionDone): string => s.lifts.map((l) => l.seconds != null
+  ? `${l.exercise} ${fmtClock(l.seconds)}`
+  : `${l.exercise} ${l.sets}×${l.weight === 0 ? 'BW' : Math.round(l.weight * 100) / 100}×${l.reps ?? '?'}${l.hold ? 's' : ''}`).join(' · ');
+
+const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** When a session was, from `today`: Today, Yesterday, a weekday within the week, else "Oct 7". */
+export function sessionLabel(date: string, today: string): string {
+  if (date === today) return 'Today';
+  if (date === addDays(today, -1)) return 'Yesterday';
+  const d = new Date(`${date}T12:00:00Z`);
+  return date > addDays(today, -7) ? WEEKDAY[d.getUTCDay()] : `${MONTH[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
 /** A status phrase as saved: trimmed, spaces collapsed, at most 24 characters (an emoji counts as one). */

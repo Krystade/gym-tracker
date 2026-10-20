@@ -74,6 +74,13 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   // b looks at a's log: the same screens, nothing to edit.
   await goto(b.page, 'Today');
   await goto(b.page, 'Friends');
+  // What a did today, under their line: read from what Crew already has, two lines, a tap for the rest.
+  const session = crew(b.page).getByTestId(`crew-${a.name}`).getByRole('button', { name: /^Today:/ });
+  await expect(session).toHaveText('Today: Bench Press 1×135×8');
+  await expect(session).toHaveAttribute('aria-expanded', 'false');
+  await session.click();
+  await expect(session).toHaveAttribute('aria-expanded', 'true');
+  await expect(crew(b.page).getByTestId('crew-me').getByRole('button', { name: /^Today:/ })).toHaveCount(0);
   await crew(b.page).getByRole('button', { name: `@${a.name}`, exact: true }).click();
   await expect(b.page.getByRole('region', { name: 'Viewing a friend' })).toContainText(`Viewing @${a.name}`);
   await expect(b.page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
@@ -202,4 +209,35 @@ test('a gym sent to a friend waits under Friends until they add it', async ({ br
   await openGyms(b.page);
   await expect(b.page.getByLabel('Gym name')).toHaveValue('Garage');
   await expect(b.page.getByRole('checkbox', { name: 'barbell', exact: true })).toBeChecked();
+});
+
+test('the invite link: a tap selects all of it with no keyboard, Copy copies it and says so, and with no clipboard it is selected to copy', async ({ browser }) => {
+  const a = await person(browser);
+  type W = Window & { __copied: string[] };
+  await a.page.evaluate(() => {
+    (window as unknown as W).__copied = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t: string) => { (window as unknown as W).__copied.push(t); } } });
+  });
+  await friends(a.page).getByRole('button', { name: 'Make an invite link' }).click();
+  const field = friends(a.page).getByRole('textbox', { name: 'Your invite link' });
+  const link = await field.inputValue();
+  await expect(field).toHaveAttribute('readonly', '');
+  await expect(field).toHaveAttribute('inputmode', 'none');
+  const selected = () => field.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd]);
+  await field.click();
+  expect(await selected()).toEqual([0, link.length]);
+
+  const copy = friends(a.page).getByRole('button', { name: 'Copy', exact: true });
+  await copy.click();
+  expect(await a.page.evaluate(() => (window as unknown as W).__copied)).toEqual([link]);
+  await expect(friends(a.page).getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
+  await expect(copy).toBeVisible(); // back to Copy after a moment
+
+  // A clipboard that says no: the link is selected in its field, with a word on copying it from there.
+  await a.page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('denied'); } } }));
+  await field.evaluate((el: HTMLInputElement) => { el.setSelectionRange(0, 0); el.blur(); });
+  await copy.click();
+  await expect(friends(a.page).getByRole('alert')).toHaveText('Couldn’t copy. The link is selected: copy it from there.');
+  await expect(field).toBeFocused();
+  expect(await selected()).toEqual([0, link.length]);
 });

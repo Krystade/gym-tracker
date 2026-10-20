@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { goto } from './nav';
 
 // The fixed chrome on an iPhone after a picker or keyboard: the owner's 13 mini showed the tab bar halfway up the screen
 // with the page below it, and a time input's "6:00 PM" over the clock. iOS 26 leaves visualViewport offset from the
@@ -176,4 +177,92 @@ test('a select still focused after its picker closes lets the chrome follow a st
   await vv(page, { height: 420 });
   await page.waitForTimeout(150);
   expect((await box(page, 'nav.tabs')).bottom).toBe(H);
+});
+
+// Friends, against the emulators (synthetic users only). The owner's phone showed the bar mid-screen again here after typing in
+// Add a friend: each test below has the screen stick where the focus and blur checks alone never look again.
+const tabBottom = (page: Page) => box(page, 'nav.tabs').then((b) => b.bottom);
+
+/** Signed up on a fresh account, on Friends at the username form. */
+async function onFriends(page: Page) {
+  await fakeViewport(page);
+  await page.goto('/');
+  const name = `u${Math.random().toString(36).slice(2, 10)}`;
+  await goto(page, 'Friends');
+  await page.getByRole('button', { name: 'Sign in or create an account' }).click();
+  const account = page.getByRole('region', { name: 'Account' });
+  await account.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
+  await account.getByLabel('Password').fill('synthetic-pass-1');
+  await account.getByRole('button', { name: 'Create account' }).click();
+  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  await goto(page, 'Friends');
+  const friends = page.getByRole('region', { name: 'Friends', exact: true });
+  return { name, friends, username: friends.getByRole('textbox', { name: 'Username' }) };
+}
+async function claimed(page: Page) {
+  const f = await onFriends(page);
+  await f.username.fill(f.name);
+  await f.friends.getByRole('button', { name: 'Save username' }).click();
+  await expect(f.friends).toContainText(`You’re @${f.name}`);
+  return f;
+}
+
+test('Friends: a field taken off the page while it has the keyboard lets the bar follow a screen stuck afterwards', async ({ page }) => {
+  const { name, friends, username } = await onFriends(page);
+  const H = 812;
+  // Typing a username, keyboard up; Go saves it and the form gives way to the card, the field still focused. WebKit says
+  // nothing when a focused field leaves the page (no blur, no focusout), and the screen settles stuck with no event either.
+  await username.focus();
+  await vv(page, { height: 450 });
+  await username.pressSequentially(name, { delay: 100 });
+  await page.waitForTimeout(6000); // a while over the keyboard: every check that followed focusing is long done
+  await username.press('Enter');
+  await expect(friends).toContainText(`You’re @${name}`);
+  expect(await page.evaluate(() => document.activeElement === document.body), 'the field went with focus on it').toBe(true);
+  await vv(page, { offsetTop: 300, height: H - 24 }, false);
+  await expect.poll(() => tabBottom(page)).toBe(300 + H - 24);
+  await page.screenshot({ path: 'test-results/viewport-friends-removed.png' });
+  // Sorted out, again with no event: the bar goes home.
+  await vv(page, { offsetTop: 0, height: null }, false);
+  await expect.poll(() => tabBottom(page)).toBe(H);
+});
+
+test('Friends: a screen that sticks a second after the keyboard went, with no event, still takes the bar with it', async ({ page }) => {
+  const { friends } = await claimed(page);
+  const H = 812;
+  const theirs = friends.getByRole('textbox', { name: 'Their username' });
+  await theirs.focus();
+  await vv(page, { height: 450 });
+  await theirs.fill('nobody_here_123');
+  await theirs.press('Enter');
+  await expect(friends.getByRole('alert')).toContainText('nobody_here_123');
+  // The keyboard goes cleanly; the answer and the page moving under it come later, and the screen sticks then, silently.
+  await theirs.blur();
+  await vv(page, { height: null });
+  await page.waitForTimeout(2000);
+  expect(await tabBottom(page)).toBe(H);
+  await vv(page, { offsetTop: 300, height: H - 24 }, false);
+  await expect.poll(() => tabBottom(page)).toBe(300 + H - 24);
+  await vv(page, { offsetTop: 0, height: null }, false);
+  await expect.poll(() => tabBottom(page)).toBe(H);
+});
+
+test('Friends: the invite link raises no keyboard, so focused on a short stuck screen the bar still follows it', async ({ page }) => {
+  const { friends } = await claimed(page);
+  const H = 812;
+  await friends.getByRole('button', { name: 'Make an invite link' }).click();
+  const link = friends.getByRole('textbox', { name: 'Your invite link' });
+  await expect(link).toHaveAttribute('readonly', '');
+  await link.click();
+  await expect(link).toBeFocused();
+  // Short of four fifths of the screen, as a keyboard leaves it; but a read-only field can't have one up.
+  await vv(page, { offsetTop: 200, height: 600 }, false);
+  await expect.poll(() => tabBottom(page)).toBe(800);
+  // A field that types still holds the bar behind its keyboard, as everywhere else.
+  await vv(page, { offsetTop: 0, height: null });
+  const theirs = friends.getByRole('textbox', { name: 'Their username' });
+  await theirs.focus();
+  await vv(page, { height: 450 });
+  await page.waitForTimeout(700);
+  expect(await tabBottom(page)).toBe(H);
 });
