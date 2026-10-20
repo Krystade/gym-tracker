@@ -78,14 +78,15 @@ const SHOWN = 5;
 
 /**
  * A lift likelier than not to hurt at its next session (b: learn/pain's risk ≥ ½, the point where hurting is the likelier
- * outcome): with how many of its last few sessions hurt, for the words. Null below ½. Display only: the swap is his to take.
+ * outcome): with how many of its last few sessions hurt, for the words. Null below ½, or when none of those hurt. Display only.
  */
 export function persistentPain(entries: readonly SetEntry[], exercise: string, date: string): { p: number; hurt: number; of: number } | null {
   const risk = painRisk(entries, exercise, date);
   if (!(risk.p >= 0.5)) return null;
   const days = [...new Set(liftSets(entries, exercise).filter((e) => e.date <= date).map((e) => e.date))].sort().slice(-SHOWN);
   const hurt = days.filter((d) => liftSets(entries, exercise).some((e) => e.date === d && e.flags.includes('pain'))).length;
-  return { p: risk.p, hurt, of: days.length };
+  // Only a lift that hurt lately itself: with no pain of its own the risk is its family's or the prior's (½ on an empty log).
+  return hurt ? { p: risk.p, hurt, of: days.length } : null;
 }
 
 /** (a) NHS (tennis elbow; the same advice for other joint pain): see a GP if it is still painful after 2 weeks of self-care. */

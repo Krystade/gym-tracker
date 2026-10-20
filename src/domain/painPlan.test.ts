@@ -97,6 +97,9 @@ describe('persistentPain: likelier than not to hurt next time (b)', () => {
     expect(persistentPain([...entries, ...run], SK, day)).toMatchObject({ hurt: 4, of: 4 });
     // One of them only: below ½ (though worse than its family: rotation would skip it, nothing more).
     expect(persistentPain([...entries, ...run.slice(0, 2)], SK, day)).toBeNull();
+    // An empty log (the prior is ½) or a lift that never hurt: nothing to say.
+    expect(persistentPain([], SK, day)).toBeNull();
+    expect(persistentPain(sess(day, SK, 40, [10]), SK, addDays(day, 3))).toBeNull();
     const lone = sess(addDays(last, -300), SK, 40, [10, 10], pain(2));
     expect(persistentPain([...entries, ...lone], SK, day)).toBeNull();
   });
