@@ -47,7 +47,8 @@ test('open an exercise: next sets × reps @ weight with a warm-up, history below
   await page.getByLabel('Target').screenshot({ path: 'screenshots/21-target-line.png' });
   // Trained today: the exercise screen now shows the next session, with nothing to log today.
   await page.getByRole('button', { name: 'Bench Press', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Next time' })).toContainText('1 × 9–12 @ 140 lb');
+  // One set today, 140 × 8: the next session aims that set at 9 (each set at its own number).
+  await expect(page.getByRole('region', { name: 'Next time' })).toContainText('9 @ 140 lb');
   await expect(page.getByRole('button', { name: 'Log it today' })).toHaveCount(0);
 
   // The backup carries when it was logged and what was suggested; the body file carries energy.

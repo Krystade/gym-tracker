@@ -79,9 +79,11 @@ describe('test sets', () => {
     // An AMRAP test after the working sets tops the range with them: 12 + 10 + 12 = 34, within 2 of 3 × 12. Without it, 22 of 2 × 12 − 1.
     const e = [s('2026-01-01', 1, 30, 12), s('2026-01-01', 2, 30, 10), test('2026-01-01', 3, 30, 12)];
     expect(nextTarget(e, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'increase', weight: 35, reps: 8, done: { total: 34, sets: 3 } });
-    // A heavier test is the session's top weight, as any heavier set is: 35 × 9 → 35 × 10.
+    // A heavier test is the session's top weight, as any heavier set is: 35 × 9, at RIR 0 its limit, so 35 × 9 again; with
+    // reps in reserve logged, 35 × 10.
     const heavier = [s('2026-01-01', 1, 30, 12), s('2026-01-01', 2, 30, 12), test('2026-01-01', 3, 35, 9)];
-    expect(nextTarget(heavier, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 35, reps: 10 });
+    expect(nextTarget(heavier, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 35, reps: 9 });
+    expect(nextTarget([...heavier.slice(0, 2), test('2026-01-01', 3, 35, 9, 1)], 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 35, reps: 10 });
     // An older test doesn't override working sets done since.
     const later = [test('2025-12-20', 1, 60, 1), s('2026-01-01', 1, 30, 10), s('2026-01-01', 2, 30, 10)];
     expect(nextTarget(later, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 30, reps: 11 });
@@ -148,7 +150,7 @@ describe('zero-rep sets', () => {
   it('are not working sets and do not drag the target down', () => {
     expect(isWorking(s('d', 1, 100, 0))).toBe(false);
     const t = nextTarget([s('2026-01-01', 1, 100, 8), s('2026-01-01', 2, 100, 0)], 'Curl', { key: 'curl', repMin: 8, repMax: 12, increment: 5 }, '2026-01-08');
-    expect(t?.text).toBe('100 lb × 9+ on every set');
+    expect(t?.text).toBe('100 lb × 9');
   });
 });
 
@@ -197,5 +199,122 @@ describe('nextTarget for a bodyweight hold', () => {
     const t = nextTarget([p('2026-10-01', 1, 40), p('2026-10-01', 2, 45)], 'Plank', H, '2026-10-02')!;
     expect(t).toMatchObject({ kind: 'maxed', weight: 0, reps: 40 });
     expect(t.text).toMatch(/harder variation/);
+  });
+});
+
+describe('nextTarget with the sets the plan has today (owner, 2026-10-19)', () => {
+  const lift = (exercise: string, date: string, weight: number, reps: number[]): SetEntry[] =>
+    reps.map((r, i) => ({ ...s(date, i + 1, weight, r), exercise, id: `t|${date}|${exercise}|${i}|${seq}` }));
+  const push = lift('Cable Pushdown', '2026-10-15', 120, [11, 11, 8]);
+  const crunch = lift('Cable Crunch', '2026-10-15', 70, [7, 7, 7, 9]);
+  const at = (log: SetEntry[], ex: string, planned?: number | null) => nextTarget(log, ex, defaultSettings(ex), '2026-10-19', planned);
+
+  it('goes from the best N sets at the top weight when the plan has N and last time had more: 120 × 11, 11, 8 at 2 sets → 12+', () => {
+    expect(at(push, 'Cable Pushdown')).toMatchObject({ kind: 'reps', weight: 120, reps: 9 }); // unknown plan: the weakest set, as ever
+    expect(at(push, 'Cable Pushdown', null)).toMatchObject({ kind: 'reps', reps: 9 });
+    expect(at(push, 'Cable Pushdown', 2)).toMatchObject({ kind: 'reps', weight: 120, reps: 12, text: '120 lb × 12 · 12' });
+    expect(at(push, 'Cable Pushdown', 3)).toMatchObject({ reps: 9 });
+    expect(at(push, 'Cable Pushdown', 5)).toMatchObject({ reps: 9 }); // more planned than done: all of them
+    expect(at(push, 'Cable Pushdown', 1)).toMatchObject({ reps: 12 });
+  });
+
+  it('is unchanged when the plan has as many sets as were done: 70 × 7, 7, 7, 9 at 4 sets → 8+', () => {
+    expect(at(crunch, 'Cable Crunch', 4)).toMatchObject({ kind: 'reps', weight: 70, reps: 8 });
+    expect(at(crunch, 'Cable Crunch')).toMatchObject({ reps: 8 });
+    expect(at(crunch, 'Cable Crunch', 1)).toMatchObject({ reps: 10 });
+  });
+
+  it('goes up when the best N are at the top of the range, and says so for N sets', () => {
+    const log = lift('Cable Pushdown', '2026-10-15', 120, [15, 15, 9]);
+    expect(at(log, 'Cable Pushdown')).toMatchObject({ kind: 'reps', reps: 10 });
+    expect(at(log, 'Cable Pushdown', 2)).toMatchObject({ kind: 'increase', weight: 125, reps: 10, done: { total: 30, sets: 2 } });
+  });
+
+  it('reaches the program’s rows and the card through suggest', async () => {
+    const { suggest } = await import('./suggest');
+    expect(suggest(push, 'Cable Pushdown', defaultSettings('Cable Pushdown'), '2026-10-19', 2)).toMatchObject({ sets: 2, reps: 12, weight: 120 });
+    expect(suggest(push, 'Cable Pushdown', defaultSettings('Cable Pushdown'), '2026-10-19', null)).toMatchObject({ sets: 3, reps: 9 });
+  });
+});
+
+describe('per-set rep targets (owner, 2026-10-19): each set from last time’s same set, and learnt from targets hit', () => {
+  let n = 0;
+  /** A session of Cable Pushdown at 120: reps, with RIR and the per-set targets it was given where passed. */
+  const day = (date: string, reps: number[], o: { rir?: (number | undefined)[]; targets?: number[]; weight?: number } = {}): SetEntry[] =>
+    reps.map((r, i) => ({
+      id: `ps|${n}`, date, seq: n++, exercise: 'Cable Pushdown', setNo: i + 1, weight: o.weight ?? 120, reps: r, flags: [], source: 't',
+      ...(o.rir?.[i] != null && { rir: o.rir[i] }),
+      ...(o.targets && { target: { weight: 120, reps: o.targets[Math.min(i, o.targets.length - 1)], sets: o.targets.length } }),
+    }));
+  const st = defaultSettings('Cable Pushdown'); // 10–15
+  const t = (log: SetEntry[], planned?: number | null) => nextTarget(log, 'Cable Pushdown', st, '2026-10-19', planned)!;
+
+  it('11, 11, 8 → 12 · 12 · 9; the best 2 with 2 planned; the last again for a set more than last time', () => {
+    expect(t(day('2026-10-15', [11, 11, 8]))).toMatchObject({ kind: 'reps', weight: 120, reps: 9, perSet: [12, 12, 9], text: '120 lb × 12 · 12 · 9' });
+    expect(t(day('2026-10-15', [11, 11, 8]), 2).perSet).toEqual([12, 12]);
+    expect(t(day('2026-10-15', [11, 8, 11]), 2).perSet).toEqual([12, 12]); // the best two, in the order done
+    expect(t(day('2026-10-15', [10, 8, 12]), 2).perSet).toEqual([11, 13]);
+    expect(t(day('2026-10-15', [11, 11, 8]), 4).perSet).toEqual([12, 12, 9, 9]);
+  });
+
+  it('Cable Crunch 70 × 7, 7, 7, 9 at 4 sets → 8 · 8 · 8 · 10', () => {
+    const crunch = [7, 7, 7, 9].map((r, i): SetEntry => ({ id: `cc|${i}`, date: '2026-10-15', seq: n++, exercise: 'Cable Crunch', setNo: i + 1, weight: 70, reps: r, flags: [], source: 't' }));
+    expect(nextTarget(crunch, 'Cable Crunch', defaultSettings('Cable Crunch'), '2026-10-19', 4)).toMatchObject({ reps: 8, perSet: [8, 8, 8, 10] });
+  });
+
+  it('never targets past a set’s capacity, reps + RIR: a set at RIR 0 gets no rep; unknown RIR caps nothing', () => {
+    expect(t(day('2026-10-15', [11, 11, 8], { rir: [2, 1, 0] })).perSet).toEqual([12, 12, 8]);
+    expect(t(day('2026-10-15', [11, 11, 8], { rir: [0, undefined, 0] })).perSet).toEqual([11, 12, 8]);
+    // Every set at its limit: last time again.
+    const limit = t(day('2026-10-15', [11, 11, 8], { rir: [0, 0, 0] }));
+    expect(limit.perSet).toEqual([11, 11, 8]);
+    expect(limit.why).toMatch(/limit/);
+    // Never past the top of the range either.
+    expect(t(day('2026-10-15', [15, 13, 9])).perSet).toEqual([15, 14, 10]);
+  });
+
+  it('after targets hit, +1 on every set', () => {
+    const log = [...day('2026-10-12', [11, 11, 8], { targets: [11, 10, 8] }), ...day('2026-10-15', [12, 12, 9], { targets: [12, 12, 9] })];
+    expect(t(log)).toMatchObject({ perSet: [13, 13, 10] });
+    expect(t(log).why).toMatch(/hit/);
+  });
+
+  it('after a miss, +1 on the one set with the most room (RIR, else the weakest), not on every set', () => {
+    const missed = day('2026-10-15', [12, 11, 9], { targets: [12, 12, 9] });
+    expect(t(missed).perSet).toEqual([12, 11, 10]);
+    expect(t(missed).why).toMatch(/missed/i);
+    expect(t(day('2026-10-15', [12, 11, 9], { targets: [12, 12, 9], rir: [2, 0, 1] })).perSet).toEqual([13, 11, 9]);
+  });
+
+  it('missed twice in the last 3: repeat last time; a hit since starts it climbing again', () => {
+    const twice = [...day('2026-10-08', [11, 10, 8], { targets: [11, 11, 8] }), ...day('2026-10-12', [12, 12, 9], { targets: [12, 11, 9] }), ...day('2026-10-15', [12, 11, 9], { targets: [13, 12, 9] })];
+    expect(t(twice)).toMatchObject({ kind: 'reps', perSet: [12, 11, 9] });
+    expect(t(twice).why).toMatch(/repeat/i);
+    // A miss 4 sessions back is out of the window: one miss in the last 3 is +1 on one set.
+    const old = [...day('2026-10-01', [11, 10, 8], { targets: [11, 11, 8] }), ...day('2026-10-05', [11, 11, 8], { targets: [11, 11, 8] }),
+      ...day('2026-10-08', [11, 11, 8], { targets: [11, 11, 8] }), ...day('2026-10-12', [11, 11, 8], { targets: [12, 11, 8] })];
+    expect(t(old).perSet).toEqual([11, 11, 9]);
+    const back = [...twice, ...day('2026-10-17', [12, 11, 9], { targets: [12, 11, 9] })];
+    expect(nextTarget(back, 'Cable Pushdown', st, '2026-10-20')!.perSet).toEqual([13, 12, 10]);
+  });
+
+  it('reads a target at another weight as no target, and a set past the planned count as no part of it', () => {
+    // Went up 5 lb against a 120 target: nothing to judge, so +1 on every set from the new weight.
+    const heavier = day('2026-10-15', [10, 9, 8], { targets: [12, 12, 9], weight: 125 });
+    expect(t(heavier).perSet).toEqual([11, 10, 9]);
+    // 2 targeted sets, both hit; a third set beyond them doesn't count as a miss.
+    const extra = day('2026-10-15', [12, 12, 7], { targets: [12, 12] });
+    expect(t(extra).perSet).toEqual([13, 13, 8]);
+  });
+
+  it('keeps the weight increase, test, carry and the bodyweight hold as they were', () => {
+    expect(t(day('2026-10-15', [15, 15, 14]))).toMatchObject({ kind: 'increase', weight: 125, reps: 10 });
+    expect(t(day('2026-10-15', [15, 15, 14])).perSet).toBeUndefined();
+  });
+
+  it('reaches the card through suggest: as many targets as sets', async () => {
+    const { suggest } = await import('./suggest');
+    expect(suggest(day('2026-10-15', [11, 11, 8]), 'Cable Pushdown', st, '2026-10-19', 2)).toMatchObject({ sets: 2, perSet: [12, 12], reps: 12 });
+    expect(suggest(day('2026-10-15', [11, 11, 8]), 'Cable Pushdown', st, '2026-10-19', null)).toMatchObject({ sets: 3, perSet: [12, 12, 9] });
   });
 });

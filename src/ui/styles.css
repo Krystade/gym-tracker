@@ -70,14 +70,16 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
 }
 /* How much of the rest is left, along the bar's top edge. */
 .rest-progress { position: absolute; left: 0; top: -1px; height: 2px; width: calc(var(--p, 0) * 100%); background: var(--accent); }
-.rest-timer .rest-main { flex: 1; display: flex; justify-content: flex-start; align-items: center; gap: 10px; min-height: 48px; background: none; padding: 0 8px; text-align: left; font-weight: 400; }
+.rest-timer .rest-main { flex: 1; min-width: 0; display: flex; justify-content: flex-start; align-items: center; gap: 10px; min-height: 48px; padding: 0 4px 0 8px; text-align: left; font-weight: 400; }
 .rest-timer .rest-main .ic { color: var(--accent-text); }
 .rest-timer .rest-main b { font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .rest-words { display: grid; gap: 0; line-height: 1.2; min-width: 0; }
+.rest-words > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rest-words > span:first-child { font-weight: 600; }
-.rest-timer .mini:not(.icon) { border-radius: var(--r-pill); color: var(--accent-text); padding: 0 16px; }
+/* −30 s and +30 s: 44px taps, narrow enough that the time and its words keep their room at 375px. */
+.rest-timer .mini:not(.icon) { border-radius: var(--r-pill); color: var(--accent-text); padding: 0 10px; white-space: nowrap; flex: none; }
 .rest-timer { padding-right: calc(4px + var(--sar)); gap: 4px; }
-/* A 320px phone: the time, the words, +30 s and close fit without the timer glyph. */
+/* A 320px phone: the time, the words, ±30 s and close fit without the timer glyph. */
 @media (max-width: 359px) { .rest-timer .rest-main > .ic { display: none; } .rest-timer .rest-main { gap: 8px; } }
 .rest-timer.done .rest-main b { color: var(--accent-text); }
 .card.folded .left-row { margin: 0 16px 12px; }

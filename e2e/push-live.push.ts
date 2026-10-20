@@ -132,7 +132,7 @@ test('turn on, send a test push, read it, and hand it to the service worker; the
   await page.getByRole('button', { name: 'Add set' }).first().click();
   await expect(page.getByRole('timer', { name: 'Rest' })).toBeVisible();
   await expect.poll(async () => ((await worker(page, 'GET', '/status')) as { rest: { due: number } | null }).rest).not.toBeNull();
-  await page.getByRole('button', { name: 'Dismiss rest timer' }).click();
+  await page.getByRole('button', { name: 'Close rest timer' }).click();
   await expect.poll(async () => ((await worker(page, 'GET', '/status')) as { rest: unknown }).rest).toBeNull();
 
   // A launch on #open=recap lands on Today, at the week's digest.

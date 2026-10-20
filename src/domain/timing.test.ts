@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PACE, estimateSeconds, paces, perSessionForMinutes, perSetSeconds, restAfter, restSeconds, sessionDay, sessionMinutes, suggestTime, usualGap, usualMinutes } from './timing';
+import { DEFAULT_PACE, estimateSeconds, restFor, paces, perSessionForMinutes, perSetSeconds, restAfter, restSeconds, sessionDay, sessionMinutes, suggestTime, usualGap, usualMinutes } from './timing';
 import type { SetEntry } from './types';
 import type { Program } from './program';
 
@@ -21,12 +21,12 @@ describe('paces', () => {
     expect(perSetSeconds(p, 'Cable Curl')).toBe(DEFAULT_PACE.isolation);
     expect(perSetSeconds(p, 'Squat')).toBe(DEFAULT_PACE.compound);
   });
-  it('rests for the lift’s learned set-to-set time, or 2:00 without one', () => {
-    // A set every 2:30.
-    const p = paces([0, 1, 2, 3].map((i) => ({ ...at('2026-09-28', '18:00'), loggedAt: new Date(Date.parse('2026-09-28T18:00:00') + i * 150_000).toISOString() })));
+  it('rests for the lift’s learned set-to-set time, or 2:00 / 3:00 without one', () => {
+    // A set every 2:30: five gaps, the fewest a rest is learned from.
+    const p = paces([0, 1, 2, 3, 4, 5].map((i) => ({ ...at('2026-09-28', '18:00'), loggedAt: new Date(Date.parse('2026-09-28T18:00:00') + i * 150_000).toISOString() })));
     expect(restSeconds(p, 'Bench Press')).toBe(110); // a set every 2:30, less the set itself
     expect(restSeconds(p, 'Cable Curl')).toBe(120);
-    expect(restSeconds(paces([]), 'Bench Press')).toBe(120); // not the 3 min a compound set is planned at
+    expect(restSeconds(paces([]), 'Bench Press')).toBe(180); // a compound (owner, 2026-10-19)
   });
   it('ignores gaps over 10 min within a lift and over 15 min between lifts', () => {
     const p = paces([at('2026-09-28', '18:00'), at('2026-09-28', '18:30'), at('2026-09-28', '19:00', 'Cable Curl')]);
@@ -169,5 +169,70 @@ describe('supersets in the pace', () => {
     const p = paces(straight);
     expect(usualGap(p, 'Bench Press')).toBe(150);
     expect(usualGap(p, 'Cable Curl')).toBe(160); // 2:00 rest and the set
+  });
+});
+
+describe('the rest timer’s length (owner, 2026-10-19: 5:18 on a pushdown from a few long old gaps)', () => {
+  // `gaps` seconds apart on `date`, from 18:00.
+  const run = (date: string, gaps: number[], exercise = 'Cable Pushdown'): SetEntry[] => {
+    let s = 0;
+    return [0, ...gaps].map((g) => { s += g; return { ...at(date, '18:00', exercise), loggedAt: new Date(Date.parse(`${date}T18:00:00`) + s * 1000).toISOString() }; });
+  };
+  it('learns from the 10 most recent gaps, whatever order the log is in', () => {
+    const old = [...run('2026-09-01', [480, 480, 480, 480, 480]), ...run('2026-09-03', [480, 480, 480, 480, 480])];
+    const recent = [...run('2026-10-01', [150, 150, 150, 150, 150]), ...run('2026-10-03', [150, 150, 150, 150, 150])];
+    expect(restSeconds(paces([...recent, ...old]), 'Cable Pushdown')).toBe(110); // 2:30 less the set
+    expect(restSeconds(paces([...old, ...recent]), 'Cable Pushdown')).toBe(110);
+    // The instrument: over all 20 gaps it would be the 5:15 median less the set.
+    expect(perSetSeconds(paces([...old, ...recent]), 'Cable Pushdown')).toBe(315);
+    // One newer day of 8:00 gaps moves it: the newest 10 are five 8:00 and five 2:30.
+    expect(restSeconds(paces([...old, ...recent, ...run('2026-10-05', [480, 480, 480, 480, 480])]), 'Cable Pushdown')).toBe(275);
+  });
+  it('needs 5 gaps; with fewer, the default (2:00 for an isolation lift)', () => {
+    expect(restSeconds(paces(run('2026-10-01', [360, 420, 540, 480])), 'Cable Pushdown')).toBe(120);
+    expect(restSeconds(paces(run('2026-10-01', [360, 420, 540, 480, 400])), 'Cable Pushdown')).toBe(380);
+  });
+  it('keeps the rest set with the timer’s ±30 s over anything learned; a superset’s switch is still the switch', () => {
+    const p = paces([...run('2026-10-01', [150, 150, 150, 150, 150]), ...run('2026-10-03', [150, 150, 150, 150, 150])]);
+    expect(restSeconds(p, 'Cable Pushdown', 90)).toBe(90);
+    expect(restSeconds(paces([]), 'Cable Pushdown', 210)).toBe(210);
+    expect(restAfter(p, 'Cable Pushdown', null, 90)).toEqual({ seconds: 90 });
+    expect(restAfter(p, 'Cable Pushdown', 'Cable Curl', 90)).toEqual({ seconds: 20, switchTo: 'Cable Curl' });
+    // Paces and estimates don't read it.
+    expect(perSetSeconds(p, 'Cable Pushdown')).toBe(150);
+  });
+});
+
+describe('restFor: the rest after a set, from the lift’s base and the set itself (owner, 2026-10-19)', () => {
+  const none = paces([]);
+  const set = (exercise: string, weight: number, reps: number, over: Partial<SetEntry> = {}): SetEntry => ({ ...at('2026-10-19', '18:00', exercise), weight, reps, ...over });
+  it('starts from the base: kept, else learned, else 2:00 isolation / 3:00 compound', () => {
+    expect(restFor(none, set('Cable Curl', 50, 12)).seconds).toBe(120);
+    expect(restFor(none, set('Bench Press', 135, 8)).seconds).toBe(180);
+    expect(restFor(none, set('Bench Press', 135, 8), { kept: 150 })).toMatchObject({ seconds: 150, why: { base: 150, from: 'kept' } });
+  });
+  it('adds 30 s after a set at RIR 0, takes 30 s off at RIR 3 or more, nothing at 1–2 or unknown', () => {
+    const r = (rir?: number) => restFor(none, set('Bench Press', 135, 8, rir == null ? {} : { rir })).seconds;
+    expect([r(0), r(1), r(2), r(3), r(4), r()]).toEqual([210, 180, 180, 150, 150, 180]);
+  });
+  it('gives a heavy set up to 30 s more and a light one up to 30 s less, by its weight against the lift’s e1RM', () => {
+    const r = (w: number) => restFor(none, set('Bench Press', w, 5), { prior: 200 }).why.load;
+    expect([r(170), r(160), r(150), r(140), r(130), r(110)]).toEqual([30, 15, 0, -15, -30, -30]); // 85 %, 80 %, 75 %, 70 %, 65 %, 55 %
+    expect(restFor(none, set('Bench Press', 150, 5)).why.load).toBe(0); // no e1RM yet
+    // Against the lift's own range: 12 reps is a usual set for a 10–15 lift (about 71 % of e1RM), a light one for 8–12.
+    expect(restFor(none, set('Cable Curl', 40, 12), { prior: 57 }).why.load).toBe(0);
+    expect(restFor(none, set('Cable Curl', 40, 12), { prior: 56 }).why.load).toBe(0); // 71.4 % against 70.6 %: within the band
+    expect(restFor(none, set('Bench Press', 147, 5), { prior: 200 }).why.load).toBe(0); // 73.5 %
+    expect(restFor(none, set('Bench Press', 156, 5), { prior: 200 }).why.load).toBe(10); // 78 %: 9 s, to 10
+    expect(restFor(none, set('Cable Curl', 40, 12), { prior: 57, range: { repMin: 8, repMax: 12 } }).why.load).toBe(-15);
+    expect(restFor(none, set('Pull-up', 0, 8, { flags: ['bodyweight'] }), { prior: 200 }).why.load).toBe(0);
+  });
+  it('rests a warm-up 60 s (isolation) or 90 s (compound), whatever the base and effort', () => {
+    expect(restFor(none, set('Bench Press', 75, 5, { flags: ['warmup'], rir: 0 }), { kept: 240, prior: 200 }).seconds).toBe(90);
+    expect(restFor(none, set('Cable Curl', 20, 10, { flags: ['warmup'] })).seconds).toBe(60);
+  });
+  it('stays within 45 s and 5 min', () => {
+    expect(restFor(none, set('Cable Curl', 20, 15, { rir: 4 }), { kept: 50, prior: 100 }).seconds).toBe(45);
+    expect(restFor(none, set('Bench Press', 190, 3, { rir: 0 }), { kept: 290, prior: 200 }).seconds).toBe(300);
   });
 });

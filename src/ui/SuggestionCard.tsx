@@ -11,7 +11,7 @@ export function SuggestionCard({ s, onLog }: { s: Suggestion; onLog?: () => void
   return (
     <section className="card suggestion" aria-label="Next time">
       <h2>Next time</h2>
-      <p className="big">{s.sets} × {fmtTarget(s)}{fmtLoad(s.weight)}</p>
+      <p className="big">{s.perSet ? `${s.perSet.join(' · ')}${s.unit}` : `${s.sets} × ${fmtTarget(s)}`}{fmtLoad(s.weight)}</p>
       <p className="muted small">{s.reason}</p>
       <p className="muted small">Sets: {FROM[s.setsFrom]}</p>
       {s.warmups.length > 0 && <p className="muted small">Warm-up: {fmtRamp(s)}</p>}

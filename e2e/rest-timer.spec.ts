@@ -47,14 +47,17 @@ test('a rest timer starts on Add set, clear of the form, and starts over on the 
   await timer.getByRole('button', { name: '+30 s' }).click();
   await expect(timer).toContainText('2:00');
 
-  // The next set ends this rest and starts the next one.
+  // The next set ends this rest and starts the next one, with the 30 s added kept: 2:30.
   await page.clock.fastForward(45_000);
   await expect(timer).toContainText('1:15');
   await card.getByRole('button', { name: /^Add set/ }).click();
-  await expect(timer).toContainText('2:00');
+  await expect(timer).toContainText('2:30');
 
-  // A tap puts it away, and lets the screen sleep.
-  await timer.getByRole('button', { name: /Dismiss/ }).click();
+  // A tap on the bar leaves it running (owner, 2026-10-19: it sits where a thumb lands); only × puts it away, and lets the screen sleep.
+  await timer.getByText('Rest', { exact: true }).click();
+  await timer.locator('b').click();
+  await expect(timer).toContainText('2:30');
+  await timer.getByRole('button', { name: 'Close rest timer' }).click();
   await expect(timer).toHaveCount(0);
   expect((await page.evaluate(() => (window as unknown as { locks: string[] }).locks)).at(-1)).toBe('off');
 });
@@ -84,4 +87,63 @@ test('a set entered for an earlier time starts no rest timer', async ({ page }) 
   await card.getByRole('button', { name: /^Add set/ }).click();
   await expect(card.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem')).toHaveCount(1);
   await expect(page.getByRole('timer', { name: 'Rest' })).toHaveCount(0);
+});
+
+test('−30 s and +30 s change the rest, and the lift starts its next rest there, after a reload too', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-16T18:00:00') });
+  await page.goto('/');
+  const card = await openCurl(page);
+  await card.getByRole('textbox', { name: 'Weight' }).fill('50');
+  await card.getByRole('textbox', { name: 'Reps' }).fill('10');
+  await page.clock.pauseAt(new Date('2026-10-16T18:30:00'));
+  await card.getByRole('button', { name: /^Add set/ }).click();
+  const timer = page.getByRole('timer', { name: 'Rest' });
+  await expect(timer).toContainText('2:00');
+  await expect(timer).toContainText('Set 2 next');
+  const less = timer.getByRole('button', { name: '−30 s' });
+  await less.click();
+  await less.click();
+  await less.click();
+  await expect(timer).toContainText('0:30');
+  await page.screenshot({ path: 'screenshots/r16-rest-timer.png' });
+  // Never under 0: the last −30 s ends it, and then there's nothing to take off.
+  await less.click();
+  await expect(timer).toContainText('Rest done');
+  await expect(less).toBeDisabled();
+  const more = timer.getByRole('button', { name: '+30 s' });
+  await more.click();
+  await expect(timer).toContainText('0:30');
+  await more.click();
+  await expect(timer).toContainText('1:00');
+  // The next set rests what the timer was last set to.
+  await card.getByRole('button', { name: /^Add set/ }).click();
+  await expect(timer).toContainText('1:00');
+  await page.reload();
+  const again = page.locator('[data-card="cable curl"]');
+  await again.getByRole('button', { name: /^Add set/ }).click();
+  await expect(timer).toContainText('1:00');
+});
+
+test('the rest bar fits a 375 px phone: time, words, −30 s, +30 s and ×, every tap 44 px', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-16T18:00:00') });
+  await page.goto('/');
+  const card = await openCurl(page);
+  await card.getByRole('textbox', { name: 'Weight' }).fill('50');
+  await page.clock.pauseAt(new Date('2026-10-16T18:30:00'));
+  await card.getByRole('button', { name: /^Add set/ }).click();
+  const timer = page.getByRole('timer', { name: 'Rest' });
+  await expect(timer).toContainText('2:00');
+  const bad = await timer.evaluate((bar) => {
+    const out: string[] = [];
+    if (document.documentElement.scrollWidth > innerWidth) out.push('page scrolls sideways');
+    for (const el of bar.querySelectorAll<HTMLElement>('*')) {
+      const r = el.getBoundingClientRect();
+      if (r.width && (r.right > innerWidth + 0.5 || r.left < -0.5)) out.push(`off the side: ${el.className || el.tagName}`);
+    }
+    for (const b of bar.querySelectorAll<HTMLElement>('button')) if (b.offsetHeight < 44 || b.offsetWidth < 44) out.push(`${b.textContent || b.getAttribute('aria-label')} is ${b.offsetWidth}×${b.offsetHeight}`);
+    const words = bar.querySelector<HTMLElement>('.rest-words span');
+    if (!words || words.scrollWidth > words.clientWidth) out.push('“Rest” is cut off');
+    return out;
+  });
+  expect(bad).toEqual([]);
 });

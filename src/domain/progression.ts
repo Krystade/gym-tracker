@@ -11,7 +11,8 @@ import { isHold, isHoldLift } from './care';
 export interface Seed { weight: number; reps: number; from: string; date: string }
 // testSnoozedUntil: the "time for a test" banner stays hidden until this day.
 /** `like`: the catalog lift this one works like, chosen on its page (round 15); its muscles, pattern and gear are that lift's. */
-export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number; testSnoozedUntil?: string; seed?: Seed; like?: string }
+/** `rest`: seconds, the rest last set for this lift with the timer's ±30 s; the timer starts there (domain/timing restSeconds). */
+export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number; testSnoozedUntil?: string; seed?: Seed; like?: string; rest?: number }
 
 export const settingsKey = (name: string): string => liftKey(name);
 
@@ -89,8 +90,59 @@ export function estimateRir(set: SetEntry, sessionSets: SetEntry[], prior: numbe
   return clamp(Math.round(shortfall(set, prior) + offset), 0, 5);
 }
 
-/** `done`: for an increase, the reps that earned it, over that many sets at the top weight. */
-export interface Target { kind: 'increase' | 'reps' | 'repeat' | 'maxed' | 'test' | 'carry'; weight: number; reps: number; last: SetEntry[]; text: string; done?: { total: number; sets: number } }
+/**
+ * `done`: for an increase, the reps that earned it, over that many sets at the top weight. For 'reps': `perSet`, each set's
+ * own target, in order (`reps` is the lowest of them); `why`, the rule that made them, in a few words.
+ */
+export interface Target {
+  kind: 'increase' | 'reps' | 'repeat' | 'maxed' | 'test' | 'carry'; weight: number; reps: number; last: SetEntry[]; text: string; done?: { total: number; sets: number };
+  perSet?: number[]; why?: string;
+}
+
+/** How last time's sets move: +1 (or 5 s) on every set, on the one set with the most room, or not at all. */
+export type Step = 'all' | 'one' | 'repeat';
+/**
+ * Whether recent targets were hit, newest session first, for up to 3 sessions that had any: a session hit them when each of
+ * its first `target.sets` training sets at the target's weight did at least its target reps.
+ */
+export function targetsHit(sessions: { sets: SetEntry[] }[]): boolean[] {
+  const out: boolean[] = [];
+  for (const x of sessions) {
+    if (out.length === 3) break;
+    const aimed = x.sets.filter((e) => isTraining(e) && e.target?.weight != null && e.target.weight === e.weight);
+    if (!aimed.length) continue;
+    out.push(aimed.slice(0, Math.max(1, aimed[0].target!.sets)).every((e) => (e.reps as number) >= e.target!.reps));
+  }
+  return out;
+}
+/** Hit last time (or nothing to go by): every set. Missed last time: one set. Missed twice in the last 3: repeat. */
+export function stepFrom(hits: boolean[]): Step {
+  if (!hits.length || hits[0]) return 'all';
+  return hits.slice(1).some((h) => !h) ? 'repeat' : 'one';
+}
+
+/**
+ * Each set's target from last time's same set (owner, 2026-10-19): reps fall across sets at a fixed load, so each set is
+ * aimed at its own number, not the weakest one's. `step` says how they move; a set never goes past `max` (the top of the
+ * range) or its capacity, reps + RIR where RIR was logged (so a set at RIR 0 gets no rep). "Most room": the most RIR left,
+ * else (RIR not logged) as if 1, the weakest set first. No set with room: last time's reps again.
+ */
+export function perSetTargets(last: { reps: number; rir?: number }[], step: Step, max: number, by = 1): { perSet: number[]; step: Step } {
+  const cap = last.map((x) => Math.min(max, x.rir != null ? x.reps + x.rir : Infinity));
+  const up = (i: number) => Math.min(last[i].reps + by, cap[i]);
+  const reps = last.map((x) => x.reps);
+  if (step === 'all') {
+    const all = reps.map((r, i) => Math.max(r, up(i)));
+    if (all.some((r, i) => r > reps[i])) return { perSet: all, step };
+  }
+  if (step !== 'repeat') {
+    const room = last.map((x, i) => (cap[i] <= x.reps ? 0 : Math.min(cap[i] - x.reps, x.rir ?? 1)));
+    let best = -1;
+    for (let i = 0; i < last.length; i++) if (room[i] > 0 && (best < 0 || room[i] > room[best] || (room[i] === room[best] && reps[i] < reps[best]))) best = i;
+    if (best >= 0) return { perSet: reps.map((r, i) => (i === best ? up(i) : r)), step: 'one' };
+  }
+  return { perSet: reps, step: 'repeat' };
+}
 
 const lb = (w: number) => (w === 0 ? 'BW' : `${Math.round(w * 100) / 100} lb`);
 
@@ -102,7 +154,11 @@ export const isTest = (s: SetEntry): boolean => s.flags.includes('test');
 export const isProgressionSet = (s: SetEntry): boolean => isWorking(s);
 const isTraining = (s: SetEntry) => isWorking(s) && !isTest(s);
 
-export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string): Target | null {
+/**
+ * `planned`: the sets the plan has for this lift today, where known. Last time's extra sets at the top weight don't hold the
+ * target down: it goes from the best that many (owner, 2026-10-19: 11, 11, 8 with 2 planned is 12+, not 9+).
+ */
+export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned?: number | null): Target | null {
   const before = sessionsFor(entries, exercise).filter((x) => x.date < date);
   // Just rotated in: the carried-over estimate, until the first session since the switch.
   const seed = st.seed;
@@ -127,7 +183,10 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
   }
   const top = Math.max(...working.map((x) => x.weight));
   const unit = isHoldLift(exercise, entries) ? 's' : '';
-  const atTop = working.filter((x) => x.weight === top);
+  const all = working.filter((x) => x.weight === top);
+  // The best N, kept in the order done.
+  const bestN = planned != null && planned > 0 && all.length > planned ? new Set([...all].sort((a, b) => (b.reps as number) - (a.reps as number)).slice(0, planned)) : null;
+  const atTop = bestN ? all.filter((x) => bestN.has(x)) : all;
   const minReps = Math.min(...atTop.map((x) => x.reps as number));
   // Up once the sets at the top weight total within 2 reps of all at the top of the range (12/12/10 at 3 × 8–12), none below its bottom.
   const total = atTop.reduce((a, x) => a + (x.reps as number), 0);
@@ -140,8 +199,18 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
   if (unit && top === 0 && topped) {
     return { kind: 'maxed', weight: 0, reps: st.repMax, last: last.sets, text: `BW × ${st.repMax}s held: add weight or try a harder variation` };
   }
-  // Bodyweight reps have no weight to add, so their target is not capped by the range. Holds step in 5 s, like the stepper.
-  const step = unit ? 5 : 1;
-  const reps = top === 0 && !unit ? minReps + step : Math.min(minReps + step, st.repMax);
-  return { kind: 'reps', weight: top, reps, last: last.sets, text: `${lb(top)} × ${reps}${unit}+ on every set` };
+  // Bodyweight reps have no weight to add, so their target is not capped by the range. Holds step in 5 s, like the stepper,
+  // and have no RIR.
+  const by = unit ? 5 : 1;
+  const hits = targetsHit(before.slice(Math.max(0, at)));
+  const wanted = stepFrom(hits);
+  const { perSet: aimed, step } = perSetTargets(atTop.map((x) => ({ reps: x.reps as number, ...(!unit && x.rir != null && { rir: x.rir }) })),
+    wanted, top === 0 && !unit ? Infinity : st.repMax, by);
+  // A plan with more sets than last time: the extra sets aim at the last one's number.
+  const perSet = planned != null && planned > aimed.length ? [...aimed, ...Array<number>(planned - aimed.length).fill(aimed.at(-1)!)] : aimed;
+  const plus = `+${by}${unit || (by === 1 ? ' rep' : ' reps')}`;
+  const why = step === 'all' ? (hits[0] ? `Targets hit last time: ${plus} a set` : `Last time ${plus} a set`)
+    : step === 'one' ? (wanted === 'one' ? `Missed last time: ${plus} on one set` : `Most sets at their limit: ${plus} on one set`)
+    : wanted === 'repeat' ? 'Missed twice lately: repeat last time' : 'Sets at their limit last time: repeat them';
+  return { kind: 'reps', weight: top, reps: Math.min(...perSet), last: last.sets, perSet, why, text: `${lb(top)} × ${perSet.join(' · ')}${unit ? ' s' : ''}` };
 }

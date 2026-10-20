@@ -39,7 +39,7 @@ test('with no Worker configured there is no Notifications card and no push reque
   await page.getByRole('textbox', { name: 'Reps' }).first().fill('8');
   await page.getByRole('button', { name: 'Add set' }).first().click();
   await expect(page.getByRole('timer', { name: 'Rest' })).toBeVisible();
-  await expect(page.getByRole('timer', { name: 'Rest' })).toContainText('Tap to close');
+  await expect(page.getByRole('timer', { name: 'Rest' })).toContainText('Set 2 next'); // not the alert's failure
 
   await nav(page, 'More');
   await expect(page.getByRole('region', { name: 'Account' })).toBeVisible();

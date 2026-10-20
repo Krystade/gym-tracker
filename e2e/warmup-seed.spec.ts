@@ -43,9 +43,13 @@ test('after a warm-up the form offers the target, not the warm-up, also after a 
   await expect(weight).toHaveValue('185');
   await expect(reps).toHaveValue('9');
 
-  // A working set today is what the next one starts from.
+  // A working set today: the next one aims at its own target (owner, 2026-10-19), 9 for set 2, whatever set 1 did.
   await logBench(page, '185', '10');
+  await expect(reps).toHaveValue('9');
   await logBench(page, '95', '5', true);
   await expect(weight).toHaveValue('185');
-  await expect(reps).toHaveValue('10');
+  await expect(reps).toHaveValue('9');
+  // At another weight, the reps stay as typed: the targets are for 185.
+  await logBench(page, '175', '11');
+  await expect(reps).toHaveValue('11');
 });

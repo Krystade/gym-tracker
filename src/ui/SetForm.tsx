@@ -24,7 +24,7 @@ interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; not
  * `when`: the set may have been done earlier — `always` shows the time field (a past day), otherwise "Did this earlier?" opens it.
  * `suggest` is asked when the field opens, so it reflects the clock then. An empty field means unknown.
  */
-export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day, hold: holdLift, heaviest = 0, tagPrefs, onTagPrefs }: {
+export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day, hold: holdLift, heaviest = 0, tagPrefs, onTagPrefs, nextReps }: {
   /** An empty weight (null) is for a lift with nothing to suggest from. */
   exercise: string; initial: Omit<SetFormValue, 'weight'> & { weight: number | null }; submitLabel: string;
   /** The heaviest working weight logged for this lift: over twice it asks once before saving. */
@@ -37,6 +37,8 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   when?: { suggest: () => string | null; always: boolean; max?: () => string | null }; // max: latest allowed HH:MM, null/absent = no limit
   /** The tag row as the person keeps it; with `onTagPrefs` it ends in Edit tags. */
   tagPrefs?: TagPrefs; onTagPrefs?: (t: TagPrefs) => void;
+  /** After a set is saved: the reps the next set aims at (its own target), if it has one; else the reps stay as typed. */
+  nextReps?: (saved: SetFormValue) => number | undefined;
 }) {
   const [owner] = useState(() => ({ profile: activeProfileDb(), date: day ?? localDate(new Date()) }));
   // One draft per lift per day, so a past day's half-typed set never lands in today's form.
@@ -115,11 +117,14 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
     busy.current = true; // a fast double tap would otherwise log the set twice
     try {
       const withHold: Flag[] = hold && !flags.includes('hold') ? [...flags, 'hold'] : flags;
-      const ok = await onSubmit({
+      const value: SetFormValue = {
         weight: w, reps: r, rir: rir ?? (flags.includes('test') ? 0 : undefined), flags: derivedFlags(withHold, w, r), note: note.trim() || undefined,
         painRegion: pain ? region : undefined, painSeverity: pain ? severity : undefined, tags: tags.length ? tags : undefined,
         ...(whenOpen && { at: time || null }),
-      });
+      };
+      const ok = await onSubmit(value);
+      const next = ok ? nextReps?.(value) : undefined;
+      if (next != null) setReps(String(next));
       if (ok && when) { if (when.always) resuggest.current = true; else setWhenOpen(false); }
       if (ok && keepDraft) { clearDraft(owner.profile, draftKey); dirty.current = false; }
       // A warm-up doesn't move the next set: back to what the card suggests (the last working set, else the target).

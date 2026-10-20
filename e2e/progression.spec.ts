@@ -11,11 +11,11 @@ test('target, estimated RIR, PR banner and settings', async ({ page }) => {
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
 
-  // Sample: last Cable Curl session 70×12, 80×8, 80×? → top working weight 80, weakest 8 → 80 lb × 9+
+  // Sample: last Cable Curl session 70×12, 80×8, 80×? → top working weight 80, one set of 8 → 9 on each of last time's 2 sets
   await goto(page, 'Today');
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
-  await expect(page.getByLabel('Target')).toContainText('× 9+ @ 80 lb');
+  await expect(page.getByLabel('Target')).toContainText('9 · 9 @ 80 lb');
   await expect(page.getByRole('textbox', { name: 'Weight' })).toHaveValue('80');
   await expect(page.getByRole('textbox', { name: 'Reps' })).toHaveValue('9');
 

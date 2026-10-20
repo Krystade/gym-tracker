@@ -8,6 +8,8 @@ import { supersets, type Superset } from './superset';
 /** Seconds, until your own data takes over: a set plus its rest, a switch between lifts, a warm-up set. */
 export const DEFAULT_PACE = { compound: 180, isolation: 120, transition: 120, warmup: 60 } as const;
 const MAX_SAME = 10 * 60, MAX_SWITCH = 15 * 60, MIN_SAMPLES = 3;
+/** The rest timer learns from a lift's newest gaps only, once there are enough of them (owner, 2026-10-19). */
+const REST_RECENT = 10, REST_MIN = 5;
 
 const secs = (e: SetEntry) => doneAt(e) / 1000;
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
@@ -17,18 +19,22 @@ export const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${Str
 export const timedDay = (entries: SetEntry[], date: string): SetEntry[] =>
   daySets(entries, date).filter((e) => e.loggedAt).sort((a, b) => secs(a) - secs(b));
 
-/** `superSwitch`: inside a superset, the median time from a set of one lift to the next lift's set (once there are 3). */
-export interface Paces { perSet: Map<string, number>; transition: number; superSwitch?: number }
+/**
+ * `superSwitch`: inside a superset, the median time from a set of one lift to the next lift's set (once there are 3).
+ * `rest`: per lift, the median of its newest 10 set-to-set gaps, once there are 5: what the rest timer goes by. `perSet` is
+ * every gap's median, for estimates.
+ */
+export interface Paces { perSet: Map<string, number>; transition: number; superSwitch?: number; rest?: Map<string, number> }
 
-/** One timed day per date, each in the order done. */
+/** One timed day per date, each in the order done, the days oldest first. */
 function timedDays(entries: readonly SetEntry[]): SetEntry[][] {
   const days = new Map<string, SetEntry[]>();
   for (const e of entries) if (e.loggedAt) { const d = days.get(e.date); if (d) d.push(e); else days.set(e.date, [e]); }
-  return [...days.values()].map((d) => d.sort((a, b) => secs(a) - secs(b)));
+  return [...days.values()].map((d) => d.sort((a, b) => secs(a) - secs(b))).sort((a, b) => secs(a[0]) - secs(b[0]));
 }
 
-/** Per lift, the time from one set to the next (≤ 10 min), leaving out the gaps `skip` says to. */
-function sameGaps(days: SetEntry[][], skip: (day: SetEntry[], i: number) => boolean = () => false): Map<string, number> {
+/** Per lift, the time from one set to the next (≤ 10 min), oldest first, leaving out the gaps `skip` says to. */
+function gapLists(days: SetEntry[][], skip: (day: SetEntry[], i: number) => boolean = () => false): Map<string, number[]> {
   const same = new Map<string, number[]>();
   for (const day of days) {
     for (let i = 1; i < day.length; i++) {
@@ -39,8 +45,11 @@ function sameGaps(days: SetEntry[][], skip: (day: SetEntry[], i: number) => bool
       if (xs) xs.push(gap); else same.set(k, [gap]);
     }
   }
-  return new Map([...same].filter(([, xs]) => xs.length >= MIN_SAMPLES).map(([k, xs]) => [k, median(xs)]));
+  return same;
 }
+/** Each lift's median gap, over its newest `recent` gaps, where it has `min` or more. */
+const medians = (lists: Map<string, number[]>, min: number, recent = Infinity): Map<string, number> =>
+  new Map([...lists].filter(([, xs]) => xs.length >= min).map(([k, xs]) => [k, median(recent < xs.length ? xs.slice(-recent) : xs)]));
 
 /**
  * Your pace from timed days: per lift, the median time from one set to the next (≤ 10 min); between lifts, the median switch
@@ -52,8 +61,8 @@ export const paces: (entries: SetEntry[]) => Paces = perLog((entries) => pacesOf
 function pacesOf(entries: readonly SetEntry[]): Paces {
   const days = timedDays(entries);
   // Which gaps are a superset's depends on each lift's usual time between sets: first without leaving any out.
-  const raw = sameGaps(days);
-  const usual = (exercise: string) => raw.get(settingsKey(exercise)) ?? REST + SET_WORK;
+  const raw = medians(gapLists(days), MIN_SAMPLES);
+  const usual = (exercise: string) => raw.get(settingsKey(exercise)) ?? REST.isolation + SET_WORK;
   const sw: number[] = [], ss: number[] = [];
   const inside = new Map<SetEntry[], (i: number) => boolean>();
   for (const day of days) {
@@ -69,9 +78,9 @@ function pacesOf(entries: readonly SetEntry[]): Paces {
       else if (of.get(day[i - 1].id)!.after.get(day[i - 1].id) != null && isWorking(day[i])) ss.push(gap);
     }
   }
-  const perSet = sameGaps(days, (day, i) => inside.get(day)!(i));
+  const own = gapLists(days, (day, i) => inside.get(day)!(i));
   return {
-    perSet, transition: sw.length >= MIN_SAMPLES ? median(sw) : DEFAULT_PACE.transition,
+    perSet: medians(own, MIN_SAMPLES), rest: medians(own, REST_MIN, REST_RECENT), transition: sw.length >= MIN_SAMPLES ? median(sw) : DEFAULT_PACE.transition,
     ...(ss.length >= MIN_SAMPLES && { superSwitch: median(ss) }),
   };
 }
@@ -81,24 +90,70 @@ export const perSetSeconds = (p: Paces, exercise: string): number =>
 
 /** About how long a set itself takes; the learned set-to-set time includes it. */
 const SET_WORK = 40;
-/** The rest with nothing learned yet. */
-const REST = 120;
-/** The rest timer's length: the lift's learned set-to-set time less the set itself (at least 30 s), else 2:00. */
-export const restSeconds = (p: Paces, exercise: string): number => {
-  const gap = p.perSet.get(settingsKey(exercise));
-  return gap == null ? REST : Math.max(30, Math.round(gap - SET_WORK));
-};
+/** The rest with nothing learned yet (owner, 2026-10-19): 2:00 for an isolation lift, 3:00 for a compound. */
+const REST = { isolation: 120, compound: 180 } as const;
+const isIsolation = (exercise: string) => defaultSettings(exercise).repMin >= 10;
+const defaultRest = (exercise: string) => (isIsolation(exercise) ? REST.isolation : REST.compound);
+
+/** Where a lift's base rest came from: kept from the timer's ±30 s, learned from its newest gaps, or the default. */
+export type RestFrom = 'kept' | 'learned' | 'default';
+function baseRest(p: Paces, exercise: string, kept?: number): { base: number; from: RestFrom } {
+  if (kept != null && kept > 0) return { base: kept, from: 'kept' };
+  const gap = p.rest?.get(settingsKey(exercise));
+  return gap == null ? { base: defaultRest(exercise), from: 'default' } : { base: Math.max(30, Math.round(gap - SET_WORK)), from: 'learned' };
+}
+/**
+ * A lift's base rest: the one kept for it from the timer's ±30 s (`kept`, ExerciseSettings.rest); else its learned set-to-set
+ * time (its newest gaps) less the set itself, at least 30 s; else 2:00 isolation / 3:00 compound.
+ */
+export const restSeconds = (p: Paces, exercise: string, kept?: number): number => baseRest(p, exercise, kept).base;
+
+/** The rest's bounds, and what effort and load can each move it by. */
+export const REST_MIN_S = 45, REST_MAX_S = 300, REST_STEP = 30;
+/** `effort` and `load`: seconds each added (or taken off); `warmup`: a warm-up's fixed rest, base and the rest not read. */
+export interface RestWhy { base: number; from: RestFrom; effort: number; load: number; warmup?: boolean }
+const r5 = (n: number) => Math.round(n / 5) * 5 || 0;
+
+/**
+ * The rest after `set` (owner, 2026-10-19). A warm-up: 60 s (isolation) or 90 s (compound). Otherwise the lift's base rest
+ * (restSeconds), then
+ * - effort: RIR 0 +30 s, RIR 3 or more −30 s (RIR 1–2 or not logged: nothing);
+ * - load: the set's weight against the lift's e1RM (`prior`, its best of the last 3 sessions). A usual working set, the
+ *   middle of the lift's rep range (`range`, else its default: 8–12 → 10 reps, 75 %; 10–15 → 12.5 reps, about 71 %), adds
+ *   nothing, nor does anything within 2.5 points of it; past that, each 10 points of e1RM above or below adds or takes off
+ *   30 s (to the nearest 5 s), at most 30 s either way (nothing without an e1RM, or for bodyweight and timed sets);
+ * and the total kept within 45 s – 5 min.
+ */
+export function restFor(p: Paces, set: SetEntry, o: { kept?: number; prior?: number | null; range?: { repMin: number; repMax: number } } = {}): { seconds: number; why: RestWhy } {
+  const { base, from } = baseRest(p, set.exercise, o.kept);
+  if (set.flags.includes('warmup')) {
+    const seconds = isIsolation(set.exercise) ? 60 : 90;
+    return { seconds, why: { base, from, effort: 0, load: 0, warmup: true } };
+  }
+  const effort = set.rir === 0 ? REST_STEP : set.rir != null && set.rir >= 3 ? -REST_STEP : 0;
+  const weighed = o.prior != null && o.prior > 0 && set.weight > 0 && !set.flags.includes('bodyweight') && !set.flags.includes('hold');
+  const { repMin, repMax } = o.range ?? defaultSettings(set.exercise);
+  const usual = 1 / (1 + (repMin + repMax) / 2 / 30); // the share of e1RM a set in the middle of the range is done at
+  const off = weighed ? set.weight / o.prior! - usual : 0;
+  // Within 2.5 points of usual is usual: a rep or so either way at the same weight moves nothing.
+  const load = Math.abs(off) < 0.025 ? 0 : r5(Math.min(1, Math.max(-1, off / 0.1)) * REST_STEP);
+  return { seconds: Math.min(REST_MAX_S, Math.max(REST_MIN_S, base + effort + load)), why: { base, from, effort, load } };
+}
 
 /** A lift's usual time from one set to the next: learned, else the 2:00 rest and the set. A superset's switch is well under it. */
-export const usualGap = (p: Paces, exercise: string): number => p.perSet.get(settingsKey(exercise)) ?? REST + SET_WORK;
+export const usualGap = (p: Paces, exercise: string): number => p.perSet.get(settingsKey(exercise)) ?? REST.isolation + SET_WORK;
 
 /**
  * The timer after a set. Inside a superset with a lift still to go in the round (`next`): a short switch, the learned one less
- * the set itself (at least 10 s), else 0:20. Otherwise, the lift's full rest.
+ * the set itself (at least 10 s), else 0:20. Otherwise, the lift's full rest (`kept`: the one you set, see restSeconds).
  */
-export function restAfter(p: Paces, exercise: string, next: string | null | undefined): { seconds: number; switchTo?: string } {
-  if (!next) return { seconds: restSeconds(p, exercise) };
-  return { seconds: p.superSwitch == null ? 20 : Math.max(10, Math.round(p.superSwitch - SET_WORK)), switchTo: next };
+export function restAfter(p: Paces, exercise: string, next: string | null | undefined, kept?: number): { seconds: number; switchTo?: string } {
+  if (!next) return { seconds: restSeconds(p, exercise, kept) };
+  return { seconds: switchSeconds(p), switchTo: next };
+}
+/** Inside a superset, the switch to the round's next lift: the learned one less the set itself (at least 10 s), else 0:20. */
+export function switchSeconds(p: Paces): number {
+  return p.superSwitch == null ? 20 : Math.max(10, Math.round(p.superSwitch - SET_WORK));
 }
 
 /** A list of lifts and sets, in seconds: every set, a switch between lifts, and the warm-up of the first lift that has one (`warmups(ex)` sets). */

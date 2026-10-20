@@ -161,7 +161,7 @@ describe('supersets', () => {
     // Not a superset: every set gets the full rest.
     expect(timers(run(A, 150, A, 150, A, 180, B, 150, B))).toEqual([120, 120, 120, 120, 120]);
     // A learned switch of 1:15 (less the set) and the lift's own learned rest after the round.
-    const p = { perSet: new Map([['cable pushdown', 140]]), transition: 120, superSwitch: 75 };
+    const p = { perSet: new Map([['cable pushdown', 140]]), rest: new Map([['cable pushdown', 140]]), transition: 120, superSwitch: 75 };
     expect(timers(run(A, 60, B, 150, A, 60, B), p)).toEqual([35, 100, 35, 100]);
   });
 });

@@ -12,7 +12,7 @@ import { SetRowContent } from './SetRow';
 import { suggest } from '../domain/suggest';
 import { Icon } from './icons';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
-import { hhmm, paces, restAfter, restSeconds, suggestTime } from '../domain/timing';
+import { hhmm, paces, restFor, suggestTime, switchSeconds } from '../domain/timing';
 import { andList } from '../domain/superset';
 import { startRest } from './RestTimer';
 import { localDate } from '../domain/ids';
@@ -79,7 +79,10 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   const prs = useMemo(() => prSetIds(store.entries, date), [store.entries, date]);
   const from = useMemo(() => (swappedFrom ? lastSession(store.entries, swappedFrom, date) : null), [store.entries, swappedFrom, date]);
   const st = settings.get(exercise, hold);
-  const target = nextTarget(store.entries, exercise, st, date);
+  // The rest timer may be changed long after this render (or this card gone): it saves through the settings as they are then.
+  const settingsNow = useRef(settings);
+  settingsNow.current = settings;
+  const target = nextTarget(store.entries, exercise, st, date, plannedSets);
   const sug = suggest(store.entries, exercise, st, date, plannedSets);
   const pace = useMemo(() => paces(store.entries), [store.entries]);
   // A new function only when the log changes, so the form can re-ask once a late set has landed.
@@ -95,8 +98,11 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   const seed = latest(working);
   const pulley: Flag[] = (latest(today) ?? last?.sets.find(isWorking))?.flags.includes('double_pulley') ? ['double_pulley'] : [];
   // With nothing to go on, a lift that needs gear starts empty: a prefilled 0 would log a weighted lift as bodyweight.
-  const initial: Omit<SetFormValue, 'weight'> & { weight: number | null } = seed ? { weight: seed.weight, reps: seed.reps ?? st.repMin, flags: pulley }
-    : target ? { weight: target.weight, reps: target.reps, flags: pulley }
+  // Each set has its own rep target (owner, 2026-10-19): the next working set's, while the weight is the target's.
+  const aim = (i: number, weight: number | null | undefined): number | undefined =>
+    sug.perSet && weight === sug.weight ? sug.perSet[Math.min(i, sug.perSet.length - 1)] : undefined;
+  const initial: Omit<SetFormValue, 'weight'> & { weight: number | null } = seed ? { weight: seed.weight, reps: aim(working.length, seed.weight) ?? seed.reps ?? st.repMin, flags: pulley }
+    : target ? { weight: target.weight, reps: aim(0, target.weight) ?? target.reps, flags: pulley }
     : { weight: hold || gearOf(exercise) === 'no equipment' ? 0 : null, reps: st.repMin, flags: [] };
 
   async function addSet(v: SetFormValue): Promise<boolean> {
@@ -104,17 +110,24 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     // What was suggested rides along with every set, so suggested and done can be compared later.
     const { at, ...rest } = v;
     // A time for a late set is on the day being logged to.
-    const e = await store.add({ date, exercise, ...rest, gym, ...(at !== undefined && { at: at ? new Date(`${date}T${at}:00`) : null }), target: { weight: sug.weight, reps: sug.reps, sets: sug.sets } });
+    const e = await store.add({ date, exercise, ...rest, gym, ...(at !== undefined && { at: at ? new Date(`${date}T${at}:00`) : null }), target: { weight: sug.weight, reps: aim(working.length, sug.weight) ?? sug.reps, sets: sug.sets } });
     if (!e) return false;
     // A set done just now starts the rest; one entered for an earlier time or day doesn't. Inside a superset with a lift still to
     // go in the round, a short switch instead, and that lift's card comes up.
     if (at === undefined && date === realToday) {
       const label = `${exercise} · set ${working.length + (isWorking(e) ? 1 : 0) + 1} next`;
-      const { seconds, switchTo } = restAfter(pace, exercise, switchAfter?.([...store.entries.filter((x) => x.id !== e.id), e], e.id));
+      const switchTo = switchAfter?.([...store.entries.filter((x) => x.id !== e.id), e], e.id);
+      // The rest for this set: the lift's base, its effort and its load (domain/timing restFor).
+      const full = restFor(pace, e, { kept: st.rest, prior, range: st });
+      // ±30 s on the timer moves the lift's base rest by as much, from now on; a warm-up's rest moves nothing.
+      const keep = full.why.warmup ? undefined : (chosen: number) => {
+        const s = settingsNow.current;
+        void s.save({ ...s.get(exercise, hold), rest: Math.min(600, Math.max(30, full.why.base + chosen - full.seconds)) });
+      };
       if (switchTo) {
-        startRest(seconds, switchTo.toLowerCase(), `Switch to ${switchTo}`, { seconds: restSeconds(pace, exercise), card: exercise.toLowerCase(), label });
+        startRest(switchSeconds(pace), switchTo.toLowerCase(), `Switch to ${switchTo}`, { seconds: full.seconds, card: exercise.toLowerCase(), label }, keep);
         onSwitch?.(switchTo);
-      } else startRest(seconds, exercise.toLowerCase(), label);
+      } else startRest(full.seconds, exercise.toLowerCase(), label, undefined, keep);
     }
     // The same rule as the PR badge; a set that broke several records names the best one.
     setPr(prToast(store.entries, e));
@@ -180,7 +193,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       {aside}
       {last && <p className="muted card-last">Last ({fmtDay(last.date, realToday)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
       {swappedFrom && <p className="muted card-last">For {swappedFrom}{from && <> · last {from.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</>}</p>}
-      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.kind === 'test' && 'From your test: '}{sug.kind === 'carry' && 'Estimate: '}{sug.sets} × {sug.reps}{sug.unit}{sug.kind !== 'maxed' && '+'}{fmtLoad(sug.weight)}{fmtPerSide(sug.weight ?? 0, exercise) && <span className="target-warm muted">{fmtPerSide(sug.weight ?? 0, exercise)}</span>}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}</span></p>}
+      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.kind === 'test' && 'From your test: '}{sug.kind === 'carry' && 'Estimate: '}{sug.perSet ? <>{sug.perSet.join(' · ')}{sug.unit}</> : <>{sug.sets} × {sug.reps}{sug.unit}{sug.kind !== 'maxed' && '+'}</>}{fmtLoad(sug.weight)}{fmtPerSide(sug.weight ?? 0, exercise) && <span className="target-warm muted">{fmtPerSide(sug.weight ?? 0, exercise)}</span>}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}{sug.why && <span className="target-warm muted target-why">{sug.why}</span>}</span></p>}
       <ol className="sets" aria-label={`Sets for ${exercise}`}>
         {today.map((s, i) => (
           <li key={s.id}>
@@ -222,6 +235,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
         </div>
       ) : (
         <SetForm key="new" exercise={exercise} hold={hold} initial={initial} submitLabel={who ? `Add set · ${who}` : 'Add set'} onSubmit={addSet} keepDraft day={date} heaviest={heaviest}
+          nextReps={(v) => (v.flags.includes('warmup') ? undefined : aim(working.length + 1, v.weight))}
           tagPrefs={settings.tags} onTagPrefs={settings.saveTags}
           when={{ suggest: suggestWhen, always: date < realToday, max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined }} />
       )}

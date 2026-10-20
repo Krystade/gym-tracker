@@ -95,11 +95,11 @@ describe('one hold check for every line', () => {
     const log = [s(day1, name, 0, 30, ['hold']), s(day1, name, 0, 30, ['hold']), s(day2, name, 0, 30, ['hold']), s(day2, name, 0, 30, ['hold'])];
     const x = suggest(log, name, defaultSettings(name, true), today, null);
     expect(x.unit).toBe(' s');
-    expect(nextTarget(log, name, defaultSettings(name, true), today)!.text).toBe('BW × 35s+ on every set');
+    expect(nextTarget(log, name, defaultSettings(name, true), today)!.text).toBe('BW × 35 · 35 s');
   });
   it('a known hold logged without the flag is still timed in seconds in both', () => {
     const log = [s(day1, 'Plank', 0, 30), s(day2, 'Plank', 0, 30)];
     expect(suggest(log, 'Plank', defaultSettings('Plank'), today, null).unit).toBe(' s');
-    expect(nextTarget(log, 'Plank', defaultSettings('Plank'), today)!.text).toBe('BW × 35s+ on every set');
+    expect(nextTarget(log, 'Plank', defaultSettings('Plank'), today)!.text).toBe('BW × 35 s');
   });
 });

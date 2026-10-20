@@ -6,8 +6,11 @@ import { Icon } from './icons';
 // One rest at a time, kept outside the screens so leaving Today and coming back doesn't lose it. `card`: the lift's card.
 // `label`: what the lock-screen alert says ("Bench Press · set 4 next"), where push notifications are on.
 // `full`: inside a superset, the short switch to the next lift's card stands in for this rest, should it turn out not to be one.
-/** `total`: the whole rest (or switch) in ms, +30 s included, for the bar's progress line. */
-interface Rest { until: number; card: string; label?: string; total?: number; full?: Rest }
+/**
+ * `total`: the whole rest (or switch) in ms as it now stands, ±30 s included, for the bar's progress line. `start`: when it began.
+ * `keep`: told the rest's new length in seconds when ±30 s changes it, so the lift's next rest starts there (not a switch's).
+ */
+interface Rest { until: number; card: string; label?: string; total?: number; full?: Rest; start?: number; keep?: (seconds: number) => void }
 let rest: Rest | null = null;
 const subs = new Set<() => void>();
 const set = (r: Rest | null) => { rest = r; for (const f of subs) f(); };
@@ -15,11 +18,28 @@ const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f
 /** A rest that changes when it ends also changes when the lock-screen alert goes out (or that it doesn't). */
 const setRest = (r: Rest | null) => { set(r); restPush(r ? r.until : null, r?.label); };
 
-/** Starts (or starts over) the rest after a set; with `full`, a superset's switch instead of that rest. */
-export const startRest = (seconds: number, card: string, label?: string, full?: { seconds: number; card: string; label?: string }) => {
+/**
+ * Starts (or starts over) the rest after a set; with `full`, a superset's switch instead of that rest. `keep`: where the lift's
+ * rest goes once ±30 s changes it (the full rest's, inside a superset).
+ */
+export const startRest = (seconds: number, card: string, label?: string, full?: { seconds: number; card: string; label?: string }, keep?: (seconds: number) => void) => {
   const now = Date.now();
-  setRest({ until: now + seconds * 1000, card, label, total: seconds * 1000,
-    ...(full && { full: { until: now + full.seconds * 1000, card: full.card, label: full.label, total: full.seconds * 1000 } }) });
+  setRest({ until: now + seconds * 1000, card, label, total: seconds * 1000, start: now,
+    ...(full ? { full: { until: now + full.seconds * 1000, card: full.card, label: full.label, total: full.seconds * 1000, start: now, keep } } : { keep }) });
+};
+/** The rest running, if any (for tests). */
+export const currentRest = () => rest;
+/**
+ * ±30 s: a later end (from now, once it's done), or an earlier one but never before now. The whole rest as it then stands
+ * is the progress line's whole, and the lift keeps it for next time.
+ */
+export const adjustRest = (ms: number) => {
+  const r = rest;
+  if (!r) return;
+  const now = Date.now(), start = r.start ?? now;
+  const until = ms > 0 ? Math.max(r.until, now) + ms : Math.max(now, r.until + ms);
+  setRest({ ...r, until, total: until - start });
+  r.keep?.(Math.max(30, Math.round((until - start) / 1000))); // at least 30 s, like a learned rest
 };
 /** "Not a superset": a switch running becomes the full rest it stood in for. */
 export const revertSwitch = () => { if (rest?.full) setRest(rest.full); };
@@ -29,8 +49,9 @@ const DONE_FOR = 30_000;
 const mss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 /**
- * The rest between sets: a bar above the tabs counting down, silent (logging happens with music on). A tap puts it away,
- * +30 s adds time. While it runs the screen stays on, where the Wake Lock API is there.
+ * The rest between sets: a bar above the tabs counting down, silent (logging happens with music on). −30 s and +30 s change
+ * it (a tap on the bar itself does nothing: it sits where a thumb lands); only × puts it away. While it runs the screen stays on,
+ * where the Wake Lock API is there.
  */
 export function RestTimer() {
   const r = useSyncExternalStore(subscribe, () => rest);
@@ -81,18 +102,22 @@ export function RestTimer() {
 
   if (gone) return null;
   const what = r?.full ? 'Switch' : 'Rest';
+  // Under the time: what comes next ("Set 3 next", or the lift to switch to), unless the lock-screen alert couldn't be set.
+  const next = r?.label?.startsWith('Switch to ') ? r.label.slice('Switch to '.length) : r?.label?.split(' · ')[1];
+  const sub = PUSH_ON && left > 0 && alert === 'failed' ? 'No lock-screen alert' : next && next[0].toUpperCase() + next.slice(1);
   return (
     <div ref={bar} className={left > 0 ? 'rest-timer' : 'rest-timer done'} role="timer" aria-label={what}>
       {left > 0 && r?.total && <i className="rest-progress" aria-hidden="true" style={{ '--p': Math.min(1, (r.until - now) / r.total) } as CSSProperties} />}
-      <button type="button" className="rest-main" aria-label="Dismiss rest timer" onClick={() => setRest(null)}>
+      <div className="rest-main">
         <Icon name={r?.full ? 'switch' : 'timer'} size={22} />
         <b>{mss(left)}</b>
         <span className="rest-words">
           <span>{left > 0 ? what : `${what} done`}</span>
-          <span className="muted small">{PUSH_ON && left > 0 && alert === 'failed' ? 'No lock-screen alert' : 'Tap to close'}</span>
+          {sub && <span className="muted small">{sub}</span>}
         </span>
-      </button>
-      <button type="button" className="mini" onClick={() => { const until = Math.max(r!.until, Date.now()) + 30_000; setRest({ ...r!, until, total: Math.max(r!.total ?? 0, until - Date.now()) }); }}>+30 s</button>
+      </div>
+      <button type="button" className="mini" disabled={left <= 0} onClick={() => adjustRest(-30_000)}>−30 s</button>
+      <button type="button" className="mini" onClick={() => adjustRest(30_000)}>+30 s</button>
       <button type="button" className="mini icon" aria-label="Close rest timer" onClick={() => setRest(null)}><Icon name="close" /></button>
     </div>
   );

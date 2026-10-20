@@ -108,7 +108,7 @@ describe('holds', () => {
   });
   it('get a seconds target', () => {
     const t = nextTarget([h], 'Side Plank', { key: 'side plank', repMin: 20, repMax: 40, increment: 5 }, '2026-09-30');
-    expect(t?.text).toBe('BW × 35s+ on every set');
+    expect(t?.text).toBe('BW × 35 s');
   });
   it('make up the back block', () => {
     expect(BACK_BLOCK.map((x) => x.exercise)).toEqual(['Bird Dog', 'Side Plank', 'McGill Curl-Up']);
