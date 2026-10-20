@@ -596,10 +596,11 @@ function gearFor(ws: string[], base: Base, gear: Equipment | undefined): Needs |
 /** What a name's words say it is, without the table. */
 export interface Built { m: Vector | null; p: Pattern | null; needs: Needs | null; iso: boolean }
 
-function build(ws: string[]): Built {
+/** The movement a name's words say (the most specific phrase, after the modifiers that change it), its base, muscles and gear. */
+function pick(ws: string[]): { phrase: string; base: Base; m: Vector; gear: Equipment | undefined } | null {
   let best: (typeof BASE_WORDS)[number] | null = null;
   for (const b of BASE_WORDS) if (b.t.length > (best?.t.length ?? 0) && found(ws, b.t)) best = b;
-  if (!best) return { m: null, p: null, needs: null, iso: false };
+  if (!best) return null;
   let phrase = best.phrase, base = best.base, m = base.m, gear = base.gear;
   for (const mod of MODIFIERS) {
     if (!mod.on.includes(phrase) || !mod.any.some((w) => has(ws, w))) continue;
@@ -608,8 +609,17 @@ function build(ws: string[]): Built {
     if (mod.add) { m = { ...m }; for (const [k, v] of Object.entries(mod.add) as [Muscle, number][]) m[k] = Math.max(m[k] ?? 0, v); }
     if (mod.gear) gear = mod.gear;
   }
-  return { m, p: base.p ?? null, needs: gearFor(ws, base, gear), iso: !!base.iso };
+  return { phrase, base, m, gear };
 }
+
+function build(ws: string[]): Built {
+  const b = pick(ws);
+  if (!b) return { m: null, p: null, needs: null, iso: false };
+  return { m: b.m, p: b.base.p ?? null, needs: gearFor(ws, b.base, b.gear), iso: !!b.base.iso };
+}
+
+/** The movement phrase a name's words read as ("bench press", "curl", "lateral raise"); null when no movement is found. */
+export const movementPhrase = (name: string): string | null => pick(words(name))?.phrase ?? null;
 
 /** A name read from its words alone (see BASES); the catalog's own records are the test set for it. */
 export const fromWords = (name: string): Built => build(words(name));
