@@ -4,7 +4,7 @@ import type { SettingsStore } from '../state/useSettings';
 import { byOrderDone, lastSession, sameExercise } from '../domain/stats';
 import { estimateRir, isWorking, nextTarget, priorE1rm, rirOffset } from '../domain/progression';
 import { prToast, records } from '../domain/records';
-import { fmtDay, fmtSet, fmtWeight } from '../domain/format';
+import { fmtDay, fmtSet, fmtWeight, plural } from '../domain/format';
 import type { Flag, SetEntry } from '../domain/types';
 import { SetForm, type SetFormValue } from './SetForm';
 import { isHoldLift } from '../domain/care';
@@ -52,8 +52,9 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   aside?: ReactNode;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
-  // Once the user has opened a finished card it stays open (more sets are theirs to add); a reload starts it folded again.
-  const [opened, setOpened] = useState(false);
+  // Folded or open as the user last chose: true folded, false open; null, automatic: folded once the plan's sets are done.
+  // Opening a finished card keeps it open (more sets are theirs to add); a reload starts every card automatic again.
+  const [shut, setShut] = useState<boolean | null>(null);
   const [pr, setPr] = useState<string | null>(null);
   useEffect(() => { if (!pr) return; const t = setTimeout(() => setPr(null), 6000); return () => clearTimeout(t); }, [pr]);
   // A delete happens straight away; for 8 s the set can come back.
@@ -137,12 +138,15 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   const complete = plannedSets != null && plannedSets > 0 && working.length >= plannedSets;
   // The plan sent you here: open a folded card, but a card that isn't finished has nothing to open, so don't pin it open.
   const [usedReq, setUsedReq] = useState<object | null>(null);
-  if (openReq && openReq !== usedReq) { setUsedReq(openReq); if (complete && !opened) setOpened(true); }
-  const folded = complete && !opened;
+  const folded = shut ?? complete;
+  // Open: a finished card stays open; one not finished goes back to automatic, so its last set folds it.
+  const unfold = () => setShut(complete ? false : null);
+  if (openReq && openReq !== usedReq) { setUsedReq(openReq); if (folded) unfold(); }
   // Finished while on screen: this card is where you are, so it offers what's left.
   const wasFolded = useRef(folded);
   const [justDone, setJustDone] = useState(false);
-  useLayoutEffect(() => { if (folded && !wasFolded.current) setJustDone(true); wasFolded.current = folded; }, [folded]);
+  // Finished, not folded by hand: this card offers what's left of the plan.
+  useLayoutEffect(() => { if (folded && !wasFolded.current && shut === null) setJustDone(true); wasFolded.current = folded; }, [folded, shut]);
   // A growing list of sets pushes Add set down: once a new set has rendered, bring it back above the tab bar if it went
   // under. Not when that set finished the lift: the card has folded and there is nothing to reach.
   const box = useRef<HTMLElement>(null);
@@ -157,15 +161,16 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   }, [today.length, folded, editing]);
 
   if (folded) {
-    const top = working.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && (b.reps ?? 0) > (a.reps ?? 0)) ? b : a));
+    const top = working.length ? working.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && (b.reps ?? 0) > (a.reps ?? 0)) ? b : a)) : null;
+    const count = complete ? null : plannedSets ? `${working.length}/${plannedSets} sets` : working.length ? plural(working.length, 'set') : 'Not started';
     return (
       <section className="card folded" data-card={exercise.toLowerCase()}>
-        <button className="fold-line" aria-expanded="false" aria-label={`Show ${exercise}`} onClick={() => setOpened(true)}>
-          <span className="fold-check" aria-hidden="true"><Icon name="check" size={16} sw={2.5} /></span>
+        <button className="fold-line" aria-expanded="false" aria-label={`Show ${exercise}`} onClick={unfold}>
+          {complete && <span className="fold-check" aria-hidden="true"><Icon name="check" size={16} sw={2.5} /></span>}
           <b>{exercise}</b>
-          <span className="ok">{working.length}/{plannedSets} sets ✓</span>
+          {complete ? <span className="ok">{working.length}/{plannedSets} sets ✓</span> : <span className="muted">{count}</span>}
           {today.some((x) => prs.has(x.id)) && <span className="tag pr-tag">PR</span>}
-          <span className="muted nw">{fmtSet(top)}</span>
+          {top && <span className="muted nw">{fmtSet(top)}</span>}
           <Icon name="chev-right" size={18} className="fold-chev" />
         </button>
         {pr && <p role="status" className="pr">{pr}</p>}
@@ -183,7 +188,10 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     <section ref={box} className="card" data-card={exercise.toLowerCase()}>
       <header className="card-head">
         <button className="link" onClick={() => onOpen(exercise)}>{exercise}</button>
-        {complete && <button className="mini quiet-btn" aria-expanded="true" onClick={() => setOpened(false)}>Fold</button>}
+        {/* Every open card folds from its head (owner, 2026-10-19: a card could only be closed by finishing it). */}
+        <button type="button" className="mini icon card-fold" aria-expanded="true" aria-label={`Fold ${exercise}`} onClick={() => { setEditing(null); setShut(true); }}>
+          <Icon name="chev-down" size={22} sw={2} />
+        </button>
         {best?.set && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.value))} lb</span>}
       </header>
       {supersetWith && supersetWith.length > 0 && (
@@ -230,7 +238,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
               if (at) { const d = new Date(`${date}T${at}:00`); next.loggedAt = d.toISOString(); next.seq = d.getTime(); }
               else delete next.loggedAt;
             }
-            const ok = await store.update(next); if (ok) setEditing(null); return ok;
+            // Saved: the editor closes, and a finished lift opened to fix a set folds again (owner, 2026-10-19).
+            const ok = await store.update(next); if (ok) { setEditing(null); setShut(null); } return ok;
           }} />
         </div>
       ) : (

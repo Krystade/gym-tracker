@@ -113,7 +113,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
     const card = document.querySelector<HTMLElement>(`[data-card="${CSS.escape(switchTo.to.toLowerCase())}"]`);
     if (!card) return;
     card.scrollIntoView({ block: 'start' });
-    card.querySelector<HTMLElement>('.card-head button')?.focus({ preventScroll: true });
+    card.querySelector<HTMLElement>('.card-head .link')?.focus({ preventScroll: true });
     // Its form stays clear of the timer's bar.
     const form = card.querySelector<HTMLElement>('.set-form'), bar = document.querySelector('.rest-timer');
     if (form && bar && form.getBoundingClientRect().bottom > bar.getBoundingClientRect().top) form.scrollIntoView({ block: 'nearest' });
@@ -180,7 +180,13 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
   if (picking) return <ExercisePicker recent={exerciseNames(store.entries)} gym={gyms.active} onCancel={() => setPicking(false)}
     onPick={(n) => { goTo(n); setPicking(false); }} />;
   if (swapFor && plan) return <ExercisePicker recent={exerciseNames(store.entries)} gym={gyms.active} title={`Swap ${swapFor}`} suggested={swapSuggestions(swapFor, store.entries, date, 5, available)} onCancel={() => setSwapFor(null)}
-    onPick={(n) => { void programs.savePlan({ ...plan, swaps: { ...plan.swaps, [swapFor]: n } }); goTo(n); setSwapFor(null); }} />;
+    onPick={(n) => {
+      void programs.savePlan({ ...plan, swaps: { ...plan.swaps, [swapFor]: n } });
+      // The replaced lift's card goes with it while nothing is logged on it today (a logged lift's card stays: it's in the log).
+      const replaced = plan.swaps[swapFor] ?? swapFor;
+      if (!store.entries.some((e) => e.date === date && sameExercise(e.exercise, replaced))) setExtra((xs) => xs.filter((x) => !sameExercise(x, replaced)));
+      goTo(n); setSwapFor(null);
+    }} />;
 
   return (
     <div ref={outer}><div ref={inner}>

@@ -82,7 +82,7 @@ test('a lift folds to one line when it reaches its planned sets, and tapping ope
   await expect(c.getByRole('textbox', { name: 'Weight' })).toBeVisible();
   await expect(c.getByRole('button', { name: `Show ${lift}` })).toHaveCount(0);
   // Fold puts it away again; a reload starts a completed lift folded.
-  await c.getByRole('button', { name: 'Fold', exact: true }).click();
+  await c.getByRole('button', { name: `Fold ${lift}` }).click();
   await expect(c.getByRole('button', { name: `Show ${lift}` })).toBeVisible();
   await c.getByRole('button', { name: `Show ${lift}` }).click();
   await page.reload();

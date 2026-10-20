@@ -193,6 +193,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .card-head > .link { font-size: var(--fs-xl); line-height: 28px; font-weight: 700; min-height: 44px; }
 .card-head .muted { font-size: var(--fs-sub); }
 .card-head .quiet-btn { min-height: 44px; }
+/* The fold chevron sits in the head's top right; the title and Best wrap beside it. */
+.card:has(> .card-head .card-fold) > .card-head { position: relative; padding-right: 40px; }
+.card-head .card-fold { position: absolute; top: 0; right: -10px; color: var(--text-2); }
 /* Best and Last read as one small block under the name. */
 .card-last { font-size: var(--fs-sub); margin: 0 0 6px; }
 /* A lift that reached its planned sets: one tappable 52px line, still in its slot. */

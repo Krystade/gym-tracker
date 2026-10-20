@@ -59,7 +59,7 @@ async function logSet(page: Page, card: Locator, at: string, weight?: string) {
 
 /** The card the switch brought up: focused, its top at the top of the screen, its Add set in view above the timer's bar. */
 async function cameUp(page: Page, card: Locator) {
-  await expect(card.locator('.card-head button')).toBeFocused();
+  await expect(card.locator('.card-head .link')).toBeFocused();
   expect((await card.boundingBox())!.y).toBeLessThan(TOP + 140);
   const add = (await card.getByRole('button', { name: /^Add set/ }).boundingBox())!;
   expect(add.y).toBeGreaterThanOrEqual(TOP);
