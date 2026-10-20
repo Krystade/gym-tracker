@@ -12,7 +12,7 @@ import { SetRowContent } from './SetRow';
 import { suggest } from '../domain/suggest';
 import { Icon } from './icons';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
-import { hhmm, paces, restFor, suggestTime, switchSeconds } from '../domain/timing';
+import { hhmm, paces, restFor, suggestTime, switchFor } from '../domain/timing';
 import { andList } from '../domain/superset';
 import { startRest } from './RestTimer';
 import { localDate } from '../domain/ids';
@@ -126,9 +126,10 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
         void s.save({ ...s.get(exercise, hold), rest: Math.min(600, Math.max(30, full.why.base + chosen - full.seconds)) });
       };
       if (switchTo) {
-        startRest(switchSeconds(pace), switchTo.toLowerCase(), `Switch to ${switchTo}`, { seconds: full.seconds, card: exercise.toLowerCase(), label }, keep);
+        const sw = switchFor(pace);
+        startRest(sw.seconds, switchTo.toLowerCase(), `Switch to ${switchTo}`, { seconds: full.seconds, card: exercise.toLowerCase(), label, why: full.parts }, keep, sw.parts);
         onSwitch?.(switchTo);
-      } else startRest(full.seconds, exercise.toLowerCase(), label, undefined, keep);
+      } else startRest(full.seconds, exercise.toLowerCase(), label, undefined, keep, full.parts);
     }
     // The same rule as the PR badge; a set that broke several records names the best one.
     setPr(prToast(store.entries, e));

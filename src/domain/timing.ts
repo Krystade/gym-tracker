@@ -112,7 +112,15 @@ export const restSeconds = (p: Paces, exercise: string, kept?: number): number =
 export const REST_MIN_S = 45, REST_MAX_S = 300, REST_STEP = 30;
 /** `effort` and `load`: seconds each added (or taken off); `warmup`: a warm-up's fixed rest, base and the rest not read. */
 export interface RestWhy { base: number; from: RestFrom; effort: number; load: number; warmup?: boolean }
+/**
+ * One line of why a rest (or a superset's switch) is its length, for the timer's "?": `s` seconds, a change to the line
+ * above when `add`, and a `note` on where it came from. A rest's lines add up to it.
+ */
+export interface RestPart { what: string; s: number; add?: true; note?: string }
 const r5 = (n: number) => Math.round(n / 5) * 5 || 0;
+const mss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+const pct = (x: number) => `${Math.round(x * 100)} %`;
+const BASE_NOTE: Record<Exclude<RestFrom, 'default'>, string> = { kept: 'your setting', learned: 'learned from your recent sets' };
 
 /**
  * The rest after `set` (owner, 2026-10-19). A warm-up: 60 s (isolation) or 90 s (compound). Otherwise the lift's base rest
@@ -122,13 +130,14 @@ const r5 = (n: number) => Math.round(n / 5) * 5 || 0;
  *   middle of the lift's rep range (`range`, else its default: 8–12 → 10 reps, 75 %; 10–15 → 12.5 reps, about 71 %), adds
  *   nothing, nor does anything within 2.5 points of it; past that, each 10 points of e1RM above or below adds or takes off
  *   30 s (to the nearest 5 s), at most 30 s either way (nothing without an e1RM, or for bodyweight and timed sets);
- * and the total kept within 45 s – 5 min.
+ * and the total kept within 45 s – 5 min. `parts`: the same, line by line (RestPart), leaving out what moved nothing.
  */
-export function restFor(p: Paces, set: SetEntry, o: { kept?: number; prior?: number | null; range?: { repMin: number; repMax: number } } = {}): { seconds: number; why: RestWhy } {
+export function restFor(p: Paces, set: SetEntry, o: { kept?: number; prior?: number | null; range?: { repMin: number; repMax: number } } = {}): { seconds: number; why: RestWhy; parts: RestPart[] } {
   const { base, from } = baseRest(p, set.exercise, o.kept);
+  const iso = isIsolation(set.exercise);
   if (set.flags.includes('warmup')) {
-    const seconds = isIsolation(set.exercise) ? 60 : 90;
-    return { seconds, why: { base, from, effort: 0, load: 0, warmup: true } };
+    const seconds = iso ? 60 : 90;
+    return { seconds, why: { base, from, effort: 0, load: 0, warmup: true }, parts: [{ what: 'Warm-up', s: seconds, note: iso ? 'isolation lift' : 'compound lift' }] };
   }
   const effort = set.rir === 0 ? REST_STEP : set.rir != null && set.rir >= 3 ? -REST_STEP : 0;
   const weighed = o.prior != null && o.prior > 0 && set.weight > 0 && !set.flags.includes('bodyweight') && !set.flags.includes('hold');
@@ -137,7 +146,12 @@ export function restFor(p: Paces, set: SetEntry, o: { kept?: number; prior?: num
   const off = weighed ? set.weight / o.prior! - usual : 0;
   // Within 2.5 points of usual is usual: a rep or so either way at the same weight moves nothing.
   const load = Math.abs(off) < 0.025 ? 0 : r5(Math.min(1, Math.max(-1, off / 0.1)) * REST_STEP);
-  return { seconds: Math.min(REST_MAX_S, Math.max(REST_MIN_S, base + effort + load)), why: { base, from, effort, load } };
+  const sum = base + effort + load, seconds = Math.min(REST_MAX_S, Math.max(REST_MIN_S, sum));
+  const parts: RestPart[] = [{ what: 'Base', s: base, note: from === 'default' ? `default for ${iso ? 'an isolation' : 'a compound'} lift` : BASE_NOTE[from] }];
+  if (effort) parts.push({ what: `RIR ${set.rir}`, s: effort, add: true });
+  if (load) parts.push({ what: load > 0 ? 'Heavy set' : 'Light set', s: load, add: true, note: `${pct(set.weight / o.prior!)} of e1RM, usual ${pct(usual)}` });
+  if (seconds !== sum) parts.push({ what: seconds === REST_MIN_S ? `At least ${mss(REST_MIN_S)}` : `At most ${mss(REST_MAX_S)}`, s: seconds - sum, add: true });
+  return { seconds, why: { base, from, effort, load }, parts };
 }
 
 /** A lift's usual time from one set to the next: learned, else the 2:00 rest and the set. A superset's switch is well under it. */
@@ -152,8 +166,11 @@ export function restAfter(p: Paces, exercise: string, next: string | null | unde
   return { seconds: switchSeconds(p), switchTo: next };
 }
 /** Inside a superset, the switch to the round's next lift: the learned one less the set itself (at least 10 s), else 0:20. */
-export function switchSeconds(p: Paces): number {
-  return p.superSwitch == null ? 20 : Math.max(10, Math.round(p.superSwitch - SET_WORK));
+export const switchSeconds = (p: Paces): number => switchFor(p).seconds;
+/** The same, with its line for the timer's "?" (RestPart). */
+export function switchFor(p: Paces): { seconds: number; parts: RestPart[] } {
+  const seconds = p.superSwitch == null ? 20 : Math.max(10, Math.round(p.superSwitch - SET_WORK));
+  return { seconds, parts: [{ what: 'Superset switch', s: seconds, note: p.superSwitch == null ? 'default until 3 switches are timed' : 'your usual switch, less the set itself' }] };
 }
 
 /** A list of lifts and sets, in seconds: every set, a switch between lifts, and the warm-up of the first lift that has one (`warmups(ex)` sets). */

@@ -91,6 +91,13 @@ test('two lifts alternated become a pair: a switch to the other card, the full r
   await cameUp(page, push);
   await fits(page);
   await page.screenshot({ path: `${SHOTS}/1-switch.png` });
+  // Its “?” says why the switch is short.
+  const why = (w: string) => page.getByRole('dialog', { name: `Why this ${w}` }).locator('li');
+  await sw.getByRole('button', { name: 'Why this switch is 0:20' }).click();
+  await expect(why('switch')).toHaveText(['Superset switchdefault until 3 switches are timed0:20']);
+  await fits(page);
+  await page.screenshot({ path: `${SHOTS}/1b-switch-why.png` });
+  await page.keyboard.press('Escape');
 
   // The pushdown ends the round: the full rest.
   await logSet(page, push, '18:34:30');
@@ -113,6 +120,10 @@ test('two lifts alternated become a pair: a switch to the other card, the full r
   await page.clock.fastForward(5_000);
   await push.getByRole('button', { name: 'Not a superset' }).click();
   await expect(rest).toContainText('1:55');
+  // Its “?” now explains the full rest.
+  await rest.getByRole('button', { name: 'Why this rest is 2:00' }).click();
+  await expect(why('rest')).toHaveText(['Basedefault for an isolation lift2:00']);
+  await page.keyboard.press('Escape');
   await expect(lines).toHaveCount(0);
   // Alternating on: plain rests from here.
   await logSet(page, push, '18:38:00');

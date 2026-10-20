@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PACE, estimateSeconds, restFor, paces, perSessionForMinutes, perSetSeconds, restAfter, restSeconds, sessionDay, sessionMinutes, suggestTime, usualGap, usualMinutes } from './timing';
+import { DEFAULT_PACE, estimateSeconds, restFor, paces, switchFor, perSessionForMinutes, perSetSeconds, restAfter, restSeconds, sessionDay, sessionMinutes, suggestTime, usualGap, usualMinutes } from './timing';
 import type { SetEntry } from './types';
 import type { Program } from './program';
 
@@ -234,5 +234,57 @@ describe('restFor: the rest after a set, from the lift’s base and the set itse
   it('stays within 45 s and 5 min', () => {
     expect(restFor(none, set('Cable Curl', 20, 15, { rir: 4 }), { kept: 50, prior: 100 }).seconds).toBe(45);
     expect(restFor(none, set('Bench Press', 190, 3, { rir: 0 }), { kept: 290, prior: 200 }).seconds).toBe(300);
+  });
+});
+
+describe('why a rest is its length: restFor’s and switchFor’s parts, line by line', () => {
+  const none = paces([]);
+  const set = (exercise: string, weight: number, reps: number, over: Partial<SetEntry> = {}): SetEntry => ({ ...at('2026-10-19', '18:00', exercise), weight, reps, ...over });
+  const sum = (r: { parts: { s: number }[] }) => r.parts.reduce((a, x) => a + x.s, 0);
+  it('a working set: the base and where it came from, then what effort and load added, adding up to the rest', () => {
+    const r = restFor(none, set('Bench Press', 164, 5, { rir: 0 }), { kept: 150, prior: 200 }); // 82 % of e1RM: 21 s, to 20
+    expect(r.seconds).toBe(200);
+    expect(r.parts).toEqual([
+      { what: 'Base', s: 150, note: 'your setting' },
+      { what: 'RIR 0', s: 30, add: true },
+      { what: 'Heavy set', s: 20, add: true, note: '82 % of e1RM, usual 75 %' },
+    ]);
+  });
+  it('names a learned base and a default one, and a light, easy set', () => {
+    const curls = ['18:00', '18:03', '18:06', '18:09', '18:12', '18:15'].map((t) => at('2026-10-01', t, 'Cable Curl'));
+    expect(restFor(paces(curls), set('Cable Curl', 40, 12)).parts).toEqual([{ what: 'Base', s: 140, note: 'learned from your recent sets' }]);
+    expect(restFor(none, set('Bench Press', 135, 8)).parts).toEqual([{ what: 'Base', s: 180, note: 'default for a compound lift' }]);
+    const r = restFor(none, set('Cable Curl', 30, 15, { rir: 4 }), { prior: 57 }); // 53 % against about 71 %
+    expect(r.parts).toEqual([
+      { what: 'Base', s: 120, note: 'default for an isolation lift' },
+      { what: 'RIR 4', s: -30, add: true },
+      { what: 'Light set', s: -30, add: true, note: '53 % of e1RM, usual 71 %' },
+    ]);
+    expect(r.seconds).toBe(60);
+  });
+  it('says what nothing moved: no line for RIR 1–2, an unlogged RIR, or a usual load', () => {
+    expect(restFor(none, set('Bench Press', 150, 5, { rir: 2 }), { prior: 200 }).parts.map((x) => x.what)).toEqual(['Base']);
+  });
+  it('a warm-up is one line, its fixed rest', () => {
+    expect(restFor(none, set('Bench Press', 75, 5, { flags: ['warmup'], rir: 0 }), { kept: 240, prior: 200 }).parts).toEqual([{ what: 'Warm-up', s: 90, note: 'compound lift' }]);
+    expect(restFor(none, set('Cable Curl', 20, 10, { flags: ['warmup'] })).parts).toEqual([{ what: 'Warm-up', s: 60, note: 'isolation lift' }]);
+  });
+  it('the 0:45 – 5:00 bounds are a line of their own', () => {
+    const lo = restFor(none, set('Cable Curl', 20, 15, { rir: 4 }), { kept: 50, prior: 100 });
+    expect(lo.parts.at(-1)).toEqual({ what: 'At least 0:45', s: 55, add: true });
+    const hi = restFor(none, set('Bench Press', 190, 3, { rir: 0 }), { kept: 290, prior: 200 });
+    expect(hi.parts.at(-1)).toEqual({ what: 'At most 5:00', s: -50, add: true });
+    expect(restFor(none, set('Bench Press', 190, 3, { rir: 0 }), { kept: 240, prior: 200 }).parts.some((x) => x.what.startsWith('At'))).toBe(false); // 300 exactly
+  });
+  it('the parts always add up to the rest', () => {
+    for (const kept of [undefined, 30, 100, 290, 600]) for (const rir of [undefined, 0, 1, 3]) for (const w of [20, 100, 150, 195]) for (const warmup of [false, true]) {
+      const r = restFor(none, set('Bench Press', w, 5, { ...(rir != null && { rir }), ...(warmup && { flags: ['warmup'] }) }), { kept, prior: 200 });
+      expect(sum(r), JSON.stringify({ kept, rir, w, warmup })).toBe(r.seconds);
+    }
+  });
+  it('a superset’s switch: learned less the set, else the default', () => {
+    expect(switchFor(none)).toEqual({ seconds: 20, parts: [{ what: 'Superset switch', s: 20, note: 'default until 3 switches are timed' }] });
+    expect(switchFor({ perSet: new Map(), transition: 120, superSwitch: 75 })).toEqual({ seconds: 35, parts: [{ what: 'Superset switch', s: 35, note: 'your usual switch, less the set itself' }] });
+    expect(switchFor({ perSet: new Map(), transition: 120, superSwitch: 30 }).seconds).toBe(10);
   });
 });

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { restPush } = vi.hoisted(() => ({ restPush: vi.fn() }));
 vi.mock('../push/client', () => ({ restPush, restAlertState: () => null, subscribeRestAlert: () => () => {} }));
 vi.mock('../push/config', () => ({ PUSH_ON: true }));
-const { adjustRest, currentRest, revertSwitch, startRest } = await import('./RestTimer');
+const { adjustRest, currentRest, restLines, revertSwitch, startRest } = await import('./RestTimer');
 
 describe('the rest timer’s lock-screen alert', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-16T18:30:00')); restPush.mockClear(); startRest(0, 'x'); restPush.mockClear(); });
@@ -69,5 +69,37 @@ describe('±30 s (owner, 2026-10-19): the rest as set is kept for the lift', () 
     for (let i = 0; i < 4; i++) adjustRest(-30_000);
     expect(currentRest()?.until).toBe(t0 + 10_000);
     expect(keep).toHaveBeenLastCalledWith(30);
+  });
+});
+
+describe('why the rest is its length (the bar’s “?”)', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-16T18:30:00')); startRest(0, 'x'); restPush.mockClear(); });
+  const base = { what: 'Base', s: 120, note: 'default for an isolation lift' }, sw = { what: 'Superset switch', s: 20, note: 'default until 3 switches are timed' };
+
+  it('carries the switch’s lines and the full rest’s, and adds the ±30 s taps as a line of their own', () => {
+    startRest(20, 'cable pushdown', 'Switch to Cable Pushdown', { seconds: 120, card: 'cable curl', label: 'Cable Curl · set 3 next', why: [base] }, vi.fn(), [sw]);
+    expect(restLines(currentRest()!)).toEqual({ total: 20, parts: [sw] });
+    adjustRest(30_000);
+    // A switch's taps aren't kept for the lift: no note saying so.
+    expect(restLines(currentRest()!)).toEqual({ total: 50, parts: [sw, { what: 'Your ±30 s', s: 30, add: true }] });
+    revertSwitch();
+    expect(restLines(currentRest()!)).toEqual({ total: 120, parts: [base] });
+    adjustRest(-30_000); adjustRest(-30_000);
+    expect(restLines(currentRest()!)).toEqual({ total: 60, parts: [base, { what: 'Your ±30 s', s: -60, add: true, note: 'kept for this lift' }] });
+  });
+
+  it('counts only what −30 s took off: never before now; taps that cancel out leave no line', () => {
+    const t0 = Date.now();
+    startRest(120, 'cable curl', undefined, undefined, undefined, [base]);
+    adjustRest(30_000); adjustRest(-30_000);
+    expect(restLines(currentRest()!)).toEqual({ total: 120, parts: [base] });
+    vi.setSystemTime(t0 + 110_000);
+    adjustRest(-30_000); // 10 s left: ends now, 10 s off
+    expect(restLines(currentRest()!)).toEqual({ total: 110, parts: [base, { what: 'Your ±30 s', s: -10, add: true }] });
+  });
+
+  it('a rest started without its lines has nothing to explain', () => {
+    startRest(120, 'cable curl');
+    expect(restLines(currentRest()!)).toBeNull();
   });
 });
