@@ -101,6 +101,11 @@ test('an edit on one phone after a delete on the other brings the set back on bo
   await enter(b, mail, 'Sign in');
   await goto(b, 'Today');
   await expect(rows(b)).toHaveCount(1);
+  // B's sign-in brought the set in, and that change set off B's own sync 3 s later (useCloud QUIET_MS). Left to run, it lands
+  // just after A's delete and takes it before B can edit. Run both phones' pending syncs now, before anything is deleted (both
+  // clocks by the same step, so B's edit still comes after A's delete), and wait for them: Sync now waits while one is running.
+  for (const p of [a, b]) await p.clock.runFor(3000);
+  for (const p of [a, b]) await syncNow(p);
 
   const remove = async (p: Page) => {
     await goto(p, 'Today');
@@ -113,11 +118,13 @@ test('an edit on one phone after a delete on the other brings the set back on bo
   // Both clocks run from the same start in real time, so B's edit is after A's delete. (A fast-forward here would tick Today's
   // minute timers and set off a sync on B that takes the delete before B edits.)
   await editWeight(b, '140'); // B hasn't heard of the delete, and edits after it
-  for (let i = 0; i < 2; i++) { await syncNow(b); await syncNow(a); }
+  // Sync now waits for the sync it starts, so one round settles it: B sends its edit up, then A takes it. A second round only
+  // spent the 30 s on taps, and under load ran the test out of time.
+  await syncNow(b); await syncNow(a);
   for (const p of [a, b]) { await goto(p, 'Today'); await expect(rows(p)).toHaveCount(1); await expect(rows(p).first()).toContainText('140 × 8'); }
 
   await remove(a);
-  for (let i = 0; i < 2; i++) { await syncNow(a); await syncNow(b); }
+  await syncNow(a); // B takes the delete in its sync after the reload
   for (const p of [a, b]) { await p.reload(); await syncNow(p); await goto(p, 'Today'); await expect(rows(p)).toHaveCount(0); }
   await expect.poll(() => cloudWeights(a)).toEqual([]);
 });
