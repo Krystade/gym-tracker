@@ -15,6 +15,7 @@ import { suggest } from '../domain/suggest';
 import { Icon } from './icons';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
 import { hhmm, paces, restFor, suggestTime, switchFor } from '../domain/timing';
+import { kneeAfter } from '../domain/learn/rest';
 import { andList } from '../domain/superset';
 import { startRest } from './RestTimer';
 import { localDate } from '../domain/ids';
@@ -37,7 +38,7 @@ export function ExerciseCard({ plannedMinutes, ...p }: CardProps) {
 }
 
 function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = null, who, swappedFrom, left = [], onGo,
-  supersetWith, onNotSuperset, switchAfter, onSwitch, aside }: {
+  supersetWith, onNotSuperset, switchAfter, onSwitch, aside, restDelta }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
   /** The plan sent you to this card: open it if it's folded. Each request once (a render of the card's own keeps it). */
   openReq?: object | null;
@@ -54,6 +55,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   onSwitch?: (exercise: string) => void;
   /** Shown under the card's head, before its numbers: the suggestion to rotate a stalled lift. */
   aside?: ReactNode;
+  /** The day's δ for his rest knee (TodayPlan dayRestDelta); the plain one without a plan. */
+  restDelta?: number;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
   // Folded or open as the user last chose: true folded, false open; null, automatic: folded once the plan's sets are done.
@@ -125,8 +128,10 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     if (at === undefined && date === realToday) {
       const label = `${exercise} · set ${working.length + (isWorking(e) ? 1 : 0) + 1} next`;
       const switchTo = switchAfter?.([...store.entries.filter((x) => x.id !== e.id), e], e.id);
-      // The rest for this set: the lift's base and its effort (domain/timing restFor).
-      const full = restFor(e, { kept: st.rest });
+      // The rest for this set: the lift's base (his setting, his knee once his sets show it, else research) and its effort
+      // (domain/timing restFor). The knee reads the log as it was before this set (the core as of the days before is cached
+      // for that array) and the day's sets so far with this one.
+      const full = restFor(e, { kept: st.rest, knee: kneeAfter(store.entries, e, restDelta) });
       // ±30 s on the timer moves the lift's base rest by as much, from now on; a warm-up's rest moves nothing.
       const keep = full.why.warmup ? undefined : (chosen: number) => {
         const s = settingsNow.current;

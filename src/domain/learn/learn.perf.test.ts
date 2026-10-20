@@ -1,8 +1,9 @@
 import { expect, it } from 'vitest';
 import type { SetEntry } from '../types';
-import { simulate } from './coreSim.sample';
+import { simulate, SIM_LIFTS } from './coreSim.sample';
 import { learn } from './index';
 import { painFit } from './pain';
+import { DELTA, kneeAfter, restDelta } from './rest';
 import { paceFit, sessionLengths } from './session';
 import { paceLog, PACE_TRUTH } from './sessionSim.sample';
 
@@ -96,4 +97,37 @@ it('a set logged today re-reads only today for the plan’s length and his pace'
   times.sort((a, b) => a - b);
   expect(sessionLengths(log, date, slots).pace).not.toBeNull();
   expect(times[0], `per set (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5);
+}, 120000);
+
+// Item 17's knee (learn/rest), with knees in use (Rahimi-like recovery, 1–3 min rests, 5 years): the timer's after each set, and the
+// day's δ when the plan runs past its minutes (TodayScreen, on each log change). The core as of the days before is kept while
+// they're the same sets, so a set logged today reads only today. Desktop ~0.5 ms and ~6 ms; gated at 5 ms and 25 ms.
+it('the knee after a set, and the day’s δ, stay cheap as today’s sets are logged', () => {
+  const { entries } = simulate(3, { sessions: 1000, gapMedian: 90, gapSd: 0.6, truth: { aSame: 5, tau: 120, rho: 0.1, aCross: 1.5, aLift: SIM_LIFTS.map(() => 4.25) } });
+  const date = '2031-06-01';
+  const log = [...entries];
+  let t0 = Date.parse(`${date}T17:00:00Z`);
+  const add = (i: number): SetEntry => {
+    t0 += 130e3;
+    const e: SetEntry = { id: `knee${i}`, date, seq: 1e7 + i, exercise: SIM_LIFTS[Math.floor(i / 4)].name, setNo: (i % 4) + 1, weight: 100, reps: 8, flags: [], source: 'app', loggedAt: new Date(t0).toISOString() };
+    log.push(e);
+    return e;
+  };
+  const slots = SIM_LIFTS.slice(0, 5).map((l) => ({ exercise: l.name, sets: 4 }));
+  kneeAfter([...log], add(0));
+  restDelta([...log], date, slots, 30);
+  const knee: number[] = [], delta: number[] = [];
+  for (let i = 1; i < 12; i++) {
+    const before = [...log], e = add(i), after = [...log];
+    let t = performance.now();
+    const k = kneeAfter(before, e);
+    knee.push(performance.now() - t);
+    expect(k?.use).toBe(true);
+    t = performance.now();
+    expect(restDelta(after, date, slots, 30)).toBeGreaterThan(DELTA);
+    delta.push(performance.now() - t);
+  }
+  knee.sort((a, b) => a - b); delta.sort((a, b) => a - b);
+  expect(knee[0], `knee per set (ms): ${knee.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5);
+  expect(delta[0], `δ per log (ms): ${delta.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(25);
 }, 120000);

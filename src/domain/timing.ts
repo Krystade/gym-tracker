@@ -100,13 +100,31 @@ const REST = { isolation: 120, compound: 180 } as const;
 export const isIsolation = (exercise: string) => defaultSettings(exercise).repMin >= 10;
 const defaultRest = (exercise: string) => (isIsolation(exercise) ? REST.isolation : REST.compound);
 
-/** Where a lift's base rest came from: his setting, kept from the timer's ±30 s, or the research default. */
-export type RestFrom = 'kept' | 'default';
-function baseRest(exercise: string, kept?: number): { base: number; from: RestFrom } {
-  return kept != null && kept > 0 ? { base: kept, from: 'kept' } : { base: defaultRest(exercise), from: 'default' };
+/** A set done earlier in the session, for a learned rest (learn/rest): its lift, seconds before the set just done, its RIR. */
+export interface Prior { exercise: string; ago: number; rir?: number | null }
+/** A learned rest for a plan (learn/rest kneePlan): lift `exercise`'s, after the session's sets so far; null: none to use. */
+export type KneeAt = (exercise: string, prior: readonly Prior[]) => number | null;
+/**
+ * A rest learned from his own sets (item 17, learn/rest): `usual` the knee at his usual effort and `seconds` after this set's (its
+ * RIR read), both as the timer would use them; `mid` its median and `lo`–`hi` its 90 % band, unrounded; `tight` whether that band
+ * is narrow, `tried` whether the median sits inside the middle 90 % of the rests he has timed (`rests`), and `use` both (else the
+ * research default stands); `delta` the reps 30 s more rest must buy to be worth it.
+ */
+export interface KneeRest {
+  usual: number; seconds: number; mid: number; lo: number; hi: number;
+  tight: boolean; tried: boolean; use: boolean; rests: { lo: number; hi: number }; delta: number;
 }
-/** A lift's base rest: the one he kept for it with the timer's ±30 s (`kept`, ExerciseSettings.rest); else the research default. */
-export const restSeconds = (exercise: string, kept?: number): number => baseRest(exercise, kept).base;
+
+/** Where a lift's base rest came from: his setting, kept from the timer's ±30 s; his own sets (item 17); or the research default. */
+export type RestFrom = 'kept' | 'knee' | 'default';
+function baseRest(exercise: string, kept?: number, knee?: number | null): { base: number; from: RestFrom } {
+  return kept != null && kept > 0 ? { base: kept, from: 'kept' } : knee != null ? { base: knee, from: 'knee' } : { base: defaultRest(exercise), from: 'default' };
+}
+/**
+ * A lift's base rest: the one he kept for it with the timer's ±30 s (`kept`, ExerciseSettings.rest); else the knee his sets show
+ * (`knee`, learn/rest: only once its band is tight); else the research default.
+ */
+export const restSeconds = (exercise: string, kept?: number, knee?: number | null): number => baseRest(exercise, kept, knee).base;
 
 /** (c) A warm-up's rest: 60 s for an isolation lift, 90 s for a compound one (no study; 00-core §4.1). */
 export const warmupRest = (exercise: string): number => (isIsolation(exercise) ? 60 : 90);
@@ -121,27 +139,41 @@ export interface RestWhy { base: number; from: RestFrom; effort: number; warmup?
  */
 export interface RestPart { what: string; s: number; add?: true; note?: string }
 const mss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+/** A knee's band, as the "?" says it: past the timer's 5:00 it's "over 5:00". */
+const band = (k: KneeRest) => k.hi > REST_MAX_S ? `${mss(k.lo)} to over ${mss(REST_MAX_S)}` : `${mss(k.lo)}–${mss(k.hi)}`;
+/** Why his own knee isn't in use yet: its band is wide, or it sits outside the rests he has timed (a fit can't speak there). */
+const unproven = (k: KneeRest) => !k.tight ? `your timed sets can’t pin your own yet: ${band(k)}`
+  : k.mid < k.rests.lo ? `your sets point to under ${mss(k.rests.lo)}, shorter than the rests you’ve timed`
+  : `your sets point to over ${mss(k.rests.hi)}, longer than the rests you’ve timed`;
+/** δ as the "?" says it: rounded up to a tenth, so "under" stays true. */
+const repsOf = (d: number) => `${Math.ceil(d * 10) / 10}`;
 
 /**
  * The rest after `set` (owner, 2026-10-19). A warm-up: 60 s (isolation) or 90 s (compound). Otherwise the lift's base rest
- * (restSeconds), then effort: RIR 0 +30 s, RIR 3 or more −30 s (RIR 1–2 or not logged: nothing); and the total kept within
- * 45 s – 5 min. The set's load moves nothing: no evidence it should, 80 % and 50 % of 1RM alike (owner, 2026-10-20).
- * `parts`: the same, line by line (RestPart), leaving out what moved nothing; his setting says what research suggests, where
- * that's different.
+ * (restSeconds: his setting, else his knee once tight, else the research default), then effort, and the total kept within
+ * 45 s – 5 min. Effort, with his knee: as learn/rest reads this set's RIR (a: Refalo 2023, nearer failure leaves more to
+ * recover); without it: RIR 0 +30 s, RIR 3 or more −30 s (RIR 1–2 or not logged: nothing). The set's load moves nothing: no
+ * evidence it should, 80 % and 50 % of 1RM alike (owner, 2026-10-20). `knee`: learn/rest kneeAfter's, null without timed sets.
+ * `parts`: the same, line by line (RestPart), leaving out what moved nothing; his setting says what his sets (or research)
+ * suggest, where that's different; the research default says how far his own sets have got.
  */
-export function restFor(set: SetEntry, o: { kept?: number } = {}): { seconds: number; why: RestWhy; parts: RestPart[] } {
-  const { base, from } = baseRest(set.exercise, o.kept);
+export function restFor(set: SetEntry, o: { kept?: number; knee?: KneeRest | null } = {}): { seconds: number; why: RestWhy; parts: RestPart[] } {
+  const learned = o.knee?.use ? o.knee : null;
+  const { base, from } = baseRest(set.exercise, o.kept, learned?.usual);
   const iso = isIsolation(set.exercise);
   if (set.flags.includes('warmup')) {
     const seconds = warmupRest(set.exercise);
     return { seconds, why: { base, from, effort: 0, warmup: true }, parts: [{ what: 'Warm-up', s: seconds, note: iso ? 'isolation lift' : 'compound lift' }] };
   }
-  const effort = set.rir === 0 ? REST_STEP : set.rir != null && set.rir >= 3 ? -REST_STEP : 0;
+  const effort = learned ? learned.seconds - learned.usual : set.rir === 0 ? REST_STEP : set.rir != null && set.rir >= 3 ? -REST_STEP : 0;
   const sum = base + effort, seconds = Math.min(REST_MAX_S, Math.max(REST_MIN_S, sum));
-  const research = defaultRest(set.exercise);
-  const parts: RestPart[] = [from === 'default' ? { what: 'Research default', s: base, note: iso ? 'small lift' : 'big lift' }
-    : { what: 'Your setting', s: base, ...(base !== research && { note: `Research suggests ${mss(research)}` }) }];
-  if (effort) parts.push({ what: `RIR ${set.rir}`, s: effort, add: true });
+  const research = defaultRest(set.exercise), kind = iso ? 'small lift' : 'big lift';
+  const suggests = learned ? { s: learned.usual, by: 'Your sets suggest' } : { s: research, by: 'Research suggests' };
+  const parts: RestPart[] = [
+    from === 'default' ? { what: 'Research default', s: base, note: o.knee ? `${kind} · ${unproven(o.knee)}` : kind }
+    : from === 'knee' ? { what: 'Learned from your sets', s: base, note: `past it, 30 s more gains under ${repsOf(learned!.delta)} rep · likely ${band(learned!)}` }
+    : { what: 'Your setting', s: base, ...(base !== suggests.s && { note: `${suggests.by} ${mss(suggests.s)}` }) }];
+  if (effort) parts.push({ what: `RIR ${set.rir}`, s: effort, add: true, ...(learned && { note: effort > 0 ? 'nearer failure: more to recover' : 'further from failure: less to recover' }) });
   if (seconds !== sum) parts.push({ what: seconds === REST_MIN_S ? `At least ${mss(REST_MIN_S)}` : `At most ${mss(REST_MAX_S)}`, s: seconds - sum, add: true });
   return { seconds, why: { base, from, effort }, parts };
 }
@@ -195,19 +227,33 @@ export function stepsLeft(slots: readonly PlanSlot[], done: (ex: string) => numb
 
 /**
  * How long a plan should take (owner, 2026-10-20: sized for good training, not his habit): the first set, then before each set
- * the rest the timer prescribes after the one before it (restSeconds: his ±30 s setting `kept(ex)`, else the research default;
- * a warm-up's warmupRest; none after cardio, which has no timer) and the set itself (SET_WORK, a cardio bout its minutes), plus
- * `overhead` (learn/session, b: what a switch to another lift takes him beyond a set-to-set gap) at each switch. Effort isn't
- * known before a set, so the RIR ±30 s is not in it.
+ * the rest the timer prescribes after the one before it (restSeconds: his ±30 s setting `kept(ex)`, else his knee `knee(ex, the
+ * session's sets so far)` where learn/rest has one, else the research default; a warm-up's warmupRest; none after cardio, which
+ * has no timer) and the set itself (SET_WORK, a cardio bout its minutes), plus `overhead` (learn/session, b: what a switch to
+ * another lift takes him beyond a set-to-set gap) at each switch. Effort isn't known before a set, so the RIR's part is not in it:
+ * a knee is at his usual effort.
  */
-export function planSeconds(steps: readonly Step[], o: { kept?: (ex: string) => number | undefined; overhead?: number } = {}): number {
+export function planSeconds(steps: readonly Step[], o: { kept?: (ex: string) => number | undefined; overhead?: number; knee?: KneeAt } = {}): number {
   if (!steps.length) return 0;
   const work = (s: Step) => s.seconds ?? SET_WORK;
+  // The session's hard sets so far and when each would be done, for a knee (position- and session-aware).
+  const hard = (s: Step) => s.seconds == null && !s.warmup;
+  const done: { exercise: string; at: number }[] = [];
   let t = work(steps[0]);
+  if (hard(steps[0])) done.push({ exercise: steps[0].exercise, at: t });
   for (let k = 1; k < steps.length; k++) {
     const a = steps[k - 1], b = steps[k];
-    const rest = a.seconds != null ? 0 : a.warmup ? warmupRest(a.exercise) : restSeconds(a.exercise, o.kept?.(a.exercise));
+    let rest = 0;
+    if (a.seconds == null) {
+      if (a.warmup) rest = warmupRest(a.exercise);
+      else {
+        const kept = o.kept?.(a.exercise);
+        const knee = !(kept != null && kept > 0) && o.knee ? o.knee(a.exercise, done.map((d) => ({ exercise: d.exercise, ago: t - d.at }))) : null;
+        rest = restSeconds(a.exercise, kept, knee);
+      }
+    }
     t += rest + work(b) + (a.exercise.toLowerCase() !== b.exercise.toLowerCase() ? o.overhead ?? 0 : 0);
+    if (hard(b)) done.push({ exercise: b.exercise, at: t });
   }
   return t;
 }

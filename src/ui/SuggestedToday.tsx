@@ -7,6 +7,7 @@ import { isWorking } from '../domain/progression';
 import { exerciseNames, sameExercise } from '../domain/stats';
 import { planSeconds, stepsOf, usualMinutes } from '../domain/timing';
 import { paceBefore, sessionLengths } from '../domain/learn/session';
+import { kneePlan } from '../domain/learn/rest';
 import { atPace } from './TodayPlan';
 import { warmupCount } from '../domain/suggest';
 import { cardioTarget } from '../domain/cardio';
@@ -36,9 +37,9 @@ export function SuggestedToday({ profile, entries, date, gym, loadFor, onOpen }:
   const overhead = useMemo(() => paceBefore(entries, date)?.overhead ?? 0, [entries, date]);
   const slots = useMemo(() => {
     const available = gym ? availableSet(gym, [...PROGRAM_LIFTS, ...exerciseNames(entries), ...gym.include]) : undefined;
-    // Sized at the plan's length: the timer's research rests (not his rest settings, which a tap on the timer changes mid-session).
-    // quickDay reads only the days before today, so a set logged now never moves the list.
-    return quickDay(profile, entries, date, (s) => planSeconds(stepsOf(s, warm), { overhead }) <= mins * 60, available ? { available, include: gym!.include } : {});
+    // Sized at the plan's length: the timer's rests, research or his knees where in use (not his rest settings, which a tap on the
+    // timer changes mid-session). quickDay and the knees read only the days before today, so a set logged now never moves the list.
+    return quickDay(profile, entries, date, (s) => planSeconds(stepsOf(s, warm), { overhead, knee: kneePlan(entries, date) ?? undefined }) <= mins * 60, available ? { available, include: gym!.include } : {});
   }, [profile, entries, date, mins, warm, overhead, gym]);
   // His recent pace for it, when over 10 min from the plan's length (owner).
   const L = useMemo(() => slots.length ? sessionLengths(entries, date, slots, { warmups: warm }) : null, [entries, date, slots, warm]);

@@ -18,7 +18,8 @@ import { getDraft, saveDraft } from '../state/drafts';
 const CARDS = '#cards';
 import { ExercisePicker } from './ExercisePicker';
 import { isHoldLift, swapSuggestions } from '../domain/care';
-import { inPlanOrder, leftToDo, plannedNames, TodayPlan, todayPlanFor } from './TodayPlan';
+import { dayRestDelta, inPlanOrder, leftToDo, plannedNames, TodayPlan, todayPlanFor } from './TodayPlan';
+import { DELTA } from '../domain/learn/rest';
 import { WeighIn } from './WeighIn';
 import { RestTimer, revertSwitch } from './RestTimer';
 import type { BodyStore } from '../state/useBody';
@@ -63,6 +64,11 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   useEffect(() => { saveDraft(owner, `${CARDS}:${date}`, date, extra); }, [owner, date, extra]);
   const logged = dayOrder(store.entries, date);
   const plan = todayPlanFor(programs, store.entries, date);
+  // The day's δ for his rest knees (item 17): the timer and the plan's length use the same. A plan not saved yet is a new object
+  // each render, so it's keyed by what it says.
+  const planSig = plan && JSON.stringify(plan);
+  const restDelta = useMemo(() => (programs.program && plan ? dayRestDelta(programs.program, plan, store.entries, (ex) => settings.get(ex).rest) : DELTA),
+    [programs.program, planSig, store.entries, settings]);
   // `extra` is the day's card order: logging a set must not move an added card. Lifts logged elsewhere come first.
   // Planned lifts keep the plan's order, whichever was opened first.
   const cards = inPlanOrder([...logged.filter((l) => !extra.some((x) => sameExercise(l, x))), ...extra], programs.program && plan ? plannedNames(programs.program, plan) : []);
@@ -225,7 +231,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       {programs.program && plan && hasPlan && (
         <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today} open={open} onToggle={() => setPlanOpen(!open)}
           buildQuick={(fits) => quickDay(profile, store.entries, date, fits, available ? { available, include: gyms.active!.include } : {})}
-          onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} loadFor={loadFor} rangeFor={settings.get} keptRest={(ex) => settings.get(ex).rest} />
+          onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} loadFor={loadFor} rangeFor={settings.get} keptRest={(ex) => settings.get(ex).rest} restDelta={restDelta} />
       )}
       {/* No program: a quick session from what the week is behind on, once there's a history to go by. Never on a past day. */}
       {!programs.program && date === today && store.entries.some((e) => e.date < date) && (
@@ -237,7 +243,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
         swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
         openReq={openReq && sameExercise(openReq.to, n) ? openReq : null}
         supersetWith={groupOf(n)?.lifts.filter((x) => !sameExercise(x, n))} onNotSuperset={() => { const g = groupOf(n); if (g) dismiss(g); }}
-        switchAfter={(entries, id) => nextAfter(groupsIn(entries), id)} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} />)}
+        switchAfter={(entries, id) => nextAfter(groupsIn(entries), id)} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} restDelta={restDelta} />)}
       {/* Below the cards, so the card you're logging on never moves down. */}
       <SessionSummary entries={store.entries} date={date} past={date < today} />
       <button className="wide add-exercise" data-tour="add" onClick={() => setPicking(true)}>Add exercise</button>

@@ -11,6 +11,7 @@ import { logBefore } from './index';
 import { backward, cholesky, forward } from './num';
 import { LIFT_LOG_SD, PERSON_MIN } from './pace';
 import { pool, type Pooled } from './pool';
+import { DELTA, kneePlan } from './rest';
 import { liftSimilarity } from './tags';
 
 // Item 11: how long a session takes HIM — the forecast (owner, 2026-10-20: "exactly accurate to what I do"). It describes; it
@@ -549,7 +550,7 @@ export function paceBefore(entries: readonly SetEntry[], date: string): PaceFit 
 export const SHOW_BOTH = 600;
 
 export interface Lengths {
-  /** How long the plan should take (timing.planSeconds: the timer's rests, and his switch overhead once learned). */
+  /** How long the plan should take (timing.planSeconds: the timer's rests, his knees where in use, his switch overhead once learned). */
   plan: number;
   /** At his pace: the day's sets so far and the plan's sets still to do. Null until MIN_DAYS days are timed. */
   pace: Forecast | null;
@@ -562,14 +563,14 @@ export interface Lengths {
 /**
  * A planned day's length and his pace for it, on `date`. `slots` are the sets to do (swaps applied, skips left out);
  * `warmups(ex)`: the warm-ups the day's first lift gets (timing.stepsOf); `kept(ex)`: his rest setting. `fresh`: a day not
- * started (a program's), so the date's own sets are not read.
+ * started (a program's), so the date's own sets are not read. `delta`: the day's δ for his knees (learn/rest restDelta).
  */
 export function sessionLengths(entries: readonly SetEntry[], date: string, slots: readonly PlanSlot[],
-  o: { warmups?: (ex: string) => number; kept?: (ex: string) => number | undefined; fresh?: boolean } = {}): Lengths {
+  o: { warmups?: (ex: string) => number; kept?: (ex: string) => number | undefined; fresh?: boolean; delta?: number } = {}): Lengths {
   const fit = paceBefore(entries, date);
   const warmups = o.warmups ?? (() => 0);
   const all = stepsOf(slots, warmups);
-  const plan = planSeconds(all, { kept: o.kept, overhead: fit?.overhead ?? 0 });
+  const plan = planSeconds(all, { kept: o.kept, overhead: fit?.overhead ?? 0, knee: kneePlan(entries, date, o.delta ?? DELTA) ?? undefined });
   const day = o.fresh ? [] : entries.filter((e) => e.date === date);
   const timed = day.filter((e) => e.loggedAt).sort(byOrderDone);
   const first = timed[0] ?? null;

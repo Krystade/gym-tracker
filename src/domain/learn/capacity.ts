@@ -129,6 +129,11 @@ interface Block {
   atTarget: Uint8Array; unsure: Uint8Array;
   /** 1 for a set read by the habit that is lighter than the lift's top weight that day and done before it: a ramp set (a bound). */
   light: Uint8Array;
+  /**
+   * For the rest fit (item 17: learn/rest): 1 where the day is timed; 1 where the set or the lift's set before it was entered
+   * late (its time is a guess); the seconds since the lift's set before it that day (NaN: none, or untimed).
+   */
+  clock: Uint8Array; late: Uint8Array; gapPrev: Float64Array;
 }
 
 // Blocks are cached by the day's sets themselves: the store never changes a set in place (state/useSets), so the same objects
@@ -173,6 +178,9 @@ function blockOf(date: string, hard: SetEntry[], gap: number): Block {
     vid[a] = q;
   }
   const nl = lix.size, nv = vecs.length;
+  // The lift's hard set before each one that day (−1: none), for the rest fit's gaps.
+  const prevSame = new Int32Array(n).fill(-1), lastOf = new Int32Array(nl).fill(-1);
+  for (let a = 0; a < n; a++) { prevSame[a] = lastOf[lid[a]]; lastOf[lid[a]] = a; }
   const ov = new Float64Array(nv * nv).fill(NaN);
   // Rows: the measuring sets, grouped by lift in order of first appearance, each group in the order done. A bodyweight lift's
   // heaviest added load that day, over all its hard sets (those that measure nothing too): a set at bodyweight below it is a ramp.
@@ -195,7 +203,7 @@ function blockOf(date: string, hard: SetEntry[], gap: number): Block {
     nS: new Float64Array(m), nC: new Float64Array(m), nY: new Float64Array(m), w: new Float64Array(m), logW: new Float64Array(m),
     eS: new Float64Array(m * NT), eC: new Float64Array(m * NT),
     r: new Float64Array(m), k: new Float64Array(m), kind: new Uint8Array(m), atTarget: new Uint8Array(m), unsure: new Uint8Array(m),
-    light: new Uint8Array(m),
+    light: new Uint8Array(m), clock: new Uint8Array(m).fill(timed ? 1 : 0), late: new Uint8Array(m), gapPrev: new Float64Array(m).fill(NaN),
   };
   let i = 0;
   for (let j = 0; j < rows.length; j++) {
@@ -232,6 +240,9 @@ function blockOf(date: string, hard: SetEntry[], gap: number): Block {
       // A ramp or back-off set: lighter than the day's top weight (a bodyweight set: less added than the day's most).
       if (kind === K_HABIT && (topAdded[lid[a]] > -Infinity ? addedLoad(e) < topAdded[lid[a]] : load[a] < top)) s.light[i] = 1;
       s.unsure[i] = e.flags.includes('unsure') ? 1 : 0;
+      const pv = prevSame[a];
+      if (e.enteredAt || (pv >= 0 && hard[pv].enteredAt)) s.late[i] = 1;
+      if (timed && pv >= 0) s.gapPrev[i] = t[a] - t[pv];
       i++;
     }
   }
@@ -251,6 +262,7 @@ interface Rows {
   /** Lifts in order of first appearance: key and name (the first set's), and each one's groups in date order. */
   keys: string[]; names: string[]; liftGroups: number[][];
   fx: Flat; logW: Float64Array; r: Float64Array; k: Float64Array; kind: Uint8Array; atTarget: Uint8Array; unsure: Uint8Array; light: Uint8Array; liftOf: Int32Array;
+  clock: Uint8Array; late: Uint8Array; gapPrev: Float64Array;
 }
 interface Joined {
   blocks: Block[];
@@ -260,11 +272,12 @@ interface Joined {
   cap: number;
   nS: Float64Array; nC: Float64Array; nY: Float64Array; w: Float64Array; logW: Float64Array; eS: Float64Array; eC: Float64Array;
   r: Float64Array; k: Float64Array; kind: Uint8Array; atTarget: Uint8Array; unsure: Uint8Array; light: Uint8Array; liftOf: Int32Array;
+  clock: Uint8Array; late: Uint8Array; gapPrev: Float64Array;
 }
 // One log at a time (the profile on screen); another log's fit replaces it.
 let JOINED: Joined | null = null;
-const ROW_F64 = ['nS', 'nC', 'nY', 'w', 'logW', 'r', 'k'] as const;
-const ROW_U8 = ['kind', 'atTarget', 'unsure', 'light'] as const;
+const ROW_F64 = ['nS', 'nC', 'nY', 'w', 'logW', 'r', 'k', 'gapPrev'] as const;
+const ROW_U8 = ['kind', 'atTarget', 'unsure', 'light', 'clock', 'late'] as const;
 
 function emptyJoined(cap: number): Joined {
   return {
@@ -272,6 +285,7 @@ function emptyJoined(cap: number): Joined {
     nS: new Float64Array(cap), nC: new Float64Array(cap), nY: new Float64Array(cap), w: new Float64Array(cap), logW: new Float64Array(cap),
     eS: new Float64Array(cap * NT), eC: new Float64Array(cap * NT), r: new Float64Array(cap), k: new Float64Array(cap),
     kind: new Uint8Array(cap), atTarget: new Uint8Array(cap), unsure: new Uint8Array(cap), light: new Uint8Array(cap), liftOf: new Int32Array(cap),
+    clock: new Uint8Array(cap), late: new Uint8Array(cap), gapPrev: new Float64Array(cap),
   };
 }
 
@@ -321,6 +335,7 @@ function rowsOf(blocks: readonly Block[]): Rows {
     N, G, groups: J.groups, keys: J.keys, names: J.names, liftGroups,
     fx: { nS: view(J.nS), nC: view(J.nC), nY: view(J.nY), w: view(J.w), eS: view(J.eS, N * NT), eC: view(J.eC, N * NT) },
     logW: view(J.logW), r: view(J.r), k: view(J.k), kind: view(J.kind), atTarget: view(J.atTarget), unsure: view(J.unsure), light: view(J.light), liftOf: view(J.liftOf),
+    clock: view(J.clock), late: view(J.late), gapPrev: view(J.gapPrev),
   };
 }
 
@@ -399,6 +414,16 @@ export interface Core {
   features: Map<string, Features>;
   /** The grid cell the per-lift values were fitted at (A, τ, ρ trade off: use them together, through decay/fatigueOf). */
   fit: { tau: number; kTau: number; rho: number; theta: [number, number, number] };
+  /**
+   * Item 17 (learn/rest): the same fatigue posterior from sets whose times are real. The fit above spaces an untimed day's sets
+   * at his typical gap, which is right for fatigue but says nothing true about how fast he recovers; here only real times speak.
+   * Left out besides: a set entered late, or whose lift's set before it was (its time is a guess), and a gap from the lift's set
+   * before past Tukey's fence on ln seconds (a: Tukey 1977; a break, or the app closed). `sets`: the rows it learned from, over
+   * `sessions` days; `breaks`: rows the fence left out; `gaps`: the 5th and 95th percentiles of the kept rows' times since the
+   * lift's set before (s, done-time to done-time; null with none), the rests it has seen; `lastDay`: the log's last session (day
+   * number), for a layoff.
+   */
+  rest: { cells: Cell[]; sets: number; sessions: number; breaks: number; gaps: { lo: number; hi: number } | null; lastDay: number };
 }
 export interface Features { nS: number; nC: number; nY: number; eS: Float64Array; eC: Float64Array }
 
@@ -477,7 +502,7 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean; 
   const sessions = days.map((d, i) => blockOf(dates[i], d, gap));
 
   // Lifts and groups (lift × session), rows by session then lift (rowsOf: only blocks after a change are copied).
-  const { N, G, groups, names: liftNames, liftGroups, fx, logW, r: rr, k: kk, kind, atTarget, unsure, light, liftOf } = rowsOf(sessions);
+  const { N, G, groups, names: liftNames, liftGroups, fx, logW, r: rr, k: kk, kind, atTarget, unsure, light, liftOf, clock, late, gapPrev } = rowsOf(sessions);
   const L = liftNames.length;
   // Without censoring (the negative control), a set stopped at its target reads as if it went to the usual RIR.
   // A set lighter than the lift's top that day (a ramp or back-off set) without RIR or a target was stopped by choice: its
@@ -594,6 +619,7 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean; 
       const habitRow = new Uint8Array(N);
       for (let i = 0; i < N; i++) if (kindOf(i) === K_HABIT) habitRow[i] = 1;
       const measure2 = noisePass(groups, wk, habitRow);
+      const rest = restGrid(fx, groups, kappa, predX, predV, hasPred, pred, yy, W, L, clock, late, gapPrev);
       const lifts = new Map<string, LiftCore>();
       for (let l = 0; l < L; l++) {
         const gs = liftGroups[l];
@@ -608,7 +634,7 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean; 
           sessions: gs.length, sets: gs.reduce((n, g) => n + groups[g].o1 - groups[g].o0, 0),
         });
       }
-      return summarize(cells, theta, lifts, { kT: mapT, rho: RHOS[mapR], N, sets: entries.length, sessions: sessions.length, timed: sessions.filter((s) => s.timed).length, habit, cal, noise2, measure2, gap, drift, blocks: sessions });
+      return summarize(cells, theta, lifts, { kT: mapT, rho: RHOS[mapR], N, sets: entries.length, sessions: sessions.length, timed: sessions.filter((s) => s.timed).length, habit, cal, noise2, measure2, gap, drift, blocks: sessions, rest: { ...rest, lastDay: sessions.at(-1)?.day ?? 0 } });
     }
   }
   throw new Error('unreachable');
@@ -781,7 +807,7 @@ function noisePass(groups: Group[], wk: Work, skip: Uint8Array | null): number {
 }
 
 function summarize(cells: Cell[], theta: [number, number, number], lifts: Map<string, LiftCore>,
-  m: { kT: number; rho: number; N: number; sets: number; sessions: number; timed: number; habit: number; cal: Calib; noise2: number; measure2: number; gap: number; drift: number; blocks: Block[] }): Core {
+  m: { kT: number; rho: number; N: number; sets: number; sessions: number; timed: number; habit: number; cal: Calib; noise2: number; measure2: number; gap: number; drift: number; blocks: Block[]; rest: Core['rest'] }): Core {
   const sd = [0, 1, 2].map((j) => Math.sqrt(cells.reduce((a, c) => a + c.w * (c.cov[j * 4] + (c.theta[j] - theta[j]) ** 2), 0)));
   // τ: posterior over the grid, summarised in logs; its 5–95 % from the cumulative weights.
   const wT = TAUS.map((t) => cells.filter((c) => c.tau === t).reduce((a, c) => a + c.w, 0));
@@ -811,7 +837,35 @@ function summarize(cells: Cell[], theta: [number, number, number], lifts: Map<st
       return features;
     },
     fit: { tau: TAUS[m.kT], kTau: m.kT, rho: m.rho, theta: [...theta] as [number, number, number] },
+    rest: m.rest,
   };
+}
+
+/**
+ * Core.rest: the fatigue grid (fatigueGrid) on the rows whose times are real (see Core.rest for what's left out), from the
+ * population prior (THETA_PRIOR, TAU_PRIOR). With none it is the prior itself.
+ */
+function restGrid(fx: Flat, groups: Group[], kappa: Float64Array, predX: Float64Array, predV: Float64Array, hasPred: Uint8Array,
+  pred: Float64Array, yy: Float64Array, W: Float64Array, L: number, clock: Uint8Array, late: Uint8Array, gapPrev: Float64Array): Omit<Core['rest'], 'lastDay'> {
+  const N = W.length, lg: number[] = [];
+  for (let i = 0; i < N; i++) if (W[i] && clock[i] && !late[i] && gapPrev[i] > 0) lg.push(Math.log(gapPrev[i]));
+  lg.sort((a, b) => a - b);
+  const q = (p: number) => { const x = (lg.length - 1) * p, lo = Math.floor(x); return lg[lo] + (lg[Math.min(lo + 1, lg.length - 1)] - lg[lo]) * (x - lo); };
+  // (a) Tukey's fence, Q3 + 1.5·IQR, in logs (gaps are skewed), as learn/session's.
+  const fence = lg.length ? q(0.75) + 1.5 * (q(0.75) - q(0.25)) : Infinity;
+  const Wt = new Float64Array(N);
+  let sets = 0, breaks = 0;
+  for (let i = 0; i < N; i++) {
+    if (!W[i] || !clock[i] || late[i]) continue;
+    if (gapPrev[i] > 0 && Math.log(gapPrev[i]) > fence) { breaks++; continue; }
+    Wt[i] = W[i]; sets++;
+  }
+  const days = new Set<number>();
+  for (const g of groups) for (let i = g.o0; i < g.o1; i++) if (Wt[i]) { days.add(g.day); break; }
+  const kept = lg.filter((x) => x <= fence);
+  const at = (p: number) => { const x = (kept.length - 1) * p, lo = Math.floor(x); return Math.exp(kept[lo] + (kept[Math.min(lo + 1, kept.length - 1)] - kept[lo]) * (x - lo)); };
+  const gaps = kept.length ? { lo: at(0.05), hi: at(0.95) } : null;
+  return { cells: fatigueGrid(fx, groups, kappa, predX, predV, hasPred, pred, yy, Wt, L), sets, sessions: days.size, breaks, gaps };
 }
 
 /**
