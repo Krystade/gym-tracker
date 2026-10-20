@@ -29,19 +29,26 @@ export interface Pace {
 
 // One day's same-lift gaps (lift key, ln s), cached by the day's sets: the store never changes a set in place, so the same
 // objects in the same order are the same day (as learn/capacity's session cache).
-const DAYS = new WeakMap<SetEntry, { d: readonly SetEntry[]; gaps: [string, number][] }>();
-function dayGaps(d: SetEntry[]): [string, number][] {
-  const same = () => { const hit = DAYS.get(d[0]); return hit && hit.d.length === d.length && hit.d.every((e, i) => e === d[i]) ? hit : null; };
-  const hit = same();
-  if (hit) return hit.gaps;
+interface Gaps { keys: string[]; xs: Float64Array }
+const DAYS = new WeakMap<SetEntry, { d: readonly SetEntry[]; gaps: Gaps }>();
+function cached(d: readonly SetEntry[]): Gaps | null {
+  const hit = DAYS.get(d[0]);
+  if (!hit || hit.d.length !== d.length) return null;
+  for (let i = 0; i < d.length; i++) if (hit.d[i] !== d[i]) return null;
+  return hit.gaps;
+}
+function dayGaps(d: SetEntry[]): Gaps {
+  const hit = cached(d);
+  if (hit) return hit;
   const order = (a: SetEntry, b: SetEntry) => doneAt(a) - doneAt(b);
-  if (!inOrder(d, order)) { d.sort(order); const h = same(); if (h) return h.gaps; }
-  const gaps: [string, number][] = [];
+  if (!inOrder(d, order)) { d.sort(order); const h = cached(d); if (h) return h; }
+  const keys: string[] = [], xs: number[] = [];
   for (let i = 1; i < d.length; i++) {
     const g = (doneAt(d[i]) - doneAt(d[i - 1])) / 1000;
     const k = liftKey(d[i].exercise);
-    if (g > 0 && g <= MAX_GAP && k === liftKey(d[i - 1].exercise)) gaps.push([k, Math.log(g)]);
+    if (g > 0 && g <= MAX_GAP && k === liftKey(d[i - 1].exercise)) { keys.push(k); xs.push(Math.log(g)); }
   }
+  const gaps = { keys, xs: new Float64Array(xs) };
   DAYS.set(d[0], { d: [...d], gaps });
   return gaps;
 }
@@ -53,32 +60,34 @@ export function paceOf(entries: readonly SetEntry[]): Pace | null {
     const d = days.get(e.date);
     if (d) d.push(e); else days.set(e.date, [e]);
   }
-  const per = new Map<string, number[]>();
-  const all: number[] = [];
-  for (const d of days.values()) {
-    for (const [k, x] of dayGaps(d)) {
-      all.push(x);
-      const xs = per.get(k);
-      if (xs) xs.push(x); else per.set(k, [x]);
+  const dg: Gaps[] = [];
+  let n = 0;
+  for (const d of days.values()) { const g = dayGaps(d); dg.push(g); n += g.xs.length; }
+  if (n < PERSON_MIN) return null;
+  // Every gap (sorted below, for the median and IQR), and per lift the running sum and count (for its mean), in log order.
+  const sorted = new Float64Array(n);
+  const per = new Map<string, { sum: number; n: number }>();
+  let j = 0;
+  for (const { keys, xs } of dg) {
+    for (let i = 0; i < xs.length; i++) {
+      const x = xs[i];
+      sorted[j++] = x;
+      const q = per.get(keys[i]);
+      if (q) { q.sum += x; q.n++; } else per.set(keys[i], { sum: x, n: 1 });
     }
   }
-  if (all.length < PERSON_MIN) return null;
-  const sorted = [...all].sort((a, b) => a - b);
+  sorted.sort(); // a typed array sorts numerically, without a comparator call per step
   const med = sorted[sorted.length >> 1];
   // Robust spread: the interquartile range of a normal is 1.349 SD.
   const iqr = sorted[Math.floor(sorted.length * 0.75)] - sorted[Math.floor(sorted.length * 0.25)];
   const logSd = Math.max(0.05, iqr / 1.349);
-  const items = [...per].map(([key, xs]) => {
-    const m = xs.reduce((a, b) => a + b, 0) / xs.length;
-    return { key, est: m, v: logSd ** 2 / xs.length };
-  });
-  const counts = new Map([...per].map(([k, xs]) => [k, xs.length]));
-  const p = pool(items, liftSimilarity, { mean: med, personSd: logSd / Math.sqrt(all.length), liftSd: LIFT_LOG_SD });
+  const items = [...per].map(([key, q]) => ({ key, est: q.sum / q.n, v: logSd ** 2 / q.n }));
+  const p = pool(items, liftSimilarity, { mean: med, personSd: logSd / Math.sqrt(n), liftSd: LIFT_LOG_SD });
   return {
-    gap: Math.exp(med), logSd, n: all.length,
+    gap: Math.exp(med), logSd, n,
     lift: (name) => {
       const k = liftKey(name), post = p.lift(k);
-      return { gap: Math.exp(post.mean), sd: post.sd, n: counts.get(k) ?? 0 };
+      return { gap: Math.exp(post.mean), sd: post.sd, n: per.get(k)?.n ?? 0 };
     },
   };
 }

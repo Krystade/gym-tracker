@@ -34,6 +34,18 @@ describe('learn/pace', () => {
     expect(lp).toBeGreaterThan(p.gap * 0.9);
   });
 
+  it('a day whose sets were replaced (same count, new times) is read again, not taken from the cache', () => {
+    const es: SetEntry[] = [];
+    for (let d = 1; d <= 6; d++) es.push(...day(`2024-04-0${d}`, [['Bench Press', 4, 200], ['DB Curl', 3, 120]]));
+    const before = paceOf(es)!;
+    // The first day's sets after its first (the one the cache is keyed by) re-timed 3× slower: new objects, the same count.
+    const first = es[0], t0 = Date.parse(first.loggedAt!);
+    const slower = es.map((e) => (e.date === first.date && e !== first ? { ...e, loggedAt: new Date(t0 + 3 * (Date.parse(e.loggedAt!) - t0)).toISOString() } : e));
+    const warm = paceOf(slower)!, cold = paceOf(slower.map((e) => ({ ...e })))!;
+    expect(warm.lift('Bench Press').gap).toBe(cold.lift('Bench Press').gap);
+    expect(warm.lift('Bench Press').gap).toBeGreaterThan(before.lift('Bench Press').gap);
+  });
+
   it('ignores breaks over 10 min, warm-ups, untimed sets and switches between lifts', () => {
     const es = day('2024-01-01', [['Bench Press', 4, 200]]);
     es.push(set('2024-01-01', 'Bench Press', 600 + 4 * 200 + 900)); // a 15-min break

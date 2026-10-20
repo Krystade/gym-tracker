@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from '../types';
+import { setWorksLike } from '../lifts';
 import { e1rm } from '../stats';
 import { decay, e1rmAdjusted, fitCore, type Core, type Est } from './capacity';
 import { SIM_LIFTS, simulate } from './coreSim.sample';
@@ -105,6 +106,46 @@ describe('learn/capacity: incremental equals batch', () => {
     const warm = fitCore(edited);
     expect(numbers(warm)).toBe(numbers(fitCore(cold(edited))));
     expect(numbers(warm)).not.toBe(numbers(fitCore(entries)));
+  });
+
+  it('cached rows are reused only up to the first session that changed (a deleted session, a new lift, another log in between)', () => {
+    const { entries } = simulate(8, { sessions: 40, backoff: true });
+    fitCore(entries);
+    // A whole session deleted from the middle: every later session moves up.
+    const day = entries[entries.length >> 1].date;
+    const dropped = entries.filter((e) => e.date !== day);
+    expect(numbers(fitCore(dropped))).toBe(numbers(fitCore(cold(dropped))));
+    // A lift seen for the first time in the last session, after a fit that never saw it.
+    const last = entries.at(-1)!;
+    const withNew = [...entries, { ...last, id: `${last.id}|new`, exercise: 'Hack Squat', weight: 200, reps: 8, seq: last.seq + 1 }];
+    fitCore(entries);
+    expect(numbers(fitCore(withNew))).toBe(numbers(fitCore(cold(withNew))));
+    // Then the original again (the new lift must be gone), after another profile's log in between.
+    fitCore(simulate(9, { sessions: 20 }).entries);
+    expect(numbers(fitCore([...entries]))).toBe(numbers(fitCore(cold(entries))));
+  });
+
+  it('new lift facts rebuild every session; a new typical gap rebuilds the untimed ones; censoring never sticks to the rows', () => {
+    const { entries } = simulate(10, { sessions: 50, timedFrac: 0.5, targets: true });
+    fitCore(entries);
+    // "Works like": Cable Curl now counts as Bench Press (its muscles, so its overlaps with the other lifts, change).
+    setWorksLike([['Cable Curl', 'Bench Press']]);
+    try {
+      expect(numbers(fitCore([...entries]))).toBe(numbers(fitCore(cold(entries))));
+    } finally { setWorksLike([]); }
+    expect(numbers(fitCore([...entries]))).toBe(numbers(fitCore(cold(entries))));
+    // Timed days spaced twice as far apart: the typical gap moves, and with it every untimed day's set times.
+    const slow = entries.map((e) => (e.loggedAt ? { ...e, loggedAt: new Date(Date.parse(`${e.date}T17:00:00Z`) + 2 * (Date.parse(e.loggedAt) - Date.parse(`${e.date}T17:00:00Z`))).toISOString() } : e));
+    const before = fitCore(entries), after = fitCore(slow);
+    expect(after.gap).not.toBe(before.gap);
+    expect(numbers(after)).toBe(numbers(fitCore(cold(slow))));
+    // The negative control on the cached rows, then straight away the censored fit on the same rows.
+    fitCore([...entries]);
+    const uncensored = fitCore([...entries], { censor: false });
+    const censored = fitCore([...entries]);
+    expect(numbers(uncensored)).toBe(numbers(fitCore(cold(entries), { censor: false })));
+    expect(numbers(censored)).toBe(numbers(fitCore(cold(entries))));
+    expect(numbers(censored)).not.toBe(numbers(uncensored));
   });
 
   it('an empty log or a single set gives the priors without throwing', () => {

@@ -75,15 +75,10 @@ const DAY = 864e5;
 const dayNo = (date: string) => Math.round(Date.parse(`${date}T00:00:00Z`) / DAY);
 
 /** How a set's reps to failure are read. */
-type Kind = 'rir' | 'test' | 'missed' | 'habit' | 'bound';
+const K_RIR = 0, K_TEST = 1, K_MISSED = 2, K_HABIT = 3, K_BOUND = 4;
 
-/** A working set that measures capacity, with its fatigue features. */
+/** The fatigue features of every working set that measures capacity, one row per set (eS, eC: NT per set). */
 interface Flat { nS: Float64Array; nC: Float64Array; nY: Float64Array; w: Float64Array; eS: Float64Array; eC: Float64Array }
-interface Obs {
-  e: SetEntry; lift: number; group: number; w: number; r: number;
-  kind: Kind; k: number; // logged RIR (rir/test), or the bound's offset above reps (bound)
-  nS: number; nC: number; nY: number; eS: Float64Array; eC: Float64Array;
-}
 
 // ---- Sessions and fatigue features -------------------------------------------------------------------------------------
 
@@ -95,58 +90,213 @@ const isHoldSet = (e: SetEntry) => e.flags.includes('hold') || isHold(e.exercise
 /** A set whose reps measure capacity at a load: hard, loaded, not a hold, not past 30 reps. */
 const measures = (e: SetEntry) => isHard(e) && e.weight > 0 && !e.flags.includes('bodyweight') && !isHoldSet(e) && (e.reps as number) <= 30;
 
-interface Session { date: string; day: number; timed: boolean; hard: SetEntry[]; obs: { e: SetEntry; nS: number; nC: number; nY: number; eS: Float64Array; eC: Float64Array }[] }
+/**
+ * One session's working sets that measure capacity, as a block of typed arrays ready to copy into the fit's: ordered by lift
+ * (first done first), then by the order done, so each lift's sets that day are one contiguous group. Everything here depends
+ * only on the day's sets, the lift facts and (untimed days) the typical gap; what depends on the whole log is worked out per fit.
+ */
+interface Block {
+  date: string; day: number; timed: boolean;
+  /** Sets (rows). */
+  m: number;
+  e: SetEntry[];
+  /** Per lift that day: its key, the first set's name, and its rows [at[j], at[j + 1]). */
+  keys: string[]; names: string[]; at: Int32Array;
+  nS: Float64Array; nC: Float64Array; nY: Float64Array; w: Float64Array; logW: Float64Array; eS: Float64Array; eC: Float64Array;
+  /** Reps; logged RIR (K_RIR/K_TEST) or the bound's offset above reps (K_BOUND); how the reps to failure are read. */
+  r: Float64Array; k: Float64Array; kind: Uint8Array;
+  /** 1 where the set is a bound only because it stopped at its target (read as K_HABIT with `censor: false`); 1 for "unsure" RIR. */
+  atTarget: Uint8Array; unsure: Uint8Array;
+}
 
-// Features of one day's sets, cached by the sets themselves: the store never changes a set in place (state/useSets), so the same
-// objects in the same order are the same session. A changed set, a new set, new lift facts or a new typical gap rebuild it.
-interface Cached { hard: readonly SetEntry[]; fv: number; gap: number; s: Session }
+// Blocks are cached by the day's sets themselves: the store never changes a set in place (state/useSets), so the same objects
+// in the same order are the same session. A changed set, a new set, new lift facts or a new typical gap rebuild it.
+interface Cached { hard: readonly SetEntry[]; fv: number; gap: number; s: Block }
 const SESSIONS = new WeakMap<SetEntry, Cached>();
 
+/** The same set objects in the same order. */
+function sameSets(a: readonly SetEntry[], b: readonly SetEntry[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
 /** The same set objects in the same order as a cached session's (so already in the order done). */
 function sameDay(xs: readonly SetEntry[]): boolean {
   const hit = SESSIONS.get(xs[0]);
-  return !!hit && hit.hard.length === xs.length && hit.hard.every((e, i) => e === xs[i]);
+  return !!hit && sameSets(hit.hard, xs);
 }
-function sessionOf(date: string, hard: SetEntry[], gap: number): Session {
+function blockOf(date: string, hard: SetEntry[], gap: number): Block {
   const first = hard[0];
   const hit = SESSIONS.get(first);
   const fv = liftFactsVersion();
-  if (hit && hit.fv === fv && hit.hard.length === hard.length && hit.hard.every((e, i) => e === hard[i])) {
+  if (hit && hit.fv === fv && sameSets(hit.hard, hard)) {
     if (hit.s.timed || hit.gap === gap) return hit.s;
   }
+  const n = hard.length;
   const times = hard.map(doneAt);
   const timed = times.every((t) => Number.isFinite(t));
   const t = timed ? times.map((x) => (x - times[0]) / 1000) : hard.map((_, i) => i * gap);
-  const keys = hard.map((e) => liftKey(e.exercise));
-  const vecs: (Vector | null)[] = hard.map((e) => resolveLift(e.exercise).m);
-  const obs: Session['obs'] = [];
-  for (let a = 0; a < hard.length; a++) {
-    if (!measures(hard[a])) continue;
-    let nS = 0, nC = 0, nY = 0;
-    const eS = new Float64Array(NT), eC = new Float64Array(NT);
-    for (let b = 0; b < a; b++) {
-      const dt = Math.max(1, t[a] - t[b]);
-      if (keys[b] === keys[a]) {
-        nS += 1;
-        for (let k = 0; k < NT; k++) eS[k] += Math.exp(-dt / TAUS[k]);
-      } else {
-        nY += 1;
-        const o = overlap(vecs[b], vecs[a]);
-        if (o > 0) { nC += o; for (let k = 0; k < NT; k++) eC[k] += o * Math.exp(-dt / TAUS[k]); }
-      }
-    }
-    obs.push({ e: hard[a], nS, nC, nY, eS, eC });
+  // Each distinct lift that day once (by key), each distinct muscle vector once, and (lazily) each pair's overlap.
+  const lix = new Map<string, number>(), vix = new Map<Vector | null, number>();
+  const vecs: (Vector | null)[] = [];
+  const lid = new Int32Array(n), vid = new Int32Array(n);
+  for (let a = 0; a < n; a++) {
+    const key = liftKey(hard[a].exercise);
+    let j = lix.get(key);
+    if (j === undefined) { j = lix.size; lix.set(key, j); }
+    lid[a] = j;
+    const v = resolveLift(hard[a].exercise).m;
+    let q = vix.get(v);
+    if (q === undefined) { q = vecs.length; vix.set(v, q); vecs.push(v); }
+    vid[a] = q;
   }
-  const s: Session = { date, day: dayNo(date), timed, hard, obs };
+  const nl = lix.size, nv = vecs.length;
+  const ov = new Float64Array(nv * nv).fill(NaN);
+  // Rows: the measuring sets, grouped by lift in order of first appearance, each group in the order done.
+  const keys: string[] = [], names: string[] = [], rows: number[][] = [];
+  const slot = new Int32Array(nl).fill(-1);
+  for (let a = 0; a < n; a++) {
+    if (!measures(hard[a])) continue;
+    let j = slot[lid[a]];
+    if (j < 0) { j = slot[lid[a]] = keys.length; keys.push(liftKey(hard[a].exercise)); names.push(hard[a].exercise); rows.push([]); }
+    rows[j].push(a);
+  }
+  let m = 0;
+  for (const xs of rows) m += xs.length;
+  const s: Block = {
+    date, day: dayNo(date), timed, m, e: new Array<SetEntry>(m), keys, names, at: new Int32Array(keys.length + 1),
+    nS: new Float64Array(m), nC: new Float64Array(m), nY: new Float64Array(m), w: new Float64Array(m), logW: new Float64Array(m),
+    eS: new Float64Array(m * NT), eC: new Float64Array(m * NT),
+    r: new Float64Array(m), k: new Float64Array(m), kind: new Uint8Array(m), atTarget: new Uint8Array(m), unsure: new Uint8Array(m),
+  };
+  let i = 0;
+  for (let j = 0; j < rows.length; j++) {
+    s.at[j] = i;
+    for (const a of rows[j]) {
+      let nS = 0, nC = 0, nY = 0;
+      const i0 = i * NT;
+      for (let b = 0; b < a; b++) {
+        const dt = Math.max(1, t[a] - t[b]);
+        if (lid[b] === lid[a]) {
+          nS += 1;
+          for (let k = 0; k < NT; k++) s.eS[i0 + k] += Math.exp(-dt / TAUS[k]);
+        } else {
+          nY += 1;
+          const x = vid[b] * nv + vid[a];
+          let o = ov[x];
+          if (o !== o) o = ov[x] = overlap(vecs[vid[b]], vecs[vid[a]]);
+          if (o > 0) { nC += o; for (let k = 0; k < NT; k++) s.eC[i0 + k] += o * Math.exp(-dt / TAUS[k]); }
+        }
+      }
+      const e = hard[a], r = e.reps as number;
+      s.e[i] = e; s.nS[i] = nS; s.nC[i] = nC; s.nY[i] = nY; s.w[i] = e.weight; s.logW[i] = Math.log(e.weight); s.r[i] = r;
+      // How its reps to failure are read.
+      const target = e.target && e.target.weight != null && e.target.weight === e.weight ? e.target.reps : null;
+      let kind = K_HABIT, k = 0;
+      if (e.flags.includes('pain')) { kind = K_BOUND; k = 0; } // pain limited the set, not strength (04 §7)
+      else if (e.rir != null && e.rir >= 4) { kind = K_BOUND; k = 3; } // "4+": at least 4, with a rep of slack (04 §3)
+      else if (e.rir != null) { kind = e.flags.includes('test') ? K_TEST : K_RIR; k = e.rir; }
+      else if (target != null && r === target) { kind = K_BOUND; k = 0; s.atTarget[i] = 1; } // stopped at the target: could have done more (00-core §1.2)
+      else if (target != null && r < target) kind = K_MISSED; // short of the target: near failure (00-core §1.2)
+      s.kind[i] = kind; s.k[i] = k;
+      s.unsure[i] = e.flags.includes('unsure') ? 1 : 0;
+      i++;
+    }
+  }
+  s.at[rows.length] = m;
   SESSIONS.set(first, { hard: [...hard], fv, gap, s });
   return s;
+}
+
+/**
+ * The fit's rows: every session's block, in date order, copied into one set of arrays (so rows run by session, then lift). The
+ * arrays are kept and reused: a refit copies only the blocks after the first one that changed, so a new set today copies today's
+ * block and nothing else. Lifts are numbered in order of first appearance; a group is one lift's rows in one session.
+ */
+interface Rows {
+  N: number; G: number;
+  groups: Group[];
+  /** Lifts in order of first appearance: key and name (the first set's), and each one's groups in date order. */
+  keys: string[]; names: string[]; liftGroups: number[][];
+  fx: Flat; logW: Float64Array; r: Float64Array; k: Float64Array; kind: Uint8Array; atTarget: Uint8Array; unsure: Uint8Array; liftOf: Int32Array;
+}
+interface Joined {
+  blocks: Block[];
+  /** Per block joined: its first row and first group, and how many lifts had appeared before it. */
+  rowAt: number[]; groupAt: number[]; liftsAt: number[];
+  keys: string[]; names: string[]; groups: Group[];
+  cap: number;
+  nS: Float64Array; nC: Float64Array; nY: Float64Array; w: Float64Array; logW: Float64Array; eS: Float64Array; eC: Float64Array;
+  r: Float64Array; k: Float64Array; kind: Uint8Array; atTarget: Uint8Array; unsure: Uint8Array; liftOf: Int32Array;
+}
+// One log at a time (the profile on screen); another log's fit replaces it.
+let JOINED: Joined | null = null;
+const ROW_F64 = ['nS', 'nC', 'nY', 'w', 'logW', 'r', 'k'] as const;
+const ROW_U8 = ['kind', 'atTarget', 'unsure'] as const;
+
+function emptyJoined(cap: number): Joined {
+  return {
+    blocks: [], rowAt: [0], groupAt: [0], liftsAt: [0], keys: [], names: [], groups: [], cap,
+    nS: new Float64Array(cap), nC: new Float64Array(cap), nY: new Float64Array(cap), w: new Float64Array(cap), logW: new Float64Array(cap),
+    eS: new Float64Array(cap * NT), eC: new Float64Array(cap * NT), r: new Float64Array(cap), k: new Float64Array(cap),
+    kind: new Uint8Array(cap), atTarget: new Uint8Array(cap), unsure: new Uint8Array(cap), liftOf: new Int32Array(cap),
+  };
+}
+
+function rowsOf(blocks: readonly Block[]): Rows {
+  let J = JOINED ?? emptyJoined(0);
+  // The blocks already joined, in place: the longest run of the same block objects from the start.
+  let p = 0;
+  while (p < blocks.length && p < J.blocks.length && blocks[p] === J.blocks[p]) p++;
+  const N0 = J.rowAt[p], G0 = J.groupAt[p], L0 = J.liftsAt[p];
+  let N = N0;
+  for (let b = p; b < blocks.length; b++) N += blocks[b].m;
+  if (N > J.cap) {
+    // Grow by half again, keeping the rows that stay.
+    const K = emptyJoined(Math.max(N, Math.ceil(J.cap * 1.5), 64));
+    for (const f of ROW_F64) K[f].set(J[f].subarray(0, N0));
+    for (const f of ROW_U8) K[f].set(J[f].subarray(0, N0));
+    K.liftOf.set(J.liftOf.subarray(0, N0));
+    K.eS.set(J.eS.subarray(0, N0 * NT)); K.eC.set(J.eC.subarray(0, N0 * NT));
+    J = { ...K, blocks: J.blocks, rowAt: J.rowAt, groupAt: J.groupAt, liftsAt: J.liftsAt, keys: J.keys, names: J.names, groups: J.groups };
+  }
+  J.blocks.length = p; J.rowAt.length = p + 1; J.groupAt.length = p + 1; J.liftsAt.length = p + 1;
+  J.keys.length = L0; J.names.length = L0; J.groups.length = G0;
+  const liftIx = new Map<string, number>();
+  for (let l = 0; l < L0; l++) liftIx.set(J.keys[l], l);
+  let off = N0;
+  for (let b = p; b < blocks.length; b++) {
+    const s = blocks[b];
+    for (let j = 0; j < s.keys.length; j++) {
+      let li = liftIx.get(s.keys[j]);
+      if (li === undefined) { li = J.keys.length; liftIx.set(s.keys[j], li); J.keys.push(s.keys[j]); J.names.push(s.names[j]); }
+      const o0 = off + s.at[j], o1 = off + s.at[j + 1];
+      J.groups.push({ lift: li, day: s.day, date: s.date, o0, o1 });
+      J.liftOf.fill(li, o0, o1);
+    }
+    for (const f of ROW_F64) J[f].set(s[f], off);
+    for (const f of ROW_U8) J[f].set(s[f], off);
+    J.eS.set(s.eS, off * NT); J.eC.set(s.eC, off * NT);
+    off += s.m;
+    J.blocks.push(s); J.rowAt.push(off); J.groupAt.push(J.groups.length); J.liftsAt.push(J.keys.length);
+  }
+  JOINED = J;
+  const L = J.keys.length, G = J.groups.length;
+  const liftGroups: number[][] = Array.from({ length: L }, () => []);
+  for (let g = 0; g < G; g++) liftGroups[J.groups[g].lift].push(g);
+  const view = <A extends Float64Array | Uint8Array | Int32Array>(a: A, n = N) => a.subarray(0, n) as A;
+  return {
+    N, G, groups: J.groups, keys: J.keys, names: J.names, liftGroups,
+    fx: { nS: view(J.nS), nC: view(J.nC), nY: view(J.nY), w: view(J.w), eS: view(J.eS, N * NT), eC: view(J.eC, N * NT) },
+    logW: view(J.logW), r: view(J.r), k: view(J.k), kind: view(J.kind), atTarget: view(J.atTarget), unsure: view(J.unsure), liftOf: view(J.liftOf),
+  };
 }
 
 /** The person's typical time from one set to the next (s), for days logged without times: the median timed gap ≤ 10 min, else 180 s (c, the app's default pace). */
 const GAPS = new WeakMap<SetEntry, { hard: readonly SetEntry[]; gaps: number[] }>();
 function dayGaps(d: SetEntry[]): number[] {
   const hit = GAPS.get(d[0]);
-  if (hit && hit.hard.length === d.length && hit.hard.every((e, i) => e === d[i])) return hit.gaps;
+  if (hit && sameSets(hit.hard, d)) return hit.gaps;
   const gaps: number[] = [];
   const ts = d.map(doneAt);
   if (ts.every(Number.isFinite)) for (let i = 1; i < ts.length; i++) { const g = (ts[i] - ts[i - 1]) / 1000; if (g > 0 && g <= 600) gaps.push(g); }
@@ -227,6 +377,8 @@ export function fatigueOf(core: Core, liftKey: string, f: Features): number {
 // ---- The fit -----------------------------------------------------------------------------------------------------------
 
 interface Group { lift: number; day: number; date: string; o0: number; o1: number }
+/** Per group: days since the lift's previous session (|Δ|), and the level's extra variance for a layoff that long. */
+interface Steps { dd: Float64Array; lay: Float64Array }
 
 /**
  * Fits the capacity equation to one profile's log. Pure: the same log gives the same result.
@@ -241,45 +393,18 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean }
   // Logs arrive mostly in the order done: a linear check skips the sort (and its time parsing) for those days.
   const days = dates.map((d) => { const xs = byDate.get(d)!; return sameDay(xs) || inOrder(xs, byOrderDone) ? xs : xs.sort(byOrderDone); });
   const gap = typicalGap(days);
-  const sessions = days.map((d, i) => sessionOf(dates[i], d, gap));
+  const sessions = days.map((d, i) => blockOf(dates[i], d, gap));
 
-  // Lifts and groups (lift × day). Observations sorted by group.
-  const liftIx = new Map<string, number>();
-  const liftNames: string[] = [];
-  const raw: { s: Session; o: Session['obs'][number]; lift: number }[] = [];
-  const keyOf = new Map<string, string>();
-  for (const s of sessions) for (const o of s.obs) {
-    let k = keyOf.get(o.e.exercise);
-    if (k == null) { k = liftKey(o.e.exercise); keyOf.set(o.e.exercise, k); }
-    let li = liftIx.get(k);
-    if (li == null) { li = liftNames.length; liftIx.set(k, li); liftNames.push(o.e.exercise); }
-    raw.push({ s, o, lift: li });
-  }
-  raw.sort((a, b) => a.lift - b.lift || a.s.day - b.s.day);
-  const groups: Group[] = [];
-  const obs: Obs[] = [];
-  for (const { s, o, lift } of raw) {
-    let g = groups.at(-1);
-    if (!g || g.lift !== lift || g.day !== s.day) { g = { lift, day: s.day, date: s.date, o0: obs.length, o1: obs.length }; groups.push(g); }
-    const e = o.e, r = e.reps as number;
-    const target = e.target && e.target.weight != null && e.target.weight === e.weight ? e.target.reps : null;
-    let kind: Kind = 'habit', k = 0;
-    if (e.flags.includes('pain')) { kind = 'bound'; k = 0; } // pain limited the set, not strength (04 §7)
-    else if (e.rir != null && e.rir >= 4) { kind = 'bound'; k = 3; } // "4+": at least 4, with a rep of slack (04 §3)
-    else if (e.rir != null) { kind = e.flags.includes('test') ? 'test' : 'rir'; k = e.rir; }
-    else if (censor && target != null && r === target) { kind = 'bound'; k = 0; } // stopped at the target: could have done more (00-core §1.2)
-    else if (target != null && r < target) kind = 'missed'; // short of the target: near failure (00-core §1.2)
-    obs.push({ e, lift, group: groups.length - 1, w: e.weight, r, kind, k, nS: o.nS, nC: o.nC, nY: o.nY, eS: o.eS, eC: o.eC });
-    g.o1 = obs.length;
-  }
-  const N = obs.length, G = groups.length, L = liftNames.length;
-  const liftGroups: number[][] = Array.from({ length: L }, () => []);
-  groups.forEach((g, i) => liftGroups[g.lift].push(i));
+  // Lifts and groups (lift × session), rows by session then lift (rowsOf: only blocks after a change are copied).
+  const { N, G, groups, names: liftNames, liftGroups, fx, logW, r: rr, k: kk, kind, atTarget, unsure, liftOf } = rowsOf(sessions);
+  const L = liftNames.length;
+  // Without censoring (the negative control), a set stopped at its target reads as if it went to the usual RIR.
+  const kindOf = (i: number) => (!censor && atTarget[i] ? K_HABIT : kind[i]);
 
   // Habitual RIR (b): mean and SD of logged training RIR plus the bias, shrunk to the prior (HABIT).
   const b = B_PRIOR.mean;
   let hs = 0, hss = 0, hn = 0;
-  for (const o of obs) if (o.kind === 'rir') { const v = o.k + b; hs += v; hss += v * v; hn++; }
+  for (let i = 0; i < N; i++) if (kindOf(i) === K_RIR) { const v = kk[i] + b; hs += v; hss += v * v; hn++; }
   const habit = (HABIT.k * HABIT.mean + hs) / (HABIT.k + hn);
   const habitVar = (HABIT.kSd * HABIT.sd ** 2 + Math.max(0, hss - hn * (hn ? (hs / hn) ** 2 : 0))) / (HABIT.kSd + Math.max(0, hn - 1));
 
@@ -287,27 +412,19 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean }
   const y = new Float64Array(N), v = new Float64Array(N), lo = new Float64Array(N);
   const isBound = new Uint8Array(N);
   for (let i = 0; i < N; i++) {
-    const o = obs[i];
-    switch (o.kind) {
-      case 'rir': case 'test': {
+    const r = rr[i], k = kk[i], kd = kindOf(i);
+    switch (kd) {
+      case K_RIR: case K_TEST: {
         // (a) RIR error grows with distance from failure and with reps past ~10 (Refalo 2024; Zourdos 2021; Halperin 2022): 04 §3.
-        const R = o.r + o.k;
-        const sd = 0.5 + 0.3 * o.k + 0.3 * Math.max(0, R - 10);
-        y[i] = R + (o.kind === 'rir' ? b : 0); v[i] = sd * sd * (o.e.flags.includes('unsure') ? 1.5 : 1);
+        const R = r + k;
+        const sd = 0.5 + 0.3 * k + 0.3 * Math.max(0, R - 10);
+        y[i] = R + (kd === K_RIR ? b : 0); v[i] = sd * sd * (unsure[i] ? 1.5 : 1);
         break;
       }
-      case 'missed': y[i] = o.r + 0.5; v[i] = 0.6 ** 2; break; // (a/c) at or near failure: RIR 0–1
-      case 'habit': y[i] = o.r + habit; v[i] = habitVar; break;
-      case 'bound': isBound[i] = 1; lo[i] = o.r + o.k; y[i] = o.r + o.k + habit; v[i] = habitVar; break;
+      case K_MISSED: y[i] = r + 0.5; v[i] = 0.6 ** 2; break; // (a/c) at or near failure: RIR 0–1
+      case K_HABIT: y[i] = r + habit; v[i] = habitVar; break;
+      case K_BOUND: isBound[i] = 1; lo[i] = r + k; y[i] = r + k + habit; v[i] = habitVar; break;
     }
-  }
-
-  // Flat copies of the fatigue features for the hot loops (typed arrays, no object hops).
-  const fx: Flat = { nS: new Float64Array(N), nC: new Float64Array(N), nY: new Float64Array(N), w: new Float64Array(N), eS: new Float64Array(N * NT), eC: new Float64Array(N * NT) };
-  for (let i = 0; i < N; i++) {
-    const o = obs[i];
-    fx.nS[i] = o.nS; fx.nC[i] = o.nC; fx.nY[i] = o.nY; fx.w[i] = o.w;
-    fx.eS.set(o.eS, i * NT); fx.eC.set(o.eC, i * NT);
   }
   // Residual noise σ_e² (b): starts at the prior; re-estimated each round from within-session residuals.
   let noise2 = NOISE.sd ** 2;
@@ -322,84 +439,43 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean }
   const hasPred = new Uint8Array(G);
   const delta = new Float64Array(N), pred = new Float64Array(N), W = new Float64Array(N), yy = new Float64Array(N);
   const siteV = new Float64Array(N).fill(Infinity);
+  const wk: Work = { y, v, lo, isBound, delta, pred, W, yy, siteV };
+  // Per group, each level pass: the session's implied ln E, its variance and reps scale, and whether it has any.
+  const zG = new Float64Array(G), vG = new Float64Array(G), uG = new Float64Array(G), okG = new Uint8Array(G);
 
-  const logW = new Float64Array(N), liftOf = new Int32Array(N);
-  for (let i = 0; i < N; i++) { logW[i] = Math.log(obs[i].w); liftOf[i] = obs[i].lift; }
-  const fatigueAt = (i: number, kT: number, rho: number, th: readonly number[], aSame: number) =>
-    aSame * (rho * fx.nS[i] + (1 - rho) * fx.eS[i * NT + kT]) + th[1] * (rho * fx.nC[i] + (1 - rho) * fx.eC[i * NT + kT]) + th[2] * fx.nY[i];
+  // The Kalman steps between a lift's sessions (levels), once per fit.
+  const steps: Steps = { dd: new Float64Array(G), lay: new Float64Array(G) };
+  for (const gs of liftGroups) {
+    for (let x = 0; x < gs.length; x++) {
+      const d = Math.abs(groups[gs[x]].day - (x ? groups[gs[x - 1]].day : 0));
+      steps.dd[gs[x]] = d; steps.lay[gs[x]] = LAYOFF * LAYOFF * Math.max(0, d / 7 - 2);
+    }
+  }
 
   for (let it = 0; it < ITERATIONS; it++) {
     const rho = RHOS[mapR];
-    for (let i = 0; i < N; i++) delta[i] = fatigueAt(i, mapT, rho, theta, aLift[liftOf[i]]);
-
+    deltaPass(fx, liftOf, aLift, mapT, rho, theta, delta);
     // (1) Levels. Each set's fatigue-adjusted capacity → an implied ln E; a session's are averaged by precision.
-    const zG = new Float64Array(G), vG = new Float64Array(G), uG = new Float64Array(G), okG = new Uint8Array(G);
-    for (let g = 0; g < G; g++) {
-      const { o0, o1, lift } = groups[g];
-      let sw = 0, sz = 0, su = 0;
-      for (let i = o0; i < o1; i++) {
-        // A bound reads as its site from the last round (none in the first: it says nothing until there's a prediction).
-        if (isBound[i] && !(siteV[i] < 1e6)) continue;
-        const c = Math.max(0.5, (isBound[i] ? yy[i] : y[i]) + delta[i]);
-        const ve = (isBound[i] ? siteV[i] : v[i]) + noise2;
-        const lv = ve / (kappa[lift] + c) ** 2;
-        const z = logW[i] + Math.log1p(c / kappa[lift]);
-        sw += 1 / lv; sz += z / lv; su += (c / (kappa[lift] + c)) / lv;
-      }
-      if (sw > 0) { okG[g] = 1; zG[g] = sz / sw; uG[g] = su / sw; vG[g] = 1 / sw + READY * READY; }
-    }
-    drift = levels(liftGroups, groups, zG, vG, uG, okG, predX, predV, predU, hasPred, smX, smV);
-
-    // Predicted fresh capacity per set (never having seen its own session), and the shortfall z = predicted − observed.
-    // Bounds: an expectation-propagation site from the truncated predictive (Tobit): uninformative when the prediction sits
-    // well above the floor, a firm reading when it doesn't.
-    for (let i = 0; i < N; i++) {
-      const o = obs[i], g = o.group;
-      if (!hasPred[g]) { pred[i] = NaN; W[i] = 0; yy[i] = y[i]; siteV[i] = Infinity; continue; }
-      const E = Math.exp(predX[g]);
-      pred[i] = kappa[o.lift] * (E / o.w - 1);
-      if (!isBound[i]) { yy[i] = y[i]; W[i] = 1 / (v[i] + noise2); continue; }
-      const scale = kappa[o.lift] * E / o.w;
-      const cavV = scale * scale * (predV[g] + READY * READY) + noise2;
-      const mu = pred[i] - delta[i];
-      const t = truncBelow(mu, Math.sqrt(cavV), lo[i]);
-      const prec = 1 / t.v - 1 / cavV;
-      if (!(prec > 1e-4 / cavV)) { yy[i] = mu; W[i] = 0; siteV[i] = Infinity; continue; }
-      siteV[i] = 1 / prec;
-      yy[i] = siteV[i] * (t.mean / t.v - mu / cavV);
-      W[i] = 1 / (siteV[i] + noise2);
-    }
+    levelPass(groups, wk, kappa, logW, noise2, zG, vG, uG, okG);
+    drift = levels(liftGroups, steps, zG, vG, uG, okG, predX, predV, predU, hasPred, smX, smV);
+    predictPass(groups, fx.w, wk, kappa, predX, predV, hasPred, noise2);
 
     // (2) Fatigue: GLS over the (τ, ρ) grid, a random intercept per session (its level error) and an intercept per lift.
     // Rounds before the last search only τ next to the current best (the fit moves little between rounds; 2–4 rounds agree
     // to the third decimal on synthetic data); the last round searches the whole grid.
     const last = it === ITERATIONS - 1;
-    cells = fatigueGrid(fx, groups, liftGroups, kappa, predX, predV, hasPred, pred, yy, W, L, last ? 0 : Math.max(0, mapT - 1), last ? NT - 1 : Math.min(NT - 1, mapT + 1));
+    cells = fatigueGrid(fx, groups, kappa, predX, predV, hasPred, pred, yy, W, L, last ? 0 : Math.max(0, mapT - 1), last ? NT - 1 : Math.min(NT - 1, mapT + 1));
     let best = 0;
     for (let c = 1; c < cells.length; c++) if (cells[c].w > cells[best].w) best = c;
     mapT = TAUS.indexOf(cells[best].tau as (typeof TAUS)[number]); mapR = RHOS.indexOf(cells[best].rho as (typeof RHOS)[number]);
     theta = [0, 1, 2].map((j) => cells.reduce((a, c) => a + c.w * c.theta[j], 0)) as [number, number, number];
 
-    // Residual noise (b): within-session spread of fatigue-adjusted readings beyond the readings' own variance, shrunk to the prior.
-    let rss = 0, dof = 0, ownV = 0;
-    for (const g of groups) {
-      let n = 0, m = 0, mm = 0, vv = 0;
-      for (let i = g.o0; i < g.o1; i++) {
-        if (isBound[i] || !Number.isFinite(pred[i])) continue;
-        const r = y[i] + delta[i] - pred[i]; // the session's shared level error drops out of the within-session spread
-        m += r; mm += r * r; n++; vv += v[i];
-      }
-      if (n < 2) continue;
-      rss += mm - m * m / n;
-      dof += n - 1; ownV += vv * (n - 1) / n;
-    }
-    const excess = dof > 0 ? Math.max(0, (rss - ownV) / dof) : 0;
-    noise2 = (NOISE.k * NOISE.sd ** 2 + dof * excess) / (NOISE.k + dof);
+    noise2 = noisePass(groups, wk);
 
     // Reps–load slope κ per lift (b), pooled toward the person and similar lifts.
-    const kappaSd = updateKappa(fx, mapT, RHOS[mapR], groups, liftGroups, liftNames, kappa, fx.w, predX, predU, hasPred, pred, yy, W, delta, L);
+    const kappaSd = updateKappa(fx, mapT, RHOS[mapR], groups, liftNames, kappa, fx.w, predX, predU, hasPred, pred, yy, W, delta, L);
     // Per-lift A_same (b), pooled; used for the next round's fatigue.
-    const a = liftASame(fx, groups, liftGroups, liftNames, cells, mapT, mapR, theta, pred, yy, W, L, kappa, predX, hasPred);
+    const a = liftASame(fx, groups, liftNames, cells, mapT, mapR, theta, pred, yy, W, L, kappa, predX, hasPred);
     for (let l = 0; l < L; l++) aLift[l] = a.post[l].mean;
     if (it === ITERATIONS - 1) {
       const lifts = new Map<string, LiftCore>();
@@ -413,15 +489,102 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean }
           sessions: gs.length, sets: gs.reduce((n, g) => n + groups[g].o1 - groups[g].o0, 0),
         });
       }
-      return summarize(cells, theta, lifts, { kT: mapT, rho: RHOS[mapR], N, sets: entries.length, sessions: sessions.length, timed: sessions.filter((s) => s.timed).length, habit, habitVar, hn, noise2, gap, drift, obs });
+      return summarize(cells, theta, lifts, { kT: mapT, rho: RHOS[mapR], N, sets: entries.length, sessions: sessions.length, timed: sessions.filter((s) => s.timed).length, habit, habitVar, hn, noise2, gap, drift, blocks: sessions });
     }
   }
   throw new Error('unreachable');
 }
 
 
+/** The fit's per-set working arrays: the reading of reps to failure (y, v; a bound's floor), and each round's fatigue, prediction,
+ * weight and reading (a bound's from its expectation-propagation site). */
+interface Work {
+  y: Float64Array; v: Float64Array; lo: Float64Array; isBound: Uint8Array;
+  delta: Float64Array; pred: Float64Array; W: Float64Array; yy: Float64Array; siteV: Float64Array;
+}
+
+/** Each set's fatigue Δ at the current (τ, ρ, θ) and per-lift A_same (fatigueOf, on the rows). */
+function deltaPass(fx: Flat, liftOf: Int32Array, aLift: Float64Array, kT: number, rho: number, theta: readonly number[], delta: Float64Array): void {
+  const r1 = 1 - rho, t1 = theta[1], t2 = theta[2], { nS, nC, nY, eS, eC } = fx;
+  for (let i = 0, ik = kT; i < delta.length; i++, ik += NT) {
+    delta[i] = aLift[liftOf[i]] * (rho * nS[i] + r1 * eS[ik]) + t1 * (rho * nC[i] + r1 * eC[ik]) + t2 * nY[i];
+  }
+}
+
+/** Per group: the precision-weighted mean of its sets' implied ln E (fatigue put back), with its variance and reps scale. */
+function levelPass(groups: Group[], wk: Work, kappa: Float64Array, logW: Float64Array, noise2: number,
+  zG: Float64Array, vG: Float64Array, uG: Float64Array, okG: Uint8Array): void {
+  const { y, v, isBound, delta, yy, siteV } = wk;
+  okG.fill(0);
+  for (let g = 0; g < groups.length; g++) {
+    const { o0, o1, lift } = groups[g];
+    let sw = 0, sz = 0, su = 0;
+    for (let i = o0; i < o1; i++) {
+      // A bound reads as its site from the last round (none in the first: it says nothing until there's a prediction).
+      if (isBound[i] && !(siteV[i] < 1e6)) continue;
+      const c = Math.max(0.5, (isBound[i] ? yy[i] : y[i]) + delta[i]);
+      const ve = (isBound[i] ? siteV[i] : v[i]) + noise2;
+      const lv = ve / (kappa[lift] + c) ** 2;
+      const z = logW[i] + Math.log1p(c / kappa[lift]);
+      sw += 1 / lv; sz += z / lv; su += (c / (kappa[lift] + c)) / lv;
+    }
+    if (sw > 0) { okG[g] = 1; zG[g] = sz / sw; uG[g] = su / sw; vG[g] = 1 / sw + READY * READY; }
+  }
+}
+
+/**
+ * Predicted fresh capacity per set (never having seen its own session), and the shortfall z = predicted − observed, with its
+ * weight. Bounds: an expectation-propagation site from the truncated predictive (Tobit): uninformative when the prediction
+ * sits well above the floor, a firm reading when it doesn't.
+ */
+function predictPass(groups: Group[], ws: Float64Array, wk: Work, kappa: Float64Array, predX: Float64Array, predV: Float64Array,
+  hasPred: Uint8Array, noise2: number): void {
+  const { y, v, lo, isBound, delta, pred, W, yy, siteV } = wk;
+  for (let g = 0; g < groups.length; g++) {
+    const { o0, o1, lift } = groups[g];
+    if (!hasPred[g]) {
+      for (let i = o0; i < o1; i++) { pred[i] = NaN; W[i] = 0; yy[i] = y[i]; siteV[i] = Infinity; }
+      continue;
+    }
+    const E = Math.exp(predX[g]), kl = kappa[lift], pv = predV[g] + READY * READY;
+    for (let i = o0; i < o1; i++) {
+      const w = ws[i];
+      pred[i] = kl * (E / w - 1);
+      if (!isBound[i]) { yy[i] = y[i]; W[i] = 1 / (v[i] + noise2); continue; }
+      const scale = kl * E / w;
+      const cavV = scale * scale * pv + noise2;
+      const mu = pred[i] - delta[i];
+      const t = truncBelow(mu, Math.sqrt(cavV), lo[i]);
+      const prec = 1 / t.v - 1 / cavV;
+      if (!(prec > 1e-4 / cavV)) { yy[i] = mu; W[i] = 0; siteV[i] = Infinity; continue; }
+      siteV[i] = 1 / prec;
+      yy[i] = siteV[i] * (t.mean / t.v - mu / cavV);
+      W[i] = 1 / (siteV[i] + noise2);
+    }
+  }
+}
+
+/** Residual noise σ_e² (b): within-session spread of fatigue-adjusted readings beyond the readings' own variance, shrunk to the prior. */
+function noisePass(groups: Group[], wk: Work): number {
+  const { y, v, isBound, delta, pred } = wk;
+  let rss = 0, dof = 0, ownV = 0;
+  for (const g of groups) {
+    let n = 0, m = 0, mm = 0, vv = 0;
+    for (let i = g.o0; i < g.o1; i++) {
+      if (isBound[i] || !Number.isFinite(pred[i])) continue;
+      const r = y[i] + delta[i] - pred[i]; // the session's shared level error drops out of the within-session spread
+      m += r; mm += r * r; n++; vv += v[i];
+    }
+    if (n < 2) continue;
+    rss += mm - m * m / n;
+    dof += n - 1; ownV += vv * (n - 1) / n;
+  }
+  const excess = dof > 0 ? Math.max(0, (rss - ownV) / dof) : 0;
+  return (NOISE.k * NOISE.sd ** 2 + dof * excess) / (NOISE.k + dof);
+}
+
 function summarize(cells: Cell[], theta: [number, number, number], lifts: Map<string, LiftCore>,
-  m: { kT: number; rho: number; N: number; sets: number; sessions: number; timed: number; habit: number; habitVar: number; hn: number; noise2: number; gap: number; drift: number; obs: Obs[] }): Core {
+  m: { kT: number; rho: number; N: number; sets: number; sessions: number; timed: number; habit: number; habitVar: number; hn: number; noise2: number; gap: number; drift: number; blocks: Block[] }): Core {
   const sd = [0, 1, 2].map((j) => Math.sqrt(cells.reduce((a, c) => a + c.w * (c.cov[j * 4] + (c.theta[j] - theta[j]) ** 2), 0)));
   // τ: posterior over the grid, summarised in logs; its 5–95 % from the cumulative weights.
   const wT = TAUS.map((t) => cells.filter((c) => c.tau === t).reduce((a, c) => a + c.w, 0));
@@ -433,7 +596,7 @@ function summarize(cells: Cell[], theta: [number, number, number], lifts: Map<st
   const rsd = Math.sqrt(cells.reduce((a, c) => a + c.w * (c.rho - rm) ** 2, 0) + (RHOS[1] - RHOS[0]) ** 2 / 12);
   // Built on first read: most refits are read for their parameters only.
   let features: Map<string, Features> | null = null;
-  const obs = m.obs;
+  const blocks = m.blocks;
   return {
     sets: m.sets, obs: m.N, sessions: m.sessions, timed: m.timed,
     aSame: { mean: theta[0], sd: sd[0] }, aCross: { mean: theta[1], sd: sd[1] }, gamma: { mean: theta[2], sd: sd[2] },
@@ -442,7 +605,12 @@ function summarize(cells: Cell[], theta: [number, number, number], lifts: Map<st
     habit: { mean: m.habit, sd: Math.sqrt(m.habitVar / (HABIT.k + m.hn)) }, bias: { mean: B_PRIOR.mean, sd: B_PRIOR.sd }, noise: Math.sqrt(m.noise2),
     gap: m.gap, drift: m.drift, lifts,
     get features() {
-      if (!features) { features = new Map(); for (const o of obs) features.set(o.e.id, { nS: o.nS, nC: o.nC, nY: o.nY, eS: o.eS, eC: o.eC }); }
+      if (!features) {
+        features = new Map();
+        for (const s of blocks) for (let i = 0; i < s.m; i++) {
+          features.set(s.e[i].id, { nS: s.nS[i], nC: s.nC[i], nY: s.nY[i], eS: s.eS.slice(i * NT, (i + 1) * NT), eC: s.eC.slice(i * NT, (i + 1) * NT) });
+        }
+      }
       return features;
     },
     fit: { tau: TAUS[m.kT], kTau: m.kT, rho: m.rho, theta: [...theta] as [number, number, number] },
@@ -455,41 +623,51 @@ function summarize(cells: Cell[], theta: [number, number, number], lifts: Map<st
  * reps–load slope) and the smoothed level with the session's own data. Picks the drift (DRIFT grid) by one-step predictive
  * likelihood with its prior (b); returns it.
  */
-function levels(liftGroups: number[][], groups: Group[], z: Float64Array, vz: Float64Array, u: Float64Array, ok: Uint8Array,
+function levels(liftGroups: number[][], steps: Steps, z: Float64Array, vz: Float64Array, u: Float64Array, ok: Uint8Array,
   predX: Float64Array, predV: Float64Array, predU: Float64Array, hasPred: Uint8Array, smX: Float64Array, smV: Float64Array): number {
-  const G = groups.length;
-  const fm = new Float64Array(G), fP = new Float64Array(G), fu = new Float64Array(G), fok = new Uint8Array(G);
+  const G = z.length;
+  const { dd, lay } = steps;
+  let fm = new Float64Array(G), fP = new Float64Array(G), fu = new Float64Array(G), fok = new Uint8Array(G);
+  let tm = new Float64Array(G), tP = new Float64Array(G), tu = new Float64Array(G), tok = new Uint8Array(G);
   const bm = new Float64Array(G), bP = new Float64Array(G), bu = new Float64Array(G), bok = new Uint8Array(G);
-  const q = (d: number, perDay: number) => perDay * Math.abs(d) + LAYOFF * LAYOFF * Math.max(0, Math.abs(d) / 7 - 2);
-  const run = (gs: number[], perDay: number, m_: Float64Array, P_: Float64Array, u_: Float64Array, ok_: Uint8Array): number => {
-    let m = 0, P = Infinity, uu = 0, prev = 0, ll = 0;
-    for (const g of gs) {
+  // One filter over a lift's sessions, forward (dir 1) or backward (dir −1); the step into a session is the process noise over
+  // the days from the session before it in that direction (perDay per day, plus the layoff term). Returns the one-step
+  // predictive log likelihood when asked (the drift search), else 0.
+  const run = (gs: number[], dir: 1 | -1, perDay: number, m_: Float64Array, P_: Float64Array, u_: Float64Array, ok_: Uint8Array, withLL: boolean): number => {
+    let m = 0, P = Infinity, uu = 0, ll = 0;
+    const n = gs.length;
+    for (let x = dir === 1 ? 0 : n - 1; x >= 0 && x < n; x += dir) {
+      const g = gs[x];
       if (Number.isFinite(P)) {
-        const Pp = P + q(groups[g].day - prev, perDay);
+        const h = dir === 1 ? g : gs[x + 1]; // the step's gap: from the session before g in this direction
+        const Pp = P + (perDay * dd[h] + lay[h]);
         m_[g] = m; P_[g] = Pp; u_[g] = uu; ok_[g] = 1;
         if (ok[g]) {
           const S = Pp + vz[g], K = Pp / S, nu = z[g] - m;
-          ll += -0.5 * (Math.log(S) + nu * nu / S);
+          if (withLL) ll += -0.5 * (Math.log(S) + nu * nu / S);
           m += K * nu; uu += K * (u[g] - uu); P = (1 - K) * Pp;
         } else P = Pp;
       } else {
         ok_[g] = 0;
         if (ok[g]) { m = z[g]; uu = u[g]; P = vz[g]; }
       }
-      prev = groups[g].day;
     }
     return ll;
   };
-  // Drift: one-step predictive likelihood of every lift's forward filter, plus the prior.
-  let bestD = 1, bestLL = -Infinity;
+  // Drift: one-step predictive likelihood of every lift's forward filter, plus the prior. The best drift's forward pass is kept.
+  let bestD = 1, bestLL = -Infinity, kept = false;
   for (let d = 0; d < DRIFT.length; d++) {
     const perDay = DRIFT[d] * DRIFT[d] / 7;
     let ll = Math.log(DRIFT_PRIOR[d]);
-    for (const gs of liftGroups) ll += run(gs, perDay, fm, fP, fu, fok);
-    if (ll > bestLL) { bestLL = ll; bestD = d; }
+    for (const gs of liftGroups) ll += run(gs, 1, perDay, tm, tP, tu, tok, true);
+    if (ll > bestLL) {
+      bestLL = ll; bestD = d; kept = true;
+      [fm, tm] = [tm, fm]; [fP, tP] = [tP, fP]; [fu, tu] = [tu, fu]; [fok, tok] = [tok, fok];
+    }
   }
   const perDay = DRIFT[bestD] * DRIFT[bestD] / 7;
-  for (const gs of liftGroups) { run(gs, perDay, fm, fP, fu, fok); run([...gs].reverse(), perDay, bm, bP, bu, bok); }
+  if (!kept) for (const gs of liftGroups) run(gs, 1, perDay, fm, fP, fu, fok, false); // no finite likelihood: the default drift
+  for (const gs of liftGroups) run(gs, -1, perDay, bm, bP, bu, bok, false);
   for (let g = 0; g < G; g++) {
     let pm = 0, pv = Infinity, pu = 0;
     if (fok[g] && bok[g]) { pv = 1 / (1 / fP[g] + 1 / bP[g]); pm = pv * (fm[g] / fP[g] + bm[g] / bP[g]); pu = pv * (fu[g] / fP[g] + bu[g] / bP[g]); }
@@ -511,83 +689,83 @@ function levels(liftGroups: number[][], groups: Group[], z: Float64Array, vz: Fl
  * cheap. The lift intercepts are profiled out. Features are linear in ρ given τ (x = q + ρ·h), so every sum is a polynomial in
  * ρ of degree ≤ 2 and each τ is accumulated once.
  */
-function fatigueGrid(fx: Flat, groups: Group[], liftGroups: number[][], kappa: Float64Array, predX: Float64Array, predV: Float64Array,
+function fatigueGrid(fx: Flat, groups: Group[], kappa: Float64Array, predX: Float64Array, predV: Float64Array,
   hasPred: Uint8Array, pred: Float64Array, yy: Float64Array, W: Float64Array, L: number, kLo = 0, kHi = NT - 1): Cell[] {
   const L0 = THETA_PRIOR.sd.map((s) => 1 / (s * s));
   // Per τ: coefficients of ρ⁰, ρ¹, ρ² for A (3×3) and of ρ⁰, ρ¹ for b (3).
   const A0 = new Float64Array(NT * 9), A1 = new Float64Array(NT * 9), A2 = new Float64Array(NT * 9);
   const b0 = new Float64Array(NT * 3), b1 = new Float64Array(NT * 3);
-  const sq = new Float64Array(3), sh = new Float64Array(3);
-  // Per lift scratch, per τ.
-  const lA = new Float64Array(NT * 3), lB = new Float64Array(NT * 3);
+  // Per lift, per τ: the sums the lift's intercept is profiled out with (rows are by session, so every lift's are kept at once).
+  const T3 = NT * 3;
+  const lA = new Float64Array(L * T3), lB = new Float64Array(L * T3), S11 = new Float64Array(L), S1z = new Float64Array(L);
   const fS = fx.eS, fC = fx.eC, fY = fx.nY, nSa = fx.nS, nCa = fx.nC, fw = fx.w;
-  for (let l = 0; l < L; l++) {
-    let S11 = 0, S1z = 0;
-    lA.fill(0); lB.fill(0);
-    for (const g of liftGroups[l]) {
-      if (!hasPred[g]) continue;
-      const { o0, o1 } = groups[g];
-      let sW = 0, sWz = 0;
-      for (let i = o0; i < o1; i++) { if (!W[i]) continue; const z = pred[i] - yy[i]; sW += W[i]; sWz += W[i] * z; }
-      if (!sW) continue;
-      // The session's shared error in reps: level prediction and readiness, at the session's mean scale κE/w.
-      let sc = 0;
-      for (let i = o0; i < o1; i++) if (W[i]) sc += W[i] / fw[i];
-      sc *= kappa[l] * Math.exp(predX[g]);
-      sc /= sW;
-      const s2 = sc * sc * (predV[g] + READY * READY);
-      const c = s2 / (1 + s2 * sW), f = 1 - c * sW;
-      S11 += sW * f; S1z += f * sWz;
-      for (let k = kLo; k <= kHi; k++) {
-        const k9 = k * 9, k3 = k * 3;
-        let sq0 = 0, sq1 = 0, sq2 = 0, sh0 = 0, sh1 = 0, bq0 = 0, bq1 = 0, bq2 = 0, bh0 = 0, bh1 = 0;
-        let a00 = 0, a01 = 0, a02 = 0, a11 = 0, a12 = 0, a22 = 0;
-        let c00 = 0, c01 = 0, c10 = 0, c02 = 0, c11 = 0, c12 = 0, c20 = 0, c21 = 0;
-        let d00 = 0, d01 = 0, d11 = 0;
-        for (let i = o0; i < o1; i++) {
-          const w = W[i];
-          if (!w) continue;
-          const z = pred[i] - yy[i];
-          const ik = i * NT + k, q0 = fS[ik], q1 = fC[ik], q2 = fY[i], h0 = nSa[i] - q0, h1 = nCa[i] - q1;
-          const wq0 = w * q0, wq1 = w * q1, wq2 = w * q2, wh0 = w * h0, wh1 = w * h1;
-          sq0 += wq0; sq1 += wq1; sq2 += wq2; sh0 += wh0; sh1 += wh1;
-          bq0 += wq0 * z; bq1 += wq1 * z; bq2 += wq2 * z; bh0 += wh0 * z; bh1 += wh1 * z;
-          a00 += wq0 * q0; a01 += wq0 * q1; a02 += wq0 * q2; a11 += wq1 * q1; a12 += wq1 * q2; a22 += wq2 * q2;
-          c00 += wq0 * h0; c01 += wq0 * h1; c10 += wq1 * h0; c11 += wq1 * h1; c02 += wh0 * q2; c12 += wh1 * q2; c20 += wq2 * h0; c21 += wq2 * h1;
-          d00 += wh0 * h0; d01 += wh0 * h1; d11 += wh1 * h1;
-        }
-        b0[k3] += bq0; b0[k3 + 1] += bq1; b0[k3 + 2] += bq2; b1[k3] += bh0; b1[k3 + 1] += bh1;
-        A0[k9] += a00; A0[k9 + 1] += a01; A0[k9 + 2] += a02; A0[k9 + 3] += a01; A0[k9 + 4] += a11; A0[k9 + 5] += a12;
-        A0[k9 + 6] += a02; A0[k9 + 7] += a12; A0[k9 + 8] += a22;
-        // A1[a][b] = Σ w(q_a h_b + h_a q_b); h2 = 0.
-        A1[k9] += 2 * c00; A1[k9 + 1] += c01 + c10; A1[k9 + 2] += c02;
-        A1[k9 + 3] += c10 + c01; A1[k9 + 4] += 2 * c11; A1[k9 + 5] += c12;
-        A1[k9 + 6] += c20; A1[k9 + 7] += c21;
-        A2[k9] += d00; A2[k9 + 1] += d01; A2[k9 + 3] += d01; A2[k9 + 4] += d11;
-        sq[0] = sq0; sq[1] = sq1; sq[2] = sq2; sh[0] = sh0; sh[1] = sh1; sh[2] = 0;
-        // Woodbury: subtract c·(ΣWx)(ΣWx)ᵀ and c·(ΣWx)(ΣWz).
-        for (let a = 0; a < 3; a++) {
-          b0[k3 + a] -= c * sq[a] * sWz; b1[k3 + a] -= c * sh[a] * sWz;
-          for (let bb = 0; bb < 3; bb++) {
-            A0[k9 + a * 3 + bb] -= c * sq[a] * sq[bb];
-            A1[k9 + a * 3 + bb] -= c * (sq[a] * sh[bb] + sh[a] * sq[bb]);
-            A2[k9 + a * 3 + bb] -= c * sh[a] * sh[bb];
-          }
-          lA[k3 + a] += f * sq[a]; lB[k3 + a] += f * sh[a];
-        }
+  // The shortfall per set, once (not once per τ).
+  const zs = new Float64Array(W.length);
+  for (let i = 0; i < W.length; i++) if (W[i]) zs[i] = pred[i] - yy[i];
+  for (let g = 0; g < groups.length; g++) {
+    if (!hasPred[g]) continue;
+    const { o0, o1, lift: l } = groups[g];
+    const lT = l * T3;
+    let sW = 0, sWz = 0;
+    for (let i = o0; i < o1; i++) { if (!W[i]) continue; sW += W[i]; sWz += W[i] * zs[i]; }
+    if (!sW) continue;
+    // The session's shared error in reps: level prediction and readiness, at the session's mean scale κE/w.
+    let sc = 0;
+    for (let i = o0; i < o1; i++) if (W[i]) sc += W[i] / fw[i];
+    sc *= kappa[l] * Math.exp(predX[g]);
+    sc /= sW;
+    const s2 = sc * sc * (predV[g] + READY * READY);
+    const c = s2 / (1 + s2 * sW), f = 1 - c * sW;
+    S11[l] += sW * f; S1z[l] += f * sWz;
+    for (let k = kLo; k <= kHi; k++) {
+      const k9 = k * 9, k3 = k * 3, lk = lT + k3;
+      let sq0 = 0, sq1 = 0, sq2 = 0, sh0 = 0, sh1 = 0, bq0 = 0, bq1 = 0, bq2 = 0, bh0 = 0, bh1 = 0;
+      let a00 = 0, a01 = 0, a02 = 0, a11 = 0, a12 = 0, a22 = 0;
+      let c00 = 0, c01 = 0, c10 = 0, c02 = 0, c11 = 0, c12 = 0, c20 = 0, c21 = 0;
+      let d00 = 0, d01 = 0, d11 = 0;
+      for (let i = o0; i < o1; i++) {
+        const w = W[i];
+        if (!w) continue;
+        const z = zs[i];
+        const ik = i * NT + k, q0 = fS[ik], q1 = fC[ik], q2 = fY[i], h0 = nSa[i] - q0, h1 = nCa[i] - q1;
+        const wq0 = w * q0, wq1 = w * q1, wq2 = w * q2, wh0 = w * h0, wh1 = w * h1;
+        sq0 += wq0; sq1 += wq1; sq2 += wq2; sh0 += wh0; sh1 += wh1;
+        bq0 += wq0 * z; bq1 += wq1 * z; bq2 += wq2 * z; bh0 += wh0 * z; bh1 += wh1 * z;
+        a00 += wq0 * q0; a01 += wq0 * q1; a02 += wq0 * q2; a11 += wq1 * q1; a12 += wq1 * q2; a22 += wq2 * q2;
+        c00 += wq0 * h0; c01 += wq0 * h1; c10 += wq1 * h0; c11 += wq1 * h1; c02 += wh0 * q2; c12 += wh1 * q2; c20 += wq2 * h0; c21 += wq2 * h1;
+        d00 += wh0 * h0; d01 += wh0 * h1; d11 += wh1 * h1;
       }
+      // Add the session's sums, then (Woodbury) subtract c·(ΣWx)(ΣWx)ᵀ and c·(ΣWx)(ΣWz). Written out: x = (q, h), h2 = 0,
+      // so the terms with h2 vanish; A1[a][b] = Σ w(q_a h_b + h_a q_b).
+      const cq0 = c * sq0, cq1 = c * sq1, cq2 = c * sq2, ch0 = c * sh0, ch1 = c * sh1;
+      b0[k3] = b0[k3] + bq0 - cq0 * sWz; b0[k3 + 1] = b0[k3 + 1] + bq1 - cq1 * sWz; b0[k3 + 2] = b0[k3 + 2] + bq2 - cq2 * sWz;
+      b1[k3] = b1[k3] + bh0 - ch0 * sWz; b1[k3 + 1] = b1[k3 + 1] + bh1 - ch1 * sWz;
+      A0[k9] = A0[k9] + a00 - cq0 * sq0; A0[k9 + 1] = A0[k9 + 1] + a01 - cq0 * sq1; A0[k9 + 2] = A0[k9 + 2] + a02 - cq0 * sq2;
+      A0[k9 + 3] = A0[k9 + 3] + a01 - cq1 * sq0; A0[k9 + 4] = A0[k9 + 4] + a11 - cq1 * sq1; A0[k9 + 5] = A0[k9 + 5] + a12 - cq1 * sq2;
+      A0[k9 + 6] = A0[k9 + 6] + a02 - cq2 * sq0; A0[k9 + 7] = A0[k9 + 7] + a12 - cq2 * sq1; A0[k9 + 8] = A0[k9 + 8] + a22 - cq2 * sq2;
+      A1[k9] = A1[k9] + 2 * c00 - c * (sq0 * sh0 + sh0 * sq0); A1[k9 + 1] = A1[k9 + 1] + (c01 + c10) - c * (sq0 * sh1 + sh0 * sq1);
+      A1[k9 + 2] = A1[k9 + 2] + c02 - c * (sh0 * sq2);
+      A1[k9 + 3] = A1[k9 + 3] + (c10 + c01) - c * (sq1 * sh0 + sh1 * sq0); A1[k9 + 4] = A1[k9 + 4] + 2 * c11 - c * (sq1 * sh1 + sh1 * sq1);
+      A1[k9 + 5] = A1[k9 + 5] + c12 - c * (sh1 * sq2);
+      A1[k9 + 6] = A1[k9 + 6] + c20 - c * (sq2 * sh0); A1[k9 + 7] = A1[k9 + 7] + c21 - c * (sq2 * sh1);
+      A2[k9] = A2[k9] + d00 - ch0 * sh0; A2[k9 + 1] = A2[k9 + 1] + d01 - ch0 * sh1;
+      A2[k9 + 3] = A2[k9 + 3] + d01 - ch1 * sh0; A2[k9 + 4] = A2[k9 + 4] + d11 - ch1 * sh1;
+      lA[lk] += f * sq0; lA[lk + 1] += f * sq1; lA[lk + 2] += f * sq2; lB[lk] += f * sh0; lB[lk + 1] += f * sh1;
     }
-    // Profile out the lift's intercept: subtract (S1x)(S1x)ᵀ/S11 and (S1x)·S1z/S11, S1x = lA + ρ·lB.
-    if (S11 > 1e-12) {
+  }
+  // Profile out each lift's intercept: subtract (S1x)(S1x)ᵀ/S11 and (S1x)·S1z/S11, S1x = lA + ρ·lB.
+  for (let l = 0; l < L; l++) {
+    const s11 = S11[l], s1z = S1z[l], lT = l * T3;
+    if (s11 > 1e-12) {
       for (let k = kLo; k <= kHi; k++) {
         for (let a = 0; a < 3; a++) {
-          const la = lA[k * 3 + a], lb = lB[k * 3 + a];
-          b0[k * 3 + a] -= la * S1z / S11; b1[k * 3 + a] -= lb * S1z / S11;
+          const la = lA[lT + k * 3 + a], lb = lB[lT + k * 3 + a];
+          b0[k * 3 + a] -= la * s1z / s11; b1[k * 3 + a] -= lb * s1z / s11;
           for (let bb = 0; bb < 3; bb++) {
-            const ma = lA[k * 3 + bb], mb = lB[k * 3 + bb];
-            A0[k * 9 + a * 3 + bb] -= la * ma / S11;
-            A1[k * 9 + a * 3 + bb] -= (la * mb + lb * ma) / S11;
-            A2[k * 9 + a * 3 + bb] -= lb * mb / S11;
+            const ma = lA[lT + k * 3 + bb], mb = lB[lT + k * 3 + bb];
+            A0[k * 9 + a * 3 + bb] -= la * ma / s11;
+            A1[k * 9 + a * 3 + bb] -= (la * mb + lb * ma) / s11;
+            A2[k * 9 + a * 3 + bb] -= lb * mb / s11;
           }
         }
       }
@@ -630,37 +808,39 @@ function fatigueGrid(fx: Flat, groups: Group[], liftGroups: number[][], kappa: F
  * biasing κ by 15–30 % on synthetic data). Then pooled toward the person and similar lifts (learn/pool) around Epley's 30 (a).
  * A lifter who never changes weight inside a session keeps the population curve, with its full prior SD.
  */
-function updateKappa(fx: Flat, kT: number, rho: number, groups: Group[], liftGroups: number[][], names: string[], kappa: Float64Array, ws: Float64Array,
+function updateKappa(fx: Flat, kT: number, rho: number, groups: Group[], names: string[], kappa: Float64Array, ws: Float64Array,
   predX: Float64Array, predU: Float64Array, hasPred: Uint8Array, pred: Float64Array, yy: Float64Array, W: Float64Array, delta: Float64Array, L: number): Float64Array {
   const items: { key: string; est: number; v: number }[] = [];
   const cur = Array.from(kappa, (k) => Math.log(k / KAPPA_PRIOR.mean));
   let rss = 0, dof = 0;
   const per: { l: number; Sdd: number; Sdr: number; vd: number }[] = [];
-  for (let l = 0; l < L; l++) {
-    // Within-session weighted regression of the residual on d = −∂pred/∂ln κ ∝ −κE(1 − u)/w, jointly
-    // with the lift's same-lift fatigue x: a back-off is usually the last set, so a lighter load and a more tired lifter arrive
-    // together, and κ alone would take the blame for a misjudged fatigue (its SD comes from the joint fit, so it says so).
-    let Sdd = 0, Sdr = 0, Srr = 0, Sdx = 0, Sxx = 0, Sxr = 0, cnt = 0;
-    for (const g of liftGroups[l]) {
-      if (!hasPred[g]) continue;
-      const { o0, o1 } = groups[g];
-      // The level itself is read through κ (ln E = ln w + ln(1 + C/κ)), so a steeper curve also lowers E: the total derivative
-      // carries (1 − u), u = C/(κ + C) from the level pass. Without it the step and its SD come out ~1.4× too small.
-      const E = Math.exp(predX[g]) * (1 - predU[g]);
-      let sW = 0, sWd = 0, sWr = 0, sWx = 0, sWdd = 0, sWdr = 0, sWrr = 0, sWdx = 0, sWxx = 0, sWxr = 0, m = 0;
-      for (let i = o0; i < o1; i++) {
-        const w = W[i];
-        if (!w) continue;
-        const d = -kappa[l] * E / ws[i];
-        const x = rho * fx.nS[i] + (1 - rho) * fx.eS[i * NT + kT];
-        const r = pred[i] - yy[i] - delta[i];
-        sW += w; sWd += w * d; sWr += w * r; sWx += w * x;
-        sWdd += w * d * d; sWdr += w * d * r; sWrr += w * r * r; sWdx += w * d * x; sWxx += w * x * x; sWxr += w * x * r; m++;
-      }
-      if (m < 2) continue;
-      Sdd += sWdd - sWd * sWd / sW; Sdr += sWdr - sWd * sWr / sW; Srr += sWrr - sWr * sWr / sW;
-      Sdx += sWdx - sWd * sWx / sW; Sxx += sWxx - sWx * sWx / sW; Sxr += sWxr - sWx * sWr / sW; cnt += m - 1;
+  // Within-session weighted regression of the residual on d = −∂pred/∂ln κ ∝ −κE(1 − u)/w, jointly with the lift's same-lift
+  // fatigue x: a back-off is usually the last set, so a lighter load and a more tired lifter arrive together, and κ alone would
+  // take the blame for a misjudged fatigue (its SD comes from the joint fit, so it says so). Summed per lift, in row order.
+  const S = new Float64Array(L * 7); // per lift: Sdd, Sdr, Srr, Sdx, Sxx, Sxr, cnt
+  for (let g = 0; g < groups.length; g++) {
+    if (!hasPred[g]) continue;
+    const { o0, o1, lift: l } = groups[g];
+    // The level itself is read through κ (ln E = ln w + ln(1 + C/κ)), so a steeper curve also lowers E: the total derivative
+    // carries (1 − u), u = C/(κ + C) from the level pass. Without it the step and its SD come out ~1.4× too small.
+    const E = Math.exp(predX[g]) * (1 - predU[g]);
+    let sW = 0, sWd = 0, sWr = 0, sWx = 0, sWdd = 0, sWdr = 0, sWrr = 0, sWdx = 0, sWxx = 0, sWxr = 0, m = 0;
+    for (let i = o0; i < o1; i++) {
+      const w = W[i];
+      if (!w) continue;
+      const d = -kappa[l] * E / ws[i];
+      const x = rho * fx.nS[i] + (1 - rho) * fx.eS[i * NT + kT];
+      const r = pred[i] - yy[i] - delta[i];
+      sW += w; sWd += w * d; sWr += w * r; sWx += w * x;
+      sWdd += w * d * d; sWdr += w * d * r; sWrr += w * r * r; sWdx += w * d * x; sWxx += w * x * x; sWxr += w * x * r; m++;
     }
+    if (m < 2) continue;
+    const l7 = l * 7;
+    S[l7] += sWdd - sWd * sWd / sW; S[l7 + 1] += sWdr - sWd * sWr / sW; S[l7 + 2] += sWrr - sWr * sWr / sW;
+    S[l7 + 3] += sWdx - sWd * sWx / sW; S[l7 + 4] += sWxx - sWx * sWx / sW; S[l7 + 5] += sWxr - sWx * sWr / sW; S[l7 + 6] += m - 1;
+  }
+  for (let l = 0; l < L; l++) {
+    const l7 = l * 7, Sdd = S[l7], Sdr = S[l7 + 1], Srr = S[l7 + 2], Sdx = S[l7 + 3], Sxx = S[l7 + 4], Sxr = S[l7 + 5], cnt = S[l7 + 6];
     if (!(Sdd > 1e-6)) continue;
     // 2×2 solve; with no fatigue contrast (Sxx ≈ 0) it is the one-regressor fit.
     const det = Sdd * Sxx - Sdx * Sdx;
@@ -687,7 +867,7 @@ function updateKappa(fx: Flat, kT: number, rho: number, groups: Group[], liftGro
 }
 
 /** Per-lift A_same (b): within-session contrasts at the person's (τ, ρ), then pooled (learn/pool) around the person's value. */
-function liftASame(fx: Flat, groups: Group[], liftGroups: number[][], names: string[], cells: Cell[], kT: number, kR: number,
+function liftASame(fx: Flat, groups: Group[], names: string[], cells: Cell[], kT: number, kR: number,
   theta: [number, number, number], pred: Float64Array, yy: Float64Array, W: Float64Array, L: number,
   kappa: Float64Array, predX: Float64Array, hasPred: Uint8Array): { post: Posterior[] } {
   const rho = RHOS[kR];
@@ -695,26 +875,28 @@ function liftASame(fx: Flat, groups: Group[], liftGroups: number[][], names: str
   let rss = 0, dof = 0;
   const per: { est: number; v: number; l: number }[] = [];
   const rs = (i: number) => pred[i] - yy[i] - theta[1] * (rho * fx.nC[i] + (1 - rho) * fx.eC[i * NT + kT]) - theta[2] * fx.nY[i];
-  for (let l = 0; l < L; l++) {
-    // Weighted within-session regression of the residual on the same-lift fatigue x, jointly with the load term d = −κE/w (see
-    // updateKappa: a back-off is usually the last set, so fatigue and load move together). Centred per session.
-    let Sxx = 0, Sxr = 0, Sdd = 0, Sdr = 0, Sdx = 0, Srr = 0, cnt = 0;
-    for (const g of liftGroups[l]) {
-      const { o0, o1 } = groups[g];
-      if (o1 - o0 < 2 || !hasPred[g]) continue;
-      const E = Math.exp(predX[g]);
-      let sw = 0, sx = 0, sr = 0, sd = 0, sxx = 0, sxr = 0, srr = 0, sdd = 0, sdr = 0, sdx = 0, m = 0;
-      for (let i = o0; i < o1; i++) {
-        const w = W[i];
-        if (!(w > 0) || !Number.isFinite(pred[i])) continue;
-        const x = rho * fx.nS[i] + (1 - rho) * fx.eS[i * NT + kT], r = rs(i), d = -kappa[l] * E / fx.w[i];
-        sw += w; sx += w * x; sr += w * r; sd += w * d;
-        sxx += w * x * x; sxr += w * x * r; srr += w * r * r; sdd += w * d * d; sdr += w * d * r; sdx += w * d * x; m++;
-      }
-      if (m < 2) continue;
-      Sxx += sxx - sx * sx / sw; Sxr += sxr - sx * sr / sw; Srr += srr - sr * sr / sw;
-      Sdd += sdd - sd * sd / sw; Sdr += sdr - sd * sr / sw; Sdx += sdx - sd * sx / sw; cnt += m - 1;
+  // Weighted within-session regression of the residual on the same-lift fatigue x, jointly with the load term d = −κE/w (see
+  // updateKappa: a back-off is usually the last set, so fatigue and load move together). Centred per session; summed per lift.
+  const S = new Float64Array(L * 7); // per lift: Sxx, Sxr, Sdd, Sdr, Sdx, Srr, cnt
+  for (let g = 0; g < groups.length; g++) {
+    const { o0, o1, lift: l } = groups[g];
+    if (o1 - o0 < 2 || !hasPred[g]) continue;
+    const E = Math.exp(predX[g]);
+    let sw = 0, sx = 0, sr = 0, sd = 0, sxx = 0, sxr = 0, srr = 0, sdd = 0, sdr = 0, sdx = 0, m = 0;
+    for (let i = o0; i < o1; i++) {
+      const w = W[i];
+      if (!(w > 0) || !Number.isFinite(pred[i])) continue;
+      const x = rho * fx.nS[i] + (1 - rho) * fx.eS[i * NT + kT], r = rs(i), d = -kappa[l] * E / fx.w[i];
+      sw += w; sx += w * x; sr += w * r; sd += w * d;
+      sxx += w * x * x; sxr += w * x * r; srr += w * r * r; sdd += w * d * d; sdr += w * d * r; sdx += w * d * x; m++;
     }
+    if (m < 2) continue;
+    const l7 = l * 7;
+    S[l7] += sxx - sx * sx / sw; S[l7 + 1] += sxr - sx * sr / sw; S[l7 + 5] += srr - sr * sr / sw;
+    S[l7 + 2] += sdd - sd * sd / sw; S[l7 + 3] += sdr - sd * sr / sw; S[l7 + 4] += sdx - sd * sx / sw; S[l7 + 6] += m - 1;
+  }
+  for (let l = 0; l < L; l++) {
+    const l7 = l * 7, Sxx = S[l7], Sxr = S[l7 + 1], Sdd = S[l7 + 2], Sdr = S[l7 + 3], Sdx = S[l7 + 4], Srr = S[l7 + 5], cnt = S[l7 + 6];
     if (!(Sxx > 1e-9)) continue;
     const det = Sdd * Sxx - Sdx * Sdx;
     const joint = Sdd > 1e-9 && det > 1e-9 * Sdd * Sxx;
