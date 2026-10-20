@@ -5,7 +5,7 @@ import { activeProfileDb } from '../db/db';
 import { fmtClock, fmtMiles } from '../domain/cardio';
 import { dayKinds, latestSession, sessionLabel, statusLength, STATUS_MAX } from '../domain/crew';
 import { friendPrs, goalWeek, KIND_SHORT, liveSince, ringSets, sessionCard, usualSession, type Card, type CardLift, type GoalWeek } from '../domain/feed';
-import { fmtWeight } from '../domain/format';
+import { fmtAdded } from '../domain/format';
 import { PRESETS, shortAgo, type InboxDoc, type PresetKey } from '../domain/messages';
 import { prIds } from '../domain/records';
 import type { SetEntry } from '../domain/types';
@@ -181,7 +181,7 @@ function RailPerson({ p, draw, delay, onOpen }: { p: Person; draw: boolean; dela
   );
 }
 
-export const topText = (l: CardLift) => (l.seconds != null ? fmtClock(l.seconds) : `${l.weight === 0 ? 'BW' : fmtWeight(l.weight)} × ${l.reps ?? '?'}${l.hold ? 's' : ''}`);
+export const topText = (l: CardLift) => (l.seconds != null ? fmtClock(l.seconds) : `${fmtAdded(l.weight)} × ${l.reps ?? '?'}${l.hold ? 's' : ''}`);
 export const subText = (l: CardLift) => (l.seconds != null ? (l.miles != null ? `${fmtMiles(l.miles)} mi` : '') : `${l.sets} set${l.sets === 1 ? '' : 's'}`);
 
 /** One person's session today: who, when, the kinds as a bar, each lift's top set, and reactions (yours to send, or theirs to you). */

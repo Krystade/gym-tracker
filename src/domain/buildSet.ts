@@ -9,12 +9,13 @@ export interface NewSetInput { date: string; exercise: string; weight: number; r
   tags?: string[];
 }
 
-/** partial and bodyweight follow from the numbers, so an edit that fills in reps or adds weight clears them. */
+/** partial and bodyweight follow from the numbers, so an edit that fills in reps or adds weight clears them. A set with help (a
+ * negative weight, item 14) is a bodyweight set too: nothing in it is external load. */
 export function derivedFlags(flags: Flag[], weight: number, reps: number | null): Flag[] {
   // A cardio bout has no weight or reps by design: neither bodyweight nor partial.
   if (flags.includes('cardio')) return flags.filter((f) => f !== 'partial' && f !== 'bodyweight');
   const rest = flags.filter((f) => f !== 'partial' && f !== 'bodyweight');
-  return [...(weight === 0 ? (['bodyweight'] as Flag[]) : []), ...rest, ...(reps === null ? (['partial'] as Flag[]) : [])];
+  return [...(weight <= 0 ? (['bodyweight'] as Flag[]) : []), ...rest, ...(reps === null ? (['partial'] as Flag[]) : [])];
 }
 
 export const buildAppSet = (existing: SetEntry[], input: NewSetInput, now: Date): SetEntry =>

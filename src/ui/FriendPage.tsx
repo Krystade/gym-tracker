@@ -4,7 +4,7 @@ import { readFriend, type Friend, type FriendData, type FriendNews } from '../cl
 import { addDays, weekStart } from '../domain/analytics';
 import { latestSession, sessionLabel } from '../domain/crew';
 import { board, friendPrs, goalWeek, KIND_SHORT, liveSince, recentPrs, ringSets, sessionCard, sharedChanges, usualSession, weekStreak, type Card, type Tile } from '../domain/feed';
-import { fmtWeight } from '../domain/format';
+import { fmtAdded } from '../domain/format';
 import type { PresetKey } from '../domain/messages';
 import type { SetEntry } from '../domain/types';
 import { useMinute } from '../state/clock';
@@ -134,7 +134,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep 
             <ul className="fd-lifts">
               {v.recent.map((e) => (
                 <li key={e.id}><span className="fd-ln"><span className="fd-lname">{e.exercise}</span></span>
-                  <span className="fd-top">{e.weight === 0 ? 'BW' : fmtWeight(e.weight)} × {e.reps ?? '?'}<span className="fd-n">{sessionLabel(e.date, today)}</span></span></li>
+                  <span className="fd-top">{fmtAdded(e.weight)} × {e.reps ?? '?'}<span className="fd-n">{sessionLabel(e.date, today)}</span></span></li>
               ))}
             </ul>
           </section>

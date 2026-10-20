@@ -3,7 +3,7 @@ import { activeProfileDb } from '../db/db';
 import { addDays, streak, weekStart, weeklySummary } from '../domain/analytics';
 import { dayKinds } from '../domain/crew';
 import { behindMuscles, goalWeek, liftTrend, milestone, prCard, prsBetween, streakNudge, topLifts, weekSets, type Trend } from '../domain/feed';
-import { fmtWeight, plural } from '../domain/format';
+import { fmtAdded, plural } from '../domain/format';
 import type { Profile } from '../domain/profile';
 import type { SetEntry } from '../domain/types';
 import { getPref, setPref } from '../state/prefs';
@@ -17,7 +17,7 @@ import { Ring } from './Ring';
 const fmtDay = (date: string, today: string) => (date === today ? 'today' : date > addDays(today, -7)
   ? new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' })
   : new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
-const setText = (e: SetEntry) => `${e.weight === 0 ? 'BW' : fmtWeight(e.weight)} × ${e.reps ?? '?'}`;
+const setText = (e: SetEntry) => `${fmtAdded(e.weight)} × ${e.reps ?? '?'}`;
 
 /** The week's ring: a segment per session (its kind), out of your goal; sets against last week by the same day; PRs; the streak. */
 export function WeekRing({ entries, profile, today, program }: { entries: SetEntry[]; profile: Profile; today: string; program?: { done: number; planned: number } | null }) {

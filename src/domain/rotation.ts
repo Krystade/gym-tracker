@@ -10,6 +10,7 @@ import { coreBefore } from './learn';
 import { aheadVar, dayOf, KAPPA_PRIOR, type Core } from './learn/capacity';
 import { floorRung, ladderOf } from './learn/ladder';
 import { strengthOf } from './learn/strength';
+import { addedLoad, bodyShare } from './learn/bodyweight';
 import { painRisk } from './learn/pain';
 import { flatness, REACCLIMATION, runIndex, type Flatness } from './learn/trend';
 import { painShaped, spillOver } from './painPlan';
@@ -57,8 +58,10 @@ const WINDOW_DAYS = 42;
 const STALE_DAYS = 42;
 
 const bestE1rm = (sets: SetEntry[]) => Math.max(-Infinity, ...sets.map(e1rm).filter((v): v is number => v != null));
-const topWeight = (sets: SetEntry[]) => Math.max(...sets.map((s) => s.weight));
-const repsAt = (sets: SetEntry[], w: number) => sets.filter((s) => s.weight === w).map((s) => s.reps as number).sort((a, b) => b - a);
+// Weights as added to the body (item 14: learn/bodyweight addedLoad): the same as logged, but help kept in an older import's note
+// is less than bodyweight, not bodyweight.
+const topWeight = (sets: SetEntry[]) => Math.max(...sets.map(addedLoad));
+const repsAt = (sets: SetEntry[], w: number) => sets.filter((s) => addedLoad(s) === w).map((s) => s.reps as number).sort((a, b) => b - a);
 const sum = (xs: number[], k: number) => xs.slice(0, k).reduce((a, b) => a + b, 0);
 
 /**
@@ -267,6 +270,8 @@ function catalogSpread(core: Core): number {
  * learned ladder (a typed increment wins). Null when there's no ratio, or the new lift was trained lately.
  */
 export function carryOver(entries: SetEntry[], from: string, to: string, today: string, st: ExerciseSettings): Carry | null {
+  // A bodyweight lift's load is its share of his body plus what's added (item 14): without his body weight there's no lb to aim at.
+  if (bodyShare(to) != null) return null;
   const core = coreBefore(entries, addDays(today, 1));
   const now = core && strengthOf(core, from, today);
   if (!core || !now) return null;

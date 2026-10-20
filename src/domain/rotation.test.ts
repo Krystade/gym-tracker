@@ -26,6 +26,8 @@ const PLATEAU: [string, string[]][] = [
   ['2026-09-29', ['185x8', '185x8', '185x8']],
 ];
 const TODAY = '2026-10-01';
+/** The same plateau at bodyweight (item 14: a weighted set of a bodyweight lift can't be read without his body weight). */
+const BW_PLATEAU = PLATEAU.map(([d, s]): [string, string[]] => [d, s.map((x) => `0x${x.split('x')[1]}`)]);
 
 describe('patterns', () => {
   it('every variation is a catalog lift with its gear known, in exactly one pattern', () => {
@@ -190,9 +192,10 @@ describe('stall (item 12: the fatigue-adjusted level reads flat)', () => {
     expect(stall(log('Bench Press', PLATEAU), 'Bench Press', '2026-10-20')).not.toBeNull();
     expect(stall(log('Bench Press', PLATEAU), 'Bench Press', '2026-11-11')).toBeNull();
   });
-  it('bodyweight lifts have no level yet and holds never stall', () => {
-    const pull = log('Pull-up', PLATEAU.map(([d, s]) => [d, s.map((x) => `0x${x.split('x')[1]}`)]));
-    expect(stall(pull, 'Pull-up', TODAY)).toBeNull();
+  it('a bodyweight lift stalls on its level in body mass (item 14); with weight added it has none; holds never stall', () => {
+    expect(stall(log('Pull-up', BW_PLATEAU), 'Pull-up', TODAY)).toMatchObject({ since: '2026-09-08', sessions: 3, last: '2026-09-29' });
+    const weighted = log('Pull-up', PLATEAU.map(([d, s]) => [d, s.map((x) => `25x${x.split('x')[1]}`)]));
+    expect(stall(weighted, 'Pull-up', TODAY)).toBeNull();
     const plank = log('Plank', PLATEAU.map(([d]) => [d, ['0x40', '0x40']]));
     expect(stall(plank, 'Plank', TODAY)).toBeNull();
   });
@@ -320,7 +323,8 @@ describe('rotation', () => {
     expect(rotation(log('Machine Row', PLATEAU), 'Machine Row', TODAY, { available: gym })).toMatchObject({ to: 'Seated Cable Row', sameMuscle: false, sameBias: false });
   });
   it('names what held: the muscles of a two-muscle bias, else the main muscle, else the closest', () => {
-    const r = (lift: string, available?: string[]) => rotationReason(rotation(log(lift, PLATEAU), lift, TODAY, available ? { available: new Set(available) } : {})!);
+    const r = (lift: string, available?: string[]) =>
+      rotationReason(rotation(log(lift, lift === 'Chin-up' ? BW_PLATEAU : PLATEAU), lift, TODAY, available ? { available: new Set(available) } : {})!);
     expect(r('Chin-up')).toBe('same pattern and muscles (lats and biceps)');
     expect(r('Bench Press')).toBe('same pattern and main muscle (chest)');
     expect(r('Lat Pulldown')).toBe('same pattern and main muscle (lats)');
@@ -328,9 +332,9 @@ describe('rotation', () => {
     expect(r('Machine Row', ['Machine Row', 'Seated Cable Row'])).toBe('same pattern, the closest muscles this gym has');
   });
   it('says whether the bias held, as well as the main muscle', () => {
-    expect(rotation(log('Chin-up', PLATEAU), 'Chin-up', TODAY))
+    expect(rotation(log('Chin-up', BW_PLATEAU), 'Chin-up', TODAY))
       .toMatchObject({ to: 'Close-Grip Lat Pulldown', muscle: 'Lats', bias: ['Lats', 'Biceps'], sameMuscle: true, sameBias: true });
-    expect(rotation(log('Chin-up', PLATEAU), 'Chin-up', TODAY, { available: new Set(['Chin-up', 'Lat Pulldown']) }))
+    expect(rotation(log('Chin-up', BW_PLATEAU), 'Chin-up', TODAY, { available: new Set(['Chin-up', 'Lat Pulldown']) }))
       .toMatchObject({ to: 'Lat Pulldown', sameMuscle: true, sameBias: false });
   });
 });
@@ -372,6 +376,14 @@ describe('carryOver', () => {
     expect(carryOver(bench, 'Bench Press', 'Flat DB Press', TODAY, defaultSettings('Flat DB Press'))).toBeNull();
     expect(carryOver(bench, 'Bench Press', 'Machine Chest Press', TODAY, defaultSettings('Machine Chest Press'))).toBeNull();
     expect(carryOver(log('Pull-up', [['2026-09-29', ['0x10']]]), 'Pull-up', 'Lat Pulldown', TODAY, defaultSettings('Lat Pulldown'))).toBeNull();
+    // Item 14: a bodyweight lift's level is in body mass, not lb: nothing carries either way, even with a history of both.
+    const pulls = [...log('Pull-up', [['2026-05-03', ['0x10', '0x9']], ...BW_PLATEAU]), ...log('Lat Pulldown', [['2026-05-01', ['150x10']], ['2026-05-05', ['155x9']]])];
+    expect(carryOver(pulls, 'Pull-up', 'Lat Pulldown', TODAY, defaultSettings('Lat Pulldown'))).toBeNull();
+    const downs = [...log('Lat Pulldown', PLATEAU), ...log('Pull-up', [['2026-05-01', ['0x10', '0x9']], ['2026-05-04', ['0x10', '0x10']]]),
+      ...log('Lat Pulldown', [['2026-05-02', ['150x10']], ['2026-05-05', ['155x9']]])];
+    expect(carryOver(downs, 'Lat Pulldown', 'Pull-up', TODAY, defaultSettings('Pull-up'))).toBeNull();
+    // Not even on a fine step, where a ratio of lb to body mass would come out as a pound or so to add.
+    expect(carryOver(downs, 'Lat Pulldown', 'Pull-up', TODAY, { ...defaultSettings('Pull-up'), increment: 0.5 })).toBeNull();
     const recent = [...bench, ...log('Incline Bench Press', [['2026-08-25', ['135x10']]])];
     expect(carryOver(recent, 'Bench Press', 'Incline Bench Press', TODAY, st)).toBeNull();
     // With machines, your own history of both still gives a ratio.

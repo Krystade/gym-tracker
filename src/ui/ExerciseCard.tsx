@@ -18,6 +18,8 @@ import { hhmm, paces, restFor, suggestTime, switchFor } from '../domain/timing';
 import { andList } from '../domain/superset';
 import { startRest } from './RestTimer';
 import { localDate } from '../domain/ids';
+import { addDays } from '../domain/analytics';
+import { bodyShare } from '../domain/learn/bodyweight';
 import { gearOf } from '../domain/equipment';
 import { prSetIds } from '../domain/summary';
 import { fmtPerSide } from '../domain/plates';
@@ -71,7 +73,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   // With several sets and cards below, Save sits off-screen; 'nearest' moves nothing when it is already in view.
   useEffect(() => { if (editing) editBox.current?.scrollIntoView({ block: 'nearest' }); }, [editing?.id]);
   const last = lastSession(store.entries, exercise, date);
-  const best = useMemo(() => records(store.entries, exercise).get('e1rm'), [store.entries, exercise]);
+  // Item 14: a bodyweight lift's e1RM would be of the weight added alone, which isn't its load: none shown.
+  const best = useMemo(() => (bodyShare(exercise) != null ? undefined : records(store.entries, exercise).get('e1rm')), [store.entries, exercise]);
   // The heaviest working set ever: a weight far above it is more likely a typo than a jump.
   // A lift swapped in with no history of its own is checked against the one it replaces.
   const heaviest = useMemo(() => {
@@ -143,6 +146,11 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   // Sharp pain on this lift today (over 5/10, past the acceptable zone: item 08, a): stop it for today; the plan's lifts left
   // that don't load that region are offered.
   const sharp = useMemo(() => { const p = painToday(store.entries, exercise, date); return p?.zone === 3 ? p : null; }, [store.entries, exercise, date]);
+  // What sharp pain today does to next time, as the next target will say it: lighter, more help, or a rep fewer a set (item 14).
+  const eased = useMemo(() => {
+    const t = sharp ? nextTarget(store.entries, exercise, st, addDays(date, 1), plannedSets) : null;
+    return t?.kind !== 'ease' ? null : t.easeBy === 'help' ? ' Next time starts with a step more help.' : t.easeBy === 'reps' ? ' Next time starts a rep down on each set.' : ' Next time starts a step lighter.';
+  }, [sharp, store.entries, exercise, st, date, plannedSets]);
   const away = sharp ? left.filter((ex) => !sameExercise(ex, exercise) && !loadsRegion(ex, sharp.region)) : [];
   const complete = plannedSets != null && plannedSets > 0 && working.length >= plannedSets;
   // The plan sent you here: open a folded card, but a card that isn't finished has nothing to open, so don't pin it open.
@@ -224,7 +232,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       {pr && <p role="status" className="pr">{pr}</p>}
       {sharp && !editing && (
         <div className="pain-stop" role="status">
-          <p><b>Sharp pain: stop {exercise} for today.</b>{working.some((x) => x.weight > 0) && ' Next time starts a step lighter.'}</p>
+          <p><b>Sharp pain: stop {exercise} for today.</b>{eased}</p>
           {onGo && away.length > 0 && (
             <div className="chips left-row" role="group" aria-label={`Left without your ${sharp.region}`}>
               <span className="chip-label">Left</span>

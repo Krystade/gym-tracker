@@ -2,6 +2,7 @@ import { liftKey } from '../ids';
 import { liftSets, perLog } from '../stats';
 import type { SetEntry } from '../types';
 import { tagsOf, type Implement } from './tags';
+import { addedLoad, bodyShare } from './bodyweight';
 
 // Item 01: the weights each lift can actually be loaded with, learned from the weights logged (01-weight-jumps §4.1).
 //
@@ -63,12 +64,21 @@ function bestGrid(counts: ArrayLike<number>): Grid {
 
 /**
  * The levels a lift's grid is pooled through, broadest first: shared gear, the person's (every gym) → that gym's → the lift
- * at that gym; a machine, all the person's machines → this lift (every gym) → this lift at that gym.
+ * at that gym; a machine, all the person's machines → this lift (every gym) → this lift at that gym. `assist` (item 14): the
+ * help on a bodyweight lift, an assisted machine's counterweight stack (a: a selectorized stack of its own, like any machine),
+ * pooled the same way through the person's assisted lifts, apart from his other machines so their ladders stay as they were.
  */
-function chain(exercise: string, gym: string): string[] {
-  const key = liftKey(exercise), imp = tagsOf(exercise).imp, name = (imp && SHARED[imp]) ?? null;
+function chain(exercise: string, gym: string, assist = false): string[] {
+  const key = liftKey(exercise);
+  if (assist) return ['*|assist', `*|assist:${key}`, `${gym}|assist:${key}`];
+  const imp = tagsOf(exercise).imp, name = (imp && SHARED[imp]) ?? null;
   return name ? [`*|${name}`, `${gym}|${name}`, `${gym}|lift:${key}`] : ['*|machine', `*|lift:${key}`, `${gym}|lift:${key}`];
 }
+/** The weight a set loaded on its gear: its weight, or the help on an assisted bodyweight set (item 14), with which of the two. */
+const loaded = (e: SetEntry): { w: number; assist: boolean } => {
+  const a = bodyShare(e.exercise) != null ? addedLoad(e) : e.weight;
+  return a < 0 ? { w: -a, assist: true } : { w: e.weight, assist: false };
+};
 
 /** Session-distinct weights' residue counts, once per log, under every level of every lift's chain. */
 const pools = perLog((entries) => {
@@ -76,16 +86,18 @@ const pools = perLog((entries) => {
   const distinct = new Map<string, Set<number>>();
   const seen = new Set<string>();
   for (const e of entries) {
-    if (!(e.weight > 0) || e.flags.includes('cardio') || e.flags.includes('double_pulley')) continue;
+    if (e.flags.includes('cardio') || e.flags.includes('double_pulley')) continue;
+    const { w, assist } = loaded(e);
+    if (!(w > 0)) continue;
     const gym = e.gym ?? '';
-    const id = `${gym}|${liftKey(e.exercise)}|${e.date}|${e.weight}`;
+    const id = `${gym}|${liftKey(e.exercise)}|${e.date}|${assist ? -w : w}`;
     if (seen.has(id)) continue;
     seen.add(id);
-    const r = residue(e.weight);
+    const r = residue(w);
     if (r == null) continue;
-    for (const k of chain(e.exercise, gym)) {
+    for (const k of chain(e.exercise, gym, assist)) {
       let c = out.get(k); if (!c) out.set(k, c = new Float64Array(NR)); c[r]++;
-      let d = distinct.get(k); if (!d) distinct.set(k, d = new Set()); d.add(e.weight);
+      let d = distinct.get(k); if (!d) distinct.set(k, d = new Set()); d.add(w);
     }
   }
   return { out, distinct };
@@ -98,15 +110,19 @@ const gymOf = (entries: readonly SetEntry[], exercise: string): string => {
 };
 const total = (c: ArrayLike<number>) => { let n = 0; for (let r = 0; r < NR; r++) n += c[r]; return n; };
 
-/** This lift's ladder at `gym` (default: where it was last done); null when nothing in its chain has a logged weight. */
-export function ladderOf(entries: readonly SetEntry[], exercise: string, gym = gymOf(entries, exercise)): Ladder | null {
+/**
+ * This lift's ladder at `gym` (default: where it was last done); null when nothing in its chain has a logged weight. `assist`
+ * (item 14): the ladder of the help on a bodyweight lift (lb of help, positive), from the help he has logged on it.
+ */
+export function ladderOf(entries: readonly SetEntry[], exercise: string, gym = gymOf(entries, exercise), assist = false): Ladder | null {
+  if (assist && bodyShare(exercise) == null) return null; // help is only read on a lift whose load is the body
   const imp = tagsOf(exercise).imp;
-  const name = (imp && SHARED[imp]) ?? null;
-  const known = [...new Set(liftSets(entries, exercise)
-    .filter((e) => e.weight > 0 && (e.gym ?? '') === gym && !e.flags.includes('double_pulley') && residue(e.weight) != null).map((e) => e.weight))].sort((a, b) => a - b);
+  const name = assist ? null : (imp && SHARED[imp]) ?? null;
+  const known = [...new Set(liftSets(entries, exercise).filter((e) => (e.gym ?? '') === gym && !e.flags.includes('double_pulley'))
+    .map(loaded).filter((x) => x.assist === assist && x.w > 0 && residue(x.w) != null).map((x) => x.w))].sort((a, b) => a - b);
   // A level with one distinct weight says nothing about the step (any grid through it fits): it has no voice.
   const { out, distinct } = pools(entries);
-  const counts = chain(exercise, gym).map((k) => ((distinct.get(k)?.size ?? 0) >= 2 ? out.get(k) : undefined));
+  const counts = chain(exercise, gym, assist).map((k) => ((distinct.get(k)?.size ?? 0) >= 2 ? out.get(k) : undefined));
   let g: Grid | null = null, at = -1, up: Float64Array | null = null;
   for (let i = 0; i < counts.length; i++) {
     const own = counts[i];

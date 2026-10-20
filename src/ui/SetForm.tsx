@@ -12,6 +12,8 @@ import { TagEditor } from './TagEditor';
 import { fmtPerSide } from '../domain/plates';
 import { useMinute } from '../state/clock';
 import { Input } from './Field';
+import { bodyShare } from '../domain/learn/bodyweight';
+import { fmtWeight } from '../domain/format';
 
 export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3; at?: string | null; tags?: string[] }
 const SEVERITY: [1 | 2 | 3, string][] = [[1, 'Mild'], [2, 'Moderate'], [3, 'Sharp']];
@@ -95,9 +97,11 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   const latest = whenOpen ? when?.max?.() ?? null : null;
   const tooLate = !!time && time !== time0 && latest != null && time > latest;
   const unit = hold ? 'Seconds' : 'Reps';
+  // Item 14: a lift whose load is the body takes help (an assisted machine, a band) as a weight below 0, and weight added above it.
+  const body = !hold && bodyShare(exercise) != null;
   // Why Add set is off, said under the fields; a time later than now explains itself by the time field.
-  const problem = weight.trim() === '' ? 'Enter a weight (0 for bodyweight)'
-    : !Number.isFinite(w) || w < 0 ? 'Weight must be a number'
+  const problem = weight.trim() === '' ? (body ? 'Enter a weight (0 for bodyweight, below 0 for help)' : 'Enter a weight (0 for bodyweight)')
+    : !Number.isFinite(w) || (w < 0 && !body) ? 'Weight must be a number'
     : r !== null && (!Number.isInteger(r) || r < 0) ? `${unit} must be a whole number`
     : r !== null && r >= 1000 ? `${unit} go up to 999`
     : w === 0 && r === 0 ? `A set needs a weight or ${unit.toLowerCase()}`
@@ -145,10 +149,11 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   return (
     <form className="set-form" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       <div className="steppers">
-        <Stepper label="Weight" value={weight} onChange={(v) => { setLoud(true); touch(setWeight)(v); }} step={weightStep} mode="decimal" />
+        <Stepper label="Weight" value={weight} onChange={(v) => { setLoud(true); touch(setWeight)(v); }} step={weightStep} mode="decimal" min={body ? -Infinity : 0} />
         <Stepper label={unit} value={reps} onChange={touch(setReps)} step={hold ? 5 : 1} mode="numeric" />
       </div>
       {!problem && fmtPerSide(w, exercise) && <p className="small muted plates" aria-label="Per side">{fmtPerSide(w, exercise)}</p>}
+      {!problem && body && w !== 0 && <p className="small muted plates" aria-label="Load">{w < 0 ? `BW − ${fmtWeight(-w)} lb: help` : `BW + ${fmtWeight(w)} lb`}</p>}
       {problem && <p role="status" className={quiet ? 'small muted' : 'small err'}>{problem}</p>}
       {!problem && typo && asked === w && <p role="status" className="small err">{weight} lb is {Math.round(w / heaviest)}× your best: tap {submitLabel.split(' ·')[0]} again to keep it</p>}
       {/* Reps in reserve doesn't apply to a timed hold. */}

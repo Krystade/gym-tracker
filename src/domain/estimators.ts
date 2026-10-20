@@ -3,9 +3,9 @@ import { isHoldLift } from './care';
 import { liftKey } from './ids';
 import { coreBefore, testSd } from './learn';
 import { floorRung, ladderOf, nextRung } from './learn/ladder';
-import { levelSeries, strengthOf, weightFor, type Strength } from './learn/strength';
+import { bodyRepsSeries, bodyStrengthOf, levelSeries, strengthOf, weightFor, type BodyStrength, type Strength } from './learn/strength';
 import { REACCLIMATION, runIndex } from './learn/trend';
-import { dayOf } from './learn/capacity';
+import { dayOf, MAX_REPS } from './learn/capacity';
 import { painRisk, zoneOf } from './learn/pain';
 import { painGate } from './painPlan';
 import { liftSets, type SeriesPoint } from './stats';
@@ -48,6 +48,18 @@ export function strength(entries: readonly SetEntry[], exercise: string, date: s
   return core && strengthOf(core, exercise, date);
 }
 
+/** Item 14: a bodyweight lift's level on `date`, in body mass, read as the reps it leaves fresh at bodyweight; null without one. */
+export function bodyStrength(entries: readonly SetEntry[], exercise: string, date: string): BodyStrength | null {
+  const core = coreBefore(entries, addDays(date, 1));
+  return core && bodyStrengthOf(core, exercise, date);
+}
+
+/** Item 14: those fresh reps at bodyweight at each session up to `date`, oldest first, as chart points (the value in `e1rm`). */
+export function bodyRepsPoints(entries: readonly SetEntry[], exercise: string, date: string): SeriesPoint[] {
+  const core = coreBefore(entries, addDays(date, 1));
+  return core ? bodyRepsSeries(core, exercise).map((p) => ({ date: p.date, e1rm: p.reps, pr: false })) : [];
+}
+
 /** The lift's level at each session up to `date`, oldest first, as chart points (no records: a level isn't a set); null without one. */
 export function strengthSeries(entries: readonly SetEntry[], exercise: string, date: string): SeriesPoint[] | null {
   const core = coreBefore(entries, addDays(date, 1));
@@ -80,8 +92,9 @@ export const painFactor = (p: number): number => (p < 0.5 ? 1 / Math.sqrt(1 - 2 
  * day, grown by drift and layoffs, with the systematic SD only tests fix: learn/strength) is above what one test reads the level
  * to (σ_test: learn testSd), raised for the chance the test hurts (painFactor). `weight`: the loadable weight for TEST_REPS to failure; `jump`: today's target is an increase, and
  * its first set at the new weight is the test (no extra set). `after`: u once the test is in (u·σ/√(u² + σ²)).
+ * `body` (item 14, a bodyweight lift): the test is a set at bodyweight (`weight` 0) to failure, and its uncertainty in reps.
  */
-export interface TestDue { weight: number; reps: number; u: number; after: number; jump: boolean }
+export interface TestDue { weight: number; reps: number; u: number; after: number; jump: boolean; body?: { u: number; after: number } }
 /** `st`: the lift's settings (a typed increment wins over the learned ladder); `target`: today's target, when known. */
 export function testDue(entries: readonly SetEntry[], exercise: string, today: string, st?: { increment: number },
   target?: { kind: string; weight: number | null } | null): TestDue | null {
@@ -95,10 +108,22 @@ export function testDue(entries: readonly SetEntry[], exercise: string, today: s
   const days = [...new Set(liftSets(entries, exercise).filter((e) => e.date < today && e.reps != null && !e.flags.includes('warmup')).map((e) => e.date))].sort().map(dayOf);
   if (runIndex([...days, dayOf(today)]).at(-1)! < REACCLIMATION) return null;
   const core = coreBefore(entries, addDays(today, 1));
-  const s = core && strengthOf(core, exercise, today);
-  if (!core || !s) return null;
-  const sigma = testSd(core, liftKey(exercise), TEST_REPS);
+  if (!core) return null;
   const k = painFactor(painRisk(entries, exercise, today).p);
+  // Item 14: a bodyweight lift has one load, its share of the body, so its test is a set at bodyweight to failure: about the reps
+  // its level leaves fresh, when that is a set the core reads (1 to MAX_REPS), and when it at least halves the uncertainty as above.
+  const b = bodyStrengthOf(core, exercise, today);
+  if (b) {
+    const reps = Math.round(b.reps);
+    if (reps < 1 || reps > MAX_REPS) return null;
+    const sb = testSd(core, liftKey(exercise), reps);
+    if (!(b.u > sb * k)) return null;
+    const after = b.u * sb / Math.hypot(b.u, sb), perU = b.repsSd / b.u;
+    return { weight: 0, reps, u: b.u, after, jump: false, body: { u: b.repsSd, after: after * perU } };
+  }
+  const s = strengthOf(core, exercise, today);
+  if (!s) return null;
+  const sigma = testSd(core, liftKey(exercise), TEST_REPS);
   if (!(s.u > sigma * k)) return null;
   const after = s.u * sigma / Math.hypot(s.u, sigma);
   // Today's increase is a test if it reads the level at least as well: the same test, without an extra set.

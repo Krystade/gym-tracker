@@ -5,6 +5,7 @@ import { liftFactsVersion, resolveLift } from '../lifts';
 import type { Vector } from '../muscles';
 import { byOrderDone, doneAt } from '../stats';
 import type { SetEntry } from '../types';
+import { addedLoad, bodyShare } from './bodyweight';
 import { inOrder, inv3, truncBelow } from './num';
 import { pool, type Posterior } from './pool';
 import { liftSimilarity, overlap } from './tags';
@@ -93,8 +94,21 @@ const CARDIO = new Map<string, boolean>();
 const cardioName = (name: string) => { let c = CARDIO.get(name); if (c === undefined) { c = isCardio(name); CARDIO.set(name, c); } return c; };
 const isHard = (e: SetEntry) => !e.flags.includes('warmup') && !e.flags.includes('partial') && e.reps != null && e.reps > 0 && !isCardioEntry(e) && !cardioName(e.exercise);
 const isHoldSet = (e: SetEntry) => e.flags.includes('hold') || isHold(e.exercise);
-/** A set whose reps measure capacity at a load: hard, loaded, not a hold, not past 30 reps. */
-const measures = (e: SetEntry) => isHard(e) && e.weight > 0 && !e.flags.includes('bodyweight') && !isHoldSet(e) && (e.reps as number) <= 30;
+/** (a) Reps past this aren't read: rep–load equations lose accuracy as reps rise (Reynolds, Gordon & Robergs 2006; 04 §3). */
+export const MAX_REPS = 30;
+/**
+ * The load a set's reps measure capacity at; null for a set that measures none (not hard, a hold, past MAX_REPS, or a load that
+ * isn't known). A lift whose load is the body (item 14: learn/bodyweight) is read in units of the person's body mass: a set with
+ * nothing added or taken off is at the lift's share of it (a); one with weight added or help taken needs his body weight to
+ * place, which he doesn't log, so it measures nothing (c: it only holds back), though it still tires the sets after it. Any
+ * other lift: its weight, when positive.
+ */
+function loadOf(e: SetEntry): number | null {
+  if (!isHard(e) || isHoldSet(e) || (e.reps as number) > MAX_REPS) return null;
+  const f = bodyShare(e.exercise);
+  if (f != null) return addedLoad(e) === 0 ? f : null;
+  return e.weight > 0 && !e.flags.includes('bodyweight') ? e.weight : null;
+}
 
 /**
  * One session's working sets that measure capacity, as a block of typed arrays ready to copy into the fit's: ordered by lift
@@ -160,11 +174,16 @@ function blockOf(date: string, hard: SetEntry[], gap: number): Block {
   }
   const nl = lix.size, nv = vecs.length;
   const ov = new Float64Array(nv * nv).fill(NaN);
-  // Rows: the measuring sets, grouped by lift in order of first appearance, each group in the order done.
+  // Rows: the measuring sets, grouped by lift in order of first appearance, each group in the order done. A bodyweight lift's
+  // heaviest added load that day, over all its hard sets (those that measure nothing too): a set at bodyweight below it is a ramp.
   const keys: string[] = [], names: string[] = [], rows: number[][] = [];
   const slot = new Int32Array(nl).fill(-1);
+  const load = new Float64Array(n), topAdded = new Float64Array(nl).fill(-Infinity);
+  for (let a = 0; a < n; a++) if (bodyShare(hard[a].exercise) != null) topAdded[lid[a]] = Math.max(topAdded[lid[a]], addedLoad(hard[a]));
   for (let a = 0; a < n; a++) {
-    if (!measures(hard[a])) continue;
+    const L = loadOf(hard[a]);
+    if (L == null) continue;
+    load[a] = L;
     let j = slot[lid[a]];
     if (j < 0) { j = slot[lid[a]] = keys.length; keys.push(liftKey(hard[a].exercise)); names.push(hard[a].exercise); rows.push([]); }
     rows[j].push(a);
@@ -182,7 +201,7 @@ function blockOf(date: string, hard: SetEntry[], gap: number): Block {
   for (let j = 0; j < rows.length; j++) {
     s.at[j] = i;
     let top = 0;
-    for (const a of rows[j]) top = Math.max(top, hard[a].weight);
+    for (const a of rows[j]) top = Math.max(top, load[a]);
     for (const a of rows[j]) {
       let nS = 0, nC = 0, nY = 0;
       const i0 = i * NT;
@@ -200,7 +219,7 @@ function blockOf(date: string, hard: SetEntry[], gap: number): Block {
         }
       }
       const e = hard[a], r = e.reps as number;
-      s.e[i] = e; s.nS[i] = nS; s.nC[i] = nC; s.nY[i] = nY; s.w[i] = e.weight; s.logW[i] = Math.log(e.weight); s.r[i] = r;
+      s.e[i] = e; s.nS[i] = nS; s.nC[i] = nC; s.nY[i] = nY; s.w[i] = load[a]; s.logW[i] = Math.log(load[a]); s.r[i] = r;
       // How its reps to failure are read.
       const target = e.target && e.target.weight != null && e.target.weight === e.weight ? e.target.reps : null;
       let kind = K_HABIT, k = 0;
@@ -210,7 +229,8 @@ function blockOf(date: string, hard: SetEntry[], gap: number): Block {
       else if (target != null && r === target) { kind = K_BOUND; k = 0; s.atTarget[i] = 1; } // stopped at the target: could have done more (00-core §1.2)
       else if (target != null && r < target) kind = K_MISSED; // short of the target: near failure (00-core §1.2)
       s.kind[i] = kind; s.k[i] = k;
-      if (kind === K_HABIT && e.weight < top) s.light[i] = 1; // a ramp or back-off set: lighter than the day's top weight
+      // A ramp or back-off set: lighter than the day's top weight (a bodyweight set: less added than the day's most).
+      if (kind === K_HABIT && (topAdded[lid[a]] > -Infinity ? addedLoad(e) < topAdded[lid[a]] : load[a] < top)) s.light[i] = 1;
       s.unsure[i] = e.flags.includes('unsure') ? 1 : 0;
       i++;
     }
@@ -333,6 +353,11 @@ export interface Est { mean: number; sd: number }
 export interface Cell { tau: number; rho: number; w: number; theta: [number, number, number]; cov: number[] }
 export interface LiftCore {
   key: string; name: string;
+  /**
+   * What its levels are in: lb, or (a lift whose load is the body, item 14) the person's body mass, from its sets at bodyweight
+   * alone. A level in body mass compares with other bodyweight lifts' but not with a loaded lift's, and it isn't a weight to load.
+   */
+  unit: 'lb' | 'body';
   /** Reps–load slope κ (C = κ·(E/w − 1)). */
   kappa: Est;
   /** Reps lost per prior same-lift set at K = 1, this lift's (pooled), at the person's (τ, ρ). */
@@ -380,12 +405,13 @@ export interface Features { nS: number; nC: number; nY: number; eS: Float64Array
 /**
  * e1RM from one set with its reps in reserve and its session fatigue put back: w·(1 + (reps + RIR + Δ)/κ). The plain Epley
  * reading (stats.e1rm) takes a tired back-off set at face value; this one reads it as the fresh strength it implies.
- * Null for a set the core does not score (warm-up, bodyweight, hold, over 30 reps).
+ * Null for a set the core does not score (warm-up, bodyweight, hold, over 30 reps), or of a lift read in body mass (no lb).
  */
 export function e1rmAdjusted(core: Core, e: SetEntry): number | null {
   const f = core.features.get(e.id);
   if (!f || e.reps == null) return null;
   const key = liftKey(e.exercise);
+  if (core.lifts.get(key)?.unit === 'body') return null;
   const kappa = core.lifts.get(key)?.kappa.mean ?? KAPPA_PRIOR.mean;
   // A test's RIR is taken as true (it is what calibrates b); other logged RIR carries the lift's bias; none, the habit.
   const b = e.flags.includes('test') ? 0 : core.lifts.get(key)?.bias.mean ?? core.bias.mean;
@@ -572,7 +598,7 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean; 
       for (let l = 0; l < L; l++) {
         const gs = liftGroups[l];
         lifts.set(liftKey(liftNames[l]), {
-          key: liftKey(liftNames[l]), name: liftNames[l],
+          key: liftKey(liftNames[l]), name: liftNames[l], unit: bodyShare(liftNames[l]) != null ? 'body' : 'lb',
           kappa: { mean: kappa[l], sd: kappaSd[l] },
           aSame: { mean: a.post[l].mean, sd: a.post[l].sd }, aSameOwn: a.own[l],
           level: gs.filter((g) => smV[g] < 1).map((g) => ({ date: groups[g].date, day: groups[g].day, x: smX[g], sd: Math.sqrt(smV[g]) })),

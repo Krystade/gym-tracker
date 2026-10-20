@@ -2,7 +2,9 @@ import type { SetEntry } from './types';
 import { fmtCardio } from './cardio';
 
 export const fmtWeight = (w: number): string => String(Math.round(w * 100) / 100);
-export const fmtSet = (s: SetEntry): string => s.cardio ? fmtCardio(s.cardio) : `${s.weight === 0 ? 'BW' : fmtWeight(s.weight)} × ${s.reps ?? '?'}${s.flags.includes('hold') ? 's' : ''}`;
+/** A set's weight as logged: BW at 0, BW−30 for help on a bodyweight lift (item 14: a signed weight), else the number. */
+export const fmtAdded = (w: number): string => (w === 0 ? 'BW' : w < 0 ? `BW−${fmtWeight(-w)}` : fmtWeight(w));
+export const fmtSet = (s: SetEntry): string => s.cardio ? fmtCardio(s.cardio) : `${fmtAdded(s.weight)} × ${s.reps ?? '?'}${s.flags.includes('hold') ? 's' : ''}`;
 /** A target past the top of its range (bodyweight and holds aren't capped) reads open-ended, not as a backwards range. */
 /** A maxed hold has no more time to beat, so no "+". */
 export const fmtTarget = (s: { reps: number; repMax: number; unit: string; kind?: string }): string =>

@@ -71,9 +71,12 @@ describe('nextTarget with the pain gate', () => {
     const back = [...e, ...sess('2026-09-08', PD, 100, [15, 15, 15])];
     expect(nextTarget(back, PD, ST, '2026-09-11')).toMatchObject({ kind: 'increase', weight: 105 });
   });
-  it('a bodyweight lift that hurt sharply holds (it has no load to take off; item 14)', () => {
+  it('a bodyweight lift that hurt sharply, with no help known, eases a rep a set (item 14); a hold, with nothing to take off, holds', () => {
     const e = sess('2026-09-01', 'Pull-up', 0, [10, 10, 10], pain(3));
-    expect(nextTarget(e, 'Pull-up', { key: 'pull-up', repMin: 8, repMax: 12, increment: 5 }, '2026-09-04')).toMatchObject({ kind: 'hold', weight: 0 });
+    expect(nextTarget(e, 'Pull-up', { key: 'pull-up', repMin: 8, repMax: 12, increment: 5 }, '2026-09-04'))
+      .toMatchObject({ kind: 'ease', weight: 0, perSet: [9, 9, 9], easeBy: 'reps', why: 'Sharp pain last time: one rep fewer a set' });
+    const plank = sess('2026-09-01', 'Plank', 0, [40, 40], pain(3));
+    expect(nextTarget(plank, 'Plank', { key: 'plank', repMin: 30, repMax: 60, increment: 5 }, '2026-09-04')).toMatchObject({ kind: 'hold', weight: 0 });
   });
 });
 

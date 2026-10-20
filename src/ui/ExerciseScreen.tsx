@@ -14,7 +14,8 @@ import { CATALOG, PROGRAM_LIFTS } from '../domain/catalog';
 import { worksLine } from '../domain/muscles';
 import { resolveLift } from '../domain/lifts';
 import { nearestLifts, searchLifts } from '../domain/search';
-import { strength, strengthSeries, testDue } from '../domain/estimators';
+import { bodyRepsPoints, bodyStrength, strength, strengthSeries, testDue } from '../domain/estimators';
+import { bodyShare } from '../domain/learn/bodyweight';
 import { weightFor } from '../domain/learn/strength';
 import { localDate } from '../domain/ids';
 import { addDays } from '../domain/analytics';
@@ -214,6 +215,8 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
 
 /** A share of ln e1RM as a whole percent, at least 1. */
 const pct = (u: number) => Math.max(1, Math.round(100 * u));
+/** An uncertainty in reps: a tenth below 10, so a test that halves it never reads "±1 to ±1". */
+const repsU = (x: number) => (x < 10 ? String(Math.round(x * 10) / 10) : String(Math.round(x)));
 
 function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly }: Parameters<typeof ExerciseScreen>[0]) {
   const hold = isHoldLift(name, store.entries);
@@ -221,13 +224,17 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
   const sessions = sessionsFor(store.entries, name);
   // A hold has no 1RM: its trend is the longest hold of each session, in seconds.
   const today = localDate(new Date());
+  // Item 14: a lift whose load is the body has its level in body mass, read as the reps it leaves fresh at bodyweight (no lb, no 1RM).
+  const body = !hold && bodyShare(name) != null;
   // Item 04: the fatigue-adjusted level at each session (every set read with its RIR and fatigue), else each session's best e1RM.
-  const levels = hold ? null : strengthSeries(store.entries, name, today);
-  const series = hold ? holdSeries(sessions) : levels ?? e1rmSeries(store.entries, name);
+  const levels = hold || body ? null : strengthSeries(store.entries, name, today);
+  const series = hold ? holdSeries(sessions) : body ? bodyRepsPoints(store.entries, name, today) : levels ?? e1rmSeries(store.entries, name);
   const longest = hold ? Math.max(0, ...series.map((p) => p.e1rm)) : 0;
-  // The best e1RM set, as Records holds it: the earliest one on a tie.
-  const best = records(store.entries, name).get('e1rm');
-  const st = hold ? null : strength(store.entries, name, today);
+  // The best e1RM set, as Records holds it: the earliest one on a tie. A bodyweight lift's: its most reps at bodyweight, else its heaviest.
+  const recs = records(store.entries, name);
+  const best = body ? recs.get('mostReps') ?? recs.get('heaviest') : recs.get('e1rm');
+  const st = hold || body ? null : strength(store.entries, name, today);
+  const bs = body ? bodyStrength(store.entries, name, today) : null;
   const [n, setN] = useState(6);
   const [all, setAll] = useState(false);
   const snoozed = settings.get(name).testSnoozedUntil;
@@ -253,7 +260,14 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
           <button className="mini" onClick={async () => { await switched.undo(); setSwitched(null); }}>Undo</button></p>
       )}
       {/* The chips sit right under the estimate they change, not over the chart (which is always e1RM). */}
-      {!hold && <>
+      {body && <>
+      <div className="tiles tiles-est">
+        <div className="tile"><span>Max reps at BW</span><b>{bs ? `≈ ${Math.max(0, Math.round(bs.reps))}` : '—'}</b></div>
+        <div className="tile"><span>Body weight moved</span><b>{Math.round(100 * bodyShare(name)!)}%</b></div>
+      </div>
+      <p className="muted small body-est">{bs ? `Fresh, fatigue-adjusted · ±${repsU(bs.repsSd)} reps · ${tested ? plural(tested, 'test') : bs.tests ? 'tests on other lifts' : 'no tests yet'}` : 'No estimate yet: it comes from sets at bodyweight'}</p>
+      </>}
+      {!hold && !body && <>
       <div className="tiles tiles-est">
         <div className="tile"><span>Est. 1RM</span><b>{st ? lb(st.e1rm) : '—'}</b></div>
         <div className="tile"><span>Est. {n}RM</span><b>{st ? lb(weightFor(st, n)) : '—'}</b></div>
@@ -270,13 +284,16 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
         <div className="tile"><span>Sessions</span><b>{sessions.length}</b></div>
       </div>
       <section className="card">
-        <LineChart points={series} today={today} {...(hold ? { label: 'Longest hold over time', unit: 's', noun: '', column: 'Longest hold (s)' } : {})} />
-        {series.length > 1 && <p className="muted small">{hold ? 'Longest hold per session · records filled' : levels ? 'Fatigue-adjusted e1RM at each session' : 'Best estimated 1RM per session · records filled'}</p>}
+        <LineChart points={series} today={today} {...(hold ? { label: 'Longest hold over time', unit: 's', noun: '', column: 'Longest hold (s)' }
+          : body ? { label: 'Max reps at bodyweight over time', unit: 'reps', noun: '', column: 'Max reps at BW', what: 'it at bodyweight' } : {})} />
+        {series.length > 1 && <p className="muted small">{hold ? 'Longest hold per session · records filled' : body ? 'Fresh reps to failure at bodyweight, fatigue-adjusted, at each session' : levels ? 'Fatigue-adjusted e1RM at each session' : 'Best estimated 1RM per session · records filled'}</p>}
       </section>
       <Records entries={store.entries} name={name} today={today} onDay={onDay} />
       {due && !(snoozed && today < snoozed) && (
         <p className="card note-card test-due">
-          <span>Time for a test: {due.jump ? <>make today’s first set at <b>{fmtWeight(due.weight)} lb</b> as many good reps as you can</> : <><b>{fmtWeight(due.weight)} lb</b> for as many good reps as you can (about {due.reps})</>}, and tick <b>Test</b>. It takes your estimate from ±{pct(due.u)}% to ±{pct(due.after)}%.</span>
+          <span>Time for a test: {due.body ? <><b>bodyweight</b> for as many good reps as you can (about {due.reps})</>
+            : due.jump ? <>make today’s first set at <b>{fmtWeight(due.weight)} lb</b> as many good reps as you can</> : <><b>{fmtWeight(due.weight)} lb</b> for as many good reps as you can (about {due.reps})</>}, and tick <b>Test</b>.
+            It takes your estimate from {due.body ? `±${repsU(due.body.u)} reps to ±${repsU(due.body.after)} reps` : `±${pct(due.u)}% to ±${pct(due.after)}%`}.</span>
           <button className="mini" onClick={() => void settings.save({ ...settings.get(name, hold), testSnoozedUntil: addDays(today, 14) })}>Not now</button>
         </p>
       )}

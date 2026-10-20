@@ -75,8 +75,10 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     if (!exercise) return fail('Missing exercise');
     const setNo = num(col(r, 'set'));
     if (setNo == null || !Number.isInteger(setNo) || setNo < 1) return fail(`Bad set number "${col(r, 'set')}"`);
+    // Below 0 is help on a bodyweight lift (item 14: an assisted machine or a band). Any lift's is read back as written, so a
+    // backup or a sync never drops a set whose lift has since been renamed or set to work like another.
     const weight = num(col(r, 'weight_lb'));
-    if (weight == null || weight < 0) return fail(`Bad weight "${col(r, 'weight_lb')}"`);
+    if (weight == null) return fail(`Bad weight "${col(r, 'weight_lb')}"`);
     const repsRaw = col(r, 'reps');
     const reps = repsRaw.trim() === '' ? null : num(repsRaw);
     if (repsRaw.trim() !== '' && (reps == null || !Number.isInteger(reps) || reps < 0)) return fail(`Bad reps "${repsRaw}"`);
@@ -95,7 +97,7 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     if (loggedAt && !Number.isFinite(Date.parse(loggedAt))) return fail(`Bad logged_at "${loggedAt}"`);
     // A suggestion needs reps and sets; its weight is empty for a first session.
     const [tw, tr, ts] = [num(col(r, 'target_weight_lb')), num(col(r, 'target_reps')), num(col(r, 'target_sets'))];
-    const target = tr != null && ts != null && (tw == null || tw >= 0) && Number.isInteger(tr) && tr >= 0 && Number.isInteger(ts) && ts >= 1
+    const target = tr != null && ts != null && Number.isInteger(tr) && tr >= 0 && Number.isInteger(ts) && ts >= 1
       ? { weight: tw, reps: tr, sets: ts } : undefined;
     const gym = col(r, 'gym').trim();
     const enteredAt = col(r, 'entered_at').trim();

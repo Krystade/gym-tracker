@@ -3,6 +3,7 @@ import { fmtClock } from './cardio';
 import { fmtWeight } from './format';
 import { byOrderDone, e1rm, liftIndex, liftSets } from './stats';
 import type { SetEntry } from './types';
+import { addedLoad, bodyShare } from './learn/bodyweight';
 
 // Records and PRs: one pass over a lift's log, oldest set first. A record is the best value of its kind so far; a PR is
 // a set that beat a record that stood before its day (a lift's first day beats nothing). Nothing is stored, so an edit, a
@@ -41,6 +42,9 @@ function scan(lift: readonly SetEntry[]): Scan {
   const tally = new Map<string, number>();
   if (!lift.length) return { broke, held, tally };
   const hold = isHoldLift(lift[0].exercise, lift);
+  // Item 14: a lift whose load is the body moves its share of the body plus what's added; without his body weight only the
+  // weight added is known, so its sets set the weight records on what's added (BW + 25 → + 35) but no e1RM or volume record.
+  const body = !hold && bodyShare(lift[0].exercise) != null;
   const offer = (out: RecordKind[], kind: RecordKind, value: number, s: SetEntry) => {
     const h = held.get(kind);
     if (h && !beats(kind, value, h.value)) return;
@@ -77,20 +81,20 @@ function scan(lift: readonly SetEntry[]): Scan {
       // A hold counts its seconds, weighted or not; its weight sets no weight record.
       if (s.reps != null && s.reps > 0) offer(out, 'hold', s.reps, s);
     } else if (s.weight <= 0 || s.flags.includes('bodyweight')) {
-      if (full(s)) { offer(out, 'mostReps', s.reps!, s); add(out, 'sessionReps', s.reps!, s); }
+      // Item 14: reps with help (a negative weight, or an older import's "assisted -30 lb" note) aren't reps at bodyweight.
+      if (full(s) && addedLoad(s) === 0) { offer(out, 'mostReps', s.reps!, s); add(out, 'sessionReps', s.reps!, s); }
     } else if (!full(s)) {
       // A partial set was lifted, so it counts for heaviest weight; without its reps it counts for nothing else.
       if (s.reps == null || s.flags.includes('partial')) offer(out, 'heaviest', s.weight, s);
     } else {
       const w = s.weight, r = s.reps!;
       const v = est(s);
-      if (v != null) offer(out, 'e1rm', v, s);
+      if (v != null && !body) offer(out, 'e1rm', v, s);
       offer(out, 'heaviest', w, s);
       for (const n of REP_MAXES) if (r >= n) offer(out, `rm${n}`, w, s);
       if (front.some((p) => p.w >= w) && !front.some((p) => p.w >= w && p.r >= r)) out.push('reps');
       front = [...front.filter((p) => p.w > w || p.r > r), { w, r }];
-      offer(out, 'setVolume', w * r, s);
-      add(out, 'sessionVolume', w * r, s);
+      if (!body) { offer(out, 'setVolume', w * r, s); add(out, 'sessionVolume', w * r, s); }
     }
     if (out.length && s.date !== first) broke.set(s.id, out);
   }

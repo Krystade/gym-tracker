@@ -83,6 +83,17 @@ describe('fields for later modelling', () => {
   });
 });
 
+describe('help on a bodyweight lift (item 14)', () => {
+  it('round-trips a set below bodyweight and its target, so a backup or a sync keeps it; a weight that isn’t a number still fails', () => {
+    const e: SetEntry = { id: setId('app', '2026-10-02', 'Forward-Lean Dips', 1), date: '2026-10-02', seq: 1, exercise: 'Forward-Lean Dips', setNo: 1,
+      weight: -27.5, reps: 10, flags: ['bodyweight'], source: 'app', target: { weight: -27.5, reps: 8, sets: 3 } };
+    const { entries, errors } = parseCsv(toCsv([e]));
+    expect(errors).toEqual([]);
+    expect(entries[0]).toMatchObject({ weight: -27.5, flags: ['bodyweight'], target: { weight: -27.5, reps: 8, sets: 3 } });
+    expect(parseCsv('date,exercise,set,weight_lb,reps\n2026-01-05,Pull-up,1,-x,12\n').errors[0].message).toMatch(/Bad weight/);
+  });
+});
+
 describe('Phase 12 review fixes', () => {
   it('keeps a first-session suggestion that has sets and reps but no weight', () => {
     const e: SetEntry = { id: setId('app', '2026-10-02', 'Hammer Curl', 1), date: '2026-10-02', seq: 1, exercise: 'Hammer Curl', setNo: 1,

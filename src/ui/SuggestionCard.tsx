@@ -2,7 +2,8 @@ import type { Suggestion } from '../domain/suggest';
 import { fmtTarget, fmtWeight } from '../domain/format';
 
 const FROM = { program: 'today’s program', last: 'as many as last time', default: 'a default — no history yet' } as const;
-export const fmtLoad = (w: number | null) => (w == null ? '' : w === 0 ? ' @ BW' : ` @ ${fmtWeight(w)} lb`);
+/** Help on a bodyweight lift (item 14) is a weight below bodyweight: "@ BW − 30 lb". */
+export const fmtLoad = (w: number | null) => (w == null ? '' : w === 0 ? ' @ BW' : w < 0 ? ` @ BW − ${fmtWeight(-w)} lb` : ` @ ${fmtWeight(w)} lb`);
 export const fmtRamp = (s: Suggestion) => s.warmups.map((x) => `${fmtWeight(x.weight)} × ${x.reps}`).join(' · ');
 
 /** What to do next time for one exercise, and why. */

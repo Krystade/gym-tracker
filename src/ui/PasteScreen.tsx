@@ -4,7 +4,7 @@ import { useDb } from '../state/profileDb';
 import { CATALOG } from '../domain/catalog';
 import { isHold } from '../domain/care';
 import { fmtCardio } from '../domain/cardio';
-import { fmtDate, fmtWeight, plural } from '../domain/format';
+import { fmtAdded, fmtDate, fmtWeight, plural } from '../domain/format';
 import { matchExercise, nameKey, parseNotes, toEntries, type NoteLine, type NoteSet } from '../domain/notes';
 import { exerciseNames } from '../domain/stats';
 import { Input, TextArea } from './Field';
@@ -21,7 +21,7 @@ Lat pulldown
 
 // Cardio reads as History shows it: "20:00 · 1.2 mi · 5%".
 const chip = (s: NoteSet): string => s.cardio ? fmtCardio(s.cardio) :
-  s.flags.includes('hold') ? `${s.weight ? `${fmtWeight(s.weight)} lb · ` : ''}${s.reps ?? '—'} s` : `${s.weight === 0 ? 'BW' : fmtWeight(s.weight)}×${s.reps ?? '—'}`;
+  s.flags.includes('hold') ? `${s.weight ? `${fmtWeight(s.weight)} lb · ` : ''}${s.reps ?? '—'} s` : `${fmtAdded(s.weight)}×${s.reps ?? '—'}`;
 const BADGE: Partial<Record<string, string>> = { warmup: 'warm-up', pain: 'pain', unsure: '?', partial: 'partial', double_pulley: '2×pulley' };
 
 export function PasteScreen({ store, today, backLabel = '‹ Back', onBack, onDone }: { store: SetsStore; today: string; backLabel?: string; onBack: () => void; onDone: () => void }) {

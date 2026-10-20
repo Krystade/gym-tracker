@@ -8,6 +8,7 @@ import { dropsOf, type Drop } from './learn/jump';
 import { ladderOf, nextRung, prevRung, type Ladder } from './learn/ladder';
 import { fitRange, type RangeFit } from './learn/range';
 import { painGate, type PainGate } from './painPlan';
+import { addedLoad, bodyShare } from './learn/bodyweight';
 
 /**
  * A first target carried over from another variation when this lift was rotated in (domain/rotation): an estimate, used until
@@ -108,6 +109,8 @@ export interface Target {
   step?: number; drop?: Drop;
   /** 'hold' and 'ease': the pain behind it (item 08, painPlan). */
   pain?: PainGate;
+  /** 'ease': how it's eased: load off, more help (an assisted bodyweight lift), or a rep off each set (bodyweight, no help known). */
+  easeBy?: 'load' | 'help' | 'reps';
 }
 
 /** The default increment: an `increment` other than it was typed on the lift's page and wins over the learned ladder. */
@@ -169,7 +172,9 @@ export function perSetTargets(last: { reps: number; rir?: number }[], step: Step
   return { perSet: reps, step: 'repeat' };
 }
 
-const lb = (w: number) => (w === 0 ? 'BW' : `${Math.round(w * 100) / 100} lb`);
+const r2 = (w: number) => Math.round(w * 100) / 100;
+/** A weight as the target says it: BW, help below it (an assisted bodyweight lift, item 14), or lb. */
+const lb = (w: number) => (w === 0 ? 'BW' : w < 0 ? `BW − ${r2(-w)} lb` : `${r2(w)} lb`);
 
 export const isTest = (s: SetEntry): boolean => s.flags.includes('test');
 /**
@@ -202,18 +207,22 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
   }
   const last = before[Math.max(0, at)];
   const working = last.sets.filter(isProgressionSet);
+  // Item 14: a lift whose load is the body reads each set's weight as what was added to it, help kept in an older import's note
+  // counted below bodyweight (learn/bodyweight), so "BW × 10" and "BW − 30 × 10" are different sets.
+  const unit = isHoldLift(exercise, entries) ? 's' : '';
+  const body = !unit && bodyShare(exercise) != null;
+  const load = (x: SetEntry) => (body ? addedLoad(x) : x.weight);
   if (!working.length) {
-    const w = Math.max(...last.sets.map((x) => x.weight));
+    const w = Math.max(...last.sets.map(load));
     return { kind: 'repeat', weight: w, reps: st.repMin, last: last.sets, text: `Repeat ${lb(w)} and log every rep` };
   }
-  const top = Math.max(...working.map((x) => x.weight));
-  const unit = isHoldLift(exercise, entries) ? 's' : '';
+  const top = Math.max(...working.map(load));
   // Items 01–03 for loaded rep lifts: the learned step and drop, and the range fitted to them.
   const learned = !unit && top > 0 ? learnedFor(entries, exercise, date) : { ladder: null, drop: null };
   const fit = learned.drop ? fitRange(exercise, st, Math.max(0, learned.drop.mean)) : null;
   const range = fit && fit.how !== 'fits' && fit.how !== 'too-big' ? fit : null;
   const repMin = range?.repMin ?? st.repMin, repMax = range?.repMax ?? st.repMax;
-  const all = working.filter((x) => x.weight === top);
+  const all = working.filter((x) => load(x) === top);
   // The best N, kept in the order done.
   const bestN = planned != null && planned > 0 && all.length > planned ? new Set([...all].sort((a, b) => (b.reps as number) - (a.reps as number)).slice(0, planned)) : null;
   const atTop = bestN ? all.filter((x) => bestN.has(x)) : all;
@@ -225,20 +234,42 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
     const reps = atTop.map((x) => x.reps as number);
     const perSet = planned != null && planned > reps.length ? [...reps, ...Array<number>(planned - reps.length).fill(reps.at(-1)!)] : reps;
     // One step lighter: the smallest change the gear allows (a typed increment, else the learned ladder's rung below), so the
-    // next session says whether it was enough; a lift with no load to take off (bodyweight, a hold) is held instead (item 14).
+    // next session says whether it was enough. A bodyweight lift (item 14) can go down to bodyweight, and below it with help:
+    // one rung more on its assisted machine's stack (learned like any stack, item 01), or, at bodyweight, the first rung where he
+    // has used help on this lift at this gym. With no help known, the load can't come down, so the dose does: one rep off each
+    // set, the smallest change the log can express (the same rule as one rung; a: Silbernagel & Crossley 2015, above 5/10 the load
+    // must come down; here, how close each set goes to failure). A hold, with nothing to take off, is held.
     const typed = st.increment !== DEFAULT_INCREMENT;
-    const down = gate.kind === 'ease' && top > 0 ? (!typed && learned.ladder ? prevRung(learned.ladder, top) : top - st.increment) : 0;
-    const kind = down > 0 ? 'ease' as const : 'hold' as const;
-    const w = kind === 'ease' ? down : top;
+    let down: number | null = null, easeBy: Target['easeBy'] = 'load';
+    if (gate.kind === 'ease' && top > 0) {
+      const w = !typed && learned.ladder ? prevRung(learned.ladder, top) : top - st.increment;
+      down = body ? Math.max(0, w) : w > 0 ? w : null;
+    } else if (gate.kind === 'ease' && body) {
+      const help = !typed ? ladderOf(entries, exercise, undefined, true) : null;
+      if (top < 0 || help?.known.length) { down = -(help ? nextRung(help, -top) : -top + st.increment); easeBy = 'help'; }
+    }
+    const fewer = gate.kind === 'ease' && body && down == null && perSet.some((r) => r > 1);
+    const kind = down != null || fewer ? 'ease' as const : 'hold' as const;
+    const w = down ?? top;
+    const aimed = fewer ? perSet.map((r) => Math.max(1, r - 1)) : perSet;
+    if (fewer) easeBy = 'reps';
     const why = gate.spill ? `${gate.region[0].toUpperCase()}${gate.region.slice(1)} hurt on ${gate.from} lately: hold for now`
-      : kind === 'ease' ? 'Sharp pain last time: one step lighter'
+      : kind === 'ease' ? (easeBy === 'reps' ? 'Sharp pain last time: one rep fewer a set' : easeBy === 'help' ? 'Sharp pain last time: a step more help' : 'Sharp pain last time: one step lighter')
       : gate.zone === 3 ? 'Sharp pain last time: hold, or go lighter'
       : `${gate.unknown ? 'Pain' : 'Moderate pain'} last time: hold until it’s mild or gone`;
-    return { kind, weight: w, reps: Math.min(...perSet), perSet, last: last.sets, why, pain: gate, text: `${lb(w)} × ${perSet.join(' · ')}${unit ? ' s' : ''}` };
+    return { kind, weight: w, reps: Math.min(...aimed), perSet: aimed, last: last.sets, why, pain: gate, ...(kind === 'ease' && { easeBy }), text: `${lb(w)} × ${aimed.join(' · ')}${unit ? ' s' : ''}` };
   }
   // Up once the sets at the top weight total within 2 reps of all at the top of the range (12/12/10 at 3 × 8–12), none below its bottom.
   const total = atTop.reduce((a, x) => a + (x.reps as number), 0);
   const topped = total >= atTop.length * repMax - Math.min(2, atTop.length - 1) && minReps >= repMin; // one heavier top set gets no slack
+  // Item 14: an assisted bodyweight lift whose range is topped takes a step less help: the rung below on its assisted machine's
+  // stack (learned, item 01; a typed increment wins), up to bodyweight.
+  if (body && top < 0 && topped) {
+    const help = st.increment === DEFAULT_INCREMENT ? ladderOf(entries, exercise, undefined, true) : null;
+    const w = Math.min(0, help ? -prevRung(help, -top) : top + st.increment) || 0;
+    const step = Math.round((w - top) * 100) / 100;
+    return { kind: 'increase', weight: w, reps: repMin, last: last.sets, done: { total, sets: atTop.length }, step, text: `Go up: ${lb(w)} × ${repMin}+` };
+  }
   if (top > 0 && topped) {
     // The next loadable weight (item 01): a typed increment wins, else the learned ladder's next rung, else +increment.
     const typed = st.increment !== DEFAULT_INCREMENT;
@@ -276,6 +307,9 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
     : step === 'one' ? (wanted === 'one' ? `Missed last time: ${plus} on one set` : `Most sets at their limit: ${plus} on one set`)
     : wanted === 'repeat' ? 'Missed twice lately: repeat last time' : 'Sets at their limit last time: repeat them';
   // Item 03: a range moved by the learned drop says so, in a few words.
-  const why = range ? `${rule} · ${range.how === 'top' ? `to ${range.repMax} before going up` : `${range.repMin}+ is fine after going up`}` : rule;
+  // Item 14: at bodyweight with the range topped there's no weight to go up to here (without his body weight the app can't say how
+  // much to add), so the reps keep climbing, and the card says the range is done (display only).
+  const atBw = body && top === 0 && topped ? ' · range topped at bodyweight: add weight or a harder variation' : '';
+  const why = (range ? `${rule} · ${range.how === 'top' ? `to ${range.repMax} before going up` : `${range.repMin}+ is fine after going up`}` : rule) + atBw;
   return { kind: 'reps', weight: top, reps: Math.min(...perSet), last: last.sets, perSet, why, ...(range && { range, drop: learned.drop! }), text: `${lb(top)} × ${perSet.join(' · ')}${unit ? ' s' : ''}` };
 }

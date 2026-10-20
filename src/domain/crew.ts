@@ -1,4 +1,5 @@
 import { addDays } from './analytics';
+import { fmtAdded } from './format';
 import { fmtClock, isCardioEntry } from './cardio';
 import { muscleVector, type Muscle } from './muscles';
 import type { SetEntry } from './types';
@@ -113,7 +114,7 @@ export function sessionOn(entries: SetEntry[], date: string): SessionDone | null
 /** "Bench Press 3×185×8 · Pull-up 3×BW×10 · Treadmill 20:00": sets × top weight × reps, a lift each. */
 export const fmtSession = (s: SessionDone): string => s.lifts.map((l) => l.seconds != null
   ? `${l.exercise} ${fmtClock(l.seconds)}`
-  : `${l.exercise} ${l.sets}×${l.weight === 0 ? 'BW' : Math.round(l.weight * 100) / 100}×${l.reps ?? '?'}${l.hold ? 's' : ''}`).join(' · ');
+  : `${l.exercise} ${l.sets}×${fmtAdded(l.weight)}×${l.reps ?? '?'}${l.hold ? 's' : ''}`).join(' · ');
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
