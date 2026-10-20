@@ -179,6 +179,47 @@ test('a select still focused after its picker closes lets the chrome follow a st
   expect((await box(page, 'nav.tabs')).bottom).toBe(H);
 });
 
+// The owner's 13 mini on More, pulled down past the top: an empty band over "More", the tab bar about 400px up the screen
+// with the page below it, and the status backdrop gone off the top. A rubber-band bounce puts the visual viewport off the
+// page (above its top, or past its end at full height); that is no stuck screen, and the chrome stays on the screen edges.
+test('a rubber-band bounce past the top or the end of a page leaves the tab bar and status backdrop on the screen edges', async ({ page }) => {
+  await notched(page);
+  await fakeViewport(page);
+  await page.goto('/');
+  await goto(page, 'More');
+  const H = 812;
+  const edges = async () => [(await box(page, '.status-backdrop')).top, (await box(page, 'nav.tabs')).bottom];
+  expect(await edges()).toEqual([0, H]);
+  expect(await page.evaluate(() => document.activeElement === document.body), 'no field focused, no keyboard').toBe(true);
+
+  // Pulled down past the top, and let go: the visual viewport above the page, the event firing at every step.
+  for (const d of [120, 400, 250, 60]) {
+    await vv(page, { offsetTop: -d });
+    expect(await edges(), `${d}px past the top`).toEqual([0, H]);
+  }
+  await page.screenshot({ path: 'test-results/viewport-overscroll-top.png' });
+  await page.waitForTimeout(700); // the twice-a-second check has had a look too
+  expect(await edges()).toEqual([0, H]);
+  await vv(page, { offsetTop: 0 });
+
+  // Pushed up past the end: at the bottom of the page, the full-height visual viewport runs past its end.
+  await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+  for (const d of [80, 300, 120]) {
+    await vv(page, { offsetTop: d });
+    expect(await edges(), `${d}px past the end`).toEqual([0, H]);
+  }
+  await page.screenshot({ path: 'test-results/viewport-overscroll-end.png' });
+  await page.waitForTimeout(700);
+  expect(await edges()).toEqual([0, H]);
+  await vv(page, { offsetTop: 0 });
+
+  // The stuck screen on the same page still takes the chrome with it: only the bounce is left alone.
+  await vv(page, { offsetTop: 300, height: H - 24 });
+  expect(await edges()).toEqual([300, 300 + H - 24]);
+  await vv(page, { offsetTop: 0, height: null });
+  expect(await edges()).toEqual([0, H]);
+});
+
 // Friends, against the emulators (synthetic users only). The owner's phone showed the bar mid-screen again here after typing in
 // Add a friend: each test below has the screen stick where the focus and blur checks alone never look again.
 const tabBottom = (page: Page) => box(page, 'nav.tabs').then((b) => b.bottom);

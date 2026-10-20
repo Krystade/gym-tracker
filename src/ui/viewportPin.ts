@@ -15,6 +15,11 @@
  * the app (and a tap anywhere checks at once). Focus and blur alone missed it on Friends: a field that leaves the page while
  * focused (a username saved, a status set) gets no blur or focusout in WebKit, and a screen can stick when the request a
  * field sent comes back, after the last check that followed the blur.
+ *
+ * A rubber-band bounce is no stuck screen. Pulled past the top or pushed past the end, the visual viewport leaves the page,
+ * and translating the chrome by that put the tab bar 400px up the screen and the backdrop off the top (the owner's 13 mini,
+ * on More). A stuck screen is never above the page, nor past its end at the full height, so while the visual viewport is
+ * there the gap is left as it was. (overscroll-behavior on body doesn't stop the bounce: only the root's reaches the viewport.)
  */
 // A field that can raise a keyboard or picker. Read-only ones can't (the invite link), nor inputmode=none.
 const FIELD = 'input:not([type=checkbox], [type=radio], [type=range], [type=button], [type=submit], [type=reset], [type=file], [type=image], [readonly], [inputmode=none]), '
@@ -31,12 +36,16 @@ export function pinChromeToVisualViewport(root: HTMLElement = document.documentE
   // A select keeps focus after its picker closes, with no event once the screen settles: after a pick it no longer
   // counts as holding a picker up, until it is focused again.
   let picked: Element | null = null;
+  // Mid-bounce: the visual viewport above the page, or at the full height past its end. scrollHeight only when it can be.
+  const bouncing = () => scrollY < 0 || vv.offsetTop < 0 || vv.pageTop < 0
+    || (vv.offsetTop > 0 && vv.height >= innerHeight - 1 && vv.pageTop + vv.height > (document.scrollingElement ?? document.documentElement).scrollHeight + 1);
   const update = () => {
     const active = document.activeElement;
     const field = (active?.matches(FIELD) ?? false) && active !== picked;
     // A keyboard or picker takes a fifth of the screen or more; the stuck gap left behind is far smaller, or has no focus.
     const inputUp = field && vv.height < innerHeight * 0.8;
     const pinch = Math.abs(vv.scale - 1) > 0.01; // zoomed in by hand: the chrome is meant to stay put then
+    if (!inputUp && !pinch && bouncing()) return; // the bounce settles with a scroll event, and the poll looks again
     const top = inputUp || pinch ? 0 : vv.offsetTop;
     const bottom = inputUp || pinch ? 0 : innerHeight - (vv.offsetTop + vv.height);
     const next = `${Math.round(top)}px ${Math.round(bottom)}px`;
