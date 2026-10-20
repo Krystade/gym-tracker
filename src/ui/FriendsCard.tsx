@@ -9,6 +9,8 @@ import { useBox, type Box } from '../state/box';
 import { copyGym } from '../domain/share';
 import { cleanUsername, inviteUrl, parseInvite, USERNAME, type Invite } from '../domain/invite';
 import { Input } from './Field';
+import { FriendName } from './FriendName';
+import { ChangeUsername } from './ChangeUsername';
 
 type Msg = { ok: boolean; text: string } | null;
 const base = () => `${location.origin}${location.pathname}`;
@@ -28,7 +30,9 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
   // Nothing kept and the first read failed: the username form, with the error, as before.
   const [failed, setFailed] = useState(false);
   const me = lists ? lists.me : failed ? null : undefined;
-  const { requests = [], sentGyms = [], blocked = [], invite = null } = lists ?? {};
+  const { requests = [], sentGyms = [], blocked = [], invite = null, friends = [] } = lists ?? {};
+  // A gym's sender by their name now (they may have changed it since they sent it), by uid.
+  const nameNow = (uid: string, then: string) => friends.find((f) => f.uid === uid)?.name ?? then;
   const setMe = (n: string) => void patchFriendCache(uid, (c) => (c.lists ? { ...c, lists: { ...c.lists, me: n } } : c));
   const [name, setName] = useState('');
   const [find, setFind] = useState('');
@@ -121,7 +125,7 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
   };
   return (
     <section className="card" aria-label="Friends">
-      <p className="muted small">You’re @{me}. Friends see your log, notes, body weight, priorities and program. Never your photos.</p>
+      <ChangeUsername uid={uid} me={me} changedAt={lists?.changedAt} busy={busy} act={act} setMe={setMe} />
       {message}
       {offer && (
         <section ref={offerBox} className="sub invite-offer" aria-label="Invite">
@@ -139,7 +143,7 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
           <ul className="friend-list">
             {requests.map((r) => (
               <li key={r.uid}>
-                <span>@{r.name} wants to be friends</span>
+                <span><FriendName me={uid} friend={r} bare /> wants to be friends</span>
                 <span className="friend-actions">
                   <button className="primary" disabled={busy} onClick={() => void act(async (c) => { await acceptRequest(c, uid, r.uid); return `You and @${r.name} are now friends.`; })}>Accept</button>
                   <button disabled={busy} onClick={() => void act(async (c) => { await declineRequest(c, uid, r.uid); })}>Decline</button>
@@ -155,7 +159,7 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
           <ul className="friend-list">
             {sentGyms.map((s) => (
               <li key={s.id}>
-                <span>@{s.fromName} sent you a gym: <b>{s.gym.name}</b></span>
+                <span><FriendName me={uid} friend={{ uid: s.from, name: nameNow(s.from, s.fromName) }} bare /> sent you a gym: <b>{s.gym.name}</b></span>
                 <span className="friend-actions">
                   <button className="primary" disabled={busy} onClick={() => void act(async (c) => {
                     const n = copyGym(s.gym, gyms.gyms);
@@ -210,7 +214,7 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
           <ul className="friend-list">
             {blocked.map((b) => (
               <li key={b.uid}>
-                <span>@{b.name}</span>
+                <span><FriendName me={uid} friend={b} bare /></span>
                 <button className="mini" disabled={busy} onClick={() => void act(async (c) => { await unblock(c, uid, b.uid); return `Unblocked @${b.name}.`; })}>Unblock</button>
               </li>
             ))}

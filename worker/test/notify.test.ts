@@ -51,7 +51,7 @@ describe('POST /notify: friend activity', () => {
     const p = net.sent[0];
     expect(Object.fromEntries(p.headers)).toMatchObject({ urgency: 'normal', ttl: '86400', topic: await friendTopic(a) });
     expect(p.headers.get('topic')).toMatch(/^[\w-]{22}$/);
-    expect((await read()).notification).toEqual({ title: 'Friend request', body: 'alice wants to be friends', lang: 'en', navigate: `${APP}#open=friends`, app_badge: '1', data: { kind: 'request', route: 'friends' } });
+    expect((await read()).notification).toEqual({ title: 'Friend request', body: 'alice wants to be friends', lang: 'en', navigate: `${APP}#open=friends`, app_badge: '1', data: { kind: 'request', route: 'friends', from: a, name: 'alice' } });
     expect(p.body.length).toBeLessThan(1024 + 103); // under 1 KB of JSON, plus RFC 8291's header and tag
   });
 
@@ -94,7 +94,7 @@ describe('POST /notify: friend activity', () => {
     const { world, a, b, net, read } = await pair({ friends: true });
     expect((await call(a, 'POST', '/notify', { kind: 'accepted', to: b })).status).toBe(200);
     expect(net.sent).toHaveLength(1);
-    expect((await read()).notification).toMatchObject({ title: 'New friend', body: 'You and alice are friends', navigate: `${APP}#open=friend.${a}`, data: { route: `friend.${a}` } });
+    expect((await read()).notification).toMatchObject({ title: 'New friend', body: 'You and alice are friends', navigate: `${APP}#open=friend.${a}`, data: { route: `friend.${a}`, from: a, name: 'alice' } });
     expect(world.reads.every((r) => r.uid === a)).toBe(true); // every read was as the sender
   });
 
@@ -209,5 +209,21 @@ describe('the recipient\'s limits on one sender', () => {
     const b = uid('bob');
     expect(await box(b).friendPush(push('x', 1))).toBe('no device');
     expect(net.sent).toHaveLength(0);
+  });
+});
+
+describe('POST /notify: who it is from, for the phone to put its own tag beside the name', () => {
+  it('carries the sender’s uid and username; a profile with no proper username carries no name, and says "A friend"', async () => {
+    const { world, a, b, read } = await pair();
+    world.put(`users/${b}/requests/${a}`, { username: 'alice', sent: 1 });
+    await call(a, 'POST', '/notify', { kind: 'request', to: b });
+    expect((await read()).notification.data).toEqual({ kind: 'request', route: 'friends', from: a, name: 'alice' });
+
+    const odd = await pair();
+    odd.world.put(`users/${odd.a}`, { username: 'Not A Name' }).put(`users/${odd.b}/requests/${odd.a}`, { username: 'x', sent: 1 });
+    await call(odd.a, 'POST', '/notify', { kind: 'request', to: odd.b });
+    const n = (await odd.read()).notification;
+    expect(n.body).toBe('A friend wants to be friends');
+    expect(n.data).toEqual({ kind: 'request', route: 'friends', from: odd.a });
   });
 });

@@ -53,7 +53,7 @@ describe('POST /notify: pings and messages', () => {
     expect((await send(a, { kind: 'p', e: 'strong' })).json).toEqual({ ok: true });
     expect(net.sent).toHaveLength(1);
     expect(Object.fromEntries(net.sent[0].headers)).toMatchObject({ urgency: 'normal', ttl: '86400', topic: await friendTopic(a) });
-    expect(await note()).toEqual({ title: 'alice', body: '💪', lang: 'en', navigate: `${APP}#open=friend.${a}`, app_badge: '1', data: { kind: 'ping', route: `friend.${a}` } });
+    expect(await note()).toEqual({ title: 'alice', body: '💪', lang: 'en', navigate: `${APP}#open=friend.${a}`, app_badge: '1', data: { kind: 'ping', route: `friend.${a}`, from: a, name: 'alice' } });
   });
 
   it('every preset rings as its emoji, with no words; one this Worker doesn\'t know says "sent you a ping"', async () => {

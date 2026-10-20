@@ -1,4 +1,5 @@
 import { noteOf } from './payload';
+import { tagNote } from '../domain/friendNames';
 import { isRoute } from './routes';
 import type { PushRecords } from './store';
 
@@ -12,6 +13,8 @@ export interface SwDeps {
   record: <K extends keyof PushRecords>(key: K, value: PushRecords[K]) => Promise<void>;
   /** The registration's scope: the app's start URL. */
   scope: string;
+  /** Your private tags for friends, by uid (push/store, kept by state/friendCache); none in tests that don't need them. */
+  tags?: () => Promise<Record<string, string> | undefined>;
 }
 interface ExtendableEvent { waitUntil(p: Promise<unknown>): void }
 export interface PushEventLike extends ExtendableEvent {
@@ -30,15 +33,36 @@ const parse = (e: PushEventLike): unknown => {
  * Every push shows a notification, whatever it carried: Safari revokes the subscription after three that show nothing,
  * and that counts pushes that arrive while the app is open. Anything that should stay quiet is decided on the Worker.
  */
+/** How long a friend's push waits for the tags before it shows as it came. */
+const TAGS_WAIT_MS = 500;
+const FRIEND_KINDS = new Set(['request', 'accepted', 'gym', 'ping', 'message']);
+type Note = ReturnType<typeof noteOf>;
+/**
+ * A friend's push with your tag for them beside their name. Who it's from is in its data (`from`, `name`); from a Worker
+ * before that, a ping or message still names them in its title and lands on them (`friend.<uid>`).
+ */
+async function tagged(n: Note, d: SwDeps): Promise<Note> {
+  const k = n.data.kind;
+  const from = n.data.from ?? (n.data.route?.startsWith('friend.') ? n.data.route.slice('friend.'.length) : undefined);
+  const name = n.data.name ?? (k === 'ping' || k === 'message' ? n.title : undefined);
+  if (!d.tags || !from || !name) return n;
+  const tags = await Promise.race([d.tags().catch(() => undefined), new Promise<undefined>((r) => setTimeout(r, TAGS_WAIT_MS))]);
+  return tagNote(n, k, name, tags?.[from]);
+}
+
 export function onPush(e: PushEventLike, d: SwDeps): void {
   const n = noteOf(parse(e));
+  const friend = !!d.tags && FRIEND_KINDS.has(n.data.kind ?? '');
   // Where a tap lands, as the declarative notification this replaces had it. A browser that knows `navigate` (iOS 18.4+)
   // opens it itself and fires no notificationclick; shown without one, a tap there just brought the app up wherever it
   // was. One that doesn't know it ignores it and fires notificationclick, below.
   const options: NotificationOptions & { navigate: string } = {
     body: n.body, data: n.data, ...(n.lang && { lang: n.lang }), navigate: `${d.scope}#open=${isRoute(n.data.route) ? n.data.route : 'today'}`,
   };
-  const shown = d.registration.showNotification(n.title, options);
+  // Shown at once, unless it's a friend's: then after a look at your tags (never longer than TAGS_WAIT_MS).
+  const shown = friend
+    ? tagged(n, d).catch(() => n).then((t) => d.registration.showNotification(t.title, { ...options, body: t.body }))
+    : d.registration.showNotification(n.title, options);
   // The rest is bookkeeping: none of it may stop the notification, so each failure is its own.
   const extras = Promise.allSettled([
     n.badge != null ? d.setBadge(n.badge) : Promise.resolve(),

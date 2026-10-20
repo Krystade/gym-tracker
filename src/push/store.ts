@@ -6,6 +6,8 @@ export interface PushRecords {
   lastPush: { at: number; kind: string | null };
   /** Where the last notification tap wanted to go, for a page that opened at the root instead (WebKit 263687). */
   route: { route: string; at: number };
+  /** Your private tags for friends, by uid (state/friendCache keeps it in step), for a friend's push to show yours. */
+  tags: Record<string, string>;
 }
 type Key = keyof PushRecords;
 

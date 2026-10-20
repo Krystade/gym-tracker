@@ -164,7 +164,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
           <PersonScreens person={people.active!} people={people} gyms={gyms} nav={nav} />
         </ProfileDbProvider>
       </div>
-      {viewing && <FriendView key={viewing.uid} friend={viewing} tab={tab as FriendTab} exercise={exercise} today={date} gyms={gyms} onOpen={open}
+      {viewing && <FriendView key={viewing.uid} me={me} friend={viewing} tab={tab as FriendTab} exercise={exercise} today={date} gyms={gyms} onOpen={open}
         unread={news?.unread[viewing.uid] ?? 0} onMessage={me ? () => setThread(viewing) : undefined}
         onExerciseBack={() => setExercise(null)} onBack={() => { setViewing(null); setExercise(null); setTab('friends'); window.scrollTo(0, 0); }} />}
       {thread && me && <ThreadSheet key={thread.uid} me={me} friend={thread} gyms={gyms} onClose={() => setThread(null)} onChanged={bumpNews}
@@ -255,7 +255,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
             onRenamed={(to) => { renameToday(person.id, day, exercise, to); setExercise(to); window.scrollTo(0, 0); }}
             onDay={(d) => { setHistoryAt(d); setExercise(null); setTab('history'); }}
             onLog={() => { logToday(person.id, day, exercise); setLogDay(null); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />
-          : tab === 'today' ? <TodayScreen key={logDay ?? day} who={people.people.length > 1 ? person.name : undefined} news={uid ? nav.news?.top ?? null : null}
+          : tab === 'today' ? <TodayScreen key={logDay ?? day} me={uid} who={people.people.length > 1 ? person.name : undefined} news={uid ? nav.news?.top ?? null : null}
             onOpenNews={(f) => nav.openThread(f)} store={store} settings={settings} programs={programs} body={body} gyms={gyms} profile={profile.profile} date={logDay ?? day} today={day}
             carried={day !== date && !logDay} recap={nav.recapAt || undefined} onSplit={() => setCarryOff(date)}
             onDay={(d) => { setLogDay(d === day ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={top(() => setProgramOpen(true))} onOpenGym={top(() => setGymOpen(true))} />

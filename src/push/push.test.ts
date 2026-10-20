@@ -194,6 +194,39 @@ describe('service worker push', () => {
     expect(win.postMessage).toHaveBeenCalledWith({ type: 'push', kind: 'ping', route: 'friend.u1' });
   });
 
+  it('a friend’s push shows your private tag beside their name, for whatever they sent', async () => {
+    const show = async (payload: unknown, tags: Record<string, string> | undefined | Error) => {
+      const f = fakes();
+      const d: SwDeps = { ...f.d, tags: async () => { if (tags instanceof Error) throw tags; return tags; } };
+      onPush({ data: { json: () => payload, text: () => '' }, waitUntil: f.waitUntil }, d);
+      await f.waits[0];
+      const [title, o] = f.d.registration.showNotification.mock.calls[0];
+      return { title, body: o?.body };
+    };
+    const TAGS = { u1: 'Jake (gym)' };
+    expect(await show(buildPayload('ping', pingNote('jake', 'fire'), APP, { route: 'friend.u1', from: 'u1', name: 'jake' }), TAGS)).toEqual({ title: 'Jake (gym) · @jake', body: '🔥' });
+    expect(await show(buildPayload('request', requestNote('jake'), APP, { from: 'u1', name: 'jake' }), TAGS)).toEqual({ title: 'Friend request', body: 'Jake (gym) · @jake wants to be friends' });
+    // Before the Worker carried who it's from: a ping or message still finds them by where it lands and its title.
+    expect(await show(buildPayload('message', messageNote('jake', 'leg day?'), APP, { route: 'friend.u1' }), TAGS)).toEqual({ title: 'Jake (gym) · @jake', body: 'leg day?' });
+    // No tag for them, no tags at all, or reading them failed: as it came.
+    expect(await show(buildPayload('ping', pingNote('jake', 'fire'), APP, { route: 'friend.u1', from: 'u1', name: 'jake' }), { u2: 'Other' })).toEqual({ title: 'jake', body: '🔥' });
+    expect(await show(buildPayload('ping', pingNote('jake', 'fire'), APP, { route: 'friend.u1', from: 'u1', name: 'jake' }), undefined)).toEqual({ title: 'jake', body: '🔥' });
+    expect(await show(buildPayload('ping', pingNote('jake', 'fire'), APP, { route: 'friend.u1', from: 'u1', name: 'jake' }), new Error('idb'))).toEqual({ title: 'jake', body: '🔥' });
+    // Not a friend's push: never looked up.
+    expect(await show(buildPayload('rest', restNote('Squat'), APP), TAGS)).toEqual({ title: 'Rest done', body: 'Squat' });
+  });
+
+  it('a slow read of the tags never holds a friend’s push back for long', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fakes();
+      const d: SwDeps = { ...f.d, tags: () => new Promise(() => {}) };
+      onPush({ data: { json: () => buildPayload('ping', pingNote('jake', 'fire'), APP, { route: 'friend.u1', from: 'u1', name: 'jake' }), text: () => '' }, waitUntil: f.waitUntil }, d);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(f.d.registration.showNotification).toHaveBeenCalledWith('jake', expect.objectContaining({ body: '🔥' }));
+    } finally { vi.useRealTimers(); }
+  });
+
   it('a tap with a window open focuses it and tells it where to go', async () => {
     const win = { focus: vi.fn(async () => {}), postMessage: vi.fn() };
     const f = fakes([win]);

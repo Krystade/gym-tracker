@@ -4,6 +4,7 @@ import { monthOf, type CloudMonth, type MetaItems } from '../domain/cloud';
 import { itemShort, latestOf, messageOk, thread, toClear, unreadOf, type InboxDoc, type PresetKey, type ThreadItem } from '../domain/messages';
 import { cleanStatus } from '../domain/crew';
 import { newToken, type Invite } from '../domain/invite';
+import { CHANGE_GAP_MS, nextChangeAt } from '../domain/friendNames';
 import type { SetEntry } from '../domain/types';
 import { notifyFriend } from '../push/client';
 import type { Cloud } from './firebase';
@@ -13,27 +14,60 @@ import type { Cloud } from './firebase';
 // would want to hear about, the push Worker is told (notifyFriend): it checks the write in Firestore itself, and a failure
 // there never fails the write.
 
-export interface Friend { uid: string; name: string; /** You muted their pushes (only you know). */ muted?: boolean }
+export interface Friend {
+  uid: string; name: string; /** You muted their pushes (only you know). */ muted?: boolean;
+  /** Their username before their last change, and when that was (ms): "formerly @prev" shows for 30 days (domain/friendNames). */
+  prev?: string; changedAt?: number;
+}
 export interface Request { uid: string; name: string }
 const WEEK = 7 * 864e5;
 const fail = (text: string) => Object.assign(new Error(text), { plain: true });
 
-export async function myUsername({ F, db }: Cloud, uid: string): Promise<string | null> {
-  return ((await F.getDoc(F.doc(db, `users/${uid}`))).data()?.username as string | undefined) ?? null;
+/** A profile as anyone signed in reads it: the name, and what it was before its last change and when. */
+export interface Profile { name: string; prev?: string; changedAt?: number }
+const millis = (v: unknown) => (v as { toMillis?(): number } | null | undefined)?.toMillis?.();
+function profileFrom(d: Record<string, unknown> | undefined): Profile | null {
+  if (typeof d?.username !== 'string') return null;
+  const changedAt = millis(d.changedAt);
+  return { name: d.username, ...(typeof d.prev === 'string' && { prev: d.prev }), ...(changedAt != null && { changedAt }) };
 }
-const nameOf = async ({ F, db }: Cloud, uid: string) => ((await F.getDoc(F.doc(db, `users/${uid}`))).data()?.username as string | undefined) ?? 'someone';
+export async function myProfile({ F, db }: Cloud, uid: string): Promise<Profile | null> {
+  return profileFrom((await F.getDoc(F.doc(db, `users/${uid}`))).data());
+}
+export async function myUsername(c: Cloud, uid: string): Promise<string | null> {
+  return (await myProfile(c, uid))?.name ?? null;
+}
+const nameOf = async (c: Cloud, uid: string) => (await myProfile(c, uid))?.name ?? 'someone';
 
-/** Claims a username (or changes yours): one transaction, so two people can't take the same name. */
+const ONCE_A_DAY = (at: number) => `You can change your username once a day. Try again after ${new Date(at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}.`;
+/**
+ * Claims a username, or changes yours: one transaction, so two people can't take the same name, and the change is whole
+ * (firestore.rules hold it to that): the new name claimed, the old one released, and the profile naming the new one with
+ * the old one and the server's time beside it, at most once a day. Friends, threads and everything else go by uid.
+ */
 export async function claimUsername({ F, db }: Cloud, uid: string, name: string): Promise<void> {
-  await F.runTransaction(db, async (tx) => {
-    const ref = F.doc(db, `usernames/${name}`), meRef = F.doc(db, `users/${uid}`);
-    const [taken, me] = [await tx.get(ref), await tx.get(meRef)];
-    if (taken.exists() && taken.data().uid !== uid) throw fail(`“${name}” is taken. Try another.`);
-    const old = me.data()?.username as string | undefined;
-    if (!taken.exists()) tx.set(ref, { uid });
-    if (old && old !== name) tx.delete(F.doc(db, `usernames/${old}`));
-    tx.set(meRef, { username: name, displayName: name });
-  });
+  let soonest: number | null = null;
+  try {
+    await F.runTransaction(db, async (tx) => {
+      const ref = F.doc(db, `usernames/${name}`), meRef = F.doc(db, `users/${uid}`);
+      const [taken, me] = [await tx.get(ref), await tx.get(meRef)];
+      if (taken.exists() && taken.data().uid !== uid) throw fail(`“${name}” is taken. Try another.`);
+      const p = profileFrom(me.data());
+      if (p?.name === name) return;
+      if (p) {
+        const next = nextChangeAt(p.changedAt, Date.now());
+        if (next != null) throw fail(ONCE_A_DAY(next));
+        soonest = (p.changedAt ?? Date.now()) + CHANGE_GAP_MS; // what to say if the server's clock calls it too soon
+      }
+      if (!taken.exists()) tx.set(ref, { uid });
+      if (p) tx.delete(F.doc(db, `usernames/${p.name}`));
+      tx.set(meRef, p ? { username: name, displayName: name, prev: p.name, changedAt: F.serverTimestamp() } : { username: name, displayName: name });
+    });
+  } catch (e) {
+    // A change the rules refused: the once-a-day rule by the server's clock (the rest the transaction checked itself).
+    if (soonest != null && (e as { code?: string }).code === 'permission-denied') throw fail(ONCE_A_DAY(soonest));
+    throw e;
+  }
 }
 
 /** Your one live invite: making a new one ends the old. */
@@ -99,8 +133,10 @@ export async function sendRequest(c: Cloud, me: string, myName: string, to: stri
   notifyFriend('request', them);
   return 'sent';
 }
-export async function listRequests({ F, db }: Cloud, me: string): Promise<Request[]> {
-  return (await F.getDocs(F.collection(db, `users/${me}/requests`))).docs.map((d) => ({ uid: d.id, name: (d.data().username as string) ?? 'someone' }));
+/** Each by its sender's name now (read from their profile by uid), not the one the request was sent under. */
+export async function listRequests(c: Cloud, me: string): Promise<Request[]> {
+  const docs = (await c.F.getDocs(c.F.collection(c.db, `users/${me}/requests`))).docs;
+  return Promise.all(docs.map(async (d) => ({ uid: d.id, name: (await myProfile(c, d.id))?.name ?? (d.data().username as string | undefined) ?? 'someone' })));
 }
 /** Their request is what lets you into their list; it goes in the same write. */
 export async function acceptRequest({ F, db }: Cloud, me: string, from: string, now = Date.now()): Promise<void> {
@@ -117,7 +153,10 @@ export async function declineRequest({ F, db }: Cloud, me: string, from: string)
 
 export async function listFriends(c: Cloud, me: string): Promise<Friend[]> {
   const docs = (await c.F.getDocs(c.F.collection(c.db, `users/${me}/friends`))).docs;
-  const out = await Promise.all(docs.map(async (d) => ({ uid: d.id, name: await nameOf(c, d.id), ...(d.data().muted === true && { muted: true }) })));
+  const out = await Promise.all(docs.map(async (d) => {
+    const { name, ...was } = (await myProfile(c, d.id)) ?? { name: 'someone' };
+    return { uid: d.id, name, ...was, ...(d.data().muted === true && { muted: true }) };
+  }));
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 /** Both documents go, so neither of you can read the other's log any more; their pings and messages leave your inbox. */

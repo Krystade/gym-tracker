@@ -127,22 +127,106 @@ describe('requests', () => {
 });
 
 describe('usernames and profiles', () => {
+  /** A first name, as the app claims it: the name and the profile naming it, in one write. */
+  const claim = (uid: string, name: string) => {
+    const db = as(uid);
+    return writeBatch(db).set(doc(db, `usernames/${name}`), { uid }).set(doc(db, `users/${uid}`), { username: name, displayName: name }).commit();
+  };
+  /** A change, as the app makes it: the new name claimed, the old one released and the profile moved on, in one write. */
+  const swap = (uid: string, from: string, to: string, o: { prev?: string; release?: string | null; claim?: boolean; at?: unknown } = {}) => {
+    const db = as(uid), b = writeBatch(db);
+    if (o.claim !== false) b.set(doc(db, `usernames/${to}`), { uid });
+    const release = o.release === undefined ? from : o.release;
+    if (release) b.delete(doc(db, `usernames/${release}`));
+    b.set(doc(db, `users/${uid}`), { username: to, displayName: to, prev: o.prev ?? from, changedAt: o.at ?? serverTimestamp() });
+    return b.commit();
+  };
+  const seedEve = () => seed(async (db) => {
+    await setDoc(doc(db, 'usernames/eve'), { uid: 'eve' });
+    await setDoc(doc(db, 'users/eve'), { username: 'eve', displayName: 'eve' });
+  });
   it('can be looked up by exact name, never listed', async () => {
     await assertSucceeds(getDoc(doc(as('eve'), 'usernames/alice')));
     await assertFails(getDocs(collection(as('eve'), 'usernames')));
     await assertFails(getDoc(doc(as(null), 'usernames/alice')));
   });
-  it('a name is claimed once, for yourself, in the allowed shape', async () => {
+  it('a name is claimed for yourself, in the allowed shape, together with your profile naming it', async () => {
     await assertFails(setDoc(doc(as('eve'), 'usernames/alice'), { uid: 'eve' })); // taken
     await assertFails(setDoc(doc(as('eve'), 'usernames/someone'), { uid: 'bob' }));
-    await assertFails(setDoc(doc(as('eve'), 'usernames/Bad Name'), { uid: 'eve' }));
-    await assertSucceeds(setDoc(doc(as('eve'), 'usernames/eve_99'), { uid: 'eve' }));
+    await assertFails(claim('eve', 'Bad Name'));
+    await assertFails(claim('eve', 'Eve'));
+    await assertFails(setDoc(doc(as('eve'), 'usernames/eve_99'), { uid: 'eve' })); // a name alone: nobody hoards names
+    await assertSucceeds(claim('eve', 'eve_99'));
     await assertFails(deleteDoc(doc(as('eve'), 'usernames/alice')));
   });
-  it('a profile holds only a name, and only its owner writes it', async () => {
-    await assertFails(setDoc(doc(as('eve'), 'users/eve'), { username: 'eve', months: {} }));
-    await assertSucceeds(setDoc(doc(as('eve'), 'users/eve'), { username: 'eve', displayName: 'Eve' }));
+  it('a profile holds only a name you hold, and only its owner writes it', async () => {
+    await seed((db) => setDoc(doc(db, 'usernames/eve'), { uid: 'eve' }));
+    await assertFails(setDoc(doc(as('eve'), 'users/eve'), { username: 'eve', displayName: 'eve', months: {} }));
+    await assertFails(setDoc(doc(as('eve'), 'users/eve'), { username: 'eve', displayName: 'Someone else' }));
+    await assertFails(setDoc(doc(as('eve'), 'users/eve'), { username: 'alice', displayName: 'alice' }));
+    await assertSucceeds(setDoc(doc(as('eve'), 'users/eve'), { username: 'eve', displayName: 'eve' }));
     await assertFails(setDoc(doc(as('eve'), 'users/alice'), { username: 'x', displayName: 'x' }));
+  });
+  it('a stolen name is refused: nobody takes a held name, or goes by one they don’t hold', async () => {
+    await seedEve();
+    await assertFails(swap('eve', 'eve', 'alice')); // claiming alice's: her name document is there
+    await assertFails(swap('eve', 'eve', 'alice', { claim: false })); // going by it without the document
+    await assertFails(setDoc(doc(as('eve'), 'users/eve'), { username: 'alice', displayName: 'alice', prev: 'eve', changedAt: serverTimestamp() }));
+    expect((await getDoc(doc(as('eve'), 'usernames/alice'))).data()).toEqual({ uid: 'alice' });
+    expect((await getDoc(doc(as('eve'), 'users/eve'))).data()?.username).toBe('eve');
+  });
+  it('nobody releases someone else’s name, alone or inside their own change', async () => {
+    await seedEve();
+    await assertFails(deleteDoc(doc(as('eve'), 'usernames/alice')));
+    const db = as('eve');
+    await assertFails(writeBatch(db).set(doc(db, 'usernames/eve2'), { uid: 'eve' }).delete(doc(db, 'usernames/eve')).delete(doc(db, 'usernames/alice'))
+      .set(doc(db, 'users/eve'), { username: 'eve2', displayName: 'eve2', prev: 'eve', changedAt: serverTimestamp() }).commit());
+    // Releasing alice's as if it were his old name.
+    await assertFails(swap('eve', 'alice', 'eve2', { prev: 'eve' }));
+    expect((await getDoc(doc(as('eve'), 'usernames/alice'))).exists()).toBe(true);
+  });
+  it('you can’t release your own name while your profile still goes by it', async () => {
+    await assertFails(deleteDoc(doc(as('alice'), 'usernames/alice')));
+  });
+  it('a change is one write: the new name, the old one released and the profile, all or nothing', async () => {
+    await assertFails(swap('alice', 'alice', 'alice_k', { release: null })); // keeping the old name too
+    await assertFails(swap('alice', 'alice', 'alice_k', { claim: false })); // going by a name not held
+    const db = as('alice');
+    await assertFails(setDoc(doc(db, 'usernames/alice_k'), { uid: 'alice' })); // the new name alone
+    await assertFails(writeBatch(db).set(doc(db, 'usernames/alice_k'), { uid: 'alice' }).delete(doc(db, 'usernames/alice')).commit()); // no profile
+    expect((await getDoc(doc(db, 'usernames/alice'))).exists()).toBe(true);
+    expect((await getDoc(doc(db, 'usernames/alice_k'))).exists()).toBe(false);
+    await assertSucceeds(swap('alice', 'alice', 'alice_k'));
+    expect((await getDoc(doc(db, 'usernames/alice'))).exists()).toBe(false);
+    expect((await getDoc(doc(db, 'usernames/alice_k'))).data()).toEqual({ uid: 'alice' });
+    expect((await getDoc(doc(as('bob'), 'users/alice'))).data()).toMatchObject({ username: 'alice_k', prev: 'alice' });
+    // The old name is anyone's now.
+    await assertSucceeds(claim('eve', 'alice'));
+  });
+  it('the previous name is the real one, and the time is the server’s', async () => {
+    await assertFails(swap('alice', 'alice', 'alice_k', { prev: 'bob' }));
+    await assertFails(swap('alice', 'alice', 'alice_k', { at: Timestamp.fromMillis(Date.now() - 3 * 86_400_000) }));
+    await assertSucceeds(swap('alice', 'alice', 'alice_k'));
+  });
+  it('once a day: a second change within the day is refused, the next day it goes', async () => {
+    await assertSucceeds(swap('alice', 'alice', 'alice_k'));
+    await assertFails(swap('alice', 'alice_k', 'alice_z'));
+    await seed((db) => setDoc(doc(db, 'users/alice'), { username: 'alice_k', displayName: 'alice_k', prev: 'alice', changedAt: Timestamp.fromMillis(Date.now() - 86_400_000 - 60_000) }));
+    await assertSucceeds(swap('alice', 'alice_k', 'alice_z'));
+  });
+  it('deleting the account takes the name with the profile, in one write', async () => {
+    const db = as('alice');
+    await assertSucceeds(writeBatch(db).delete(doc(db, 'usernames/alice')).delete(doc(db, 'users/alice')).commit());
+  });
+});
+
+describe('private friend tags (your synced settings)', () => {
+  const tags = { tags: { bob: 'Bob (gym)' }, updatedAt: 1 };
+  it('are yours alone: a friend can’t read or write them', async () => {
+    await assertSucceeds(setDoc(doc(as('alice'), 'users/alice/private/tags'), tags));
+    await assertSucceeds(getDoc(doc(as('alice'), 'users/alice/private/tags')));
+    await assertFails(getDoc(doc(as('bob'), 'users/alice/private/tags')));
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/private/tags'), tags));
   });
 });
 

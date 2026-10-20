@@ -185,7 +185,8 @@ export async function deleteCloudData({ F, db }: Cloud, uid: string): Promise<vo
   const last = await listed('sendRate');
   const profile = await F.getDoc(F.doc(db, `users/${uid}`));
   const username = profile.data()?.username as string | undefined;
-  if (username) refs.push(F.doc(db, `usernames/${username}`));
+  // The name goes with the profile, in one write: the rules release a name only as the profile stops going by it.
+  if (username) last.push(F.doc(db, `usernames/${username}`));
   last.push(F.doc(db, `users/${uid}`));
   const chunks: (typeof refs)[] = [];
   for (let i = 0; i < refs.length; i += 400) chunks.push(refs.slice(i, i + 400));

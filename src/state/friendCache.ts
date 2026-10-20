@@ -2,12 +2,14 @@ import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { deleteFriendCaches, getFriendCache, putFriendCache } from '../db/db';
 import { loadCloud, type Cloud } from '../cloud/firebase';
 import {
-  friendNews, listBlocked, listFriends, listRequests, listSent, listSentGyms, listThread, liveInvite, myUsername, readFriendWindow, readInbox, threadOf,
+  friendNews, listBlocked, listFriends, listRequests, listSent, listSentGyms, listThread, liveInvite, myProfile, readFriendWindow, readInbox, threadOf,
   type Friend, type FriendNews, type FriendWindow, type Request, type SentGym, type WindowBasis,
 } from '../cloud/friends';
 import { addDays } from '../domain/analytics';
 import type { Invite } from '../domain/invite';
 import type { InboxDoc, ThreadItem } from '../domain/messages';
+import { readTags, saveTag, type Tags } from '../cloud/tags';
+import { record } from '../push/store';
 
 // Friends as last read, for one account, kept on the phone: Friends, Crew, the threads and the Friends tab's dot show
 // it at once and read Firestore again quietly behind it (stale-while-revalidate). It's read in the background after the
@@ -25,6 +27,7 @@ export const crewRange = (today: string) => ({ from: addDays(today, -(CREW_SPAN 
 export interface Lists {
   at: number;
   /** Your username; null: none chosen yet. */ me: string | null;
+  /** When you last changed it (ms): it changes at most once a day. */ changedAt?: number;
   friends: Friend[]; requests: Request[]; invite: (Invite & { expires: number }) | null; sentGyms: SentGym[]; blocked: Friend[];
 }
 /** `basis`: the times in their index it was read at, so the next read fetches only what changed (cloud/friends readFriendWindow). */
@@ -39,6 +42,7 @@ export interface FriendCache {
   inbox?: { items: InboxDoc[]; full: number };
   /** Per friend's uid. */ windows: Record<string, CachedWindow>;
   /** Per friend's uid. */ threads: Record<string, CachedThread>;
+  /** Your private tags for friends, by uid (cloud/tags), as last read or saved. */ tags?: Tags;
 }
 
 // ---- Pure rules ----
@@ -147,8 +151,22 @@ export async function patchFriendCache(uid: string, fn: (c: FriendCache) => Frie
   return next;
 }
 
+/** The tags for the service worker, which shows a friend's push with yours beside their name (push/sw-push). */
+function mirrorTags(tags: Tags | undefined): void {
+  void record('tags', tags ?? {}).catch(() => {});
+}
+
+/** One friend's tag set, or removed with '', on the account and then here. */
+export async function setFriendTag(c: Cloud, uid: string, friend: string, tag: string): Promise<Tags> {
+  const tags = await saveTag(c, uid, friend, tag);
+  await patchFriendCache(uid, (x) => ({ ...x, tags }));
+  mirrorTags(tags);
+  return tags;
+}
+
 /** Signed out or the account deleted: no friend's anything stays on the phone. */
 export async function forgetFriendCaches(): Promise<void> {
+  mirrorTags({});
   gen++;
   if (timer) { clearTimeout(timer); timer = null; }
   dirty.clear(); mem.clear(); reading.clear(); lastRun.clear();
@@ -189,6 +207,11 @@ export function useFriendCacheSelect<T>(uid: string | null | undefined, pick: (c
   return v;
 }
 
+const NO_TAGS: Tags = {};
+const pickTags = (c: FriendCache | undefined): Tags => c?.tags ?? NO_TAGS;
+/** Your private tags for friends, by uid, as kept here. */
+export const useFriendTags = (uid: string | null | undefined) => useFriendCacheSelect(uid, pickTags);
+
 /** The news without when it was read: the same requests, gyms and unread read again are the same news. */
 export function sameNews(a: (FriendNews & { at?: number }) | null, b: (FriendNews & { at?: number }) | null): boolean {
   if (a === b) return true;
@@ -218,11 +241,13 @@ function once<T>(key: string, f: () => Promise<T>, join: boolean): Promise<T> {
 /** Your username, friends, requests, invite link, gyms sent to you and who you blocked. */
 export function refreshLists(c: Cloud, uid: string, join = false): Promise<Lists> {
   return once(`lists:${uid}`, async () => {
-    const [me, friends, requests, invite, sentGyms, blocked] = await Promise.all([
-      myUsername(c, uid), listFriends(c, uid), listRequests(c, uid), liveInvite(c, uid), listSentGyms(c, uid), listBlocked(c, uid).catch(() => []),
+    const [p, friends, requests, invite, sentGyms, blocked, tags] = await Promise.all([
+      myProfile(c, uid), listFriends(c, uid), listRequests(c, uid), liveInvite(c, uid), listSentGyms(c, uid), listBlocked(c, uid).catch(() => []),
+      readTags(c, uid).catch(() => undefined), // unread: the tags kept stay
     ]);
-    const lists: Lists = { at: Date.now(), me, friends, requests, invite, sentGyms, blocked };
-    await patchFriendCache(uid, (x) => ({ ...pruneTo(x, friends.map((f) => f.uid)), lists }));
+    const lists: Lists = { at: Date.now(), me: p?.name ?? null, ...(p?.changedAt != null && { changedAt: p.changedAt }), friends, requests, invite, sentGyms, blocked };
+    const next = await patchFriendCache(uid, (x) => ({ ...pruneTo(x, friends.map((f) => f.uid)), lists, tags: tags ?? x.tags }));
+    if (tags) mirrorTags(next.tags);
     return lists;
   }, join);
 }

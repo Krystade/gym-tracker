@@ -10,6 +10,7 @@ import { ChartTable } from './charts/ChartTable';
 import { Latest, MessageButton } from './MessageButton';
 import { Icon, initials } from './icons';
 import { Input } from './Field';
+import { Formerly, useFriendLabel } from './FriendName';
 
 // Every friend on one screen: a line each across the days, coloured by what they trained. Cycle data never comes here:
 // friends' rows read only their months and status phrase, and your own row only your log.
@@ -31,6 +32,7 @@ export function Crew({ uid, myName, friends, entries, today, status, news, pulle
   // Each friend's line as the phone kept it (state/friendCache), read again quietly when 5 minutes old or for a new day.
   // A failed read shows only where nothing was kept; a kept line stays as it was.
   const windows = useFriendCache(uid)?.windows;
+  const label = useFriendLabel(uid);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const load = useCallback(async (force: boolean) => {
@@ -61,12 +63,12 @@ export function Crew({ uid, myName, friends, entries, today, status, news, pulle
     const me: Row = { id: 'me', name: 'You', label: 'You', status: status.status, days: crewDays(mine, from, today), sets: mine, me: true };
     const theirs = (friends ?? []).map((f): Row => {
       const w = windows?.[f.uid], sets = (w?.win.sets ?? []).filter((x) => x.date >= from && x.date <= today), error = w ? undefined : errors[f.uid];
-      return { id: f.uid, name: `@${f.name}`, label: `@${f.name}`, status: w?.win.status ?? '', days: crewDays(sets, from, today), sets, me: false, friend: f, error, loading: !w && !error };
+      return { id: f.uid, name: `@${f.name}`, label: label(f.uid, f.name), status: w?.win.status ?? '', days: crewDays(sets, from, today), sets, me: false, friend: f, error, loading: !w && !error };
     });
     const last = (r: Row) => lastTraining(r.days)?.date ?? '';
     theirs.sort((a, b) => (last(b) > last(a) ? 1 : last(b) < last(a) ? -1 : a.name.localeCompare(b.name)));
     return [me, ...theirs];
-  }, [entries, friends, windows, errors, status.status, from, today]);
+  }, [entries, friends, windows, errors, status.status, from, today, label]);
 
   // Sideways: `off` is how many days back the window sits (0: today at the right edge). Fractional while dragging.
   const [off, setOff] = useState(0);
@@ -153,6 +155,7 @@ export function Crew({ uid, myName, friends, entries, today, status, news, pulle
                       {r.friend?.muted && <span className="crew-muted" role="img" aria-label="Muted"><Icon name="bell-off" size={15} /></span>}
                       {r.me ? <StatusEdit status={status} /> : r.status && <span className="crew-bubble">{r.status}</span>}
                     </div>
+                    {r.friend && <Formerly friend={r.friend} />}
                     {r.friend && onMessage && <Latest news={news} uid={r.friend.uid} />}
                   </div>
                   {r.friend && onMessage && <MessageButton name={r.friend.name} unread={news?.unread[r.friend.uid] ?? 0} onClick={() => onMessage(r.friend!)} />}

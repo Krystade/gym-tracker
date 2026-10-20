@@ -7,6 +7,7 @@ import { copyGym } from '../domain/share';
 import { useMinute } from '../state/clock';
 import type { GymsStore } from '../state/useGyms';
 import { Icon, initials } from './icons';
+import { FriendName, FriendTagEditor, useFriendLabel } from './FriendName';
 
 /** The friend a thread is with: from a row (name known) or a notification (uid alone). */
 export interface ThreadWith { uid: string; name?: string }
@@ -88,7 +89,8 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const who = name ? `@${name}` : 'them';
+  const label = useFriendLabel(me);
+  const who = name ? label(friend.uid, name) : 'them';
   /** One send at a time, and the buttons rest for the rules' 2 s after it. */
   const send = async (f: () => Promise<unknown>, done: string) => {
     setBusy(true); setMsg(null);
@@ -120,7 +122,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
       <section className="sheet thread-sheet" role="dialog" aria-modal="true" aria-label={`Messages with ${who}`}>
         <header className="sheet-head">
           <span className="avatar" aria-hidden="true">{initials(name || '?')}</span>
-          <h2>{who}</h2>
+          <h2>{name ? <FriendName me={me} friend={{ uid: friend.uid, name }} /> : who}</h2>
           {state?.friend && (
             <button className="mini icon" aria-pressed={state.muted} aria-label={state.muted ? `Unmute ${who}` : `Mute ${who}`} disabled={busy} onClick={mute}><Icon name={state.muted ? 'bell-off' : 'bell'} /></button>
           )}
@@ -142,6 +144,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
               : setArmed('block'))}>{armed === 'block' ? 'Tap again to block' : 'Block'}</button>
           </div>
         )}
+        {menu && state?.friend && name && <FriendTagEditor me={me} friend={{ uid: friend.uid, name }} />}
         <ol ref={list} className="thread" aria-label="Messages">
           {items == null ? <li className="muted small">Loading…</li>
             : !items.length ? <li className="muted small thread-empty">{can ? `Nothing yet. Send ${who} a ping.` : 'Nothing here.'}</li>

@@ -26,6 +26,8 @@ export interface FriendPush {
   unread: boolean;
   /** At most one push a day with this key (a friend request: asking again and again doesn't ring again and again). */
   daily?: string;
+  /** The sender's username, when their profile has a proper one: the phone puts its own tag for them beside it. */
+  name?: string;
 }
 
 type Env4 = Pick<Env, 'AUTH_EMULATOR' | 'FIREBASE_PROJECT' | 'FIRESTORE_EMULATOR'>;
@@ -33,11 +35,11 @@ type Env4 = Pick<Env, 'AUTH_EMULATOR' | 'FIREBASE_PROJECT' | 'FIRESTORE_EMULATOR
 const fresh = (d: Doc, now: number) => d.createTime > now - FRESH_MS && d.createTime < now + SKEW_MS;
 const exists = (d: Doc | null | 'denied'): d is Doc => d != null && d !== 'denied';
 
-/** The sender's username from their own profile; any signed-in person may read a profile's name. */
-async function nameOf(env: Env4, token: string, uid: string): Promise<string> {
+/** The sender's username from their own profile (any signed-in person may read a profile's name); null without a proper one. */
+async function usernameOf(env: Env4, token: string, uid: string): Promise<string | null> {
   const d = await getDoc(env, token, ['users', uid]);
   const n = exists(d) ? d.fields.username : null;
-  return typeof n === 'string' && /^[a-z0-9_]{3,20}$/.test(n) ? n : 'A friend';
+  return typeof n === 'string' && /^[a-z0-9_]{3,20}$/.test(n) ? n : null;
 }
 
 /** `to` counts the sender as a friend: only their friends may read `users/{to}/meta/*`, so an absent one answers 404, not 403. */
@@ -57,32 +59,41 @@ async function friendOf(env: Env4, token: string, to: string): Promise<void> {
  */
 export async function check(env: Env4, token: string, me: string, c: Claim, now: number): Promise<FriendPush> {
   if (c.to === me) throw new Refused('self');
+  /** The sender's name for the words ("A friend" without a proper one), and carried as `name` only when it is one. */
+  const sender = async () => {
+    const n = await usernameOf(env, token, me);
+    return { said: n ?? 'A friend', ...(n && { name: n }) };
+  };
   switch (c.kind) {
     case 'request': {
       const d = await getDoc(env, token, ['users', c.to, 'requests', me]);
       if (!exists(d) || !fresh(d, now)) throw new Refused('request');
-      return { kind: 'request', from: me, key: `request:${me}:${d.createTime}`, note: requestNote(await nameOf(env, token, me)), route: 'friends', unread: true, daily: `request:${me}` };
+      const { said, ...name } = await sender();
+      return { kind: 'request', from: me, ...name, key: `request:${me}:${d.createTime}`, note: requestNote(said), route: 'friends', unread: true, daily: `request:${me}` };
     }
     case 'accepted': {
       await friendOf(env, token, c.to);
       const mine = await getDoc(env, token, ['users', me, 'friends', c.to]);
       if (!exists(mine) || !fresh(mine, now)) throw new Refused('accepted');
-      return { kind: 'accepted', from: me, key: `accepted:${me}:${mine.createTime}`, note: acceptedNote(await nameOf(env, token, me)), route: `friend.${me}`, unread: false };
+      const { said, ...name } = await sender();
+      return { kind: 'accepted', from: me, ...name, key: `accepted:${me}:${mine.createTime}`, note: acceptedNote(said), route: `friend.${me}`, unread: false };
     }
     case 'gym': {
       const d = await getDoc(env, token, ['users', c.to, 'gymInbox', c.id!]);
       if (!exists(d) || d.fields.from !== me || !fresh(d, now)) throw new Refused('gym');
       await friendOf(env, token, c.to);
       const gym = d.fields.gym as { name?: unknown } | undefined;
-      return { kind: 'gym', from: me, key: `gym:${c.id}`, note: gymNote(await nameOf(env, token, me), typeof gym?.name === 'string' ? gym.name : ''), route: `friend.${me}`, unread: true };
+      const { said, ...name } = await sender();
+      return { kind: 'gym', from: me, ...name, key: `gym:${c.id}`, note: gymNote(said, typeof gym?.name === 'string' ? gym.name : ''), route: `friend.${me}`, unread: true };
     }
     case 'inbox': {
       const d = await getDoc(env, token, ['users', c.to, 'inbox', c.id!]);
       if (!exists(d) || d.fields.from !== me || !fresh(d, now)) throw new Refused('inbox');
       await friendOf(env, token, c.to);
-      const name = await nameOf(env, token, me), base = { from: me, key: `inbox:${c.id}`, route: `friend.${me}` as const, unread: true };
-      if (d.fields.kind === 'p') return { ...base, kind: 'ping', note: pingNote(name, d.fields.e) };
-      if (d.fields.kind === 'm' && typeof d.fields.t === 'string' && d.fields.t) return { ...base, kind: 'message', note: messageNote(name, d.fields.t) };
+      const { said, ...name } = await sender();
+      const base = { from: me, ...name, key: `inbox:${c.id}`, route: `friend.${me}` as const, unread: true };
+      if (d.fields.kind === 'p') return { ...base, kind: 'ping', note: pingNote(said, d.fields.e) };
+      if (d.fields.kind === 'm' && typeof d.fields.t === 'string' && d.fields.t) return { ...base, kind: 'message', note: messageNote(said, d.fields.t) };
       throw new Refused('inbox');
     }
   }

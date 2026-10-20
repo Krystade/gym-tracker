@@ -12,19 +12,38 @@ service cloud.firestore {
         && get(/databases/$(db)/documents/users/$(uid)/invites/$(token)).data.expires > request.time;
     }
 
-    // Exact-name lookup only: nobody can list who's here.
+    // Exact-name lookup only: nobody can list who's here. A name is held by the one profile that goes by it: claimed in the
+    // write that names your profile by it, released only in the write that moves your profile off it (or deletes the account).
+    function nameDoc(n) { return /databases/$(db)/documents/usernames/$(n); }
+    function profileDoc(uid) { return /databases/$(db)/documents/users/$(uid); }
+    function holdsAfter(uid, n) { return n is string && existsAfter(nameDoc(n)) && getAfter(nameDoc(n)).data.uid == uid; }
     match /usernames/{name} {
       allow get: if signedIn();
       allow list: if false;
       allow create: if signedIn() && name.matches('^[a-z0-9_]{3,20}$')
-        && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid == request.auth.uid;
-      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+        && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid == request.auth.uid
+        && getAfter(profileDoc(request.auth.uid)).data.username == name;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid
+        && (!existsAfter(profileDoc(request.auth.uid)) || getAfter(profileDoc(request.auth.uid)).data.username != name);
     }
 
     match /users/{uid} {
-      // Name only, so a request can say who it's from.
+      // Name only, so a request can say who it's from; `prev` and `changedAt` say what it was ("formerly @…" for 30 days).
       allow get: if signedIn();
-      allow create, update: if me(uid) && request.resource.data.keys().hasOnly(['username', 'displayName']);
+      // A first name: one you hold.
+      allow create: if me(uid) && request.resource.data.keys().hasOnly(['username', 'displayName'])
+        && request.resource.data.displayName == request.resource.data.username && holdsAfter(uid, request.resource.data.username);
+      // A change: the new name held and the old one released in the same write, `prev` the old one, the server's time, and
+      // at most once a day.
+      allow update: if me(uid) && request.resource.data.keys().hasOnly(['username', 'displayName', 'prev', 'changedAt'])
+        && request.resource.data.displayName == request.resource.data.username
+        && ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']))
+          || (request.resource.data.username != resource.data.username
+            && holdsAfter(uid, request.resource.data.username)
+            && !existsAfter(nameDoc(resource.data.username))
+            && request.resource.data.prev == resource.data.username
+            && request.resource.data.changedAt == request.time
+            && (!('changedAt' in resource.data) || request.time > resource.data.changedAt + duration.value(1, 'd'))));
       allow delete: if me(uid);
 
       match /months/{m} { allow read: if me(uid) || friendOf(uid); allow write: if me(uid); }

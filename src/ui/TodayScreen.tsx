@@ -36,10 +36,12 @@ import { lastSupersets, nextAfter, supersets, type Superset } from '../domain/su
 import { markNotSuperset, notSupersets } from '../state/notSuperset';
 import { carryOver, rotation, type Carry, type Rotation } from '../domain/rotation';
 import { applyRotation, inProgram, RotationSuggestion } from './RotationSuggestion';
+import { FriendName } from './FriendName';
 
-export function TodayScreen({ who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews }: {
+export function TodayScreen({ me, who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews }: {
   /** Whose sets these are, named only when several people share the phone. */
   who?: string;
+  /** The signed-in account, for your tag for whoever the news is from. */ me?: string | null;
   store: SetsStore; settings: SettingsStore; programs: ProgramStore; body: BodyStore; gyms: GymsStore; profile: Profile; date: string; today: string;
   carried?: boolean; onSplit?: () => void; onDay: (d: string) => void; onOpen: (name: string) => void; onOpenProgram: () => void; onOpenGym?: () => void;
   /** A friend's newest unread ping or message: one line, and a tap opens their thread to reply. */
@@ -202,7 +204,7 @@ export function TodayScreen({ who, store, settings, programs, body, gyms, profil
       {gyms.gyms.length > 1 && gyms.active && <button className="gym-line" onClick={onOpenGym}><span>at <b className="pname">{gyms.active.name}</b></span><Icon name="chev-right" size={16} sw={2} /></button>}
       {news && onOpenNews && (
         <button className="today-news" onClick={() => onOpenNews({ uid: news.uid, name: news.name })}>
-          <Icon name="message" size={22} /><span>@{news.name} {news.text}</span><span className="small reply">tap to reply</span>
+          <Icon name="message" size={22} /><span><FriendName me={me} friend={news} bare /> {news.text}</span><span className="small reply">tap to reply</span>
         </button>
       )}
       {date < today && <p className="card note-card past-day"><span>Logging to a past day</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={() => onDay(today)}>Back to today</button></p>}

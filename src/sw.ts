@@ -6,7 +6,7 @@ import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from
 import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { clientsClaim } from 'workbox-core';
 import { onNotificationClick, onPush, type PushEventLike, type SwDeps } from './push/sw-push';
-import { record } from './push/store';
+import { read, record } from './push/store';
 
 declare let self: ServiceWorkerGlobalScope;
 
@@ -22,6 +22,7 @@ const deps = (): SwDeps => ({
   setBadge: async (n) => { await (self.navigator as WorkerNavigator & { setAppBadge?: (n?: number) => Promise<void> }).setAppBadge?.(n); },
   record,
   scope: self.registration.scope,
+  tags: () => read('tags'),
 });
 self.addEventListener('push', (e) => onPush(e as unknown as PushEventLike, deps()));
 self.addEventListener('notificationclick', (e) => onNotificationClick(e, deps()));

@@ -1,0 +1,18 @@
+/* A friend's name: your private tag, their @username beside it, "formerly @old" (ui/FriendName). */
+.fname { min-width: 0; }
+.fname .ftag { font-weight: 600; color: var(--text); }
+.fname .fuser { font-weight: 400; color: var(--text-2); }
+.fname .fwas { font-weight: 400; color: var(--muted); font-size: var(--fs-sm); }
+.ftag-line { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; min-width: 0; }
+.ftag-line .mini { flex: none; }
+.ftag-line > span { min-width: 0; }
+.ftag-form { margin: 0 0 16px; padding: 12px 16px 16px; background: var(--surface); border-radius: var(--r-group); }
+.ftag-form > p { margin: 0; }
+/* Your username, and Change beside it (ui/FriendsCard). */
+.me-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.me-line > p { margin: 0; min-width: 0; }
+.me-line .mini { flex: none; }
+.name-form { margin-top: 12px; }
+.name-form > p { margin: 0; }
+.viewing-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crew-who > .fwas { color: var(--muted); font-size: var(--fs-sm); margin-top: -8px; }

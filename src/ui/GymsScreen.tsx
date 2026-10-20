@@ -8,6 +8,7 @@ import { copyGym, gymText, parseGymText } from '../domain/share';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { listFriends, myUsername, sendGym, type Friend } from '../cloud/friends';
 import { Input, TextArea } from './Field';
+import { FriendName } from './FriendName';
 
 const newGym = (n: number): Gym => ({ id: `g${Date.now().toString(36)}`, name: n ? `Gym ${n + 1}` : 'My gym', equipment: [], exclude: [], include: [], gearVersion: GEAR_VERSION });
 const ALL_GEAR = EQUIPMENT_GROUPS.flatMap(([, items]) => items);
@@ -70,7 +71,7 @@ function ShareGym({ gym, uid }: { gym: Gym; uid?: string | null }) {
       {shown && <textarea readOnly aria-label="Gym as text" rows={5} value={gymText(gym)} onFocus={(e) => e.target.select()} />}
       {friends && (friends.length ? (
         <ul className="friend-list" aria-label="Send to">
-          {friends.map((f) => <li key={f.uid}><span>@{f.name}</span><button className="mini" disabled={busy} onClick={() => void send(f)}>Send</button></li>)}
+          {friends.map((f) => <li key={f.uid}><span><FriendName me={uid} friend={f} bare /></span><button className="mini" disabled={busy} onClick={() => void send(f)}>Send</button></li>)}
         </ul>
       ) : <p className="muted small">No friends yet. Add one under Friends.</p>)}
       {msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? 'muted small' : 'warn'}>{msg.text}</p>}
