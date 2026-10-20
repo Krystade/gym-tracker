@@ -1,6 +1,6 @@
 import { cardioTarget, fmtClock, fmtCardio, fmtMiles, isCardio, machine } from '../domain/cardio';
 import type { SetEntry } from '../domain/types';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { normalizeName } from '../domain/ids';
 import { sameExercise } from '../domain/stats';
 import type { SetsStore } from '../state/useSets';
@@ -18,6 +18,7 @@ import { calibrate, calibratedE1rm, testDue, weightForReps } from '../domain/est
 import { localDate } from '../domain/ids';
 import { addDays } from '../domain/analytics';
 import { estimateRir, priorE1rm, rirOffset } from '../domain/progression';
+import { ladderOf } from '../domain/learn/ladder';
 import { fmtDay, fmtSet, fmtWeight, plural } from '../domain/format';
 import { LineChart } from './LineChart';
 import { SetRowContent } from './SetRow';
@@ -93,8 +94,10 @@ function holdSeries(sessions: ReturnType<typeof sessionsFor>): SeriesPoint[] {
   return out;
 }
 
-function SettingsEditor({ name, settings, hold }: { name: string; settings: SettingsStore; hold: boolean }) {
+function SettingsEditor({ name, settings, hold, entries }: { name: string; settings: SettingsStore; hold: boolean; entries: readonly SetEntry[] }) {
   const cur = settings.get(name, hold);
+  // Item 01: the steps learned from his weights; a typed increment other than 5 wins over them.
+  const ladder = useMemo(() => (hold ? null : ladderOf(entries, name)), [entries, name, hold]);
   const [min, setMin] = useState(String(cur.repMin));
   const [max, setMax] = useState(String(cur.repMax));
   const [inc, setInc] = useState(String(cur.increment));
@@ -119,6 +122,7 @@ function SettingsEditor({ name, settings, hold }: { name: string; settings: Sett
         <label>Max {unit}<Input aria-label={`Max ${unit}`} inputMode="numeric" value={max} onChange={(e) => { setMax(e.target.value); setSaved(false); }} /></label>
         <label>{hold ? 'Add weight (lb)' : 'Increment (lb)'}<Input aria-label={hold ? 'Add weight' : 'Increment'} inputMode="decimal" value={inc} onChange={(e) => { setInc(e.target.value.replace(',', '.')); setSaved(false); }} /></label>
       </div>
+      {ladder && cur.increment === 5 && <p className="muted small">Going up uses {ladder.step} lb steps, learned from {ladder.pool && ladder.source === 'pool' ? `your ${ladder.pool === 'plates' ? 'plate' : ladder.pool} weights` : 'this lift’s weights'}. Type an increment to fix it.</p>}
       {problem && <p role="status" className="small err">{problem}</p>}
       <button className="wide" disabled={!valid} onClick={async () => { await settings.save({ ...cur, repMin: vMin, repMax: vMax, increment: vInc }); setSaved(true); }}>
         {saved ? 'Saved' : 'Save settings'}
@@ -287,7 +291,7 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
       {!all && sessions.length > HISTORY_CAP && <button className="wide" onClick={() => setAll(true)}>Show all {sessions.length} sessions</button>}
       {!readOnly && <>
       <SwapSuggestions items={swapSuggestions(name, store.entries, today, 5, available)} />
-      <SettingsEditor key={name} name={name} settings={settings} hold={hold} />
+      <SettingsEditor key={name} name={name} settings={settings} hold={hold} entries={store.entries} />
       <RenameLift key={`rename-${name}`} name={name} store={store} settings={settings} gyms={gyms} programs={programs} onRenamed={onRenamed} />
       </>}
     </>

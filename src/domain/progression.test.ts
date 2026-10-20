@@ -318,3 +318,71 @@ describe('per-set rep targets (owner, 2026-10-19): each set from last time’s s
     expect(suggest(day('2026-10-15', [11, 11, 8]), 'Cable Pushdown', st, '2026-10-19', null)).toMatchObject({ sets: 3, perSet: [12, 12, 9] });
   });
 });
+
+describe('learned steps, drops and ranges (items 01–03, 2026-10-20)', () => {
+  // A cable lifter: a stack in 2.5s, and weight increases that cost `drop` reps on the first heavier sets.
+  const lift = (exercise: string, from: number, jumps: number, drop: number, start = 0, by = 2.5): SetEntry[] => {
+    const out: SetEntry[] = [];
+    let d = start, w = from;
+    const at = (i: number) => new Date(Date.UTC(2025, 0, 1) + i * 864e5).toISOString().slice(0, 10);
+    for (let i = 0; i < jumps; i++) {
+      for (const r of [15, 15, 14]) out.push(s(at(d), out.length + 1, w, r, { exercise }));
+      d += 4; w += by;
+      for (const r of [15 - drop, 15 - drop, 14 - drop]) out.push(s(at(d), out.length + 1, w, r, { exercise }));
+      d += 4;
+    }
+    return out;
+  };
+  const C = { key: 'cable curl', repMin: 10, repMax: 15, increment: 5 };
+  const history = [...lift('Cable Curl', 40, 6, 2), ...lift('Face Pull', 20, 6, 2, 1), ...lift('Cable Pushdown', 50, 6, 2, 2)];
+  const lastDay = history.reduce((a, e) => (e.date > a ? e.date : a), '');
+  const topped = (exercise: string, w: number) => [15, 15, 14].map((r, i) => s(lastDay, 90 + i, w, r, { exercise }));
+  const next = '2026-06-01';
+
+  it('goes up one learned rung (2.5 on a cable stack), each set last time’s less the learned drop', () => {
+    const t = nextTarget([...history, ...topped('Cable Curl', 60)], 'Cable Curl', C, next)!;
+    expect(t).toMatchObject({ kind: 'increase', weight: 62.5, step: 2.5, perSet: [13, 13, 12], reps: 12 });
+    expect(t.drop!.mean).toBeCloseTo(2, 0);
+    expect(t.why).toContain('your cable steps');
+  });
+
+  it('floors a fractional drop: a miss costs more than an easy day', () => {
+    // Increases that cost 2 and 3 reps in turn: about 2.5 learned.
+    const mixed = [...lift('Cable Curl', 40, 4, 2), ...lift('Cable Curl', 50, 4, 3, 40), ...lift('Face Pull', 20, 6, 2, 1), ...lift('Cable Pushdown', 50, 6, 3, 2)];
+    const t = nextTarget([...mixed, ...[15, 15, 14].map((r, i) => s('2026-05-30', 400 + i, 60, r, { exercise: 'Cable Curl' }))], 'Cable Curl', C, next)!;
+    const frac = t.drop!.mean % 1;
+    expect(frac).toBeGreaterThan(0.25);
+    expect(frac).toBeLessThan(0.75);
+    expect(t.perSet).toEqual([15, 15, 14].map((r) => Math.floor(r - t.drop!.mean)));
+  });
+
+  it('keeps a typed increment, and today’s rules with nothing to learn from', () => {
+    expect(nextTarget([...history, ...topped('Cable Curl', 60)], 'Cable Curl', { ...C, increment: 10 }, next)).toMatchObject({ weight: 70, step: 10 });
+    const alone = topped('Cable Curl', 60);
+    expect(nextTarget(alone, 'Cable Curl', C, next)).toMatchObject({ kind: 'increase', weight: 65, reps: 10 });
+    expect(nextTarget(alone, 'Cable Curl', C, next)!.perSet).toBeUndefined();
+  });
+
+  it('raises the top of the range when this lift’s jumps cost more than the range is wide', () => {
+    // DB curls in 5s whose increases cost 7 reps: 10–15 can't absorb that, so build to 17 first.
+    const db = [...lift('Incline DB Curl', 20, 6, 7, 0, 5), ...topped('Incline DB Curl', 35)];
+    const t = nextTarget(db, 'Incline DB Curl', C, next)!;
+    expect(t.kind).toBe('reps');
+    expect(t.range).toMatchObject({ repMin: 10, repMax: 17, how: 'top' });
+    expect(t.perSet).toEqual([16, 16, 15]);
+    expect(t.why).toContain('to 17 before going up');
+    // At 17s it goes up, and lands inside the range.
+    const built = [...db, ...[17, 17, 16].map((r, i) => s('2026-05-30', 200 + i, 35, r, { exercise: 'Incline DB Curl' }))];
+    const up = nextTarget(built, 'Incline DB Curl', C, next)!;
+    expect(up).toMatchObject({ kind: 'increase', weight: 40 });
+    expect(Math.min(...up.perSet!)).toBeGreaterThanOrEqual(9);
+  });
+
+  it('learns only from days before the target’s day: today’s sets never move today’s target', () => {
+    const log = [...history, ...topped('Cable Curl', 60)];
+    const before = nextTarget(log, 'Cable Curl', C, next)!;
+    // Today: a 62.5 session that dropped 9 reps.
+    const today = [6, 6].map((r, i) => s(next, 300 + i, 62.5, r, { exercise: 'Cable Curl' }));
+    expect(nextTarget([...log, ...today], 'Cable Curl', C, next)).toEqual(before);
+  });
+});

@@ -24,7 +24,7 @@ interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; not
  * `when`: the set may have been done earlier — `always` shows the time field (a past day), otherwise "Did this earlier?" opens it.
  * `suggest` is asked when the field opens, so it reflects the clock then. An empty field means unknown.
  */
-export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day, hold: holdLift, heaviest = 0, tagPrefs, onTagPrefs, nextReps }: {
+export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day, hold: holdLift, heaviest = 0, tagPrefs, onTagPrefs, nextReps, weightStep = 5 }: {
   /** An empty weight (null) is for a lift with nothing to suggest from. */
   exercise: string; initial: Omit<SetFormValue, 'weight'> & { weight: number | null }; submitLabel: string;
   /** The heaviest working weight logged for this lift: over twice it asks once before saving. */
@@ -39,6 +39,8 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   tagPrefs?: TagPrefs; onTagPrefs?: (t: TagPrefs) => void;
   /** After a set is saved: the reps the next set aims at (its own target), if it has one; else the reps stay as typed. */
   nextReps?: (saved: SetFormValue) => number | undefined;
+  /** The weight stepper's step: the lift's learned rung when finer than 5 lb (a 2.5 stack is one tap), else 5. */
+  weightStep?: number;
 }) {
   const [owner] = useState(() => ({ profile: activeProfileDb(), date: day ?? localDate(new Date()) }));
   // One draft per lift per day, so a past day's half-typed set never lands in today's form.
@@ -143,7 +145,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   return (
     <form className="set-form" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       <div className="steppers">
-        <Stepper label="Weight" value={weight} onChange={(v) => { setLoud(true); touch(setWeight)(v); }} step={5} mode="decimal" />
+        <Stepper label="Weight" value={weight} onChange={(v) => { setLoud(true); touch(setWeight)(v); }} step={weightStep} mode="decimal" />
         <Stepper label={unit} value={reps} onChange={touch(setReps)} step={hold ? 5 : 1} mode="numeric" />
       </div>
       {!problem && fmtPerSide(w, exercise) && <p className="small muted plates" aria-label="Per side">{fmtPerSide(w, exercise)}</p>}

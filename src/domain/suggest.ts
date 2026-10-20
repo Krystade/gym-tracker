@@ -67,12 +67,15 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
   const unit = isHoldLift(exercise, entries) ? ' s' : '';
   if (!t) return { unit, weight: null, reps: st.repMin, repMax: st.repMax, sets: clamped, setsFrom, kind: 'new', warmups: [],
     reason: `No history yet: pick a weight you can do about ${st.repMax} times, and log every set.` };
-  const reason = t.kind === 'increase' ? `${t.done!.total}${unit || ' reps'} last time, within 2 of ${t.done!.sets} × ${st.repMax}${unit}, so +${st.increment} lb.`
+  const top = t.range?.repMax ?? st.repMax;
+  const reason = t.kind === 'increase' ? `${t.done!.total}${unit || ' reps'} last time, within 2 of ${t.done!.sets} × ${top}${unit}, so +${t.step ?? st.increment} lb.`
+      + (t.drop ? ` Each set aims at last time’s less ${Math.round(Math.max(0, t.drop.mean) * 2) / 2}: what your ${t.drop.all} weight increases cost you.` : '')
     : t.kind === 'repeat' ? 'Last time had no complete sets: repeat the weight and log every rep.'
     : t.kind === 'maxed' ? `You held about ${st.repMax}${unit} a set: add weight, or move to a harder variation.`
     : t.kind === 'test' ? `Your test set puts ${st.repMax} reps at about ${t.weight} lb, so that’s the working weight now.`
     : t.kind === 'carry' ? `An estimate carried over from your ${st.seed?.from ?? 'last variation'}, on the light side: adjust after the first set.`
     : t.perSet ? `Same weight; each set aims at last time’s same set. ${t.why}.`
+      + (t.range?.how === 'top' ? ` Your increases cost about ${Math.round(Math.max(0, t.drop?.mean ?? 0) * 2) / 2} reps here, so ${t.range.repMin}–${t.range.repMax} before the next weight.` : '')
     : `Same weight; beat last time with ${t.reps}${unit}+ on every set.`;
   // One target a set: the plan's count, or last time's; a set past last time's aims at the last one's number.
   const perSet = t.perSet && Array.from({ length: clamped }, (_, i) => t.perSet![Math.min(i, t.perSet!.length - 1)]);

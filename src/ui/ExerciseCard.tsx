@@ -3,6 +3,7 @@ import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import { byOrderDone, lastSession, sameExercise } from '../domain/stats';
 import { estimateRir, isWorking, nextTarget, priorE1rm, rirOffset } from '../domain/progression';
+import { ladderOf } from '../domain/learn/ladder';
 import { prToast, records } from '../domain/records';
 import { fmtDay, fmtSet, fmtWeight, plural } from '../domain/format';
 import type { Flag, SetEntry } from '../domain/types';
@@ -86,6 +87,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   const target = nextTarget(store.entries, exercise, st, date, plannedSets);
   const sug = suggest(store.entries, exercise, st, date, plannedSets);
   const pace = useMemo(() => paces(store.entries), [store.entries]);
+  // The stepper moves by the lift's learned rung when that is finer than 5 lb, and a typed increment isn't set (item 01).
+  const weightStep = useMemo(() => { const l = st.increment === 5 ? ladderOf(store.entries, exercise) : null; return l && l.step < 5 ? l.step : 5; }, [store.entries, exercise, st.increment]);
   // A new function only when the log changes, so the form can re-ask once a late set has landed.
   const suggestWhen = useCallback(() => suggestTime(store.entries, date, exercise, pace, new Date()), [store.entries, date, exercise, pace]);
   // Whole-history scans: recompute only when the log changes, not on every keystroke in the form.
@@ -244,7 +247,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
           }} />
         </div>
       ) : (
-        <SetForm key="new" exercise={exercise} hold={hold} initial={initial} submitLabel={who ? `Add set · ${who}` : 'Add set'} onSubmit={addSet} keepDraft day={date} heaviest={heaviest}
+        <SetForm key="new" exercise={exercise} hold={hold} initial={initial} submitLabel={who ? `Add set · ${who}` : 'Add set'} onSubmit={addSet} keepDraft day={date} heaviest={heaviest} weightStep={weightStep}
           nextReps={(v) => (v.flags.includes('warmup') ? undefined : aim(working.length + 1, v.weight))}
           tagPrefs={settings.tags} onTagPrefs={settings.saveTags}
           when={{ suggest: suggestWhen, always: date < realToday, max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined }} />

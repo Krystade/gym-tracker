@@ -3,6 +3,10 @@ import { resolveLift } from './lifts';
 import { e1rm, estimateWeightForReps, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 import { isHold, isHoldLift } from './care';
+import { learn } from './learn';
+import { dropsOf, type Drop } from './learn/jump';
+import { ladderOf, nextRung, type Ladder } from './learn/ladder';
+import { fitRange, type RangeFit } from './learn/range';
 
 /**
  * A first target carried over from another variation when this lift was rotated in (domain/rotation): an estimate, used until
@@ -97,7 +101,40 @@ export function estimateRir(set: SetEntry, sessionSets: SetEntry[], prior: numbe
 export interface Target {
   kind: 'increase' | 'reps' | 'repeat' | 'maxed' | 'test' | 'carry'; weight: number; reps: number; last: SetEntry[]; text: string; done?: { total: number; sets: number };
   perSet?: number[]; why?: string;
+  /** The range progression used, when the learned drop moved it off the lift's own (learn/range). */
+  range?: RangeFit;
+  /** For an increase: the step (lb), and the learned drop behind each set's target, when there is one. */
+  step?: number; drop?: Drop;
 }
+
+/** The default increment: an `increment` other than it was typed on the lift's page and wins over the learned ladder. */
+const DEFAULT_INCREMENT = 5;
+/**
+ * What the log has learned for a lift (items 01–03): its loadable weights (learn/ladder) and the reps its next step costs
+ * (learn/jump, fatigue-adjusted by the learning core). Null parts: nothing to learn from yet, so today's rules stand.
+ */
+export function learnedFor(log: readonly SetEntry[], exercise: string, date: string): { ladder: Ladder | null; drop: Drop | null } {
+  // Only what was done before the day: a target doesn't move under you while you train.
+  const entries = logBefore(log, date);
+  let core = null;
+  try { core = learn(entries).core; } catch { core = null; } // the fatigue adjustment is a refinement: never a reason to fail
+  return { ladder: ladderOf(entries, exercise), drop: dropsOf(entries, core)?.(exercise) ?? null };
+}
+const BEFORE = new WeakMap<readonly SetEntry[], { n: number; by: Map<string, readonly SetEntry[]> }>();
+/** The log without `date` and later, the same array for the same log and day (so what is learned from it is cached). */
+function logBefore(entries: readonly SetEntry[], date: string): readonly SetEntry[] {
+  let hit = BEFORE.get(entries);
+  if (!hit || hit.n !== entries.length) BEFORE.set(entries, hit = { n: entries.length, by: new Map() });
+  let out = hit.by.get(date);
+  if (!out) {
+    out = entries.some((e) => e.date >= date) ? entries.filter((e) => e.date < date) : entries;
+    if (hit.by.size > 8) hit.by.clear();
+    hit.by.set(date, out);
+  }
+  return out;
+}
+const STEP_OF: Record<string, string> = { cable: 'your cable steps', dumbbell: 'your dumbbell steps', plates: 'your plate steps', kettlebell: 'your kettlebell steps' };
+const r05 = (x: number) => Math.round(x * 2) / 2;
 
 /** How last time's sets move: +1 (or 5 s) on every set, on the one set with the most room, or not at all. */
 export type Step = 'all' | 'one' | 'repeat';
@@ -183,6 +220,11 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
   }
   const top = Math.max(...working.map((x) => x.weight));
   const unit = isHoldLift(exercise, entries) ? 's' : '';
+  // Items 01–03 for loaded rep lifts: the learned step and drop, and the range fitted to them.
+  const learned = !unit && top > 0 ? learnedFor(entries, exercise, date) : { ladder: null, drop: null };
+  const fit = learned.drop ? fitRange(exercise, st, Math.max(0, learned.drop.mean)) : null;
+  const range = fit && fit.how !== 'fits' && fit.how !== 'too-big' ? fit : null;
+  const repMin = range?.repMin ?? st.repMin, repMax = range?.repMax ?? st.repMax;
   const all = working.filter((x) => x.weight === top);
   // The best N, kept in the order done.
   const bestN = planned != null && planned > 0 && all.length > planned ? new Set([...all].sort((a, b) => (b.reps as number) - (a.reps as number)).slice(0, planned)) : null;
@@ -190,10 +232,25 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
   const minReps = Math.min(...atTop.map((x) => x.reps as number));
   // Up once the sets at the top weight total within 2 reps of all at the top of the range (12/12/10 at 3 × 8–12), none below its bottom.
   const total = atTop.reduce((a, x) => a + (x.reps as number), 0);
-  const topped = total >= atTop.length * st.repMax - Math.min(2, atTop.length - 1) && minReps >= st.repMin; // one heavier top set gets no slack
+  const topped = total >= atTop.length * repMax - Math.min(2, atTop.length - 1) && minReps >= repMin; // one heavier top set gets no slack
   if (top > 0 && topped) {
-    const w = top + st.increment;
-    return { kind: 'increase', weight: w, reps: st.repMin, last: last.sets, text: `Go up: ${lb(w)} × ${st.repMin}${unit}+`, done: { total, sets: atTop.length } };
+    // The next loadable weight (item 01): a typed increment wins, else the learned ladder's next rung, else +increment.
+    const typed = st.increment !== DEFAULT_INCREMENT;
+    const w = !typed && learned.ladder ? nextRung(learned.ladder, top) : top + st.increment;
+    const step = Math.round((w - top) * 100) / 100;
+    const base = { kind: 'increase' as const, weight: w, last: last.sets, done: { total, sets: atTop.length }, step, ...(range && { range }) };
+    const drop = learned.drop;
+    if (!unit && drop) {
+      // Item 02: each set from last time's same set, less the learned drop (floored: a miss costs more than an easy day), so
+      // the sets keep their shape (12, 12, 11 → 10, 10, 9); never past the range's top.
+      const aimed = atTop.map((x) => clamp(Math.floor((x.reps as number) - Math.max(0, drop.mean) + 1e-9), 1, repMax));
+      const perSet = planned != null && planned > aimed.length ? [...aimed, ...Array<number>(planned - aimed.length).fill(aimed.at(-1)!)] : aimed;
+      const ladder = learned.ladder;
+      const stepWhy = typed || !ladder ? `+${lb(step)}` : `+${lb(step)}, ${ladder.pool && ladder.source === 'pool' ? STEP_OF[ladder.pool] ?? 'your steps' : ladder.pool ? 'its own steps' : 'this machine’s steps'}`;
+      const why = `${stepWhy} · jumps cost you ${r05(Math.max(0, drop.mean))}`;
+      return { ...base, reps: Math.min(...perSet), perSet, why, drop, text: `Go up: ${lb(w)} × ${perSet.join(' · ')}` };
+    }
+    return { ...base, reps: repMin, text: `Go up: ${lb(w)} × ${repMin}${unit}+` };
   }
   // A bodyweight hold at the top of its range has nowhere to go in time: add weight or a harder variation.
   if (unit && top === 0 && topped) {
@@ -205,12 +262,14 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
   const hits = targetsHit(before.slice(Math.max(0, at)));
   const wanted = stepFrom(hits);
   const { perSet: aimed, step } = perSetTargets(atTop.map((x) => ({ reps: x.reps as number, ...(!unit && x.rir != null && { rir: x.rir }) })),
-    wanted, top === 0 && !unit ? Infinity : st.repMax, by);
+    wanted, top === 0 && !unit ? Infinity : repMax, by);
   // A plan with more sets than last time: the extra sets aim at the last one's number.
   const perSet = planned != null && planned > aimed.length ? [...aimed, ...Array<number>(planned - aimed.length).fill(aimed.at(-1)!)] : aimed;
   const plus = `+${by}${unit || (by === 1 ? ' rep' : ' reps')}`;
-  const why = step === 'all' ? (hits[0] ? `Targets hit last time: ${plus} a set` : `Last time ${plus} a set`)
+  const rule = step === 'all' ? (hits[0] ? `Targets hit last time: ${plus} a set` : `Last time ${plus} a set`)
     : step === 'one' ? (wanted === 'one' ? `Missed last time: ${plus} on one set` : `Most sets at their limit: ${plus} on one set`)
     : wanted === 'repeat' ? 'Missed twice lately: repeat last time' : 'Sets at their limit last time: repeat them';
-  return { kind: 'reps', weight: top, reps: Math.min(...perSet), last: last.sets, perSet, why, text: `${lb(top)} × ${perSet.join(' · ')}${unit ? ' s' : ''}` };
+  // Item 03: a range moved by the learned drop says so, in a few words.
+  const why = range ? `${rule} · ${range.how === 'top' ? `to ${range.repMax} before going up` : `${range.repMin}+ is fine after going up`}` : rule;
+  return { kind: 'reps', weight: top, reps: Math.min(...perSet), last: last.sets, perSet, why, ...(range && { range, drop: learned.drop! }), text: `${lb(top)} × ${perSet.join(' · ')}${unit ? ' s' : ''}` };
 }

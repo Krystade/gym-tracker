@@ -25,10 +25,11 @@ test('target, estimated RIR, PR banner and settings', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Cable Curl', exact: true }).click();
   await expect(page.getByTitle('Estimated').first()).toBeVisible();
-  // A 6–8 range makes last session's weakest top set (8) the top of the range → go up by the increment.
+  // A 6–8 range makes last session's weakest top set (8) the top of the range → go up a rung of the learned steps
+  // (item 01, 2026-10-20): only 70 and 80 are logged on this stack, so 10 lb steps → 90.
   await page.getByRole('textbox', { name: 'Min reps' }).fill('6');
   await page.getByRole('textbox', { name: 'Max reps' }).fill('8');
   await page.getByRole('button', { name: 'Save settings' }).click();
   await page.getByRole('button', { name: '‹ Back' }).click();
-  await expect(page.getByLabel('Target')).toContainText(/Go up: \d × 6\+ @ 85 lb/);
+  await expect(page.getByLabel('Target')).toContainText(/Go up: \d × 6\+ @ 90 lb/);
 });
