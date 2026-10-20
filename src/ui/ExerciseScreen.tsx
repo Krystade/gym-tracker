@@ -14,7 +14,8 @@ import { CATALOG, PROGRAM_LIFTS } from '../domain/catalog';
 import { worksLine } from '../domain/muscles';
 import { resolveLift } from '../domain/lifts';
 import { nearestLifts, searchLifts } from '../domain/search';
-import { calibrate, calibratedE1rm, testDue, weightForReps } from '../domain/estimators';
+import { strength, strengthSeries, testDue } from '../domain/estimators';
+import { weightFor } from '../domain/learn/strength';
 import { localDate } from '../domain/ids';
 import { addDays } from '../domain/analytics';
 import { estimateRir, priorE1rm, rirOffset } from '../domain/progression';
@@ -211,22 +212,27 @@ export function ExerciseScreen({ name, store, settings, gyms, programs, date, on
   return <LiftScreen {...{ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly }} />;
 }
 
+/** A share of ln e1RM as a whole percent, at least 1. */
+const pct = (u: number) => Math.max(1, Math.round(100 * u));
+
 function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly }: Parameters<typeof ExerciseScreen>[0]) {
   const hold = isHoldLift(name, store.entries);
   const { s: sug, trainedToday } = nextTime(store.entries, name, settings.get(name, hold), date, plannedSets(programs.program, todayPlanFor(programs, store.entries, date), name));
   const sessions = sessionsFor(store.entries, name);
   // A hold has no 1RM: its trend is the longest hold of each session, in seconds.
-  const series = hold ? holdSeries(sessions) : e1rmSeries(store.entries, name);
+  const today = localDate(new Date());
+  // Item 04: the fatigue-adjusted level at each session (every set read with its RIR and fatigue), else each session's best e1RM.
+  const levels = hold ? null : strengthSeries(store.entries, name, today);
+  const series = hold ? holdSeries(sessions) : levels ?? e1rmSeries(store.entries, name);
   const longest = hold ? Math.max(0, ...series.map((p) => p.e1rm)) : 0;
   // The best e1RM set, as Records holds it: the earliest one on a tie.
   const best = records(store.entries, name).get('e1rm');
-  const cal = calibrate(store.entries, name);
-  const current = calibratedE1rm(store.entries, name);
+  const st = hold ? null : strength(store.entries, name, today);
   const [n, setN] = useState(6);
   const [all, setAll] = useState(false);
-  const today = localDate(new Date());
   const snoozed = settings.get(name).testSnoozedUntil;
-  const due = testDue(store.entries, name, today);
+  const due = readOnly || hold ? null : testDue(store.entries, name, today, settings.get(name, hold), trainedToday ? null : sug);
+  const tested = new Set(store.entries.filter((e) => e.flags.includes('test') && sameExercise(e.exercise, name)).map((e) => e.date)).size;
   const offset = rirOffset(store.entries, name);
   // A stalled lift's next variation. Switched from here, the note stays (with its undo) while this screen is open.
   const [owner] = useState(activeProfileDb);
@@ -249,13 +255,13 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
       {/* The chips sit right under the estimate they change, not over the chart (which is always e1RM). */}
       {!hold && <>
       <div className="tiles tiles-est">
-        <div className="tile"><span>Est. 1RM</span><b>{current ? lb(current) : '—'}</b></div>
-        <div className="tile"><span>Est. {n}RM</span><b>{current ? lb(weightForReps(cal.formula, current, n)) : '—'}</b></div>
+        <div className="tile"><span>Est. 1RM</span><b>{st ? lb(st.e1rm) : '—'}</b></div>
+        <div className="tile"><span>Est. {n}RM</span><b>{st ? lb(weightFor(st, n)) : '—'}</b></div>
       </div>
       <div className="chips" role="group" aria-label="Rep max">
         {[3, 5, 6, 8, 10].map((k) => <button key={k} type="button" className="chip" aria-pressed={n === k} onClick={() => setN(k)}>{k}RM</button>)}
       </div>
-      <p className="muted small">{cal.tests ? `${cal.formula === 'wd' ? 'Weight-adjusted formula' : 'Epley'} · calibrated · ${plural(cal.tests, 'test')}${cal.errorPct != null ? ` · ±${Math.round(cal.errorPct)}%` : ''}` : 'Epley · no tests yet'}</p>
+      <p className="muted small">{st ? `Fatigue-adjusted · ±${pct(st.u)}% · ${tested ? plural(tested, 'test') : st.tests ? 'tests on other lifts' : 'no tests yet'}` : 'No estimate yet'}</p>
       </>}
       <div className="tiles">
         {hold
@@ -265,12 +271,12 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
       </div>
       <section className="card">
         <LineChart points={series} today={today} {...(hold ? { label: 'Longest hold over time', unit: 's', noun: '', column: 'Longest hold (s)' } : {})} />
-        {series.length > 1 && <p className="muted small">{hold ? 'Longest hold per session · records filled' : 'Best estimated 1RM per session · records filled'}</p>}
+        {series.length > 1 && <p className="muted small">{hold ? 'Longest hold per session · records filled' : levels ? 'Fatigue-adjusted e1RM at each session' : 'Best estimated 1RM per session · records filled'}</p>}
       </section>
       <Records entries={store.entries} name={name} today={today} onDay={onDay} />
-      {!readOnly && !hold && due && !(snoozed && today < snoozed) && (
+      {due && !(snoozed && today < snoozed) && (
         <p className="card note-card test-due">
-          <span>Time for a test: pick a weight you can do about 8–12 times, go to failure with good form, and tick <b>Test</b>. It tunes these estimates.</span>
+          <span>Time for a test: {due.jump ? <>make today’s first set at <b>{fmtWeight(due.weight)} lb</b> as many good reps as you can</> : <><b>{fmtWeight(due.weight)} lb</b> for as many good reps as you can (about {due.reps})</>}, and tick <b>Test</b>. It takes your estimate from ±{pct(due.u)}% to ±{pct(due.after)}%.</span>
           <button className="mini" onClick={() => void settings.save({ ...settings.get(name, hold), testSnoozedUntil: addDays(today, 14) })}>Not now</button>
         </p>
       )}

@@ -45,6 +45,12 @@ export const TAU_PRIOR = { median: 75, logSd: 0.7 } as const;
 /** (a) RIR bias b: lifters under-predict reps to failure by 0.95 (Halperin 2022, Sports Med 52:377), between-person SD 1.45. Identified only by test sets. */
 export const B_PRIOR = { mean: 0.95, sd: 1.45 } as const;
 /**
+ * (c) Prior scale of how far one lift's b may sit from the person's: shapes the pooling prior only (learn/pool estimates the
+ * spread from tests). Halperin 2022 found no clear effect of body region or training status; reps and distance from failure,
+ * which do matter, are already in each reading's variance.
+ */
+const B_LIFT_SD = 0.5;
+/**
  * (a) Habitual RIR on sets without one logged, as a prior worth two sets: 2 (hypertrophy sets are typically stopped 0–3 RIR;
  * Robinson 2024, Sports Med 54:2209; the app's DEFAULT_RIR_OFFSET); its spread 1.5 reps worth three sets (Refalo 2024: trained
  * lifters' RIR error ±1.0; Steele 2017 SEM 2.6–3.4 before a set). (b) Both learned from his logged RIR.
@@ -107,6 +113,8 @@ interface Block {
   r: Float64Array; k: Float64Array; kind: Uint8Array;
   /** 1 where the set is a bound only because it stopped at its target (read as K_HABIT with `censor: false`); 1 for "unsure" RIR. */
   atTarget: Uint8Array; unsure: Uint8Array;
+  /** 1 for a set read by the habit that is lighter than the lift's top weight that day and done before it: a ramp set (a bound). */
+  light: Uint8Array;
 }
 
 // Blocks are cached by the day's sets themselves: the store never changes a set in place (state/useSets), so the same objects
@@ -168,10 +176,13 @@ function blockOf(date: string, hard: SetEntry[], gap: number): Block {
     nS: new Float64Array(m), nC: new Float64Array(m), nY: new Float64Array(m), w: new Float64Array(m), logW: new Float64Array(m),
     eS: new Float64Array(m * NT), eC: new Float64Array(m * NT),
     r: new Float64Array(m), k: new Float64Array(m), kind: new Uint8Array(m), atTarget: new Uint8Array(m), unsure: new Uint8Array(m),
+    light: new Uint8Array(m),
   };
   let i = 0;
   for (let j = 0; j < rows.length; j++) {
     s.at[j] = i;
+    let top = 0;
+    for (const a of rows[j]) top = Math.max(top, hard[a].weight);
     for (const a of rows[j]) {
       let nS = 0, nC = 0, nY = 0;
       const i0 = i * NT;
@@ -199,6 +210,7 @@ function blockOf(date: string, hard: SetEntry[], gap: number): Block {
       else if (target != null && r === target) { kind = K_BOUND; k = 0; s.atTarget[i] = 1; } // stopped at the target: could have done more (00-core §1.2)
       else if (target != null && r < target) kind = K_MISSED; // short of the target: near failure (00-core §1.2)
       s.kind[i] = kind; s.k[i] = k;
+      if (kind === K_HABIT && e.weight < top) s.light[i] = 1; // a ramp or back-off set: lighter than the day's top weight
       s.unsure[i] = e.flags.includes('unsure') ? 1 : 0;
       i++;
     }
@@ -218,7 +230,7 @@ interface Rows {
   groups: Group[];
   /** Lifts in order of first appearance: key and name (the first set's), and each one's groups in date order. */
   keys: string[]; names: string[]; liftGroups: number[][];
-  fx: Flat; logW: Float64Array; r: Float64Array; k: Float64Array; kind: Uint8Array; atTarget: Uint8Array; unsure: Uint8Array; liftOf: Int32Array;
+  fx: Flat; logW: Float64Array; r: Float64Array; k: Float64Array; kind: Uint8Array; atTarget: Uint8Array; unsure: Uint8Array; light: Uint8Array; liftOf: Int32Array;
 }
 interface Joined {
   blocks: Block[];
@@ -227,19 +239,19 @@ interface Joined {
   keys: string[]; names: string[]; groups: Group[];
   cap: number;
   nS: Float64Array; nC: Float64Array; nY: Float64Array; w: Float64Array; logW: Float64Array; eS: Float64Array; eC: Float64Array;
-  r: Float64Array; k: Float64Array; kind: Uint8Array; atTarget: Uint8Array; unsure: Uint8Array; liftOf: Int32Array;
+  r: Float64Array; k: Float64Array; kind: Uint8Array; atTarget: Uint8Array; unsure: Uint8Array; light: Uint8Array; liftOf: Int32Array;
 }
 // One log at a time (the profile on screen); another log's fit replaces it.
 let JOINED: Joined | null = null;
 const ROW_F64 = ['nS', 'nC', 'nY', 'w', 'logW', 'r', 'k'] as const;
-const ROW_U8 = ['kind', 'atTarget', 'unsure'] as const;
+const ROW_U8 = ['kind', 'atTarget', 'unsure', 'light'] as const;
 
 function emptyJoined(cap: number): Joined {
   return {
     blocks: [], rowAt: [0], groupAt: [0], liftsAt: [0], keys: [], names: [], groups: [], cap,
     nS: new Float64Array(cap), nC: new Float64Array(cap), nY: new Float64Array(cap), w: new Float64Array(cap), logW: new Float64Array(cap),
     eS: new Float64Array(cap * NT), eC: new Float64Array(cap * NT), r: new Float64Array(cap), k: new Float64Array(cap),
-    kind: new Uint8Array(cap), atTarget: new Uint8Array(cap), unsure: new Uint8Array(cap), liftOf: new Int32Array(cap),
+    kind: new Uint8Array(cap), atTarget: new Uint8Array(cap), unsure: new Uint8Array(cap), light: new Uint8Array(cap), liftOf: new Int32Array(cap),
   };
 }
 
@@ -288,7 +300,7 @@ function rowsOf(blocks: readonly Block[]): Rows {
   return {
     N, G, groups: J.groups, keys: J.keys, names: J.names, liftGroups,
     fx: { nS: view(J.nS), nC: view(J.nC), nY: view(J.nY), w: view(J.w), eS: view(J.eS, N * NT), eC: view(J.eC, N * NT) },
-    logW: view(J.logW), r: view(J.r), k: view(J.k), kind: view(J.kind), atTarget: view(J.atTarget), unsure: view(J.unsure), liftOf: view(J.liftOf),
+    logW: view(J.logW), r: view(J.r), k: view(J.k), kind: view(J.kind), atTarget: view(J.atTarget), unsure: view(J.unsure), light: view(J.light), liftOf: view(J.liftOf),
   };
 }
 
@@ -325,8 +337,19 @@ export interface LiftCore {
   kappa: Est;
   /** Reps lost per prior same-lift set at K = 1, this lift's (pooled), at the person's (τ, ρ). */
   aSame: Est;
+  /** The same from this lift's own sets alone, before pooling (no pooling): null without a within-session contrast. */
+  aSameOwn: Est | null;
   /** Fatigue-adjusted level per session, ln e1RM (smoothed: every session's data), oldest first. */
   level: { date: string; day: number; x: number; sd: number }[];
+  /** Each session's own reading of the level (its sets alone, fatigue put back; readiness in v), oldest first: for trends. */
+  obs: { date: string; day: number; z: number; v: number }[];
+  /** This lift's RIR bias b (reps): the person's, pooled with its family and its own test sets. */
+  bias: Est;
+  /**
+   * The SD (ln e1RM) the latest level carries from what only test sets fix: b and the habit, through the share of its reading
+   * that leans on each (first-order error propagation). Not in `level[].sd`, which assumes both known.
+   */
+  sys: number;
   sessions: number; sets: number;
 }
 export interface Core {
@@ -335,8 +358,13 @@ export interface Core {
   aSame: Est; aCross: Est; gamma: Est;
   tau: Est & { lo: number; hi: number }; rho: Est;
   cells: Cell[];
-  /** Habitual RIR on unlogged sets (b), the RIR bias b (a, until tests), and the residual noise (reps). */
-  habit: Est; bias: Est; noise: number;
+  /**
+   * Habitual RIR on unlogged sets (b: logged RIR, then test sets), the person's RIR bias b (a: Halperin 2022, until test sets),
+   * how many test sessions taught them, and the residual noise (reps).
+   */
+  habit: Est; bias: Est; tests: number; noise: number;
+  /** The same residual noise from sets read without the habit only (logged RIR, tests, missed targets): a test's own (reps). */
+  measure: number;
   /** The person's typical time from one set to the next (s), for untimed days. */
   gap: number;
   /** Level drift per √week, as learned. */
@@ -359,7 +387,9 @@ export function e1rmAdjusted(core: Core, e: SetEntry): number | null {
   if (!f || e.reps == null) return null;
   const key = liftKey(e.exercise);
   const kappa = core.lifts.get(key)?.kappa.mean ?? KAPPA_PRIOR.mean;
-  const rir = e.rir != null && e.rir < 4 ? e.rir + core.bias.mean : core.habit.mean;
+  // A test's RIR is taken as true (it is what calibrates b); other logged RIR carries the lift's bias; none, the habit.
+  const b = e.flags.includes('test') ? 0 : core.lifts.get(key)?.bias.mean ?? core.bias.mean;
+  const rir = e.rir != null && e.rir < 4 ? e.rir + b : core.habit.mean;
   return e.weight * (1 + (e.reps + rir + fatigueOf(core, key, f)) / kappa);
 }
 
@@ -373,6 +403,29 @@ export function fatigueOf(core: Core, liftKey: string, f: Features): number {
   return a * (rho * f.nS + (1 - rho) * f.eS[k]) + theta[1] * (rho * f.nC + (1 - rho) * f.eC[k]) + theta[2] * f.nY;
 }
 
+/** The day number of a date (whole days since 1970), as the level's `day`. */
+export const dayOf = dayNo;
+
+/**
+ * How much the level's variance (ln e1RM) grows over `days` with no session: the learned drift per √week (b), plus the layoff
+ * term past two weeks (a: Bosquet 2013). The same step the level filter takes between sessions.
+ */
+export function aheadVar(core: Core, days: number): number {
+  const d = Math.max(0, days);
+  return core.drift * core.drift * d / 7 + LAYOFF * LAYOFF * Math.max(0, d / 7 - 2);
+}
+
+/**
+ * The SD (ln e1RM) of one test set's own reading of the level: a set of `reps` to failure (RIR 0), read with RIR error (a: as the
+ * fit reads a test), the residual noise of sets read without the habit (b: Core.measure) and the day's readiness (a: READY).
+ * What one test can pin the level to.
+ */
+export function testSd(core: Core, liftKey: string, reps: number): number {
+  const kappa = core.lifts.get(liftKey)?.kappa.mean ?? KAPPA_PRIOR.mean;
+  const sd = 0.5 + 0.3 * Math.max(0, reps - 10);
+  return Math.sqrt(READY * READY + (sd * sd + core.measure * core.measure) / (kappa + reps) ** 2);
+}
+
 
 // ---- The fit -----------------------------------------------------------------------------------------------------------
 
@@ -383,9 +436,11 @@ interface Steps { dd: Float64Array; lay: Float64Array }
 /**
  * Fits the capacity equation to one profile's log. Pure: the same log gives the same result.
  * `censor: false` (tests only: the negative control) reads target-stopped sets as if they had gone to the usual RIR.
+ * `learnBias: false` (tests only) keeps the RIR bias and the habit at what logged RIR says, whatever test sets show (stage 1's fit).
+ * `light: false` (tests only) reads ramp and back-off sets by the habit, as stage 1 did.
  */
-export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean } = {}): Core {
-  const censor = opts.censor ?? true;
+export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean; learnBias?: boolean; light?: boolean } = {}): Core {
+  const censor = opts.censor ?? true, learnBias = opts.learnBias ?? true, lightBound = opts.light ?? true;
   // Days, in date order, each in the order done.
   const byDate = new Map<string, SetEntry[]>();
   for (const e of entries) { if (!isHard(e)) continue; const d = byDate.get(e.date); if (d) d.push(e); else byDate.set(e.date, [e]); }
@@ -396,36 +451,57 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean }
   const sessions = days.map((d, i) => blockOf(dates[i], d, gap));
 
   // Lifts and groups (lift × session), rows by session then lift (rowsOf: only blocks after a change are copied).
-  const { N, G, groups, names: liftNames, liftGroups, fx, logW, r: rr, k: kk, kind, atTarget, unsure, liftOf } = rowsOf(sessions);
+  const { N, G, groups, names: liftNames, liftGroups, fx, logW, r: rr, k: kk, kind, atTarget, unsure, light, liftOf } = rowsOf(sessions);
   const L = liftNames.length;
   // Without censoring (the negative control), a set stopped at its target reads as if it went to the usual RIR.
-  const kindOf = (i: number) => (!censor && atTarget[i] ? K_HABIT : kind[i]);
+  // A set lighter than the lift's top that day (a ramp or back-off set) without RIR or a target was stopped by choice: its
+  // distance from failure is unknown, so it is a lower bound (a: censoring, 00-core §1.2), not a habit reading. The habit
+  // (Robinson 2024: working sets stopped 0–3 RIR) describes the top sets. Read as habit, his ramps and back-offs of 12s at
+  // other loads said reps don't depend on load and later sets are stronger (on his log: κ at its floor on every lift, A_same
+  // −2.6, residual noise 4.5 reps; as bounds: κ 18–37, A_same 1.5, noise 0.1). Logged RIR on a back-off still reads it.
+  const kindOf = (i: number) => (!censor && atTarget[i] ? K_HABIT : lightBound && light[i] ? K_BOUND : kind[i]);
 
-  // Habitual RIR (b): mean and SD of logged training RIR plus the bias, shrunk to the prior (HABIT).
-  const b = B_PRIOR.mean;
-  let hs = 0, hss = 0, hn = 0;
-  for (let i = 0; i < N; i++) if (kindOf(i) === K_RIR) { const v = kk[i] + b; hs += v; hss += v * v; hn++; }
-  const habit = (HABIT.k * HABIT.mean + hs) / (HABIT.k + hn);
-  const habitVar = (HABIT.kSd * HABIT.sd ** 2 + Math.max(0, hss - hn * (hn ? (hs / hn) ** 2 : 0))) / (HABIT.kSd + Math.max(0, hn - 1));
-
-  // Per observation: the reading of reps to failure (y), its variance (v), and for bounds the floor.
+  // The RIR bias b per lift (a: Halperin's prior until test sets say otherwise) and the habit offset e_h (0 until tests).
+  const bL = new Float64Array(L).fill(B_PRIOR.mean);
+  let eh = 0;
+  // Per observation: the reading of reps to failure (y), its variance (v), and for bounds the floor; and how the reading moves
+  // with b (sB) and with the habit (sH), for what tests can teach.
   const y = new Float64Array(N), v = new Float64Array(N), lo = new Float64Array(N);
-  const isBound = new Uint8Array(N);
-  for (let i = 0; i < N; i++) {
-    const r = rr[i], k = kk[i], kd = kindOf(i);
-    switch (kd) {
-      case K_RIR: case K_TEST: {
-        // (a) RIR error grows with distance from failure and with reps past ~10 (Refalo 2024; Zourdos 2021; Halperin 2022): 04 §3.
-        const R = r + k;
-        const sd = 0.5 + 0.3 * k + 0.3 * Math.max(0, R - 10);
-        y[i] = R + (kd === K_RIR ? b : 0); v[i] = sd * sd * (unsure[i] ? 1.5 : 1);
-        break;
+  const isBound = new Uint8Array(N), sB = new Float64Array(N), sH = new Float64Array(N);
+  let habit = 0, habitVar = 0, hn = 0;
+  const read = () => {
+    // Habitual RIR (b): mean and SD of logged training RIR plus the bias, shrunk to the prior (HABIT).
+    let hs = 0, hss = 0;
+    hn = 0;
+    for (let i = 0; i < N; i++) if (kindOf(i) === K_RIR) { const x = kk[i] + bL[liftOf[i]]; hs += x; hss += x * x; hn++; }
+    habit = (HABIT.k * HABIT.mean + hs) / (HABIT.k + hn);
+    habitVar = (HABIT.kSd * HABIT.sd ** 2 + Math.max(0, hss - hn * (hn ? (hs / hn) ** 2 : 0))) / (HABIT.kSd + Math.max(0, hn - 1));
+    const h = habit + eh, hb = hn / (HABIT.k + hn);
+    for (let i = 0; i < N; i++) {
+      const r = rr[i], k = kk[i], kd = kindOf(i);
+      switch (kd) {
+        case K_RIR: case K_TEST: {
+          // (a) RIR error grows with distance from failure and with reps past ~10 (Refalo 2024; Zourdos 2021; Halperin 2022): 04 §3.
+          const R = r + k;
+          const sd = 0.5 + 0.3 * k + 0.3 * Math.max(0, R - 10);
+          y[i] = R + (kd === K_RIR ? bL[liftOf[i]] : 0); v[i] = sd * sd * (unsure[i] ? 1.5 : 1);
+          sB[i] = kd === K_RIR ? 1 : 0;
+          break;
+        }
+        case K_MISSED: y[i] = r + 0.5; v[i] = 0.6 ** 2; break; // (a/c) at or near failure: RIR 0–1
+        case K_HABIT: y[i] = r + h; v[i] = habitVar; sB[i] = hb; sH[i] = 1; break;
+        case K_BOUND: isBound[i] = 1; lo[i] = r + k; y[i] = r + k + h; v[i] = habitVar; break;
       }
-      case K_MISSED: y[i] = r + 0.5; v[i] = 0.6 ** 2; break; // (a/c) at or near failure: RIR 0–1
-      case K_HABIT: y[i] = r + habit; v[i] = habitVar; break;
-      case K_BOUND: isBound[i] = 1; lo[i] = r + k; y[i] = r + k + habit; v[i] = habitVar; break;
     }
-  }
+  };
+  read();
+  // Test sets that can teach b and the habit (only they read reps to failure without either). While b is being learned they stay
+  // out of the fatigue and noise fits: their readings sit b apart from the sets around them, and a test is usually a session's
+  // first set, so a wrong b would be read as fatigue (and a test row has nothing to say about fatigue that b doesn't confound).
+  let tests = 0;
+  const isTestRow = new Uint8Array(N);
+  if (learnBias) for (let i = 0; i < N; i++) if (kindOf(i) === K_TEST) { tests++; isTestRow[i] = 1; }
+  let cal: Calib = noCalib(L, habitVar, hn);
   // Residual noise σ_e² (b): starts at the prior; re-estimated each round from within-session residuals.
   let noise2 = NOISE.sd ** 2;
   const kappa = new Float64Array(L).fill(KAPPA_PRIOR.mean);
@@ -440,8 +516,10 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean }
   const delta = new Float64Array(N), pred = new Float64Array(N), W = new Float64Array(N), yy = new Float64Array(N);
   const siteV = new Float64Array(N).fill(Infinity);
   const wk: Work = { y, v, lo, isBound, delta, pred, W, yy, siteV };
-  // Per group, each level pass: the session's implied ln E, its variance and reps scale, and whether it has any.
+  // Per group, each level pass: the session's implied ln E, its variance and reps scale, and whether it has any; and how its
+  // ln E moves with b and with the habit (sens: in, per session; LOO prediction's; smoothed).
   const zG = new Float64Array(G), vG = new Float64Array(G), uG = new Float64Array(G), okG = new Uint8Array(G);
+  const sens: Sens = { b: new Float64Array(G), h: new Float64Array(G), pb: new Float64Array(G), ph: new Float64Array(G), sb: new Float64Array(G), sh: new Float64Array(G) };
 
   // The Kalman steps between a lift's sessions (levels), once per fit.
   const steps: Steps = { dd: new Float64Array(G), lay: new Float64Array(G) };
@@ -456,9 +534,15 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean }
     const rho = RHOS[mapR];
     deltaPass(fx, liftOf, aLift, mapT, rho, theta, delta);
     // (1) Levels. Each set's fatigue-adjusted capacity → an implied ln E; a session's are averaged by precision.
-    levelPass(groups, wk, kappa, logW, noise2, zG, vG, uG, okG);
-    drift = levels(liftGroups, steps, zG, vG, uG, okG, predX, predV, predU, hasPred, smX, smV);
+    levelPass(groups, wk, kappa, logW, noise2, zG, vG, uG, okG, sB, sH, sens);
+    drift = levels(liftGroups, steps, zG, vG, uG, okG, predX, predV, predU, hasPred, smX, smV, sens);
     predictPass(groups, fx.w, wk, kappa, predX, predV, hasPred, noise2);
+    if (tests) for (let i = 0; i < N; i++) if (isTestRow[i]) W[i] = 0;
+    // A ramp or back-off set read as a bound informs its session's level only: not the fatigue fit, κ or A_same, whose contrasts
+    // it would enter one-sided (its site is built at the current values), while it was lighter by choice and its reps say little.
+    if (lightBound) for (let i = 0; i < N; i++) if (light[i]) W[i] = 0;
+    // (1b) What test sets say about b and the habit (only when there are any): read again with them next round.
+    if (tests) cal = biasPass(groups, liftNames, wk, kind, fx.w, kappa, predX, predV, hasPred, noise2, sens, bL, eh, habitVar, hn);
 
     // (2) Fatigue: GLS over the (τ, ρ) grid, a random intercept per session (its level error) and an intercept per lift.
     // Rounds before the last search only τ next to the current best (the fit moves little between rounds; 2–4 rounds agree
@@ -470,26 +554,35 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean }
     mapT = TAUS.indexOf(cells[best].tau as (typeof TAUS)[number]); mapR = RHOS.indexOf(cells[best].rho as (typeof RHOS)[number]);
     theta = [0, 1, 2].map((j) => cells.reduce((a, c) => a + c.w * c.theta[j], 0)) as [number, number, number];
 
-    noise2 = noisePass(groups, wk);
+    noise2 = noisePass(groups, wk, tests ? isTestRow : null);
 
     // Reps–load slope κ per lift (b), pooled toward the person and similar lifts.
     const kappaSd = updateKappa(fx, mapT, RHOS[mapR], groups, liftNames, kappa, fx.w, predX, predU, hasPred, pred, yy, W, delta, L);
     // Per-lift A_same (b), pooled; used for the next round's fatigue.
     const a = liftASame(fx, groups, liftNames, cells, mapT, mapR, theta, pred, yy, W, L, kappa, predX, hasPred);
     for (let l = 0; l < L; l++) aLift[l] = a.post[l].mean;
+    if (tests && it < ITERATIONS - 1) { bL.set(cal.bL); eh = cal.eh.mean; read(); }
     if (it === ITERATIONS - 1) {
+      // The set-to-set noise of sets whose reps to failure are read without the habit (RIR, tests, missed targets): what a test
+      // set carries. The habit-read sets' spread also holds how far from failure each was stopped, which a test doesn't have.
+      const habitRow = new Uint8Array(N);
+      for (let i = 0; i < N; i++) if (kindOf(i) === K_HABIT) habitRow[i] = 1;
+      const measure2 = noisePass(groups, wk, habitRow);
       const lifts = new Map<string, LiftCore>();
       for (let l = 0; l < L; l++) {
         const gs = liftGroups[l];
         lifts.set(liftKey(liftNames[l]), {
           key: liftKey(liftNames[l]), name: liftNames[l],
           kappa: { mean: kappa[l], sd: kappaSd[l] },
-          aSame: { mean: a.post[l].mean, sd: a.post[l].sd },
+          aSame: { mean: a.post[l].mean, sd: a.post[l].sd }, aSameOwn: a.own[l],
           level: gs.filter((g) => smV[g] < 1).map((g) => ({ date: groups[g].date, day: groups[g].day, x: smX[g], sd: Math.sqrt(smV[g]) })),
+          obs: gs.filter((g) => okG[g]).map((g) => ({ date: groups[g].date, day: groups[g].day, z: zG[g], v: vG[g] })),
+          bias: { mean: cal.bL[l], sd: cal.bLsd[l] },
+          sys: systematic(liftGroups[l], smV, sens, cal, l),
           sessions: gs.length, sets: gs.reduce((n, g) => n + groups[g].o1 - groups[g].o0, 0),
         });
       }
-      return summarize(cells, theta, lifts, { kT: mapT, rho: RHOS[mapR], N, sets: entries.length, sessions: sessions.length, timed: sessions.filter((s) => s.timed).length, habit, habitVar, hn, noise2, gap, drift, blocks: sessions });
+      return summarize(cells, theta, lifts, { kT: mapT, rho: RHOS[mapR], N, sets: entries.length, sessions: sessions.length, timed: sessions.filter((s) => s.timed).length, habit, cal, noise2, measure2, gap, drift, blocks: sessions });
     }
   }
   throw new Error('unreachable');
@@ -511,14 +604,15 @@ function deltaPass(fx: Flat, liftOf: Int32Array, aLift: Float64Array, kT: number
   }
 }
 
-/** Per group: the precision-weighted mean of its sets' implied ln E (fatigue put back), with its variance and reps scale. */
+/** Per group: the precision-weighted mean of its sets' implied ln E (fatigue put back), with its variance and reps scale; and its
+ * sensitivity to b and to the habit (sB, sH per set: how its reading moves with each), for test sets to learn them by. */
 function levelPass(groups: Group[], wk: Work, kappa: Float64Array, logW: Float64Array, noise2: number,
-  zG: Float64Array, vG: Float64Array, uG: Float64Array, okG: Uint8Array): void {
+  zG: Float64Array, vG: Float64Array, uG: Float64Array, okG: Uint8Array, sB: Float64Array, sH: Float64Array, sens: Sens): void {
   const { y, v, isBound, delta, yy, siteV } = wk;
   okG.fill(0);
   for (let g = 0; g < groups.length; g++) {
     const { o0, o1, lift } = groups[g];
-    let sw = 0, sz = 0, su = 0;
+    let sw = 0, sz = 0, su = 0, sb = 0, sh = 0;
     for (let i = o0; i < o1; i++) {
       // A bound reads as its site from the last round (none in the first: it says nothing until there's a prediction).
       if (isBound[i] && !(siteV[i] < 1e6)) continue;
@@ -527,8 +621,9 @@ function levelPass(groups: Group[], wk: Work, kappa: Float64Array, logW: Float64
       const lv = ve / (kappa[lift] + c) ** 2;
       const z = logW[i] + Math.log1p(c / kappa[lift]);
       sw += 1 / lv; sz += z / lv; su += (c / (kappa[lift] + c)) / lv;
+      if (!isBound[i]) { const d = 1 / ((kappa[lift] + c) * lv); sb += sB[i] * d; sh += sH[i] * d; }
     }
-    if (sw > 0) { okG[g] = 1; zG[g] = sz / sw; uG[g] = su / sw; vG[g] = 1 / sw + READY * READY; }
+    if (sw > 0) { okG[g] = 1; zG[g] = sz / sw; uG[g] = su / sw; vG[g] = 1 / sw + READY * READY; sens.b[g] = sb / sw; sens.h[g] = sh / sw; }
   }
 }
 
@@ -564,14 +659,90 @@ function predictPass(groups: Group[], ws: Float64Array, wk: Work, kappa: Float64
   }
 }
 
+/** Per group: how its ln E moves per rep of b and of the habit offset: the session's own (b, h), its leave-one-session-out
+ * prediction's (pb, ph) and the smoothed level's (sb, sh). */
+interface Sens { b: Float64Array; h: Float64Array; pb: Float64Array; ph: Float64Array; sb: Float64Array; sh: Float64Array }
+/** What test sets taught: the person's b, the habit offset e_h, their covariance; each lift's b; how many test sessions. */
+interface Calib { b: Est; eh: Est; cov: number; bL: Float64Array; bLsd: Float64Array; n: number }
+
+/** Before any test: the priors (b: Halperin's; e_h: 0 with the habit mean's own sampling SD), every lift's b its pooled prior. */
+function noCalib(L: number, habitVar: number, hn: number): Calib {
+  const sdL = Math.sqrt(B_PRIOR.sd ** 2 + B_LIFT_SD ** 2); // learn/pool with no data: person + family + lift prior
+  return { b: { mean: B_PRIOR.mean, sd: B_PRIOR.sd }, eh: { mean: 0, sd: Math.sqrt(habitVar / (HABIT.k + hn)) }, cov: 0,
+    bL: new Float64Array(L).fill(B_PRIOR.mean), bLsd: new Float64Array(L).fill(sdL), n: 0 };
+}
+
+/**
+ * The RIR bias b and the habit offset e_h from test sets (00-core §1.2: nothing else identifies them). A test reads reps to failure
+ * directly; its session's level is predicted from the other sessions (leave one out), which were read through b (sets with RIR)
+ * and the habit (sets without), so the test's residual r = (reps + RIR + Δ) − predicted ≈ S_b·(b − b̂) + S_h·(e_h − ê_h) + noise,
+ * S being the prediction's sensitivity to each (carried through the level filter: `levels`). Tests in one session share its level
+ * error, so they are averaged first. A Gaussian linear update on the priors (b: Halperin 2022; e_h: the habit mean's sampling SD)
+ * gives the person's (b, e_h); then each lift's b is pooled person → family → lift (learn/pool) from its own tests' residuals.
+ */
+function biasPass(groups: Group[], names: string[], wk: Work, kind: Uint8Array, ws: Float64Array, kappa: Float64Array, predX: Float64Array,
+  predV: Float64Array, hasPred: Uint8Array, noise2: number, sens: Sens, bL: Float64Array, eh: number, habitVar: number, hn: number): Calib {
+  const { y, v, delta, pred } = wk;
+  const L = names.length;
+  // Per test session: its lift, mean residual (made absolute: + S·θ now), sensitivities and variance.
+  const rows: { l: number; r: number; Sb: number; Sh: number; V: number }[] = [];
+  for (let g = 0; g < groups.length; g++) {
+    if (!hasPred[g]) continue;
+    const { o0, o1, lift: l } = groups[g];
+    let sw = 0, sr = 0, ss = 0;
+    for (let i = o0; i < o1; i++) {
+      if (kind[i] !== K_TEST || !Number.isFinite(pred[i])) continue;
+      const scale = kappa[l] * Math.exp(predX[g]) / ws[i]; // reps per unit of ln E at this load
+      const w = 1 / (v[i] + noise2);
+      sw += w; sr += w * (y[i] + delta[i] - pred[i]); ss += w * scale;
+    }
+    if (!sw) continue;
+    const sc = ss / sw, Sb = sc * sens.pb[g], Sh = sc * sens.ph[g];
+    rows.push({ l, r: sr / sw + Sb * bL[l] + Sh * eh, Sb, Sh, V: 1 / sw + sc * sc * (predV[g] + READY * READY) });
+  }
+  const sh0 = Math.sqrt(habitVar / (HABIT.k + hn));
+  // Person level: P = prior precision + Σ S Sᵀ/V; mean = P⁻¹(prior precision · prior mean + Σ S r/V).
+  let p00 = 1 / B_PRIOR.sd ** 2, p01 = 0, p11 = 1 / (sh0 * sh0), h0 = B_PRIOR.mean / B_PRIOR.sd ** 2, h1 = 0;
+  for (const x of rows) { p00 += x.Sb * x.Sb / x.V; p01 += x.Sb * x.Sh / x.V; p11 += x.Sh * x.Sh / x.V; h0 += x.Sb * x.r / x.V; h1 += x.Sh * x.r / x.V; }
+  const det = p00 * p11 - p01 * p01;
+  const c00 = p11 / det, c01 = -p01 / det, c11 = p00 / det;
+  const bP = c00 * h0 + c01 * h1, eP = c01 * h0 + c11 * h1;
+  // Lift level: each lift's tests, after the person's fit, as an estimate of its own b; pooled around the person's.
+  const acc = new Map<number, { a: number; b: number }>();
+  for (const x of rows) {
+    if (!(Math.abs(x.Sb) > 1e-9)) continue;
+    const e = x.r - x.Sh * eP; // ≈ S_b·b_lift
+    const t = acc.get(x.l) ?? { a: 0, b: 0 };
+    t.a += x.Sb * x.Sb / x.V; t.b += x.Sb * e / x.V;
+    acc.set(x.l, t);
+  }
+  const items = [...acc].map(([l, t]) => ({ key: liftKey(names[l]), est: t.b / t.a, v: 1 / t.a }));
+  const p = pool(items, (a, b) => liftSimilarity(a, b), { mean: bP, personSd: Math.sqrt(c00), liftSd: B_LIFT_SD });
+  const bl = new Float64Array(L), bs = new Float64Array(L);
+  for (let l = 0; l < L; l++) { const q = p.lift(liftKey(names[l])); bl[l] = q.mean; bs[l] = q.sd; }
+  return { b: { mean: bP, sd: Math.sqrt(c00) }, eh: { mean: eP, sd: Math.sqrt(c11) }, cov: c01, bL: bl, bLsd: bs, n: rows.length };
+}
+
+/**
+ * The SD (ln e1RM) a lift's latest level carries from b and the habit: s_bᵀ Σ s_b by first-order error propagation, with s its
+ * smoothed level's sensitivity to each (per rep) and Σ their posterior covariance (the lift's b, the person's e_h).
+ */
+function systematic(gs: number[], smV: Float64Array, sens: Sens, cal: Calib, l: number): number {
+  let g = -1;
+  for (let x = gs.length - 1; x >= 0; x--) if (smV[gs[x]] < 1) { g = gs[x]; break; }
+  if (g < 0) return 0;
+  const a = sens.sb[g], c = sens.sh[g];
+  return Math.sqrt(Math.max(0, a * a * cal.bLsd[l] ** 2 + c * c * cal.eh.sd ** 2 + 2 * a * c * cal.cov));
+}
+
 /** Residual noise σ_e² (b): within-session spread of fatigue-adjusted readings beyond the readings' own variance, shrunk to the prior. */
-function noisePass(groups: Group[], wk: Work): number {
+function noisePass(groups: Group[], wk: Work, skip: Uint8Array | null): number {
   const { y, v, isBound, delta, pred } = wk;
   let rss = 0, dof = 0, ownV = 0;
   for (const g of groups) {
     let n = 0, m = 0, mm = 0, vv = 0;
     for (let i = g.o0; i < g.o1; i++) {
-      if (isBound[i] || !Number.isFinite(pred[i])) continue;
+      if (isBound[i] || !Number.isFinite(pred[i]) || (skip && skip[i])) continue;
       const r = y[i] + delta[i] - pred[i]; // the session's shared level error drops out of the within-session spread
       m += r; mm += r * r; n++; vv += v[i];
     }
@@ -584,7 +755,7 @@ function noisePass(groups: Group[], wk: Work): number {
 }
 
 function summarize(cells: Cell[], theta: [number, number, number], lifts: Map<string, LiftCore>,
-  m: { kT: number; rho: number; N: number; sets: number; sessions: number; timed: number; habit: number; habitVar: number; hn: number; noise2: number; gap: number; drift: number; blocks: Block[] }): Core {
+  m: { kT: number; rho: number; N: number; sets: number; sessions: number; timed: number; habit: number; cal: Calib; noise2: number; measure2: number; gap: number; drift: number; blocks: Block[] }): Core {
   const sd = [0, 1, 2].map((j) => Math.sqrt(cells.reduce((a, c) => a + c.w * (c.cov[j * 4] + (c.theta[j] - theta[j]) ** 2), 0)));
   // τ: posterior over the grid, summarised in logs; its 5–95 % from the cumulative weights.
   const wT = TAUS.map((t) => cells.filter((c) => c.tau === t).reduce((a, c) => a + c.w, 0));
@@ -602,7 +773,7 @@ function summarize(cells: Cell[], theta: [number, number, number], lifts: Map<st
     aSame: { mean: theta[0], sd: sd[0] }, aCross: { mean: theta[1], sd: sd[1] }, gamma: { mean: theta[2], sd: sd[2] },
     tau: { mean: Math.exp(lt), sd: ltSd, lo: q(0.05), hi: q(0.95) }, rho: { mean: rm, sd: rsd },
     cells,
-    habit: { mean: m.habit, sd: Math.sqrt(m.habitVar / (HABIT.k + m.hn)) }, bias: { mean: B_PRIOR.mean, sd: B_PRIOR.sd }, noise: Math.sqrt(m.noise2),
+    habit: { mean: m.habit + m.cal.eh.mean, sd: m.cal.eh.sd }, bias: m.cal.b, tests: m.cal.n, noise: Math.sqrt(m.noise2), measure: Math.sqrt(m.measure2),
     gap: m.gap, drift: m.drift, lifts,
     get features() {
       if (!features) {
@@ -619,22 +790,27 @@ function summarize(cells: Cell[], theta: [number, number, number], lifts: Map<st
 
 /**
  * Leave-one-session-out level per lift: a forward and a backward Kalman filter over its sessions (random walk in ln E), each
- * session predicted from both sides without itself. Also runs the same gains on an auxiliary series (u = C/(κ + C), for the
- * reps–load slope) and the smoothed level with the session's own data. Picks the drift (DRIFT grid) by one-step predictive
- * likelihood with its prior (b); returns it.
+ * session predicted from both sides without itself. Also runs the same gains on auxiliary series (u = C/(κ + C), for the
+ * reps–load slope; and each session's sensitivity to b and to the habit, so a prediction knows how it would move with them) and
+ * the smoothed level with the session's own data. Picks the drift (DRIFT grid) by one-step predictive likelihood with its prior
+ * (b); returns it.
  */
 function levels(liftGroups: number[][], steps: Steps, z: Float64Array, vz: Float64Array, u: Float64Array, ok: Uint8Array,
-  predX: Float64Array, predV: Float64Array, predU: Float64Array, hasPred: Uint8Array, smX: Float64Array, smV: Float64Array): number {
+  predX: Float64Array, predV: Float64Array, predU: Float64Array, hasPred: Uint8Array, smX: Float64Array, smV: Float64Array, sens: Sens): number {
   const G = z.length;
   const { dd, lay } = steps;
+  const sb = sens.b, sh = sens.h;
   let fm = new Float64Array(G), fP = new Float64Array(G), fu = new Float64Array(G), fok = new Uint8Array(G);
   let tm = new Float64Array(G), tP = new Float64Array(G), tu = new Float64Array(G), tok = new Uint8Array(G);
   const bm = new Float64Array(G), bP = new Float64Array(G), bu = new Float64Array(G), bok = new Uint8Array(G);
+  // The sensitivities' forward and backward predictions (only for the kept passes: the drift search doesn't need them).
+  const fb = new Float64Array(G), fh = new Float64Array(G), kb = new Float64Array(G), kh = new Float64Array(G);
   // One filter over a lift's sessions, forward (dir 1) or backward (dir −1); the step into a session is the process noise over
   // the days from the session before it in that direction (perDay per day, plus the layoff term). Returns the one-step
-  // predictive log likelihood when asked (the drift search), else 0.
-  const run = (gs: number[], dir: 1 | -1, perDay: number, m_: Float64Array, P_: Float64Array, u_: Float64Array, ok_: Uint8Array, withLL: boolean): number => {
-    let m = 0, P = Infinity, uu = 0, ll = 0;
+  // predictive log likelihood when asked (the drift search), else 0. `ob`, `oh`: where to put the sensitivities' predictions.
+  const run = (gs: number[], dir: 1 | -1, perDay: number, m_: Float64Array, P_: Float64Array, u_: Float64Array, ok_: Uint8Array, withLL: boolean,
+    ob: Float64Array | null, oh: Float64Array | null): number => {
+    let m = 0, P = Infinity, uu = 0, ub = 0, uh = 0, ll = 0;
     const n = gs.length;
     for (let x = dir === 1 ? 0 : n - 1; x >= 0 && x < n; x += dir) {
       const g = gs[x];
@@ -642,43 +818,54 @@ function levels(liftGroups: number[][], steps: Steps, z: Float64Array, vz: Float
         const h = dir === 1 ? g : gs[x + 1]; // the step's gap: from the session before g in this direction
         const Pp = P + (perDay * dd[h] + lay[h]);
         m_[g] = m; P_[g] = Pp; u_[g] = uu; ok_[g] = 1;
+        if (ob) { ob[g] = ub; oh![g] = uh; }
         if (ok[g]) {
           const S = Pp + vz[g], K = Pp / S, nu = z[g] - m;
           if (withLL) ll += -0.5 * (Math.log(S) + nu * nu / S);
           m += K * nu; uu += K * (u[g] - uu); P = (1 - K) * Pp;
+          if (ob) { ub += K * (sb[g] - ub); uh += K * (sh[g] - uh); }
         } else P = Pp;
       } else {
         ok_[g] = 0;
-        if (ok[g]) { m = z[g]; uu = u[g]; P = vz[g]; }
+        if (ok[g]) { m = z[g]; uu = u[g]; P = vz[g]; ub = sb[g]; uh = sh[g]; }
       }
     }
     return ll;
   };
   // Drift: one-step predictive likelihood of every lift's forward filter, plus the prior. The best drift's forward pass is kept.
-  let bestD = 1, bestLL = -Infinity, kept = false;
+  let bestD = 1, bestLL = -Infinity;
   for (let d = 0; d < DRIFT.length; d++) {
     const perDay = DRIFT[d] * DRIFT[d] / 7;
     let ll = Math.log(DRIFT_PRIOR[d]);
-    for (const gs of liftGroups) ll += run(gs, 1, perDay, tm, tP, tu, tok, true);
+    for (const gs of liftGroups) ll += run(gs, 1, perDay, tm, tP, tu, tok, true, null, null);
     if (ll > bestLL) {
-      bestLL = ll; bestD = d; kept = true;
+      bestLL = ll; bestD = d;
       [fm, tm] = [tm, fm]; [fP, tP] = [tP, fP]; [fu, tu] = [tu, fu]; [fok, tok] = [tok, fok];
     }
   }
   const perDay = DRIFT[bestD] * DRIFT[bestD] / 7;
-  if (!kept) for (const gs of liftGroups) run(gs, 1, perDay, fm, fP, fu, fok, false); // no finite likelihood: the default drift
-  for (const gs of liftGroups) run(gs, -1, perDay, bm, bP, bu, bok, false);
+  // The kept drift's forward pass once more, with the sensitivities (the same gains, so the same level; with no finite
+  // likelihood above, this is the default drift's).
+  for (const gs of liftGroups) run(gs, 1, perDay, fm, fP, fu, fok, false, fb, fh);
+  for (const gs of liftGroups) run(gs, -1, perDay, bm, bP, bu, bok, false, kb, kh);
   for (let g = 0; g < G; g++) {
-    let pm = 0, pv = Infinity, pu = 0;
-    if (fok[g] && bok[g]) { pv = 1 / (1 / fP[g] + 1 / bP[g]); pm = pv * (fm[g] / fP[g] + bm[g] / bP[g]); pu = pv * (fu[g] / fP[g] + bu[g] / bP[g]); }
-    else if (fok[g]) { pv = fP[g]; pm = fm[g]; pu = fu[g]; }
-    else if (bok[g]) { pv = bP[g]; pm = bm[g]; pu = bu[g]; }
+    let pm = 0, pv = Infinity, pu = 0, pb = 0, ph = 0;
+    if (fok[g] && bok[g]) {
+      pv = 1 / (1 / fP[g] + 1 / bP[g]);
+      const wf = pv / fP[g], wb = pv / bP[g];
+      pm = wf * fm[g] + wb * bm[g]; pu = wf * fu[g] + wb * bu[g]; pb = wf * fb[g] + wb * kb[g]; ph = wf * fh[g] + wb * kh[g];
+    } else if (fok[g]) { pv = fP[g]; pm = fm[g]; pu = fu[g]; pb = fb[g]; ph = fh[g]; }
+    else if (bok[g]) { pv = bP[g]; pm = bm[g]; pu = bu[g]; pb = kb[g]; ph = kh[g]; }
     hasPred[g] = Number.isFinite(pv) && pv < 1 ? 1 : 0;
-    predX[g] = pm; predV[g] = pv; predU[g] = pu;
+    predX[g] = pm; predV[g] = pv; predU[g] = pu; sens.pb[g] = pb; sens.ph[g] = ph;
     if (ok[g]) {
       const sv = Number.isFinite(pv) ? 1 / (1 / pv + 1 / vz[g]) : vz[g];
-      smX[g] = Number.isFinite(pv) ? sv * (pm / pv + z[g] / vz[g]) : z[g]; smV[g] = sv;
-    } else { smX[g] = pm; smV[g] = pv; }
+      if (Number.isFinite(pv)) {
+        const a = sv / pv, c = sv / vz[g];
+        smX[g] = a * pm + c * z[g]; sens.sb[g] = a * pb + c * sb[g]; sens.sh[g] = a * ph + c * sh[g];
+      } else { smX[g] = z[g]; sens.sb[g] = sb[g]; sens.sh[g] = sh[g]; }
+      smV[g] = sv;
+    } else { smX[g] = pm; smV[g] = pv; sens.sb[g] = pb; sens.sh[g] = ph; }
   }
   return DRIFT[bestD];
 }
@@ -869,7 +1056,7 @@ function updateKappa(fx: Flat, kT: number, rho: number, groups: Group[], names: 
 /** Per-lift A_same (b): within-session contrasts at the person's (τ, ρ), then pooled (learn/pool) around the person's value. */
 function liftASame(fx: Flat, groups: Group[], names: string[], cells: Cell[], kT: number, kR: number,
   theta: [number, number, number], pred: Float64Array, yy: Float64Array, W: Float64Array, L: number,
-  kappa: Float64Array, predX: Float64Array, hasPred: Uint8Array): { post: Posterior[] } {
+  kappa: Float64Array, predX: Float64Array, hasPred: Uint8Array): { post: Posterior[]; own: (Est | null)[] } {
   const rho = RHOS[kR];
   const items: { key: string; est: number; v: number }[] = [];
   let rss = 0, dof = 0;
@@ -909,8 +1096,9 @@ function liftASame(fx: Flat, groups: Group[], names: string[], cells: Cell[], kT
   const phi = dof > 5 ? Math.max(1, rss / dof) : 1;
   // Absolute per-lift A at the person's (τ, ρ). A, τ and ρ trade off (at usual rests e^(−Δt/τ) is near 0, so the data see
   // A·ρ): a lift's A is only meaningful with the (τ, ρ) it was fitted at, which is how every consumer uses it (lossAt).
-  for (const { est, v, l } of per) items.push({ key: liftKey(names[l]), est, v: phi * v });
+  const own: (Est | null)[] = names.map(() => null);
+  for (const { est, v, l } of per) { items.push({ key: liftKey(names[l]), est, v: phi * v }); own[l] = { mean: est, sd: Math.sqrt(phi * v) }; }
   const sd0 = Math.sqrt(cells.reduce((a, c) => a + c.w * (c.cov[0] + (c.theta[0] - theta[0]) ** 2), 0));
   const p = pool(items, (a, b) => liftSimilarity(a, b), { mean: theta[0], personSd: sd0, liftSd: A_LIFT_SD });
-  return { post: names.map((n) => p.lift(liftKey(n))) };
+  return { post: names.map((n) => p.lift(liftKey(n))), own };
 }

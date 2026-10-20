@@ -126,6 +126,15 @@ export function ladderOf(entries: readonly SetEntry[], exercise: string, gym = g
   return { step: g.s, offset: g.o * RES, source: lift ? 'lift' : 'pool', n: total(counts[at]!), known, pool: name };
 }
 
+/** The heaviest loadable weight at or under `w`: the rung of the grid below it, or a weight this lift has logged in between. */
+export function floorRung(l: Ladder, w: number): number {
+  const k = Math.floor((w - l.offset) / l.step + 1e-9);
+  const grid = Math.round((l.offset + k * l.step) * 100) / 100;
+  let known: number | undefined;
+  for (const x of l.known) if (x <= w + 1e-9) known = x;
+  return known != null && known > grid ? known : grid;
+}
+
 /** The first loadable weight above `w`: the next rung of the grid, or a weight this lift has logged in between. */
 export function nextRung(l: Ladder, w: number): number {
   const k = Math.floor((w - l.offset) / l.step + 1e-9) + 1;

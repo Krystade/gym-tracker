@@ -159,9 +159,12 @@ describe('by-string caches', () => {
 });
 
 describe('estimates from the lift index', () => {
-  it('a day of only test sets is not one of the last three training sessions', () => {
-    const E = [set('2026-09-01', 'Bench Press', '18:00', { weight: 150 }), set('2026-09-03', 'Bench Press', '18:00'), set('2026-09-05', 'Bench Press', '18:00'),
-      set('2026-09-07', 'bench  press', '18:00', { weight: 50, reps: 1, flags: ['test'] })];
-    expect(calibratedE1rm(E, 'Bench Press')).toBeCloseTo(150 * (1 + 10 / 30) * 0.8);
+  it('a test logged under another spelling is the same lift’s, and moves its level (item 04: every set counts)', () => {
+    const E = [set('2026-09-01', 'Bench Press', '18:00', { weight: 150 }), set('2026-09-03', 'Bench Press', '18:00'), set('2026-09-05', 'Bench Press', '18:00')];
+    const test = set('2026-09-07', 'bench  press', '18:00', { weight: 50, reps: 1, rir: 0, flags: ['test'] });
+    const before = calibratedE1rm(E, 'Bench Press')!, after = calibratedE1rm([...E, test], 'Bench Press')!;
+    // 50 × 1 to failure reads far below 100–150 × 10: the level moves down toward it, and a spelling apart is no other lift.
+    expect(after).toBeLessThan(before);
+    expect(calibratedE1rm([...E, test], 'BENCH PRESS')).toBe(after);
   });
 });

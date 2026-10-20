@@ -3,7 +3,7 @@ import { resolveLift } from './lifts';
 import { e1rm, estimateWeightForReps, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 import { isHold, isHoldLift } from './care';
-import { learn } from './learn';
+import { coreBefore, logBefore } from './learn';
 import { dropsOf, type Drop } from './learn/jump';
 import { ladderOf, nextRung, type Ladder } from './learn/ladder';
 import { fitRange, type RangeFit } from './learn/range';
@@ -116,22 +116,7 @@ const DEFAULT_INCREMENT = 5;
 export function learnedFor(log: readonly SetEntry[], exercise: string, date: string): { ladder: Ladder | null; drop: Drop | null } {
   // Only what was done before the day: a target doesn't move under you while you train.
   const entries = logBefore(log, date);
-  let core = null;
-  try { core = learn(entries).core; } catch { core = null; } // the fatigue adjustment is a refinement: never a reason to fail
-  return { ladder: ladderOf(entries, exercise), drop: dropsOf(entries, core)?.(exercise) ?? null };
-}
-const BEFORE = new WeakMap<readonly SetEntry[], { n: number; by: Map<string, readonly SetEntry[]> }>();
-/** The log without `date` and later, the same array for the same log and day (so what is learned from it is cached). */
-function logBefore(entries: readonly SetEntry[], date: string): readonly SetEntry[] {
-  let hit = BEFORE.get(entries);
-  if (!hit || hit.n !== entries.length) BEFORE.set(entries, hit = { n: entries.length, by: new Map() });
-  let out = hit.by.get(date);
-  if (!out) {
-    out = entries.some((e) => e.date >= date) ? entries.filter((e) => e.date < date) : entries;
-    if (hit.by.size > 8) hit.by.clear();
-    hit.by.set(date, out);
-  }
-  return out;
+  return { ladder: ladderOf(entries, exercise), drop: dropsOf(entries, coreBefore(log, date))?.(exercise) ?? null };
 }
 const STEP_OF: Record<string, string> = { cable: 'your cable steps', dumbbell: 'your dumbbell steps', plates: 'your plate steps', kettlebell: 'your kettlebell steps' };
 const r05 = (x: number) => Math.round(x * 2) / 2;

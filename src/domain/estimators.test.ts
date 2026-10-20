@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { calibrate, calibratedE1rm, oneRm, testDue, weightForReps } from './estimators';
-
-let seq = 0;
-const s = (date: string, weight: number, reps: number, over: Partial<SetEntry> = {}): SetEntry => ({
-  id: `t${seq}`, date, seq: seq++, exercise: 'Curl', setNo: 1, weight, reps, flags: [], source: 't', ...over,
-});
+import { calibratedE1rm, oneRm, strength, testDue, TEST_REPS, weightForReps } from './estimators';
+import { simulate, SIM_LIFTS } from './learn/coreSim.sample';
+import { learn, testSd } from './learn';
+import { liftKey } from './ids';
+import { addDays } from './analytics';
 
 describe('oneRm', () => {
   it('matches Epley and the weight-dependent formula', () => {
@@ -29,39 +28,6 @@ describe('oneRm', () => {
     const w = weightForReps('wd', 143.4, 10);
     expect(oneRm('wd', w, 10)).toBeCloseTo(143.4, 1);
   });
-});
-
-describe('calibration', () => {
-  it('defaults to uncalibrated Epley with no tests', () => {
-    expect(calibrate([s('2026-01-01', 30, 10)], 'Curl')).toEqual({ formula: 'epley', factor: 1, tests: 0, errorPct: null });
-  });
-  it('learns a factor from test sets and prefers the formula with lower error', () => {
-    // Training sets predict ~40 (Epley); the to-failure test at 30 lb went 16 reps (Epley 1RM 46) → Epley under-predicts by ~15%.
-    const e = [s('2026-01-01', 30, 10), s('2026-01-08', 30, 10), s('2026-02-15', 30, 16, { flags: ['test'], rir: 0 })];
-    const c = calibrate(e, 'Curl');
-    expect(c.tests).toBe(1);
-    expect(c.factor).toBeGreaterThan(1);
-    expect(c.factor).toBeLessThanOrEqual(1.2);
-    expect(calibratedE1rm(e, 'Curl', '2026-03-01')!).toBeGreaterThan(oneRm(c.formula, 30, 10)!);
-  });
-  it('flags a test as due after 6 weeks for a regularly trained lift', () => {
-    const e = ['2026-08-10', '2026-08-17', '2026-08-24', '2026-08-31', '2026-09-07'].map((d) => s(d, 30, 10));
-    expect(testDue(e, 'Curl', '2026-09-30')).toBe(true);
-    expect(testDue([...e, s('2026-09-01', 30, 14, { flags: ['test'] })], 'Curl', '2026-09-30')).toBe(false);
-    expect(testDue(e.slice(0, 2), 'Curl', '2026-09-30')).toBe(false);
-  });
-});
-
-describe('review fixes', () => {
-  it('does not apply the calibration factor on top of the test set itself', () => {
-    const e = [s('2026-01-01', 30, 10), s('2026-01-08', 30, 10), s('2026-02-15', 30, 16, { flags: ['test'], rir: 0 })];
-    // training predicts 40; the test is worth 46 by itself. Showing 46 is right; 46 × 1.15 is not.
-    expect(calibratedE1rm(e, 'Curl')).toBeCloseTo(46, 1);
-  });
-  it('only learns from tests before the date asked about', () => {
-    const e = [s('2026-01-01', 30, 10), s('2026-01-08', 30, 10), s('2026-02-15', 30, 16, { flags: ['test'], rir: 0 })];
-    expect(calibrate(e.filter(() => true), 'Curl', '2026-02-01').tests).toBe(0);
-  });
   it('is continuous and monotonic in weight, so rep-max inversion round-trips at light loads', () => {
     for (const f of ['epley', 'wd'] as const) {
       let prev = 0;
@@ -69,27 +35,132 @@ describe('review fixes', () => {
       for (const w of [10, 15, 20, 35, 60]) expect(weightForReps(f, oneRm(f, w, 12)!, 12)).toBeCloseTo(w, 1);
     }
   });
-  it('picks a formula only with two or more usable tests, and counts only tests that had a prior', () => {
-    const one = [s('2026-01-01', 30, 10), s('2026-02-15', 30, 16, { flags: ['test'], rir: 0 })];
-    expect(calibrate(one, 'Curl').formula).toBe('epley');
-    const orphan = [s('2026-01-01', 30, 16, { flags: ['test'], rir: 0 })];
-    expect(calibrate(orphan, 'Curl').tests).toBe(0);
+});
+
+// Synthetic logs from the learning core's simulator (learn/coreSim.sample), whose true e1RM per set is known.
+const lastDate = (es: readonly SetEntry[]) => es.reduce((a, e) => (e.date > a ? e.date : a), '');
+const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+
+describe('calibratedE1rm: the learning core’s fatigue-adjusted level (item 04)', () => {
+  // Error in logs against the true fresh e1RM at each lift's last session, for the core's level and for the old rule (the best
+  // Epley reading of the last 3 sessions). The 1RM extrapolates along the reps–load slope, so it is only as good as κ: with a
+  // back-off set (two loads in a day) κ is learned and the error more than halves; without one κ stays on its prior, and the
+  // level is still no worse than the old rule.
+  const errors = (backoff: boolean) => {
+    const neu: number[] = [], old: number[] = [];
+    for (let seed = 1; seed <= 4; seed++) {
+      const { entries, sets } = simulate(seed, { sessions: 80, pLog: 0.5, backoff });
+      for (const l of SIM_LIFTS) {
+        const mine = entries.filter((e) => e.exercise === l.name);
+        const last = lastDate(mine);
+        const truthE = sets.get(mine.find((e) => e.date === last)!.id)!.E;
+        neu.push(Math.abs(Math.log(calibratedE1rm(entries, l.name)! / truthE)));
+        const dates = [...new Set(mine.map((e) => e.date))].sort().slice(-3);
+        const epley = Math.max(...mine.filter((e) => dates.includes(e.date)).map((e) => e.weight * (1 + (e.reps as number) / 30)));
+        old.push(Math.abs(Math.log(epley / truthE)));
+      }
+    }
+    return { neu: mean(neu), old: mean(old) };
+  };
+  it('on simulated logs with back-off sets it lands nearer the true e1RM than the old best Epley of the last 3 sessions, by half or more', () => {
+    const e = errors(true);
+    expect(e.neu).toBeLessThan(e.old / 2);
+    expect(e.neu).toBeLessThan(0.03);
   });
-  it('counts reps in reserve on a test set', () => {
-    const e = [s('2026-01-01', 30, 10), s('2026-02-15', 30, 14, { flags: ['test'], rir: 2 })];
-    // 14 + 2 = 16 reps possible → same as the 30×16 case
-    expect(calibratedE1rm(e, 'Curl')).toBeCloseTo(46, 1);
+  it('without a second load in a day (κ on its prior) it is still no worse than the old rule', () => {
+    const e = errors(false);
+    expect(e.neu).toBeLessThanOrEqual(e.old);
+  });
+  it('is the level of the log before the date: that day and later are left out', () => {
+    const { entries } = simulate(2, { sessions: 30 });
+    const d = [...new Set(entries.map((e) => e.date))].sort()[20];
+    expect(calibratedE1rm(entries, 'Bench Press', d)).toBe(calibratedE1rm(entries.filter((e) => e.date < d), 'Bench Press'));
+    expect(calibratedE1rm(entries, 'Bench Press', d)).not.toBe(calibratedE1rm(entries, 'Bench Press'));
+    const lv = learn(entries).core.lifts.get(liftKey('Bench Press'))!.level;
+    expect(calibratedE1rm(entries, 'Bench Press')).toBeCloseTo(Math.exp(lv.at(-1)!.x), 9);
+  });
+  it('null for a lift with no level: nothing logged, or bodyweight only', () => {
+    const { entries } = simulate(1, { sessions: 10 });
+    expect(calibratedE1rm(entries, 'Squat Jump')).toBeNull();
+    const pull: SetEntry[] = [0, 1, 2].map((i) => ({ id: `p${i}`, date: `2026-09-0${i + 1}`, seq: i, exercise: 'Pull-up', setNo: 1, weight: 0, reps: 8, flags: ['bodyweight'], source: 't' }));
+    expect(calibratedE1rm(pull, 'Pull-up')).toBeNull();
   });
 });
 
-describe('stale tests', () => {
-  it('stop counting at face value once they are more than 6 weeks older than the latest session', () => {
-    let q = 0;
-    const t = (date: string, weight: number, reps: number, flags: SetEntry['flags'] = []): SetEntry => ({ id: `st${q}`, date, seq: q++, exercise: 'Cable Curl', setNo: 1, weight, reps, flags, source: 't', rir: flags.includes('test') ? 0 : 2 });
-    const e = [t('2024-03-01', 60, 12, ['test']), t('2026-09-20', 30, 10), t('2026-09-27', 30, 10)];
-    const v = calibratedE1rm(e, 'Cable Curl')!;
-    expect(v).toBeLessThan(50);
-    const fresh = [...e, t('2026-09-10', 40, 12, ['test'])];
-    expect(calibratedE1rm(fresh, 'Cable Curl')!).toBeGreaterThan(50);
+describe('strength: the level on a day, and how sure it is', () => {
+  it('its SD grows with the days since the lift’s last session, faster past two weeks (layoff); before any test it carries the RIR bias’s', () => {
+    const { entries } = simulate(3, { sessions: 60, pLog: 0.5 });
+    const last = lastDate(entries.filter((e) => e.exercise === 'Lat Pulldown'));
+    const at = (n: number) => strength(entries, 'Lat Pulldown', addDays(last, n))!;
+    expect(at(0).e1rm).toBe(at(60).e1rm);
+    expect(at(7).sd).toBeGreaterThan(at(0).sd);
+    // Per week: the drift alone up to two weeks; past them the layoff adds its own.
+    expect((at(42).sd ** 2 - at(28).sd ** 2) / 2).toBeGreaterThan(at(14).sd ** 2 - at(7).sd ** 2);
+    expect(at(0).sys).toBeGreaterThan(0.01);
+    expect(at(0).u).toBeCloseTo(Math.hypot(at(0).sd, at(0).sys), 12);
+  });
+});
+
+describe('testDue: when a test would at least halve what the app doesn’t know (item 05)', () => {
+  // Two days after the log's last day: a fresh session, the third or later of every lift's run.
+  const due = (entries: SetEntry[]) => {
+    const today = addDays(lastDate(entries), 2);
+    return SIM_LIFTS.filter((l) => testDue(entries, l.name, today));
+  };
+  it('due on most lifts before any test; after tests (35 % of sessions), on few', () => {
+    let before = 0, after = 0;
+    for (let seed = 1; seed <= 3; seed++) {
+      before += due(simulate(seed, { sessions: 120, pLog: 0.5 }).entries).length;
+      after += due(simulate(seed, { sessions: 120, pLog: 0.5, testFrac: 0.35 }).entries).length;
+    }
+    expect(before).toBeGreaterThanOrEqual(0.7 * 30);
+    expect(after).toBeLessThanOrEqual(0.2 * 30);
+  });
+  it('is due exactly when the uncertainty is above what one test reads the level to, and the weight is for about 10 reps', () => {
+    const { entries } = simulate(5, { sessions: 120, pLog: 0.5 });
+    const today = addDays(lastDate(entries), 2);
+    const core = learn(entries).core;
+    for (const l of SIM_LIFTS) {
+      const s = strength(entries, l.name, today)!;
+      const d = testDue(entries, l.name, today);
+      expect(!!d, l.name).toBe(s.u > testSd(core, liftKey(l.name), TEST_REPS));
+      if (!d) continue;
+      expect(Math.abs(d.reps - TEST_REPS), l.name).toBeLessThanOrEqual(5);
+      expect(d.after).toBeLessThan(d.u / Math.SQRT2 + 1e-12);
+      expect(d.jump).toBe(false);
+    }
+  });
+  it('today’s increase is the test: its first set at the new weight, no extra set', () => {
+    const { entries } = simulate(1, { sessions: 120, pLog: 0.5 });
+    const today = addDays(lastDate(entries), 2);
+    const l = SIM_LIFTS.find((x) => testDue(entries, x.name, today))!;
+    const plain = testDue(entries, l.name, today)!;
+    const jump = testDue(entries, l.name, today, undefined, { kind: 'increase', weight: plain.weight + 5 })!;
+    expect(jump).toMatchObject({ jump: true, weight: plain.weight + 5 });
+    expect(testDue(entries, l.name, today, undefined, { kind: 'reps', weight: plain.weight + 5 })).toEqual(plain);
+  });
+  it('never with pain on the lift in the last 14 days, a test already done today, or in the first 2 sessions after a 6-week layoff', () => {
+    const { entries } = simulate(1, { sessions: 120, pLog: 0.5 });
+    const today = addDays(lastDate(entries), 2);
+    const l = SIM_LIFTS.find((x) => testDue(entries, x.name, today))!.name;
+    const one = (date: string, exercise: string, flags: SetEntry['flags']): SetEntry => ({ id: `x|${date}|${exercise}|${flags.join()}`, date, seq: 1e6, exercise, setNo: 9, weight: 10, reps: 5, flags, source: 't' });
+    expect(testDue([...entries, one(addDays(today, -13), l, ['pain'])], l, today)).toBeNull();
+    expect(testDue([...entries, one(addDays(today, -15), l, ['pain'])], l, today)).not.toBeNull();
+    const other = SIM_LIFTS.find((x) => x.name !== l)!.name;
+    expect(testDue([...entries, one(today, other, ['test'])], l, today)).toBeNull();
+    expect(testDue([...entries, one(addDays(today, -1), other, ['test'])], l, today)).not.toBeNull();
+    // 50 days off: today is the first session back, then the second; the third may test.
+    const later = addDays(today, 50);
+    const lastL = lastDate(entries.filter((x) => x.exercise === l));
+    const back = (n: number) => entries.filter((e) => e.exercise === l && e.date === lastL)
+      .flatMap((e) => Array.from({ length: n }, (_, k) => ({ ...e, id: `${e.id}|b${k}`, loggedAt: undefined, date: addDays(later, k * 3) })));
+    expect(testDue(entries, l, later)).toBeNull();
+    expect(testDue([...entries, ...back(1)], l, addDays(later, 3))).toBeNull();
+    expect(testDue([...entries, ...back(2)], l, addDays(later, 6))).not.toBeNull();
+  });
+  it('never for a hold or cardio', () => {
+    const plank: SetEntry[] = [0, 1, 2, 3].map((i) => ({ id: `h${i}`, date: `2026-09-0${i + 1}`, seq: i, exercise: 'Plank', setNo: 1, weight: 0, reps: 60, flags: ['hold'], source: 't' }));
+    expect(testDue(plank, 'Plank', '2026-09-20')).toBeNull();
+    expect(testDue([], 'Treadmill', '2026-09-20')).toBeNull();
   });
 });

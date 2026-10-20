@@ -5,6 +5,7 @@ import {
   behindMuscles, board, e1rmChange, liftTrend, friendPrs, goalWeek, LIVE_MS, liftKind, liveSince, milestone, prCard, ringSets, sessionCard, setKind, sharedChanges,
   recentPrs, streakNudge, topLifts, usualSession, weekSets, weekStreak,
 } from './feed';
+import { learn } from './learn';
 
 // Synthetic sets only. Today is Thu 15 Oct 2026, 6:40 PM.
 const TODAY = '2026-10-15';
@@ -290,7 +291,7 @@ describe('recentPrs: one PR per lift, newest first', () => {
 });
 
 describe('liftTrend: a lift over 12 weeks, for Getting stronger', () => {
-  it('gives each session’s best e1RM oldest first, the change from your own start, and the latest top set', () => {
+  it('gives the lift’s fatigue-adjusted level at each session oldest first (item 04), the change from the first to the last, and the latest top set', () => {
     const e = [
       ...s('Bench Press', 1, { weight: 100, reps: 5 }, '2026-07-10'), // before the 12 weeks: left out
       ...s('Bench Press', 1, { weight: 150, reps: 5 }, '2026-08-20'),
@@ -300,10 +301,16 @@ describe('liftTrend: a lift over 12 weeks, for Getting stronger', () => {
     ];
     const t = liftTrend(e, 'Bench Press', TODAY)!;
     expect(t.points.map((p) => p.date)).toEqual(['2026-08-20', '2026-09-20', '2026-10-14']);
-    expect(t.points[2].v).toBeCloseTo(170 * (1 + 5 / 30));
+    const level = learn(e).core.lifts.get('bench press')!.level;
+    expect(t.points.map((p) => p.v)).toEqual(level.slice(-3).map((p) => Math.exp(p.x)));
+    expect(t.points[2].v).toBeGreaterThan(t.points[1].v);
+    expect(t.points[1].v).toBeGreaterThan(t.points[0].v);
     expect(t.top).toMatchObject({ weight: 170, reps: 5, date: '2026-10-14' });
-    expect(Math.round(t.delta!)).toBe(Math.round(20 * (1 + 5 / 30)));
+    expect(t.delta).toBeCloseTo(t.points[2].v - t.points[0].v, 9);
     expect(t.stall).toBeNull();
+    // The lighter back-off after 170 × 5 is a lower bound, not lost strength: 14 Oct reads as it would without it.
+    const alone = liftTrend(e.filter((x) => !(x.date === '2026-10-14' && x.weight === 150)), 'Bench Press', TODAY)!;
+    expect(Math.abs(t.points[2].v / alone.points[2].v - 1)).toBeLessThan(0.005);
   });
   it('is null for a lift with no weighted sets in the 12 weeks', () => {
     expect(liftTrend(s('Plank', 1, { weight: 0, reps: 60 }), 'Plank', TODAY)).toBeNull();

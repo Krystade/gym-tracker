@@ -9,6 +9,8 @@ import { targetFor, type Profile } from './profile';
 import { prIds, prKinds, prToast, type RecordKind } from './records';
 import { byOrderDone, doneAt, e1rm, liftIndex, sessionsFor } from './stats';
 import { stall, type Stall } from './rotation';
+import { coreBefore } from './learn';
+import { levelSeries } from './learn/strength';
 import type { SetEntry } from './types';
 
 // Friends as a feed and Stats as answers (round 18): what each person did today, who's training now, each one's week against
@@ -339,12 +341,16 @@ export function recentPrs(sets: readonly SetEntry[], prs: ReadonlySet<string>, n
   return [...best.values()].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : byOrderDone(b, a))).slice(0, n);
 }
 
-/** A lift on Stats: each session's best e1RM over 12 weeks (oldest first), its latest top set, the change from your own start, a stall. */
+/**
+ * A lift on Stats over 12 weeks: its strength at each session, oldest first (item 04: the learning core's fatigue-adjusted level,
+ * learn/strength; each session's best e1RM for a lift the core has no level for), its latest top set, the change from the first
+ * session to the last (two weeks apart or more), a stall.
+ */
 export interface Trend { name: string; points: { date: string; v: number }[]; top: SetEntry; delta: number | null; stall: Stall | null }
 export function liftTrend(entries: SetEntry[], name: string, today: string): Trend | null {
   const from = addDays(today, -83);
   const ss = sessionsFor(entries, name).filter((x) => x.date >= from && x.date <= today).reverse();
-  const points: { date: string; v: number }[] = [];
+  let points: { date: string; v: number }[] = [];
   let top: SetEntry | null = null;
   for (const x of ss) {
     let best = -Infinity, set: SetEntry | null = null;
@@ -352,6 +358,10 @@ export function liftTrend(entries: SetEntry[], name: string, today: string): Tre
     if (set) { points.push({ date: x.date, v: best }); top = set; }
   }
   if (!top) return null;
-  const ch = e1rmChange(entries, name, from, today);
-  return { name, points, top, delta: ch ? ch.delta : null, stall: stall(entries, name, today) };
+  const core = coreBefore(entries, addDays(today, 1));
+  const level = core ? levelSeries(core, name).filter((p) => p.date >= from && p.date <= today).map((p) => ({ date: p.date, v: p.e1rm })) : [];
+  if (level.length) points = level;
+  else { const ch = e1rmChange(entries, name, from, today); return { name, points, top, delta: ch ? ch.delta : null, stall: stall(entries, name, today) }; }
+  const first = points[0], last = points[points.length - 1];
+  return { name, points, top, delta: days(first.date, last.date) >= 14 ? last.v - first.v : null, stall: stall(entries, name, today) };
 }

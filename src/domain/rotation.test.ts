@@ -3,9 +3,11 @@ import type { Flag, SetEntry } from './types';
 import { CATALOG, PATTERNS, VARIATIONS } from './catalog';
 import { NEEDS } from './equipment';
 import { muscleVector } from './muscles';
-import { biasOf, carryOver, mainMuscle, nextVariation, patternOf, rotateProgram, rotation, rotationReason, stall } from './rotation';
+import { biasOf, carryOver, mainMuscle, nextVariation, patternOf, rotateProgram, rotation, rotationReason, sinceProgress, stall } from './rotation';
+import { trendLog, weekEnd, type TrendLift } from './learn/trendSim.sample';
 import { defaultSettings, nextTarget } from './progression';
 import type { Program } from './program';
+import { strength } from './estimators';
 
 // Synthetic logs only. A session is a lift on a date with sets written "185x8".
 let seq = 0;
@@ -86,86 +88,113 @@ describe('patterns', () => {
   });
 });
 
-describe('stall', () => {
-  it('three sessions with nothing better, over two weeks, is a stall', () => {
-    const s = stall(log('Bench Press', PLATEAU), 'Bench Press', TODAY);
-    expect(s).toEqual({ since: '2026-09-08', sessions: 3, weeks: 3, last: '2026-09-29' });
-  });
-  it('two sessions, or three within 13 days, is not', () => {
-    expect(stall(log('Bench Press', PLATEAU.slice(0, 4)), 'Bench Press', TODAY)).toBeNull();
-    const tight: [string, string[]][] = [...PLATEAU.slice(0, 2), ['2026-09-12', ['185x9', '185x8', '185x8']], ['2026-09-16', ['185x8', '185x8', '185x8']], ['2026-09-21', ['185x9', '185x8', '185x8']]];
-    expect(stall(log('Bench Press', tight), 'Bench Press', TODAY)).toBeNull(); // 12 Sep to 21 Sep: 9 days
-    const fourteen: [string, string[]][] = [...tight, ['2026-09-26', ['185x9', '185x8', '185x8']]];
-    expect(stall(log('Bench Press', fourteen), 'Bench Press', TODAY)).toMatchObject({ since: '2026-09-08', sessions: 4, last: '2026-09-26' });
-  });
-  it('two flat sessions are no stall, however far apart', () => {
-    const two: [string, string[]][] = [...PLATEAU.slice(0, 2), ['2026-09-15', ['185x9', '185x8', '185x8']], ['2026-09-29', ['185x8', '185x8', '185x8']]];
-    expect(stall(log('Bench Press', two), 'Bench Press', TODAY)).toBeNull();
+describe('sinceProgress', () => {
+  it('the last session that progressed, and the sessions since with nothing better', () => {
+    expect(sinceProgress(log('Bench Press', PLATEAU), 'Bench Press', TODAY)).toEqual({ since: '2026-09-08', sessions: 3, last: '2026-09-29' });
+    expect(sinceProgress(log('Bench Press', PLATEAU.slice(0, 2)), 'Bench Press', TODAY)).toBeNull();
   });
   it('one set with more reps at the top weight is a step-up, though the e1RM is no best and the total is lower', () => {
     const base = ['225x3', '185x9', '185x9', '185x9']; // 225 × 3 = 247.5 is the e1RM to beat
     const days: [string, string[]][] = [['2026-09-01', base], ['2026-09-08', base], ['2026-09-15', base], ['2026-09-22', ['185x10', '185x6', '185x6']]];
-    expect(stall(log('Bench Press', days), 'Bench Press', TODAY)).toBeNull();
-    expect(stall(log('Bench Press', days.slice(0, 3).concat([['2026-09-22', base]])), 'Bench Press', TODAY)).not.toBeNull();
+    expect(sinceProgress(log('Bench Press', days), 'Bench Press', TODAY)).toBeNull();
+    expect(sinceProgress(log('Bench Press', days.slice(0, 3).concat([['2026-09-22', base]])), 'Bench Press', TODAY)).not.toBeNull();
   });
   it('a new best e1RM resets it', () => {
     // 180 × 13 ≈ 258 beats 185 × 9 ≈ 240.5, at a lighter weight than before: only the e1RM says it's better.
     const days: [string, string[]][] = [...PLATEAU.slice(0, 4), ['2026-09-29', ['180x13', '180x8']]];
-    expect(stall(log('Bench Press', days), 'Bench Press', TODAY)).toBeNull();
+    expect(sinceProgress(log('Bench Press', days), 'Bench Press', TODAY)).toBeNull();
   });
   it('a weight step-up resets it, even with fewer reps', () => {
     const days: [string, string[]][] = [...PLATEAU.slice(0, 4), ['2026-09-29', ['190x6', '190x6', '190x5']]];
-    expect(stall(log('Bench Press', days), 'Bench Press', TODAY)).toBeNull();
+    expect(sinceProgress(log('Bench Press', days), 'Bench Press', TODAY)).toBeNull();
   });
   it('a rep step-up at the same weight resets it: one set, or more reps over the same sets', () => {
     const one: [string, string[]][] = [...PLATEAU.slice(0, 4), ['2026-09-29', ['185x10', '185x7', '185x7']]];
-    expect(stall(log('Bench Press', one), 'Bench Press', TODAY)).toBeNull();
+    expect(sinceProgress(log('Bench Press', one), 'Bench Press', TODAY)).toBeNull();
     const total: [string, string[]][] = [...PLATEAU.slice(0, 4), ['2026-09-29', ['185x9', '185x9', '185x8']]];
-    expect(stall(log('Bench Press', total), 'Bench Press', TODAY)).toBeNull();
+    expect(sinceProgress(log('Bench Press', total), 'Bench Press', TODAY)).toBeNull();
     // A fourth set adds reps but isn't a step-up over the same three sets.
     const extra: [string, string[]][] = [...PLATEAU.slice(0, 4), ['2026-09-29', ['185x9', '185x8', '185x8', '185x6']]];
-    expect(stall(log('Bench Press', extra), 'Bench Press', TODAY)).not.toBeNull();
+    expect(sinceProgress(log('Bench Press', extra), 'Bench Press', TODAY)).not.toBeNull();
   });
   it('a lighter session with more reps is no step-up, and a zig-zag in weight is no progress', () => {
     const lighter: [string, string[]][] = [...PLATEAU.slice(0, 4), ['2026-09-29', ['165x11', '165x11', '165x10']]];
-    expect(stall(log('Bench Press', lighter), 'Bench Press', TODAY)).not.toBeNull();
+    expect(sinceProgress(log('Bench Press', lighter), 'Bench Press', TODAY)).not.toBeNull();
     const zig: [string, string[]][] = [...PLATEAU.slice(0, 2), ['2026-09-15', ['180x9', '180x9', '180x9']], ['2026-09-22', ['185x9', '185x8', '185x8']], ['2026-09-29', ['180x9', '180x9', '180x9']]];
-    expect(stall(log('Bench Press', zig), 'Bench Press', TODAY)).not.toBeNull();
+    expect(sinceProgress(log('Bench Press', zig), 'Bench Press', TODAY)).not.toBeNull();
   });
   it('warm-ups and partials are left out; test sets count (owner, 2026-10-19)', () => {
     const entries = [...log('Bench Press', PLATEAU),
       ...session('2026-09-29', 'Bench Press', ['225x5'], ['warmup']),
       ...session('2026-09-29', 'Bench Press', ['225x6'], ['partial'])];
-    expect(stall(entries, 'Bench Press', TODAY)).toMatchObject({ since: '2026-09-08', sessions: 3 });
+    expect(sinceProgress(entries, 'Bench Press', TODAY)).toMatchObject({ since: '2026-09-08', sessions: 3 });
     // A heavier test is a weight step-up, in a session of working sets or on its own.
-    expect(stall([...entries, ...session('2026-09-29', 'Bench Press', ['230x3'], ['test'])], 'Bench Press', TODAY)).toBeNull();
-    expect(stall([...entries, ...session('2026-09-30', 'Bench Press', ['235x2'], ['test'])], 'Bench Press', TODAY)).toBeNull();
+    expect(sinceProgress([...entries, ...session('2026-09-29', 'Bench Press', ['230x3'], ['test'])], 'Bench Press', TODAY)).toBeNull();
+    expect(sinceProgress([...entries, ...session('2026-09-30', 'Bench Press', ['235x2'], ['test'])], 'Bench Press', TODAY)).toBeNull();
     // A test no better than the sessions before it is one more flat session.
-    expect(stall([...entries, ...session('2026-09-30', 'Bench Press', ['185x8'], ['test'])], 'Bench Press', TODAY)).toMatchObject({ sessions: 4, last: '2026-09-30' });
+    expect(sinceProgress([...entries, ...session('2026-09-30', 'Bench Press', ['185x8'], ['test'])], 'Bench Press', TODAY)).toMatchObject({ sessions: 4, last: '2026-09-30' });
   });
-  it('after a break of more than six weeks the first session back is a fresh start', () => {
+  it('the first two sessions of a lift, and after a break of six weeks or more, are fresh starts (owner rule)', () => {
     const back: [string, string[]][] = [['2026-06-01', ['225x8', '225x8']], ['2026-06-08', ['225x8', '225x8']],
       ['2026-08-31', ['165x8', '165x8']], ['2026-09-08', ['165x8', '165x8']], ['2026-09-15', ['165x8', '165x8']], ['2026-09-29', ['165x8', '165x8']]];
-    expect(stall(log('Bench Press', back), 'Bench Press', TODAY)).toMatchObject({ since: '2026-08-31', sessions: 3 });
+    expect(sinceProgress(log('Bench Press', back), 'Bench Press', TODAY)).toMatchObject({ since: '2026-09-08', sessions: 2 });
     // Rebuilding toward the old weight is progress, though it's under the old best.
     const rebuild: [string, string[]][] = [...back.slice(0, 3), ['2026-09-08', ['175x8', '175x8']], ['2026-09-15', ['185x8', '185x8']], ['2026-09-29', ['195x8', '195x8']]];
-    expect(stall(log('Bench Press', rebuild), 'Bench Press', TODAY)).toBeNull();
-  });
-  it('a plateau whose last session is over six weeks old is stale', () => {
-    expect(stall(log('Bench Press', PLATEAU), 'Bench Press', '2026-11-10')).not.toBeNull();
-    expect(stall(log('Bench Press', PLATEAU), 'Bench Press', '2026-11-11')).toBeNull();
+    expect(sinceProgress(log('Bench Press', rebuild), 'Bench Press', TODAY)).toBeNull();
   });
   it('sessions after today are ignored, and today counts', () => {
-    expect(stall(log('Bench Press', PLATEAU), 'Bench Press', '2026-09-28')).toBeNull();
+    expect(sinceProgress(log('Bench Press', PLATEAU), 'Bench Press', '2026-09-28')).toMatchObject({ sessions: 2, last: '2026-09-22' });
     const today = [...log('Bench Press', PLATEAU), ...session(TODAY, 'Bench Press', ['185x10'])];
-    expect(stall(today, 'Bench Press', TODAY)).toBeNull();
+    expect(sinceProgress(today, 'Bench Press', TODAY)).toBeNull();
   });
-  it('bodyweight lifts stall on reps; holds never stall', () => {
+});
+
+describe('stall (item 12: the fatigue-adjusted level reads flat)', () => {
+  const others: TrendLift[] = [
+    { name: 'Lat Pulldown', E0: 200, step: 5, slope: () => 0.01 },
+    { name: 'Seated Cable Row', E0: 220, step: 5, slope: () => 0.006 },
+    { name: 'Leg Press', E0: 500, step: 10, slope: (w) => (w < 10 ? 0.012 : 0) },
+    { name: 'Machine Chest Press', E0: 200, step: 5, slope: () => 0 },
+  ];
+  it('a short plateau with nothing better is a stall only once the level reads flat, and carries the evidence', () => {
+    const s = stall(log('Bench Press', PLATEAU), 'Bench Press', TODAY);
+    expect(s).toMatchObject({ since: '2026-09-08', sessions: 3, last: '2026-09-29' });
+    expect(s!.flat.p).toBeGreaterThan(0.5);
+    expect(s!.weeks).toBe(Math.floor(s!.flat.slope.days / 7));
+  });
+  it('a latest session with a new best is never a stall, whatever the trend', () => {
+    const days: [string, string[]][] = [...PLATEAU.slice(0, 4), ['2026-09-29', ['190x6', '190x6', '190x5']]];
+    expect(stall(log('Bench Press', days), 'Bench Press', TODAY)).toBeNull();
+  });
+  it('a plateau whose last session is over six weeks old is stale', () => {
+    expect(stall(log('Bench Press', PLATEAU), 'Bench Press', '2026-10-20')).not.toBeNull();
+    expect(stall(log('Bench Press', PLATEAU), 'Bench Press', '2026-11-11')).toBeNull();
+  });
+  it('bodyweight lifts have no level yet and holds never stall', () => {
     const pull = log('Pull-up', PLATEAU.map(([d, s]) => [d, s.map((x) => `0x${x.split('x')[1]}`)]));
-    expect(stall(pull, 'Pull-up', TODAY)).toMatchObject({ since: '2026-09-08' });
+    expect(stall(pull, 'Pull-up', TODAY)).toBeNull();
     const plank = log('Plank', PLATEAU.map(([d]) => [d, ['0x40', '0x40']]));
     expect(stall(plank, 'Plank', TODAY)).toBeNull();
   });
+  it('on synthetic logs with a known trend: few false alarms while progressing at 1 %/wk, and a real plateau caught within about 2 months', () => {
+    const N = 10;
+    let fa = 0;
+    for (let seed = 1; seed <= N; seed++) {
+      const lg = trendLog(seed, [{ name: 'Bench Press', E0: 250, step: 5, slope: () => 0.01 }, ...others], { weeks: 20 });
+      let hit = false;
+      for (let wk = 10; wk < 20 && !hit; wk++) { const d = weekEnd(wk); hit = !!stall(lg.filter((e) => e.date <= d), 'Bench Press', d); }
+      if (hit) fa++;
+    }
+    const det: number[] = [];
+    for (let seed = 1; seed <= N; seed++) {
+      const lg = trendLog(100 + seed, [{ name: 'Bench Press', E0: 250, step: 5, slope: (w) => (w < 10 ? 0.01 : 0) }, ...others], { weeks: 22 });
+      for (let wk = 10; wk < 22; wk++) { const d = weekEnd(wk); if (stall(lg.filter((e) => e.date <= d), 'Bench Press', d)) { det.push(wk - 9); break; } }
+    }
+    det.sort((a, b) => a - b);
+    expect(fa).toBeLessThanOrEqual(2);
+    expect(det.length).toBeGreaterThanOrEqual(N - 1);
+    expect(det[Math.floor(det.length / 2)]).toBeLessThanOrEqual(9);
+  }, 600_000);
 });
 
 const days = (n: number, from = '2025-01-06'): string[] => Array.from({ length: n }, (_, i) => new Date(Date.parse(from) + 7 * i * 864e5).toISOString().slice(0, 10));
@@ -246,7 +275,7 @@ describe('nextVariation', () => {
 describe('rotation', () => {
   it('a stalled lift with a next variation; null otherwise', () => {
     const r = rotation(log('Bench Press', PLATEAU), 'Bench Press', TODAY);
-    expect(r).toMatchObject({ from: 'Bench Press', to: 'Machine Chest Press', pattern: 'Horizontal press', muscle: 'Chest', sameMuscle: true, stall: { weeks: 3 } });
+    expect(r).toMatchObject({ from: 'Bench Press', to: 'Machine Chest Press', pattern: 'Horizontal press', muscle: 'Chest', sameMuscle: true, stall: { since: '2026-09-08', last: '2026-09-29' } });
     expect(rotation(log('Bench Press', PLATEAU.slice(0, 4)), 'Bench Press', TODAY)).toBeNull();
     expect(rotation(log('Bench Press', PLATEAU), 'Bench Press', TODAY, { available: new Set(['Bench Press']) })).toBeNull();
     expect(rotation(log('Cable Curl', PLATEAU), 'Cable Curl', TODAY)).toBeNull();
@@ -271,24 +300,35 @@ describe('rotation', () => {
 
 describe('carryOver', () => {
   const st = defaultSettings('Incline Bench Press'); // 8–12, +5
-  it('from the catalog ratio, on the light side, rounded down to the step', () => {
-    // 185 × 9 = 240.5 e1RM; incline ≈ 0.8 of it, × 0.9 = 173.16; 12 reps at that ≈ 123.7 → 120 × 8.
-    expect(carryOver(log('Bench Press', PLATEAU), 'Bench Press', 'Incline Bench Press', TODAY, st)).toEqual({ weight: 120, reps: 8, e1rm: expect.closeTo(173.16, 2), basis: 'catalog' });
-    // Deadlift 315 × 5 = 367.5 → RDL at 0.75 × 0.9 ≈ 248 → 177 for 12 → 175. Smith squat 225 × 8 = 285 → squat at 1 × 0.9 → 183 → 180.
-    expect(carryOver(log('Deadlift', [['2026-09-29', ['315x5']]]), 'Deadlift', 'Romanian Deadlift', TODAY, defaultSettings('Romanian Deadlift'))?.weight).toBe(175);
-    expect(carryOver(log('Smith Squat', [['2026-09-29', ['225x8']]]), 'Smith Squat', 'Barbell Squat', TODAY, defaultSettings('Barbell Squat'))?.weight).toBe(180);
-    // A front squat is about 0.8 of a back squat: 225 × 8 = 285 → × 0.8 × 0.9 ≈ 205 → 146.6 for 12 → 145.
-    expect(carryOver(log('Barbell Squat', [['2026-09-29', ['225x8']]]), 'Barbell Squat', 'Front Squat', TODAY, defaultSettings('Front Squat'))?.weight).toBe(145);
+  it('from the catalog ratio at its lower bound, a weight that leaves the range bottom plus the habit, on the step (00-core 1.1)', () => {
+    const e = log('Bench Press', PLATEAU);
+    const c = carryOver(e, 'Bench Press', 'Incline Bench Press', TODAY, st)!;
+    const now = strength(e, 'Bench Press', TODAY)!;
+    const plain = now.e1rm * 0.8; // the catalog's incline : bench
+    expect(c).toMatchObject({ reps: 8, basis: 'catalog' });
+    // The lower bound: under the plain ratio by at least the level's own uncertainty, and not absurdly far.
+    expect(c.e1rm).toBeLessThan(plain * Math.exp(-now.u));
+    expect(c.e1rm).toBeGreaterThan(plain * 0.75);
+    expect(c.weight % 5).toBe(0);
+    expect(c.weight).toBeLessThan(c.e1rm / (1 + 8 / 30));
+    // Other pairs: an RDL under the deadlift, a squat from a Smith squat, a front squat under the back squat.
+    const rdl = carryOver(log('Deadlift', [['2026-09-29', ['315x5']]]), 'Deadlift', 'Romanian Deadlift', TODAY, defaultSettings('Romanian Deadlift'))!;
+    expect(rdl.basis).toBe('catalog');
+    expect(rdl.weight).toBeLessThan(315);
+    const front = carryOver(log('Barbell Squat', [['2026-09-29', ['225x8']]]), 'Barbell Squat', 'Front Squat', TODAY, defaultSettings('Front Squat'))!;
+    const smith = carryOver(log('Smith Squat', [['2026-09-29', ['225x8']]]), 'Smith Squat', 'Barbell Squat', TODAY, defaultSettings('Barbell Squat'))!;
+    expect(front.weight).toBeLessThan(smith.weight);
   });
   it('from your own history of both, when they were trained around the same time', () => {
     const e = [...log('Bench Press', [['2025-09-01', ['185x8']], ['2025-09-15', ['185x8']]]), ...log('Incline Bench Press', [['2025-09-10', ['135x10']]]),
       ...log('Bench Press', [['2026-09-29', ['225x8']]])];
-    // Incline 135 × 10 = 180 against bench 185 × 8 ≈ 234.3 then: 0.768. Bench now 225 × 8 = 285 → × 0.768 × 0.9 ≈ 197 → 12 reps ≈ 140.7 → 140.
-    expect(carryOver(e, 'Bench Press', 'Incline Bench Press', TODAY, st)).toMatchObject({ weight: 140, reps: 8, basis: 'history' });
+    const c = carryOver(e, 'Bench Press', 'Incline Bench Press', TODAY, st)!;
+    expect(c).toMatchObject({ reps: 8, basis: 'history' });
+    expect(c.e1rm).toBeLessThan(strength(e, 'Bench Press', TODAY)!.e1rm * 0.8);
   });
   it('an old session of the new lift with nothing of the old one near it falls back to the catalog', () => {
     const e = [...log('Bench Press', PLATEAU), ...log('Incline Bench Press', [['2024-01-10', ['135x10']]])];
-    expect(carryOver(e, 'Bench Press', 'Incline Bench Press', TODAY, st)).toMatchObject({ basis: 'catalog', weight: 120 });
+    expect(carryOver(e, 'Bench Press', 'Incline Bench Press', TODAY, st)).toMatchObject({ basis: 'catalog' });
   });
   it('nothing for dumbbells, machines, bodyweight, or a lift trained in the last six weeks', () => {
     const bench = log('Bench Press', PLATEAU);

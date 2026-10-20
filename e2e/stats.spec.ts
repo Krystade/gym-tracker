@@ -28,7 +28,7 @@ test('exercise screen: rep-max picker, calibration note, and a logged test set',
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Cable Curl/ }).click();
-  await expect(page.getByText('Epley · no tests yet')).toBeVisible();
+  await expect(page.getByText(/^Fatigue-adjusted · ±\d+% · no tests yet$/)).toBeVisible();
   await expect(page.getByText('Est. 6RM')).toBeVisible();
   await page.getByRole('button', { name: '10RM' }).click();
   await expect(page.getByText('Est. 10RM')).toBeVisible();
@@ -43,7 +43,7 @@ test('exercise screen: rep-max picker, calibration note, and a logged test set',
   await expect(row).toContainText('RIR 0');
   await expect(row).toContainText('test');
   await page.getByRole('button', { name: 'Cable Curl', exact: true }).click();
-  await expect(page.getByText(/calibrated · 1 test/)).toBeVisible();
+  await expect(page.getByText(/^Fatigue-adjusted · ±\d+% · 1 test$/)).toBeVisible();
 });
 
 // ---- I17: Stats screen ----

@@ -32,10 +32,17 @@ export interface SimOptions {
   targets?: boolean;
   /** Drop the last set's weight by 15–25 % (a back-off set): the same day's strength at two loads, which identifies κ. */
   backoff?: boolean;
+  /** With `backoff`: the back-off set repeats the first set's reps (capacity allowing), stopped well short of failure by choice. */
+  easyBackoff?: boolean;
+  /** The share of sessions whose first set is a test: taken to failure and logged as such (RIR 0, flag `test`). */
+  testFrac?: number;
   truth?: Partial<Truth>;
 }
-/** Per set id: the true fresh e1RM that day (readiness removed), the true reps to failure, and its fatigue Δ. */
-export interface SetTruth { E: number; F: number; fatigue: number; kappa: number; fSame: number; fCross: number }
+/**
+ * Per set id: the true fresh e1RM that day (readiness removed), the true reps to failure, and its fatigue Δ; `left`: the reps it
+ * truly had left that day (so reps + logged RIR + b = reps + left on average: the bias a logged RIR really carries).
+ */
+export interface SetTruth { E: number; F: number; fatigue: number; kappa: number; fSame: number; fCross: number; left: number }
 
 export function defaultTruth(r: Rng): Truth {
   const uL = SIM_LIFTS.map(() => r.normal(0, 0.12));
@@ -66,6 +73,8 @@ export function simulate(seed: number, o: SimOptions): { entries: SetEntry[]; tr
     const ready = r.normal(0, truth.readySd);
     const tmpl = r.shuffle([...DAYS[d % DAYS.length]]);
     const timed = r.next() < timedFrac;
+    // Drawn only when asked for, so every other log stays the same as before the option existed.
+    const testing = o.testFrac ? r.next() < o.testFrac : false;
     let t = 0;
     const done: { L: number; t: number }[] = [];
     for (const L of tmpl) {
@@ -98,14 +107,19 @@ export function simulate(seed: number, o: SimOptions): { entries: SetEntry[]; tr
           // Stop at the target when there are reps to spare; else as many as there are (near failure).
           reps = Math.max(1, Math.min(tg, Math.round(F)));
         }
-        const logged = !o.targets && r.next() < pLog;
-        const k4 = logged ? Math.max(0, Math.min(4, Math.round(rir - truth.b + r.normal(0, 0.8)))) : undefined;
+        const easy = !!o.easyBackoff && w < w0 && got.length > 0;
+        if (easy) reps = Math.max(1, Math.min(Math.round(F), got[0]));
+        const test = testing && !done.length;
+        if (test) reps = Math.max(1, Math.round(F)); // to failure
+        const logged = !test && !o.targets && r.next() < pLog;
+        // A logged RIR is the reps truly left, less the bias (an easy set's are its own, not the habit's; 4 is "4+").
+        const k4 = test ? 0 : logged ? Math.max(0, Math.min(4, Math.round((easy ? F - reps : rir) - truth.b + r.normal(0, 0.8)))) : undefined;
         const id = `sim|${date(day)}|${lift.name.toLowerCase()}|${k + 1}`;
         entries.push({
           id, date: date(day), seq: seq++, ...(timed && { loggedAt: iso(day, t) }), exercise: lift.name, setNo: k + 1,
-          weight: w, reps, ...(k4 != null && { rir: k4 }), flags: [], source: 'sim', ...(target && { target }),
+          weight: w, reps, ...(k4 != null && { rir: k4 }), flags: test ? ['test'] : [], source: 'sim', ...(target && { target }),
         });
-        sets.set(id, { E: E / Math.exp(ready), F: F + truth.kappa[L] * (E / Math.exp(ready) / w - 1) - fresh, fatigue, kappa: truth.kappa[L], fSame, fCross });
+        sets.set(id, { E: E / Math.exp(ready), F: F + truth.kappa[L] * (E / Math.exp(ready) / w - 1) - fresh, fatigue, kappa: truth.kappa[L], fSame, fCross, left: F - reps });
         got.push(reps);
         done.push({ L, t });
         t += 40;

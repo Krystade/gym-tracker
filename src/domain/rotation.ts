@@ -6,9 +6,14 @@ import { liftKey } from './ids';
 import { resolveLift } from './lifts';
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
 import type { Program } from './program';
-import { isProgressionSet, isWorking, priorE1rm, type ExerciseSettings } from './progression';
+import { coreBefore } from './learn';
+import { aheadVar, dayOf, KAPPA_PRIOR, type Core } from './learn/capacity';
+import { floorRung, ladderOf } from './learn/ladder';
+import { strengthOf } from './learn/strength';
+import { flatness, REACCLIMATION, runIndex, type Flatness } from './learn/trend';
+import { isProgressionSet, isWorking, type ExerciseSettings } from './progression';
 import { renameInProgram } from './rename';
-import { e1rm, estimateWeightForReps, exerciseNames, liftSets, sameExercise, sessionsFor } from './stats';
+import { e1rm, exerciseNames, sameExercise, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 
 // Rotating a plateaued lift to another variation of the same movement (round 13). Six movement patterns, a few variations
@@ -43,9 +48,6 @@ export function biasOf(name: string): Muscle[] {
   return [main, ...MUSCLES.filter((m) => m !== main && (v[m] ?? 0) >= BIAS)];
 }
 
-/** How many sessions in a row with nothing better make a stall, and how long they must span. */
-export const STALL_SESSIONS = 3;
-export const STALL_DAYS = 14;
 /** A session is judged against the up-to-3 sessions before it within 6 weeks; with none (a first session, a break), it's a fresh start. */
 const LOOKBACK = 3;
 const WINDOW_DAYS = 42;
@@ -74,28 +76,47 @@ function progressed(sets: SetEntry[], before: SetEntry[][]): boolean {
   return theirs.every((r) => { const k = Math.min(r.length, mine.length); return sum(mine, k) > sum(r, k); });
 }
 
-/** `since`: the last session that progressed. `sessions`: how many since, with nothing better. `weeks`: from `since` to `last`. */
-export interface Stall { since: string; sessions: number; weeks: number; last: string }
+/**
+ * `since`: the last session that progressed (a plateau's start: one plateau, one dismissal). `sessions`: how many since, with
+ * nothing better. `last`: the latest session. `weeks`: how long the level has read flat, the trend window's span (learn/trend).
+ * `flat`: the trend's evidence: P(plateau) and the window's fatigue-adjusted slope.
+ */
+export interface Stall { since: string; sessions: number; weeks: number; last: string; flat: Flatness }
 
 /**
- * A lift that has stopped progressing: 3 or more sessions in a row, spanning 2 weeks or more, none better than the sessions
- * before it (see `progressed`), the latest within 6 weeks of `today`. Working sets only, as double progression reads them:
- * warm-ups and partials are left out, and a session of only those isn't a session here; test sets count. Holds and cardio never stall.
+ * The lift's sessions since its last progress (see `progressed`): the last session that beat the sessions before it, and how many
+ * after it had nothing better; null when there are none, or the latest session itself progressed. A lift's first 2 sessions, and
+ * the first 2 after a layoff, re-adapt (owner rule, learn/trend): each counts as a fresh start. Working sets only, as double
+ * progression reads them: warm-ups and partials are left out, and a session of only those isn't a session here; test sets count.
  */
-export function stall(entries: SetEntry[], exercise: string, today: string): Stall | null {
-  if (isHoldLift(exercise, entries) || isCardio(exercise)) return null;
+export function sinceProgress(entries: SetEntry[], exercise: string, today: string): { since: string; sessions: number; last: string } | null {
   const ss = sessionsFor(entries, exercise).filter((x) => x.date <= today)
     .map((x) => ({ date: x.date, sets: x.sets.filter(isProgressionSet) })).filter((x) => x.sets.length).reverse();
   if (!ss.length) return null;
+  const run0 = runIndex(ss.map((x) => dayOf(x.date)));
   let last = 0;
   ss.forEach((x, i) => {
     const before = ss.slice(Math.max(0, i - LOOKBACK), i).filter((b) => days(b.date, x.date) <= WINDOW_DAYS).map((b) => b.sets);
-    if (progressed(x.sets, before)) last = i;
+    if (run0[i] < REACCLIMATION || progressed(x.sets, before)) last = i;
   });
-  const run = ss.slice(last + 1);
-  const end = run.at(-1)?.date;
-  if (run.length < STALL_SESSIONS || !end || days(run[0].date, end) < STALL_DAYS || days(end, today) > STALE_DAYS) return null;
-  return { since: ss[last].date, sessions: run.length, weeks: Math.floor(days(ss[last].date, end) / 7), last: end };
+  const n = ss.length - 1 - last;
+  return n ? { since: ss[last].date, sessions: n, last: ss[ss.length - 1].date } : null;
+}
+
+/**
+ * A lift that has stopped progressing (item 12): its fatigue-adjusted level is more likely on a plateau than progressing (learn/trend
+ * `flatness`, P > 1/2: b, his own plateau share and progress rates), its latest session set no new best (c: only withholds, so
+ * the card never calls a lift flat on the day it moved), and that session is within 6 weeks (a plateau before a layoff is stale).
+ * The trend replaces the old 3 sessions over 2 weeks with no best: on synthetic plateaus under a 3 % day-to-day noise that rule
+ * missed a third outright, as chance bests keep resetting it. Holds, cardio and bodyweight-only lifts (no level yet) never stall.
+ */
+export function stall(entries: SetEntry[], exercise: string, today: string): Stall | null {
+  if (isHoldLift(exercise, entries) || isCardio(exercise)) return null;
+  const run = sinceProgress(entries, exercise, today);
+  if (!run || days(run.last, today) > STALE_DAYS) return null;
+  const core = coreBefore(entries, addDays(today, 1));
+  const flat = core && flatness(core, exercise, today);
+  return flat && flat.p > 0.5 ? { ...run, weeks: Math.floor(flat.slope.days / 7), flat } : null;
 }
 
 /** `available`: what this gym can do. `include`: lifts added to the gym by hand. `program`: its lifts aren't offered (no lift twice). */
@@ -175,8 +196,13 @@ const LOAD: Record<string, number> = {
   'bench press': 1, 'smith flat press': 1, 'close-grip bench press': 0.9, 'incline bench press': 0.8, 'smith incline press': 0.8,
   'lat pulldown': 1, 'close-grip lat pulldown': 1, 'barbell squat': 1, 'smith squat': 1, 'front squat': 0.8, deadlift: 1, 'romanian deadlift': 0.75,
 };
-/** Every carried-over estimate is taken down this much: a first session a little light costs one session, one too heavy costs more. */
-export const CONSERVATIVE = 0.9;
+/**
+ * (c) The SD of a catalog ratio (ln), as a prior: 0.1 is the old fixed 0.9 discount when the level is sure. (b) Re-estimated from
+ * the person's own pairs of catalog lifts trained close together (`catalogSpread`), worth two pairs.
+ */
+const CATALOG_SD = { sd: 0.1, k: 2 } as const;
+/** The default increment: a typed one wins over the learned ladder (as in progression). */
+const DEFAULT_INCREMENT = 5;
 /** The new lift's own history counts as current within this many days: then its own progression stands. */
 const FRESH_DAYS = 42;
 /** How far apart a session of each lift may be for the two to be compared. */
@@ -185,31 +211,64 @@ const NEAR_DAYS = 42;
 /** A starting point for the new lift. `basis`: your own history of both lifts, or the catalog's ratio. */
 export interface Carry { weight: number; reps: number; e1rm: number; basis: 'history' | 'catalog' }
 
+/** The two lifts' levels at their nearest sessions within NEAR_DAYS (the new lift's latest): ln(e1RM_to / e1RM_from) and its variance. */
+function historyRatio(core: Core, from: string, to: string): { mean: number; v: number } | null {
+  const lt = core.lifts.get(key(to))?.level.at(-1), lf = core.lifts.get(key(from))?.level;
+  if (!lt || !lf?.length) return null;
+  let best: (typeof lf)[number] | null = null;
+  for (const p of lf) if (Math.abs(p.day - lt.day) <= NEAR_DAYS && (!best || Math.abs(p.day - lt.day) < Math.abs(best.day - lt.day))) best = p;
+  if (!best) return null;
+  // The levels' own variances, and the drift between the two days.
+  return { mean: lt.x - best.x, v: lt.sd ** 2 + best.sd ** 2 + aheadVar(core, Math.abs(lt.day - best.day)) };
+}
+
+const SPREAD = new WeakMap<Core, number>();
 /**
- * The new lift's first target, carried over from the old one's strength: the old lift's current e1RM (best of its last 3
- * sessions) times the ratio between the two — from your history when you trained the new one within 6 weeks of a session of
- * the old one, else the catalog's — times 0.9. The weight is the one that estimate gives at the top of the range, rounded
- * down to the lift's step, for the bottom of the range. Null when there's no ratio, or the new lift was trained lately.
+ * The variance of a catalog ratio (ln): the prior (CATALOG_SD) shrunk toward how far the person's own pairs of catalog lifts, trained
+ * within NEAR_DAYS of each other, sit from the catalog's ratio beyond their levels' noise (b, method of moments).
+ */
+function catalogSpread(core: Core): number {
+  const hit = SPREAD.get(core);
+  if (hit != null) return hit;
+  const lifts = [...core.lifts.values()].filter((l) => LOAD[l.key] && patternOf(l.name) && l.level.length);
+  let n = 0, ss = 0;
+  for (let i = 0; i < lifts.length; i++) for (let j = i + 1; j < lifts.length; j++) {
+    const a = lifts[i], b = lifts[j];
+    if (patternOf(a.name) !== patternOf(b.name)) continue;
+    const r = historyRatio(core, a.name, b.name);
+    if (!r) continue;
+    ss += Math.max(0, (r.mean - Math.log(LOAD[b.key] / LOAD[a.key])) ** 2 - r.v); n++;
+  }
+  const v = (CATALOG_SD.k * CATALOG_SD.sd ** 2 + ss) / (CATALOG_SD.k + n);
+  SPREAD.set(core, v);
+  return v;
+}
+
+/**
+ * The new lift's first target, carried over from the old one's strength (00-core 1.1): the old lift's level now (learn/strength),
+ * times the ratio between the two (from both lifts' levels when you trained the new one within 6 weeks of a session of the old
+ * one, b; else the catalog's, c, with a spread learned from your pairs) taken at its lower bound, exp(mean - 1 SD), the SD being
+ * the level's uncertainty and the ratio's. The weight is the one that leaves the bottom of the range plus your usual reps in
+ * reserve (the habit, b) on the new lift's reps-load slope (a: Epley's 30 until it has its own), at or under it on the lift's
+ * learned ladder (a typed increment wins). Null when there's no ratio, or the new lift was trained lately.
  */
 export function carryOver(entries: SetEntry[], from: string, to: string, today: string, st: ExerciseSettings): Carry | null {
-  const now = priorE1rm(entries, from, addDays(today, 1));
-  if (now == null) return null;
+  const core = coreBefore(entries, addDays(today, 1));
+  const now = core && strengthOf(core, from, today);
+  if (!core || !now) return null;
   const lastTo = sessionsFor(entries, to).find((x) => x.date <= today && x.sets.some(isWorking))?.date;
   if (lastTo && days(lastTo, today) <= FRESH_DAYS) return null;
-  let ratio: number | null = null, basis: Carry['basis'] = 'history';
-  if (lastTo) {
-    const toBest = priorE1rm(entries, to, addDays(lastTo, 1));
-    const near = liftSets(entries, from).filter((e) => Math.abs(days(e.date, lastTo)) <= NEAR_DAYS)
-      .map(e1rm).filter((v): v is number => v != null);
-    if (toBest != null && near.length) ratio = toBest / Math.max(...near);
-  }
-  if (ratio == null) {
+  let ratio = lastTo ? historyRatio(core, from, to) : null, basis: Carry['basis'] = 'history';
+  if (!ratio) {
     const a = LOAD[key(from)], b = LOAD[key(to)];
-    if (a && b && patternOf(from) === patternOf(to)) { ratio = b / a; basis = 'catalog'; }
+    if (a && b && patternOf(from) === patternOf(to)) { ratio = { mean: Math.log(b / a), v: catalogSpread(core) }; basis = 'catalog'; }
   }
-  if (ratio == null) return null;
-  const est = now * ratio * CONSERVATIVE;
-  const weight = Math.floor(estimateWeightForReps(est, st.repMax) / st.increment + 1e-9) * st.increment;
+  if (!ratio) return null;
+  const est = Math.exp(now.x + ratio.mean - Math.sqrt(now.u ** 2 + ratio.v));
+  const kappa = core.lifts.get(key(to))?.kappa.mean ?? KAPPA_PRIOR.mean;
+  const want = est / (1 + (st.repMin + core.habit.mean) / kappa);
+  const ladder = st.increment === DEFAULT_INCREMENT ? ladderOf(entries, to) : null;
+  const weight = ladder ? floorRung(ladder, want) : Math.floor(want / st.increment + 1e-9) * st.increment;
   return weight > 0 ? { weight, reps: st.repMin, e1rm: est, basis } : null;
 }
 

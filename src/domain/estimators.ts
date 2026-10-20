@@ -1,6 +1,14 @@
-import { liftSets, sessionsFor } from './stats';
-import type { SetEntry } from './types';
 import { addDays } from './analytics';
+import { isHoldLift, recentPain } from './care';
+import { liftKey } from './ids';
+import { coreBefore, testSd } from './learn';
+import { floorRung, ladderOf, nextRung } from './learn/ladder';
+import { levelSeries, strengthOf, weightFor, type Strength } from './learn/strength';
+import { REACCLIMATION, runIndex } from './learn/trend';
+import { dayOf } from './learn/capacity';
+import { liftSets, type SeriesPoint } from './stats';
+import type { SetEntry } from './types';
+import { isCardio } from './cardio';
 
 export type Formula = 'epley' | 'wd';
 const KG = 0.45359237;
@@ -29,67 +37,74 @@ export function weightForReps(f: Formula, oneRmLb: number, r: number): number {
   return (lo + hi) / 2;
 }
 
-const usable = (s: SetEntry) => s.reps != null && s.weight > 0 && !s.flags.some((f) => f === 'warmup' || f === 'partial' || f === 'bodyweight' || f === 'hold');
-const isTest = (s: SetEntry) => s.flags.includes('test');
-/** A test set's true capacity: the reps done plus any reps it was stopped short of. */
-const testReps = (s: SetEntry) => (s.reps as number) + (s.rir ?? 0);
-
-function rawE1rm(entries: SetEntry[], exercise: string, f: Formula, beforeDate: string): number | null {
-  // The lift's sessions with test sets left out (a session of only tests isn't one): the same as leaving them out of the log first.
-  const vals = sessionsFor(entries, exercise).map((x) => ({ ...x, sets: x.sets.filter((s) => !isTest(s)) })).filter((x) => x.sets.length)
-    .filter((x) => x.date < beforeDate).slice(0, 3)
-    .flatMap((x) => x.sets.filter(usable).map((s) => oneRm(f, s.weight, s.reps as number))).filter((v): v is number => v != null);
-  return vals.length ? Math.max(...vals) : null;
+/**
+ * A lift's strength on `date` from everything logged up to and including it (learn/strength: the learning core's fatigue-adjusted
+ * level, with its uncertainty); null when the core has no level for it (a hold, bodyweight only, cardio, nothing logged).
+ */
+export function strength(entries: readonly SetEntry[], exercise: string, date: string): Strength | null {
+  const core = coreBefore(entries, addDays(date, 1));
+  return core && strengthOf(core, exercise, date);
 }
 
-export interface Calibration { formula: Formula; factor: number; tests: number; errorPct: number | null }
+/** The lift's level at each session up to `date`, oldest first, as chart points (no records: a level isn't a set); null without one. */
+export function strengthSeries(entries: readonly SetEntry[], exercise: string, date: string): SeriesPoint[] | null {
+  const core = coreBefore(entries, addDays(date, 1));
+  const pts = core ? levelSeries(core, exercise) : [];
+  return pts.length ? pts.map((p) => ({ date: p.date, e1rm: p.e1rm, pr: false })) : null;
+}
 
 /**
- * Per-exercise correction learned from test sets before `beforeDate`: each test's capacity ÷ what training predicted.
- * The factor is the mean ratio (clamped 0.8–1.2). A formula is only *chosen* with two or more tests, by which one's
- * ratios agree best once the factor is applied (their spread); with one test either would fit exactly, so Epley.
+ * Item 04: the e1RM from sets before `beforeDate`: the learning core's level at the lift's latest session (every set, its RIR or the
+ * habit, its session fatigue put back; test sets calibrate the RIR bias), not the best Epley reading of recent sets.
  */
-export function calibrate(entries: SetEntry[], exercise: string, beforeDate = '9999-12-31'): Calibration {
-  const mine = liftSets(entries, exercise).filter((s) => s.date < beforeDate);
-  // A test counts at face value only while recent: 6 weeks before the latest session, so a layoff doesn't pin the peak.
-  const latest = mine.reduce((a, s) => (s.date > a ? s.date : a), '');
-  const cutoff = latest ? new Date(Date.parse(latest) - 42 * 864e5).toISOString().slice(0, 10) : '';
-  const tests = mine.filter((s) => isTest(s) && usable(s) && s.date >= cutoff);
-  const fit = (f: Formula) => {
-    const ratios = tests.map((t) => {
-      const predicted = rawE1rm(entries, exercise, f, t.date);
-      const actual = oneRm(f, t.weight, testReps(t));
-      return predicted && actual ? actual / predicted : null;
-    }).filter((v): v is number => v != null);
-    if (!ratios.length) return null;
-    const mean = ratios.reduce((a, b) => a + b, 0) / ratios.length;
-    const spread = 100 * ratios.reduce((a, r) => a + Math.abs(r / mean - 1), 0) / ratios.length;
-    return { formula: f, factor: Math.min(1.2, Math.max(0.8, mean)), tests: ratios.length, errorPct: ratios.length >= 2 ? spread : null };
-  };
-  const epley = fit('epley');
-  if (!epley) return { formula: 'epley', factor: 1, tests: 0, errorPct: null };
-  const wd = epley.tests >= 2 ? fit('wd') : null;
-  return wd && wd.errorPct! < epley.errorPct! ? wd : epley;
+export function calibratedE1rm(entries: readonly SetEntry[], exercise: string, beforeDate = '9999-12-31'): number | null {
+  const core = coreBefore(entries, beforeDate);
+  return core && (strengthOf(core, exercise, beforeDate)?.e1rm ?? null);
 }
 
-/** Best of: training's recent best corrected by the calibration factor, and any test set taken at face value. */
-export function calibratedE1rm(entries: SetEntry[], exercise: string, beforeDate = '9999-12-31'): number | null {
-  const c = calibrate(entries, exercise, beforeDate);
-  const raw = rawE1rm(entries, exercise, c.formula, beforeDate);
-  const mine = liftSets(entries, exercise).filter((s) => s.date < beforeDate);
-  // A test counts at face value only while recent: 6 weeks before the latest session, so a layoff doesn't pin the peak.
-  const latest = mine.reduce((a, s) => (s.date > a ? s.date : a), '');
-  const cutoff = latest ? new Date(Date.parse(latest) - 42 * 864e5).toISOString().slice(0, 10) : '';
-  const tests = mine.filter((s) => isTest(s) && usable(s) && s.date >= cutoff)
-    .map((s) => oneRm(c.formula, s.weight, testReps(s))).filter((v): v is number => v != null);
-  const vals = [...(raw == null ? [] : [raw * c.factor]), ...tests];
-  return vals.length ? Math.max(...vals) : null;
-}
+/** (a) The reps a test reads the level best at: the RIR error model (04 §3: 0.5 reps, +0.3 per rep past 10) over κ + reps is least at 10. */
+export const TEST_REPS = 10;
+/** (c) A suppression only: no test with pain on the lift in the last 2 weeks (05 §3); item 08's pain response replaces it. */
+const PAIN_DAYS = 14;
 
-export function testDue(entries: SetEntry[], exercise: string, today: string): boolean {
-  const mine = liftSets(entries, exercise);
-  const recentDays = new Set(mine.filter((s) => s.date >= addDays(today, -56)).map((s) => s.date));
-  if (recentDays.size < 4) return false;
-  const lastTest = mine.filter((s) => s.flags.includes('test')).map((s) => s.date).sort().at(-1);
-  return !lastTest || lastTest < addDays(today, -42);
+/**
+ * Item 05: a test is due when it would at least halve what the app doesn't know: the lift's uncertainty u (its level's SD on the
+ * day, grown by drift and layoffs, with the systematic SD only tests fix: learn/strength) is above what one test reads the level
+ * to (σ_test: learn testSd). `weight`: the loadable weight for TEST_REPS to failure; `jump`: today's target is an increase, and
+ * its first set at the new weight is the test (no extra set). `after`: u once the test is in (u·σ/√(u² + σ²)).
+ */
+export interface TestDue { weight: number; reps: number; u: number; after: number; jump: boolean }
+/** `st`: the lift's settings (a typed increment wins over the learned ladder); `target`: today's target, when known. */
+export function testDue(entries: readonly SetEntry[], exercise: string, today: string, st?: { increment: number },
+  target?: { kind: string; weight: number | null } | null): TestDue | null {
+  if (isCardio(exercise) || isHoldLift(exercise, entries)) return null;
+  // (a) One failure set a day: sets to failure need longer recovery (Morán-Navarro 2017), so not two tests in a workout.
+  if (entries.some((e) => e.date === today && e.flags.includes('test'))) return null;
+  if (recentPain(entries as SetEntry[], today, PAIN_DAYS).byExercise.has(liftKey(exercise))) return null;
+  // Owner rule: not in a lift's first 2 sessions, nor the first 2 after a layoff (learn/trend): today counts as one.
+  const days = [...new Set(liftSets(entries, exercise).filter((e) => e.date < today && e.reps != null && !e.flags.includes('warmup')).map((e) => e.date))].sort().map(dayOf);
+  if (runIndex([...days, dayOf(today)]).at(-1)! < REACCLIMATION) return null;
+  const core = coreBefore(entries, addDays(today, 1));
+  const s = core && strengthOf(core, exercise, today);
+  if (!core || !s) return null;
+  const sigma = testSd(core, liftKey(exercise), TEST_REPS);
+  if (!(s.u > sigma)) return null;
+  const after = s.u * sigma / Math.hypot(s.u, sigma);
+  // Today's increase is a test if it reads the level at least as well: the same test, without an extra set.
+  if (target?.kind === 'increase' && target.weight != null && target.weight > 0) {
+    const reps = Math.round(s.kappa * (s.e1rm / target.weight - 1));
+    if (reps >= 1 && s.u > testSd(core, liftKey(exercise), reps)) return { weight: target.weight, reps, u: s.u, after, jump: true };
+  }
+  // The loadable weight either side of the one for TEST_REPS (the learned ladder; a typed increment wins), whichever reads the
+  // level more precisely at the reps it should take.
+  const want = weightFor(s, TEST_REPS);
+  const lad = st && st.increment !== 5 ? null : ladderOf(entries, exercise);
+  const inc = st?.increment ?? 5;
+  const lo = lad ? floorRung(lad, want) : Math.floor(want / inc + 1e-9) * inc;
+  const hi = lad ? nextRung(lad, lo) : lo + inc;
+  const repsAt = (w: number) => Math.round(s.kappa * (s.e1rm / w - 1));
+  const sdAt = (w: number) => (w > 0 && repsAt(w) >= 1 ? testSd(core, liftKey(exercise), repsAt(w)) : Infinity);
+  const weight = sdAt(hi) < sdAt(lo) ? hi : lo;
+  if (!Number.isFinite(sdAt(weight))) return null;
+  return { weight, reps: repsAt(weight), u: s.u, after, jump: false };
 }

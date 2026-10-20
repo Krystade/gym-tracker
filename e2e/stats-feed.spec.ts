@@ -10,13 +10,13 @@ mkdirSync(SHOTS, { recursive: true });
 const TOP = 47;
 const add = (d: string, n: number) => { const t = new Date(`${d}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 
-/** 11 weeks: squats climbing 5 lb a week (a PR today), bench stuck at 155 × 5 for a month, rows twice a week, a goal of 3. */
+/** 11 weeks: squats climbing 5 lb a week (a PR today), bench stuck at 155 × 5 for two months (a flat fatigue-adjusted level, item 12), rows twice a week, a goal of 3. */
 function csv(): string {
   const rows = ['date,exercise,set,weight_lb,reps,flags,duration_s'];
   for (let w = 10; w >= 1; w--) {
     const mon = add('2026-10-12', -7 * w), wed = add(mon, 2);
     for (let s = 1; s <= 3; s++) rows.push(`${mon},Barbell Squat,${s},${200 - 5 * w},5,,`);
-    for (let s = 1; s <= 3; s++) rows.push(`${mon},Bench Press,${s},${w > 4 ? 150 : 155},5,,`);
+    for (let s = 1; s <= 3; s++) rows.push(`${mon},Bench Press,${s},${w > 8 ? 150 : 155},5,,`);
     for (let s = 1; s <= 3; s++) rows.push(`${wed},Barbell Row,${s},${120 + (10 - w) * 2},8,,`);
   }
   // This week, only today: the squat PR.
@@ -68,7 +68,8 @@ test('Stats answers: the week’s ring, the new PR, who’s getting stronger and
   await expect(strong.getByRole('button', { name: 'Bench Press: flat' })).toBeVisible();
   await expect(strong.getByRole('button', { name: 'Bench Press: flat' })).toContainText(/weeks, no change/);
   const miles = page.getByRole('region', { name: 'Next milestones' });
-  await expect(miles.getByRole('img', { name: '245 of 250 lb' })).toBeVisible();
+  // Milestones read the fatigue-adjusted level (item 04), a little under today's 245 lb top set.
+  await expect(miles.getByRole('img', { name: /^2[34]\d of 250 lb$/ })).toBeVisible();
 
   const behind = page.getByRole('region', { name: 'Behind this week' });
   await expect(behind.locator('li').first()).toBeVisible();

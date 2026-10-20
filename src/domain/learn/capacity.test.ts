@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from '../types';
 import { setWorksLike } from '../lifts';
+import { liftKey } from '../ids';
 import { e1rm } from '../stats';
-import { decay, e1rmAdjusted, fitCore, type Core, type Est } from './capacity';
+import { B_PRIOR, decay, e1rmAdjusted, fitCore, type Core, type Est } from './capacity';
 import { SIM_LIFTS, simulate } from './coreSim.sample';
 
 // Recovery of KNOWN parameters from the synthetic lifter (coreSim.sample: the prototype's simulator, ported).
@@ -26,6 +27,25 @@ describe('learn/capacity: synthetic recovery', () => {
     }
     for (const k of ['a', 'x', 'g', 'r', 't'] as const) expect(hits[k], k).toBeGreaterThanOrEqual(27);
     for (const k of ['a', 'x', 'g', 'r'] as const) expect(rms(zs[k]), k).toBeLessThanOrEqual(1.25);
+  });
+
+  it('00-core §9 gate: per-lift loss per set (A·K at the usual gap) — EB RMSE below no pooling and within 2× of complete pooling', () => {
+    for (const sessions of [50, 150]) for (const backoff of [false, true]) {
+      const eb: number[] = [], none: number[] = [], all: number[] = [];
+      for (let seed = 1; seed <= 12; seed++) {
+        const { entries, truth } = simulate(seed, { sessions, backoff });
+        const c = fitCore(entries);
+        const g = 280, Kt = truth.rho + (1 - truth.rho) * Math.exp(-g / truth.tau), Kf = decay(c, g);
+        SIM_LIFTS.forEach((l, i) => {
+          const L = liftOf(c, l.name), t = truth.aLift[i] * Kt;
+          expect(L.aSameOwn).not.toBeNull();
+          eb.push(L.aSame.mean * Kf - t); none.push(L.aSameOwn!.mean * Kf - t); all.push(c.fit.theta[0] * Kf - t);
+        });
+      }
+      expect(eb.length).toBe(120);
+      expect(rms(eb), `${sessions} sessions, back-off ${backoff}`).toBeLessThan(rms(none));
+      expect(rms(eb), `${sessions} sessions, back-off ${backoff}`).toBeLessThan(2 * rms(all));
+    }
   });
 
   it('γ (reps per prior hard set of another lift) is recovered with < 25 % bias at 150 sessions', () => {
@@ -57,6 +77,27 @@ describe('learn/capacity: synthetic recovery', () => {
       expect(l.kappa.mean).toBeCloseTo(30, 0);
       expect(l.kappa.sd / l.kappa.mean).toBeGreaterThan(0.3);
     }
+  });
+
+  it('ramp and back-off sets without RIR are lower bounds: easy back-offs (the first set’s reps again, lighter) leave κ, A_same and the noise alone; read by the habit they drag κ to its floor', () => {
+    const fit = (light: boolean) => {
+      const k: number[] = [], a: number[] = [], n: number[] = [];
+      for (let seed = 1; seed <= 6; seed++) {
+        const { entries, truth } = simulate(seed, { sessions: 150, backoff: true, easyBackoff: true, pLog: 0 });
+        const c = fitCore(entries, { light });
+        SIM_LIFTS.forEach((l, i) => k.push(Math.log(liftOf(c, l.name).kappa.mean / truth.kappa[i])));
+        a.push(z(c.aSame, truth.aSame)); n.push(c.noise);
+      }
+      return { k: mean(k), a: mean(a), n: mean(n) };
+    };
+    const on = fit(true), off = fit(false);
+    // No RIR and no other load contrast: κ stays on its prior (the truth sits 0.1 above it in logs on average).
+    expect(Math.abs(on.k + 0.1)).toBeLessThan(0.1);
+    expect(Math.abs(on.a)).toBeLessThan(1);
+    expect(on.n).toBeLessThan(0.7);
+    expect(off.k).toBeLessThan(-0.5);
+    expect(off.a).toBeGreaterThan(2);
+    expect(off.n).toBeGreaterThan(2);
   });
 
   it('target-stopped sets are censored: κ unbiased (|mean log error| < 0.05); read as equalities, the same data bias it by > 25 %', () => {
@@ -154,5 +195,99 @@ describe('learn/capacity: incremental equals batch', () => {
     expect(c0.aSame.mean).toBeCloseTo(1, 6);
     const one = simulate(1, { sessions: 1 }).entries.slice(0, 1);
     expect(fitCore(one).lifts.size).toBe(1);
+  });
+});
+
+describe('learn/capacity: test sets teach the RIR bias and the habit (00-core §1.2)', () => {
+  // The lifter under-reports RIR by ~2.5 (the prior says 0.95), stops 4 short of failure and logs RIR on half the sets; a third of
+  // sessions open with a test. Every lift's true reps–load slope is Epley's 30, so what is measured is b alone.
+  const truth = { b: 2.5, muR: 4, kappa: Array<number>(10).fill(30) };
+  type Sim = ReturnType<typeof simulate>;
+  /** The bias logged RIR really carries in a simulated log (the simulator clamps logged RIR to 0–4): mean(true left − logged). */
+  const bEff = ({ entries, sets }: Sim) => mean(entries.filter((e) => e.rir != null && e.rir < 4 && !e.flags.includes('test')).map((e) => sets.get(e.id)!.left - e.rir!));
+  /** Mean log error of the smoothed level over every session's latent truth. */
+  const levelErr = (c: Core, { entries, sets }: Sim) => {
+    const errs: number[] = [];
+    for (const l of c.lifts.values()) for (const at of l.level) {
+      const e = entries.find((x) => x.exercise === l.name && x.date === at.date)!;
+      errs.push(at.x - Math.log(sets.get(e.id)!.E));
+    }
+    return mean(errs);
+  };
+
+  it('b is recovered: z against the truth inside ±2 in ≥ 9 of 10 seeds, its SD under a third of the prior; unlearned it stays at the prior', () => {
+    let hits = 0;
+    for (let seed = 1; seed <= 10; seed++) {
+      const sim = simulate(seed, { sessions: 120, pLog: 0.5, testFrac: 0.35, truth });
+      const c = fitCore(sim.entries), b = bEff(sim);
+      expect(b).toBeGreaterThan(2); // the negative control below needs a truth far from the prior
+      expect(c.tests).toBeGreaterThan(20);
+      if (Math.abs(z(c.bias, b)) < 2) hits++;
+      expect(c.bias.sd).toBeLessThan(B_PRIOR.sd / 3);
+      const off = fitCore(sim.entries, { learnBias: false });
+      expect(off.bias).toEqual({ mean: B_PRIOR.mean, sd: B_PRIOR.sd });
+      expect(Math.abs(z({ mean: off.bias.mean, sd: c.bias.sd }, b))).toBeGreaterThan(2); // the prior is well outside what was learned
+    }
+    expect(hits).toBeGreaterThanOrEqual(9);
+  });
+
+  it('a learned b takes the bias out of the e1RM level: |error| at least halved, under 1.5 %', () => {
+    const on: number[] = [], off: number[] = [];
+    for (let seed = 1; seed <= 6; seed++) {
+      const sim = simulate(seed, { sessions: 120, pLog: 0.5, testFrac: 0.35, truth });
+      on.push(levelErr(fitCore(sim.entries), sim));
+      off.push(levelErr(fitCore(sim.entries, { learnBias: false }), sim));
+    }
+    expect(mean(off)).toBeLessThan(-0.02); // the prior b under-reads every RIR set: the level sits low
+    expect(Math.abs(mean(on))).toBeLessThan(Math.abs(mean(off)) / 2);
+    expect(Math.abs(mean(on))).toBeLessThan(0.015);
+  });
+
+  it('with no RIR logged at all, tests teach the habit (true RIR 3.5 against a prior of 2) and lift the level to the truth', () => {
+    const t = { muR: 3.5, kappa: Array<number>(10).fill(30) };
+    const on: number[] = [], off: number[] = [], habit: number[] = [];
+    for (let seed = 1; seed <= 6; seed++) {
+      const sim = simulate(seed, { sessions: 120, pLog: 0, testFrac: 0.35, truth: t });
+      const c = fitCore(sim.entries);
+      habit.push(c.habit.mean);
+      on.push(levelErr(c, sim));
+      off.push(levelErr(fitCore(sim.entries, { learnBias: false }), sim));
+    }
+    expect(Math.abs(mean(habit) - 3.5)).toBeLessThan(0.5);
+    expect(mean(off)).toBeLessThan(-0.02);
+    expect(Math.abs(mean(on))).toBeLessThan(Math.abs(mean(off)) / 2);
+  });
+
+  it('the systematic SD: carried by every lift before a test, smaller after tests, ~0 for a lift read only from tests', () => {
+    const { entries } = simulate(4, { sessions: 120, pLog: 0.5, truth });
+    const before = fitCore(entries);
+    const sys0 = [...before.lifts.values()].map((l) => l.sys);
+    expect(sys0.length).toBe(10);
+    for (const x of sys0) expect(x).toBeGreaterThan(0.01); // ~1.5 reps of b at 10–15 reps: 3 %+
+    const tested = fitCore(simulate(4, { sessions: 120, pLog: 0.5, testFrac: 0.35, truth }).entries);
+    expect(mean([...tested.lifts.values()].map((l) => l.sys))).toBeLessThan(mean(sys0) / 2);
+    // Every set a test: nothing leans on b or the habit.
+    const allTests = entries.map((e) => ({ ...e, rir: 0, flags: ['test' as const] }));
+    for (const l of fitCore(allTests).lifts.values()) expect(l.sys).toBeLessThan(1e-9);
+  });
+
+  it("e1rmAdjusted reads a test's RIR as true and an ordinary set's RIR plus the lift's bias", () => {
+    const { entries } = simulate(5, { sessions: 60, pLog: 0.5, testFrac: 0.35, truth });
+    const c = fitCore(entries);
+    const t = entries.find((e) => e.flags.includes('test'))!;
+    const plain = { ...t, flags: [] };
+    expect(c.features.get(t.id)).toBeTruthy();
+    const k = c.lifts.get(liftKey(t.exercise))!;
+    expect(k.bias.mean).toBeGreaterThan(1);
+    // The same set without the flag reads its RIR plus the bias: exactly w·b/κ more.
+    expect(e1rmAdjusted(c, plain)! - e1rmAdjusted(c, t)!).toBeCloseTo(t.weight * k.bias.mean / k.kappa.mean, 6);
+  });
+
+  it('a fit that reuses cached sessions equals a cold refit with test sets in the log', () => {
+    const { entries } = simulate(12, { sessions: 60, pLog: 0.5, testFrac: 0.3, truth });
+    const cold = entries.map((e) => structuredClone(e));
+    fitCore(entries.slice(0, -10));
+    const json = (c: Core) => JSON.stringify([c.bias, c.habit, c.tests, [...c.lifts.values()].map((l) => [l.bias, l.sys, l.level.at(-1)])]);
+    expect(json(fitCore(entries))).toBe(json(fitCore(cold)));
   });
 });

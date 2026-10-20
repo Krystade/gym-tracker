@@ -27,8 +27,8 @@ export function RotationSuggestion({ owner, r, carry, known, today, onSwitch }: 
     : known ? <>Picks up from your last {r.to}.</> : <>New to you: start light and log every set.</>;
   return (
     <div className="target-suggest rotate-suggest" role="group" aria-label="Suggested variation">
-      <p><b>{r.from} stalled {r.stall.weeks} weeks</b> — {onSwitch ? <>switch to <b>{r.to}</b>?</> : <>next time, try <b>{r.to}</b>.</>}</p>
-      <p className="muted small">No new best in {plural(r.stall.sessions, 'session')} since {fmtDay(r.stall.since, today)} · {why}. Strength carries over between them.</p>
+      <p><b>{r.from} flat for {plural(Math.max(1, r.stall.weeks), 'week')}</b> — {onSwitch ? <>switch to <b>{r.to}</b>?</> : <>next time, try <b>{r.to}</b>.</>}</p>
+      <p className="muted small">Fatigue-adjusted strength level, no new best since {fmtDay(r.stall.since, today)} · {why}. Strength carries over between them.</p>
       <p className="small">{start}</p>
       <div className="target-suggest-actions">
         {onSwitch && <button type="button" className="primary" onClick={onSwitch}>Switch to {r.to}</button>}

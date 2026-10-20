@@ -48,7 +48,8 @@ test('the chart reads out a point, defaulting to the latest, and a tap selects a
   const readout = page.locator('.readout');
   await expect(readout).toContainText('Sep 30');
   await expect(readout).toContainText('lb e1RM');
-  await expect(readout).toContainText('PR');
+  // The chart is the fatigue-adjusted level (item 04), not session bests: no PR marks on it.
+  await expect(readout).not.toContainText('PR');
   await page.locator('.chart circle.pt').first().scrollIntoViewIfNeeded();
   await page.locator('.chart circle.pt').first().click();
   await expect(readout).toContainText('Aug 19');
