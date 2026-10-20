@@ -1,4 +1,5 @@
 import { painReport } from '../domain/care';
+import { lingering } from '../domain/painPlan';
 import type { SetEntry } from '../domain/types';
 import { fmtWeight, plural } from '../domain/format';
 
@@ -13,9 +14,14 @@ const WarnIcon = () => (
 /** Pain-flagged sets per region over 8 weeks. Records and surfaces; never diagnoses. */
 export function CareCard({ entries, today }: { entries: SetEntry[]; today: string }) {
   const report = painReport(entries, today, 8);
+  // Pain on and off for 2 weeks or more (NHS: see a GP after 2 weeks of self-care; item 08). A pattern, never a diagnosis.
+  const long = lingering(entries, today);
   return (
     <section className="card" aria-labelledby="care-h">
       <h2 id="care-h">Joint &amp; back care</h2>
+      {long.map((l) => (
+        <p key={l.region} className="warn small care-physio"><WarnIcon /> {l.region === 'other' ? 'Pain' : `Pain in your ${l.region}`} has come and gone for {plural(l.weeks, 'week')}. Worth getting it looked at by a physio or GP.</p>
+      ))}
       {report.length === 0 && <p className="muted">No pain logged in the last 8 weeks.</p>}
       {report.map((r) => {
         const max = Math.max(1, ...r.weekly);
@@ -35,7 +41,7 @@ export function CareCard({ entries, today }: { entries: SetEntry[]; today: strin
           </div>
         );
       })}
-      <p className="muted small">Rule of thumb (pain-monitoring model): up to moderate (5/10) is acceptable if it settles by the next morning and isn’t rising week to week. Sharp pain: stop that lift and swap it.</p>
+      <p className="muted small">Rule of thumb (pain-monitoring model): up to moderate (5/10) is acceptable if it settles by the next morning and isn’t rising week to week. Mild keeps the weight going up; moderate holds it; sharp (over 5/10): stop that lift for the day, and it starts a step lighter next time.</p>
       <p className="muted small">Not medical advice. See a physio if pain persists.</p>
     </section>
   );

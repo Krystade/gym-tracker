@@ -149,6 +149,26 @@ describe('sinceProgress', () => {
   });
 });
 
+describe('a plateau doesn’t count sessions pain shaped (item 08)', () => {
+  // Pain on a session's last set: that session hurt, and the next one is held (moderate) or not (mild).
+  const sore = (sev: 1 | 2, dates: string[]) => log('Bench Press', PLATEAU).map((e) => (dates.includes(e.date) && e.setNo === 3 ? { ...e, flags: ['pain' as const], painSeverity: sev } : e));
+  it('sinceProgress counts neither a session that hurt nor one the pain gate held', () => {
+    expect(sinceProgress(sore(2, ['2026-09-22']), 'Bench Press', TODAY)).toEqual({ since: '2026-09-08', sessions: 1, last: '2026-09-29' });
+    // Mild pain: that session's sets are lower bounds, so it doesn't count; the next one, not held, does.
+    expect(sinceProgress(sore(1, ['2026-09-22']), 'Bench Press', TODAY)).toEqual({ since: '2026-09-08', sessions: 2, last: '2026-09-29' });
+    // Every session since the last progress hurt or was held: nothing says plateau.
+    expect(sinceProgress(sore(2, ['2026-09-15', '2026-09-22']), 'Bench Press', TODAY)).toBeNull();
+  });
+  it('a session that hurt still counts as progress when it beat the ones before', () => {
+    expect(sinceProgress(sore(2, ['2026-09-08']), 'Bench Press', TODAY)).toEqual({ since: '2026-09-08', sessions: 2, last: '2026-09-29' });
+  });
+  it('so the stall only ever goes away: none while the sessions since progress all hurt or were held', () => {
+    expect(stall(log('Bench Press', PLATEAU), 'Bench Press', TODAY)).not.toBeNull();
+    expect(stall(sore(2, ['2026-09-15', '2026-09-22']), 'Bench Press', TODAY)).toBeNull();
+    expect(stall(sore(1, ['2026-09-15', '2026-09-22']), 'Bench Press', TODAY)).not.toBeNull();
+  });
+});
+
 describe('stall (item 12: the fatigue-adjusted level reads flat)', () => {
   const others: TrendLift[] = [
     { name: 'Lat Pulldown', E0: 200, step: 5, slope: () => 0.01 },
@@ -265,10 +285,27 @@ describe('nextVariation', () => {
     expect(nextVariation(hurt, 'Bench Press', TODAY)).toBe('Incline Bench Press');
     const two = { available: new Set(['Bench Press', 'Machine Chest Press']) };
     expect(nextVariation(hurt, 'Bench Press', TODAY, two)).toBeNull();
-    const long = [...bench, ...session('2026-06-20', 'Machine Chest Press', ['100x10'], ['pain'])]; // over 60 days ago
-    expect(nextVariation(long, 'Bench Press', TODAY, two)).toBe('Machine Chest Press');
+    // Item 08: no flat 60 days. With a log this short, how fast pain fades is unknown (every half-life to seven months weighs
+    // alike), so a pain 103 days ago still reads likelier than not worse than the region's; two years on, it doesn't.
+    const old = (date: string) => [...bench, ...session(date, 'Machine Chest Press', ['100x10'], ['pain'])];
+    expect(nextVariation(old('2026-06-20'), 'Bench Press', TODAY, two)).toBeNull();
+    expect(nextVariation(old('2024-09-20'), 'Bench Press', TODAY, two)).toBe('Machine Chest Press');
+    // Clean sessions of it since release it sooner (if he did it anyway): its own record outweighs the one pain.
+    const since = [...old('2026-06-20'), ...log('Machine Chest Press', [['2026-07-01', ['100x10']], ['2026-07-08', ['100x10']], ['2026-07-15', ['100x10']]])];
+    expect(nextVariation(since, 'Bench Press', TODAY, two)).toBe('Machine Chest Press');
     expect(nextVariation(bench, 'Bench Press', TODAY, { available: new Set(['Bench Press', 'Svend Press']), include: ['Svend Press'] })).toBeNull(); // not a pattern
     expect(nextVariation(bench, 'Bench Press', TODAY, { available: new Set(['Bench Press', 'Decline Bench Press']), include: ['Decline Bench Press'] })).toBe('Decline Bench Press');
+  });
+});
+
+describe('nextVariation and pain elsewhere (item 08)', () => {
+  const bench = log('Bench Press', PLATEAU);
+  const two = { available: new Set(['Bench Press', 'Machine Chest Press']) };
+  it(`a region that hurt (moderate or worse) on another lift in the last ${3} days keeps its lifts out; mild pain doesn't`, () => {
+    const hurt = (sev: 1 | 2, date = '2026-09-29') => [...bench, ...session(date, 'Bench Press', ['185x8'], ['pain']).map((e) => ({ ...e, painSeverity: sev }))];
+    expect(nextVariation(hurt(2), 'Bench Press', TODAY, two)).toBeNull();
+    expect(nextVariation(hurt(1), 'Bench Press', TODAY, two)).toBe('Machine Chest Press');
+    expect(nextVariation(hurt(2, '2026-09-27'), 'Bench Press', TODAY, two)).toBe('Machine Chest Press'); // 4 days: settled
   });
 });
 

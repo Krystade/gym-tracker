@@ -47,6 +47,15 @@ describe('suggest', () => {
     const mixed = [s('2026-09-28', 'Bench Press', 135, 10), s('2026-09-28', 'Bench Press', 135, 12), s('2026-09-28', 'Bench Press', 135, 12, ['test'])];
     expect(suggest(mixed, 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: 140, reps: 8, sets: 2, setsFrom: 'last', kind: 'increase' });
   });
+  it('pain last time: the same weight and reps (moderate), or a step lighter (sharp), and says why (item 08)', () => {
+    const hurt = (sev: 2 | 3) => [s('2026-09-28', 'Bench Press', 135, 12), s('2026-09-28', 'Bench Press', 135, 12), { ...s('2026-09-28', 'Bench Press', 135, 12, ['pain']), painSeverity: sev }];
+    const held = suggest(hurt(2), 'Bench Press', st, '2026-10-02', 3)!;
+    expect(held).toMatchObject({ kind: 'hold', weight: 135, perSet: [12, 12, 12] });
+    expect(held.reason).toBe('Moderate pain last time: hold until it’s mild or gone. Same weight and reps as last time.');
+    const eased = suggest(hurt(3), 'Bench Press', st, '2026-10-02', 3)!;
+    expect(eased).toMatchObject({ kind: 'ease', weight: 130, perSet: [12, 12, 12] });
+    expect(eased.reason).toBe('Sharp pain last time: one step lighter, the same reps. Once it’s mild or gone, it builds back up from here.');
+  });
   it('with no history: reps and 3 sets, no weight', () => {
     expect(suggest([], 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: null, reps: 8, sets: 3, setsFrom: 'default', kind: 'new', warmups: [] });
   });

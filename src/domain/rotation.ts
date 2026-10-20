@@ -1,6 +1,6 @@
 import { addDays } from './analytics';
 import { isCardio } from './cardio';
-import { isHoldLift, recentPain, similarity } from './care';
+import { isHoldLift, similarity } from './care';
 import { VARIATIONS, type Pattern } from './catalog';
 import { liftKey } from './ids';
 import { resolveLift } from './lifts';
@@ -10,7 +10,9 @@ import { coreBefore } from './learn';
 import { aheadVar, dayOf, KAPPA_PRIOR, type Core } from './learn/capacity';
 import { floorRung, ladderOf } from './learn/ladder';
 import { strengthOf } from './learn/strength';
+import { painRisk } from './learn/pain';
 import { flatness, REACCLIMATION, runIndex, type Flatness } from './learn/trend';
+import { painShaped, spillOver } from './painPlan';
 import { isProgressionSet, isWorking, type ExerciseSettings } from './progression';
 import { renameInProgram } from './rename';
 import { e1rm, exerciseNames, sameExercise, sessionsFor } from './stats';
@@ -88,6 +90,9 @@ export interface Stall { since: string; sessions: number; weeks: number; last: s
  * after it had nothing better; null when there are none, or the latest session itself progressed. A lift's first 2 sessions, and
  * the first 2 after a layoff, re-adapt (owner rule, learn/trend): each counts as a fresh start. Working sets only, as double
  * progression reads them: warm-ups and partials are left out, and a session of only those isn't a session here; test sets count.
+ * A session pain shaped (it hurt, or the pain gate held or eased it: item 08) isn't counted among those with nothing better: its
+ * sets are lower bounds, or the app held it on purpose, so it says nothing of a plateau (c: it can only withhold a stall). It still
+ * counts as progress when it beat the sessions before it.
  */
 export function sinceProgress(entries: SetEntry[], exercise: string, today: string): { since: string; sessions: number; last: string } | null {
   const ss = sessionsFor(entries, exercise).filter((x) => x.date <= today)
@@ -99,7 +104,7 @@ export function sinceProgress(entries: SetEntry[], exercise: string, today: stri
     const before = ss.slice(Math.max(0, i - LOOKBACK), i).filter((b) => days(b.date, x.date) <= WINDOW_DAYS).map((b) => b.sets);
     if (run0[i] < REACCLIMATION || progressed(x.sets, before)) last = i;
   });
-  const n = ss.length - 1 - last;
+  const n = ss.slice(last + 1).filter((x) => !painShaped(entries, exercise, x.date)).length;
   return n ? { since: ss[last].date, sessions: n, last: ss[ss.length - 1].date } : null;
 }
 
@@ -109,6 +114,8 @@ export function sinceProgress(entries: SetEntry[], exercise: string, today: stri
  * the card never calls a lift flat on the day it moved), and that session is within 6 weeks (a plateau before a layoff is stale).
  * The trend replaces the old 3 sessions over 2 weeks with no best: on synthetic plateaus under a 3 % day-to-day noise that rule
  * missed a third outright, as chance bests keep resetting it. Holds, cardio and bodyweight-only lifts (no level yet) never stall.
+ * Sessions pain shaped (item 08) don't count toward it (see `sinceProgress`); the trend reads their pain sets as lower bounds
+ * (learn/capacity) and a held session as the reading it is.
  */
 export function stall(entries: SetEntry[], exercise: string, today: string): Stall | null {
   if (isHoldLift(exercise, entries) || isCardio(exercise)) return null;
@@ -124,11 +131,19 @@ export interface RotationContext { available?: Set<string>; include?: string[]; 
 
 /** Variations in a rotation: the lift and the two others. */
 const ROTATION = 3;
-const PAIN_DAYS = 60;
+
+/**
+ * A variation to leave out of a rotation for pain (item 08), in place of the flat 60 days: more likely than not to be worse than
+ * its region's other lifts next time (b: learn/pain's `worse` > ½, so the lockout lasts as long as his own pain history says pain
+ * lingers, and clean sessions since release it sooner), or a region it loads hurt (moderate or worse) on another lift in the last
+ * SETTLE_DAYS (a: painPlan `spillOver`). A lift never done, with no pain of its own, is never worse than its region.
+ */
+export const sore = (entries: SetEntry[], n: string, today: string): boolean =>
+  spillOver(entries, n, today) != null || painRisk(entries, n, today).worse > 0.5;
 
 /**
  * The next variation for a lift: same pattern, same bias when the gym has one (a lats-led pull to a lats-led pull, a chin-up
- * to a close-grip pulldown; else the closest muscle profile, which keeps the main muscle where the pattern can), one this gym can do, not already in the program, no pain logged on it lately. The rotation is the lift plus the two others you
+ * to a close-grip pulldown; else the closest muscle profile, which keeps the main muscle where the pattern can), one this gym can do, not already in the program, not sore (see `sore`). The rotation is the lift plus the two others you
  * trained most recently, topped up with ones you haven't (closest muscles, then the pattern's order); the next is the one of
  * those trained longest ago, never trained first. So it goes A → B → C and back to A.
  */
@@ -137,12 +152,11 @@ export function nextVariation(entries: SetEntry[], lift: string, today: string, 
   if (!pattern) return null;
   const ok = ctx.available ? new Set([...ctx.available].map(key)) : null;
   const programmed = new Set((ctx.program?.days ?? []).flatMap((d) => d.slots.map((s) => key(s.exercise))));
-  const hurt = recentPain(entries, today, PAIN_DAYS).byExercise;
   const pool: string[] = [];
   for (const n of [...VARIATIONS[pattern], ...exerciseNames(entries), ...(ctx.include ?? [])]) {
     const k = key(n);
     if (k === key(lift) || pool.some((x) => key(x) === k) || patternOf(n) !== pattern) continue;
-    if ((ok && !ok.has(k)) || programmed.has(k) || hurt.has(k)) continue;
+    if ((ok && !ok.has(k)) || programmed.has(k) || sore(entries, n, today)) continue;
     pool.push(n);
   }
   const bias = biasOf(lift).join();

@@ -142,3 +142,6 @@ export function nextRung(l: Ladder, w: number): number {
   const known = l.known.find((x) => x > w + 1e-9);
   return known != null && known < grid ? known : grid;
 }
+
+/** The heaviest loadable weight below `w`: the rung under it, or a weight this lift has logged in between. */
+export const prevRung = (l: Ladder, w: number): number => floorRung(l, w - 1e-6);

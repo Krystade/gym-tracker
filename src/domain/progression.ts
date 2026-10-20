@@ -5,8 +5,9 @@ import type { SetEntry } from './types';
 import { isHold, isHoldLift } from './care';
 import { coreBefore, logBefore } from './learn';
 import { dropsOf, type Drop } from './learn/jump';
-import { ladderOf, nextRung, type Ladder } from './learn/ladder';
+import { ladderOf, nextRung, prevRung, type Ladder } from './learn/ladder';
 import { fitRange, type RangeFit } from './learn/range';
+import { painGate, type PainGate } from './painPlan';
 
 /**
  * A first target carried over from another variation when this lift was rotated in (domain/rotation): an estimate, used until
@@ -99,12 +100,14 @@ export function estimateRir(set: SetEntry, sessionSets: SetEntry[], prior: numbe
  * own target, in order (`reps` is the lowest of them); `why`, the rule that made them, in a few words.
  */
 export interface Target {
-  kind: 'increase' | 'reps' | 'repeat' | 'maxed' | 'test' | 'carry'; weight: number; reps: number; last: SetEntry[]; text: string; done?: { total: number; sets: number };
+  kind: 'increase' | 'reps' | 'repeat' | 'maxed' | 'test' | 'carry' | 'hold' | 'ease'; weight: number; reps: number; last: SetEntry[]; text: string; done?: { total: number; sets: number };
   perSet?: number[]; why?: string;
   /** The range progression used, when the learned drop moved it off the lift's own (learn/range). */
   range?: RangeFit;
   /** For an increase: the step (lb), and the learned drop behind each set's target, when there is one. */
   step?: number; drop?: Drop;
+  /** 'hold' and 'ease': the pain behind it (item 08, painPlan). */
+  pain?: PainGate;
 }
 
 /** The default increment: an `increment` other than it was typed on the lift's page and wins over the learned ladder. */
@@ -215,6 +218,24 @@ export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSe
   const bestN = planned != null && planned > 0 && all.length > planned ? new Set([...all].sort((a, b) => (b.reps as number) - (a.reps as number)).slice(0, planned)) : null;
   const atTop = bestN ? all.filter((x) => bestN.has(x)) : all;
   const minReps = Math.min(...atTop.map((x) => x.reps as number));
+  // Item 08: pain last time (or in a region this lift loads, lately) holds the lift, or eases it a step after sharp pain (a:
+  // painPlan). Same reps as last time: a hold progresses nothing; an ease takes the load off, not the reps.
+  const gate = painGate(entries, exercise, date);
+  if (gate) {
+    const reps = atTop.map((x) => x.reps as number);
+    const perSet = planned != null && planned > reps.length ? [...reps, ...Array<number>(planned - reps.length).fill(reps.at(-1)!)] : reps;
+    // One step lighter: the smallest change the gear allows (a typed increment, else the learned ladder's rung below), so the
+    // next session says whether it was enough; a lift with no load to take off (bodyweight, a hold) is held instead (item 14).
+    const typed = st.increment !== DEFAULT_INCREMENT;
+    const down = gate.kind === 'ease' && top > 0 ? (!typed && learned.ladder ? prevRung(learned.ladder, top) : top - st.increment) : 0;
+    const kind = down > 0 ? 'ease' as const : 'hold' as const;
+    const w = kind === 'ease' ? down : top;
+    const why = gate.spill ? `${gate.region[0].toUpperCase()}${gate.region.slice(1)} hurt on ${gate.from} lately: hold for now`
+      : kind === 'ease' ? 'Sharp pain last time: one step lighter'
+      : gate.zone === 3 ? 'Sharp pain last time: hold, or go lighter'
+      : `${gate.unknown ? 'Pain' : 'Moderate pain'} last time: hold until it’s mild or gone`;
+    return { kind, weight: w, reps: Math.min(...perSet), perSet, last: last.sets, why, pain: gate, text: `${lb(w)} × ${perSet.join(' · ')}${unit ? ' s' : ''}` };
+  }
   // Up once the sets at the top weight total within 2 reps of all at the top of the range (12/12/10 at 3 × 8–12), none below its bottom.
   const total = atTop.reduce((a, x) => a + (x.reps as number), 0);
   const topped = total >= atTop.length * repMax - Math.min(2, atTop.length - 1) && minReps >= repMin; // one heavier top set gets no slack

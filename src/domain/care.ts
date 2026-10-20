@@ -36,6 +36,9 @@ const STRESS: Partial<Record<Region, RegExp>> = {
   knee: /leg extension|lunge|split squat/i,
 };
 
+/** Whether a lift loads a region: the region its name reads as, or one of the lifts that load it hard (STRESS). */
+export const loadsRegion = (exercise: string, region: Region): boolean => likelyRegion(exercise) === region || !!STRESS[region]?.test(exercise);
+
 export const HOLD_EXERCISES = new Set(['plank', 'side plank', 'bird dog', 'dead bug', 'mcgill curl-up', 'plate pinch hold']);
 export const isHold = (name: string): boolean => HOLD_EXERCISES.has(liftKey(name));
 

@@ -42,6 +42,15 @@ describe('readSets', () => {
     expect(a).toMatchObject({ flags: ['pain'], painRegion: 'elbow' });
     expect(b.flags).toEqual(['unsure']);
   });
+  it('a note that names pain only to deny it is no pain (item 08); one clause that hurts is', () => {
+    const one = (note: string) => readSets(`40x10 ${note}`, false).sets[0];
+    for (const n of ['No elbow issues today', 'Triceps burn. no elbow pain', 'didn’t hurt', "doesn't hurt at all", 'pain-free', 'without pain', 'zero pain'])
+      expect(one(n).flags, n).toEqual([]);
+    expect(one('No knee pain; minor end discomfort')).toMatchObject({ flags: ['pain'], painRegion: 'knee' });
+    expect(one('felt it in my elbow from the very start')).toMatchObject({ flags: ['pain'], painRegion: 'elbow' });
+    expect(one('no grip issues but my shoulder hurts')).toMatchObject({ flags: ['pain'], painRegion: 'shoulder' });
+    expect(one('no elbow pain, knee hurt')).toMatchObject({ flags: ['pain'], painRegion: 'knee' }); // the clause that hurt names it
+  });
   it('flags warm-ups and strips the marker from the note', () => {
     const r = readSets('(WU) 45x10 95x8 warm up 135x5', false).sets;
     expect(r.map((s) => s.flags)).toEqual([['warmup'], ['warmup'], []]);

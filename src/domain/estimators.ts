@@ -1,11 +1,13 @@
 import { addDays } from './analytics';
-import { isHoldLift, recentPain } from './care';
+import { isHoldLift } from './care';
 import { liftKey } from './ids';
 import { coreBefore, testSd } from './learn';
 import { floorRung, ladderOf, nextRung } from './learn/ladder';
 import { levelSeries, strengthOf, weightFor, type Strength } from './learn/strength';
 import { REACCLIMATION, runIndex } from './learn/trend';
 import { dayOf } from './learn/capacity';
+import { painRisk, zoneOf } from './learn/pain';
+import { painGate } from './painPlan';
 import { liftSets, type SeriesPoint } from './stats';
 import type { SetEntry } from './types';
 import { isCardio } from './cardio';
@@ -64,13 +66,19 @@ export function calibratedE1rm(entries: readonly SetEntry[], exercise: string, b
 
 /** (a) The reps a test reads the level best at: the RIR error model (04 §3: 0.5 reps, +0.3 per rep past 10) over κ + reps is least at 10. */
 export const TEST_REPS = 10;
-/** (c) A suppression only: no test with pain on the lift in the last 2 weeks (05 §3); item 08's pain response replaces it. */
-const PAIN_DAYS = 14;
+
+/**
+ * Item 08 (b): how much more uncertain a lift must be for a test to pay, given the chance p that it hurts (learn/pain). A set
+ * that hurts is pain-limited, a lower bound that reads nothing of the level (learn/capacity), so the expected variance after a
+ * test is p·u² + (1 − p)·u²σ²/(u² + σ²); it is at most half of u² only when u > σ/√(1 − 2p). p = 0 is the plain rule; at p ≥ ½
+ * (hurting the likelier outcome) no test can pay. p is for the lift's session, a floor for a set to failure.
+ */
+export const painFactor = (p: number): number => (p < 0.5 ? 1 / Math.sqrt(1 - 2 * p) : Infinity);
 
 /**
  * Item 05: a test is due when it would at least halve what the app doesn't know: the lift's uncertainty u (its level's SD on the
  * day, grown by drift and layoffs, with the systematic SD only tests fix: learn/strength) is above what one test reads the level
- * to (σ_test: learn testSd). `weight`: the loadable weight for TEST_REPS to failure; `jump`: today's target is an increase, and
+ * to (σ_test: learn testSd), raised for the chance the test hurts (painFactor). `weight`: the loadable weight for TEST_REPS to failure; `jump`: today's target is an increase, and
  * its first set at the new weight is the test (no extra set). `after`: u once the test is in (u·σ/√(u² + σ²)).
  */
 export interface TestDue { weight: number; reps: number; u: number; after: number; jump: boolean }
@@ -80,7 +88,9 @@ export function testDue(entries: readonly SetEntry[], exercise: string, today: s
   if (isCardio(exercise) || isHoldLift(exercise, entries)) return null;
   // (a) One failure set a day: sets to failure need longer recovery (Morán-Navarro 2017), so not two tests in a workout.
   if (entries.some((e) => e.date === today && e.flags.includes('test'))) return null;
-  if (recentPain(entries as SetEntry[], today, PAIN_DAYS).byExercise.has(liftKey(exercise))) return null;
+  // Item 08 (a): not while pain holds or eases the lift (moderate or worse last time, or in a region it loads within 3 days:
+  // painPlan), nor once it has hurt today.
+  if (painGate(entries, exercise, today) || zoneOf(liftSets(entries, exercise).filter((e) => e.date === today)) > 0) return null;
   // Owner rule: not in a lift's first 2 sessions, nor the first 2 after a layoff (learn/trend): today counts as one.
   const days = [...new Set(liftSets(entries, exercise).filter((e) => e.date < today && e.reps != null && !e.flags.includes('warmup')).map((e) => e.date))].sort().map(dayOf);
   if (runIndex([...days, dayOf(today)]).at(-1)! < REACCLIMATION) return null;
@@ -88,12 +98,13 @@ export function testDue(entries: readonly SetEntry[], exercise: string, today: s
   const s = core && strengthOf(core, exercise, today);
   if (!core || !s) return null;
   const sigma = testSd(core, liftKey(exercise), TEST_REPS);
-  if (!(s.u > sigma)) return null;
+  const k = painFactor(painRisk(entries, exercise, today).p);
+  if (!(s.u > sigma * k)) return null;
   const after = s.u * sigma / Math.hypot(s.u, sigma);
   // Today's increase is a test if it reads the level at least as well: the same test, without an extra set.
   if (target?.kind === 'increase' && target.weight != null && target.weight > 0) {
     const reps = Math.round(s.kappa * (s.e1rm / target.weight - 1));
-    if (reps >= 1 && s.u > testSd(core, liftKey(exercise), reps)) return { weight: target.weight, reps, u: s.u, after, jump: true };
+    if (reps >= 1 && s.u > testSd(core, liftKey(exercise), reps) * k) return { weight: target.weight, reps, u: s.u, after, jump: true };
   }
   // The loadable weight either side of the one for TEST_REPS (the learned ladder; a typed increment wins), whichever reads the
   // level more precisely at the reps it should take.

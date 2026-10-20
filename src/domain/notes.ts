@@ -21,6 +21,14 @@ const MORE_RE = /^\s*[,/]\s*(\d{1,3})(?![\d.]|\s*[x×*]|\s*(?:rir|rpe|s\b|secs?\
 const HOLD_RE = /(?<![\w.:])(?:(\d+)\s*(?:s|secs?|seconds)\b|(\d+):([0-5]\d)(?!\d))/gi;
 
 const PAIN_RE = /\b(pain|painful|hurt|hurts|hurting|discomfort|elbow)\b/i;
+// "No elbow pain", "didn't hurt", "pain-free": a clause that names pain only to deny it isn't pain (item 08).
+const NEGATED_RE = /\b(no|not|never|without|zero)\b|n['’]t\b/i;
+const PAIN_FREE_RE = /\b(pain|hurt)[- ]?free\b/i;
+/** The note's clauses that say something hurt: a pain word with no denial before it in its clause. */
+const painClauses = (note: string): string[] => note.split(/[.;,!?]|\bbut\b/i).filter((c) => {
+  const m = PAIN_RE.exec(c);
+  return !!m && !PAIN_FREE_RE.test(c) && !NEGATED_RE.test(c.slice(0, m.index));
+});
 const UNSURE_RE = /\b(unsure|idk|not sure)\b/i;
 const WARMUP_RE = /\(?\b(?:wu|warm[- ]?ups?)\b\)?/gi;
 const RIR_RE = /(\d)\s*(?:-\s*\d\s*)?rir\b|\brir\s*(\d)|@\s*(\d)(?!\d)/i;
@@ -80,9 +88,11 @@ function applyNote(s: NoteSet, raw: string): void {
   if (note.search(WARMUP_RE) >= 0) { if (!s.flags.includes('warmup')) s.flags.push('warmup'); note = tidy(note.replace(WARMUP_RE, ' ').replace(/\s+/g, ' ')); }
   const rir = RIR_RE.exec(note);
   if (rir && s.rir == null) s.rir = Number(rir[1] ?? rir[2] ?? rir[3]);
-  if (PAIN_RE.test(note) && !s.flags.includes('pain')) {
+  const hurt = painClauses(note);
+  if (hurt.length && !s.flags.includes('pain')) {
     s.flags.push('pain');
-    const region = REGION_RES.find(([re]) => re.test(note))?.[1];
+    // The region the clause that hurt names, else the note's.
+    const region = REGION_RES.find(([re]) => hurt.some((c) => re.test(c)))?.[1] ?? REGION_RES.find(([re]) => re.test(note))?.[1];
     if (region) s.painRegion = region;
   }
   if (UNSURE_RE.test(note) && !s.flags.includes('unsure')) s.flags.push('unsure');

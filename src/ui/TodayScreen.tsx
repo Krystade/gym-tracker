@@ -37,6 +37,8 @@ import { markNotSuperset, notSupersets } from '../state/notSuperset';
 import { carryOver, rotation, type Carry, type Rotation } from '../domain/rotation';
 import { applyRotation, inProgram, RotationSuggestion } from './RotationSuggestion';
 import { FriendName } from './FriendName';
+import { persistentPain } from '../domain/painPlan';
+import { PainPrompt } from './PainPrompt';
 
 export function TodayScreen({ me, who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews }: {
   /** Whose sets these are, named only when several people share the phone. */
@@ -175,9 +177,16 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     if (switched && sameExercise(switched.to, n)) {
       return <p className="undo-note rotate-undo" role="status"><span>Switched from {switched.from}.</span><button className="mini" onClick={() => void undoRotate()}>Undo</button></p>;
     }
-    if (date !== today || !programs.program || !inProgram(programs, n) || store.entries.some((e) => e.date === date && sameExercise(e.exercise, n) && isWorking(e))) return null;
-    const x = rotationOf(n);
-    return x && <RotationSuggestion owner={owner} r={x.r} carry={x.carry} known={x.known} today={today} onSwitch={() => void rotate(x.r, x.carry)} />;
+    if (date !== today || store.entries.some((e) => e.date === date && sameExercise(e.exercise, n) && isWorking(e))) return null;
+    // Likelier than not to hurt again (item 08): a swap for today's plan, when it's planned.
+    const pain = persistentPain(store.entries, n, today);
+    const planned = programs.program && plan && plannedNames(programs.program, plan).some((p) => sameExercise(p, n))
+      ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] ?? n : null;
+    const lastPain = pain ? store.entries.reduce((d, e) => (sameExercise(e.exercise, n) && e.flags.includes('pain') && e.date > d ? e.date : d), '') : '';
+    const sore = pain && <PainPrompt owner={owner} lift={n} pain={pain} lastPain={lastPain} onSwap={planned ? () => setSwapFor(planned) : undefined} />;
+    const x = programs.program && inProgram(programs, n) ? rotationOf(n) : null;
+    const rot = x && <RotationSuggestion owner={owner} r={x.r} carry={x.carry} known={x.known} today={today} onSwitch={() => void rotate(x.r, x.carry)} />;
+    return sore || rot ? <>{sore}{rot}</> : null;
   };
   if (picking) return <ExercisePicker recent={exerciseNames(store.entries)} gym={gyms.active} onCancel={() => setPicking(false)}
     onPick={(n) => { goTo(n); setPicking(false); }} />;

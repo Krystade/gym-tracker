@@ -974,6 +974,14 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 .target-suggest-changes li span:nth-child(2) { color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .target-suggest-changes li span:last-child { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
+/* Pain (item 08): the same box as a suggestion, its rule in the pain colour. In the session, sharp pain's stop line on the card;
+   on Today, a lift likelier than not to hurt again. */
+.target-suggest.pain-suggest, .pain-stop { box-shadow: inset 3px 0 var(--pain); }
+.pain-stop { margin: 8px 0 12px; padding: 12px 16px; border-radius: var(--r-group); background: var(--surface-2); }
+.pain-stop p { margin: 0; }
+.pain-stop .left-row { margin: 10px 0 0; }
+.care-physio { margin: 0 0 12px; }
+
 /* Supersets (noticed from the log, src/domain/superset.ts): an amber line under the card's head, with its swap glyph, and a
    quiet "Not a superset" at its end; History marks the grouped lifts the same way, smaller. */
 .superset-line { display: flex; align-items: center; gap: 6px; margin: -4px 0 4px; color: var(--text-2); font-size: var(--fs-sm); font-weight: 500; }

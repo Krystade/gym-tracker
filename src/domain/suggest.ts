@@ -74,6 +74,8 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
     : t.kind === 'maxed' ? `You held about ${st.repMax}${unit} a set: add weight, or move to a harder variation.`
     : t.kind === 'test' ? `Your test set puts ${st.repMax} reps at about ${t.weight} lb, so that’s the working weight now.`
     : t.kind === 'carry' ? `An estimate carried over from your ${st.seed?.from ?? 'last variation'}, on the light side: adjust after the first set.`
+    : t.kind === 'hold' ? `${t.why}. Same weight and reps as last time.`
+    : t.kind === 'ease' ? `${t.why}, the same reps. Once it’s mild or gone, it builds back up from here.`
     : t.perSet ? `Same weight; each set aims at last time’s same set. ${t.why}.`
       + (t.range?.how === 'top' ? ` Your increases cost about ${Math.round(Math.max(0, t.drop?.mean ?? 0) * 2) / 2} reps here, so ${t.range.repMin}–${t.range.repMax} before the next weight.` : '')
     : `Same weight; beat last time with ${t.reps}${unit}+ on every set.`;

@@ -8,7 +8,8 @@ import { prToast, records } from '../domain/records';
 import { fmtDay, fmtSet, fmtWeight, plural } from '../domain/format';
 import type { Flag, SetEntry } from '../domain/types';
 import { SetForm, type SetFormValue } from './SetForm';
-import { isHoldLift } from '../domain/care';
+import { isHoldLift, loadsRegion } from '../domain/care';
+import { painToday } from '../domain/painPlan';
 import { SetRowContent } from './SetRow';
 import { suggest } from '../domain/suggest';
 import { Icon } from './icons';
@@ -139,6 +140,10 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     return true;
   }
 
+  // Sharp pain on this lift today (over 5/10, past the acceptable zone: item 08, a): stop it for today; the plan's lifts left
+  // that don't load that region are offered.
+  const sharp = useMemo(() => { const p = painToday(store.entries, exercise, date); return p?.zone === 3 ? p : null; }, [store.entries, exercise, date]);
+  const away = sharp ? left.filter((ex) => !sameExercise(ex, exercise) && !loadsRegion(ex, sharp.region)) : [];
   const complete = plannedSets != null && plannedSets > 0 && working.length >= plannedSets;
   // The plan sent you here: open a folded card, but a card that isn't finished has nothing to open, so don't pin it open.
   const [usedReq, setUsedReq] = useState<object | null>(null);
@@ -205,7 +210,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       {aside}
       {last && <p className="muted card-last">Last ({fmtDay(last.date, realToday)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
       {swappedFrom && <p className="muted card-last">For {swappedFrom}{from && <> · last {from.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</>}</p>}
-      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.kind === 'test' && 'From your test: '}{sug.kind === 'carry' && 'Estimate: '}{sug.perSet ? <>{sug.perSet.join(' · ')}{sug.unit}</> : <>{sug.sets} × {sug.reps}{sug.unit}{sug.kind !== 'maxed' && '+'}</>}{fmtLoad(sug.weight)}{fmtPerSide(sug.weight ?? 0, exercise) && <span className="target-warm muted">{fmtPerSide(sug.weight ?? 0, exercise)}</span>}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}{sug.why && <span className="target-warm muted target-why">{sug.why}</span>}</span></p>}
+      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.kind === 'test' && 'From your test: '}{sug.kind === 'carry' && 'Estimate: '}{sug.kind === 'hold' && 'Hold: '}{sug.kind === 'ease' && 'Lighter: '}{sug.perSet ? <>{sug.perSet.join(' · ')}{sug.unit}</> : <>{sug.sets} × {sug.reps}{sug.unit}{sug.kind !== 'maxed' && '+'}</>}{fmtLoad(sug.weight)}{fmtPerSide(sug.weight ?? 0, exercise) && <span className="target-warm muted">{fmtPerSide(sug.weight ?? 0, exercise)}</span>}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}{sug.why && <span className="target-warm muted target-why">{sug.why}</span>}</span></p>}
       <ol className="sets" aria-label={`Sets for ${exercise}`}>
         {today.map((s, i) => (
           <li key={s.id}>
@@ -217,6 +222,17 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       </ol>
       {gone && <p className="undo-note" role="status">Set {gone.no} deleted. <button className="mini" onClick={async () => { if (await store.restore(gone.set)) setGone(null); }}>Undo</button></p>}
       {pr && <p role="status" className="pr">{pr}</p>}
+      {sharp && !editing && (
+        <div className="pain-stop" role="status">
+          <p><b>Sharp pain: stop {exercise} for today.</b>{working.some((x) => x.weight > 0) && ' Next time starts a step lighter.'}</p>
+          {onGo && away.length > 0 && (
+            <div className="chips left-row" role="group" aria-label={`Left without your ${sharp.region}`}>
+              <span className="chip-label">Left</span>
+              {away.map((ex) => <button key={ex} type="button" className="chip" onClick={() => onGo(ex)}>{ex}</button>)}
+            </div>
+          )}
+        </div>
+      )}
       {editing ? (
         <div ref={editBox} className="edit-box">
         <p className="edit-title">Editing set {today.findIndex((x) => x.id === editing.id) + 1}</p>
