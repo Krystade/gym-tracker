@@ -122,7 +122,7 @@ test('two lifts alternated become a pair: a switch to the other card, the full r
   await expect(rest).toContainText('1:55');
   // Its “?” now explains the full rest.
   await rest.getByRole('button', { name: 'Why this rest is 2:00' }).click();
-  await expect(why('rest')).toHaveText(['Basedefault for an isolation lift2:00']);
+  await expect(why('rest')).toHaveText(['Research defaultsmall lift2:00']);
   await page.keyboard.press('Escape');
   await expect(lines).toHaveCount(0);
   // Alternating on: plain rests from here.

@@ -44,7 +44,7 @@ export const adjustRest = (ms: number) => {
   const until = ms > 0 ? Math.max(r.until, now) + ms : Math.max(now, r.until + ms);
   // What a tap moved the rest by: +30 s as asked (from now, once it's done), −30 s only as far as now.
   setRest({ ...r, until, total: until - start, tapped: (r.tapped ?? 0) + (ms > 0 ? ms : until - r.until) });
-  r.keep?.(Math.max(30, Math.round((until - start) / 1000))); // at least 30 s, like a learned rest
+  r.keep?.(Math.max(30, Math.round((until - start) / 1000))); // at least 30 s
 };
 /**
  * Why the rest is its length, for the bar's "?": its lines, then what ±30 s moved it by (kept for the lift, where it is), and

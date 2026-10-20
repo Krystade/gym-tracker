@@ -118,8 +118,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     if (at === undefined && date === realToday) {
       const label = `${exercise} · set ${working.length + (isWorking(e) ? 1 : 0) + 1} next`;
       const switchTo = switchAfter?.([...store.entries.filter((x) => x.id !== e.id), e], e.id);
-      // The rest for this set: the lift's base, its effort and its load (domain/timing restFor).
-      const full = restFor(pace, e, { kept: st.rest, prior, range: st });
+      // The rest for this set: the lift's base and its effort (domain/timing restFor).
+      const full = restFor(e, { kept: st.rest });
       // ±30 s on the timer moves the lift's base rest by as much, from now on; a warm-up's rest moves nothing.
       const keep = full.why.warmup ? undefined : (chosen: number) => {
         const s = settingsNow.current;

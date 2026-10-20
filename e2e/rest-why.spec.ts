@@ -61,7 +61,7 @@ async function addCard(page: Page, name: string): Promise<Locator> {
 }
 
 const HEADER = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source';
-// Synthetic: last week's curls, 40 × 12 (an e1RM of 56), imported without times.
+// Synthetic: last week's curls, 40 × 12 (an e1RM of 56), imported without times: today's 50 is a heavy set, and rests no longer for it.
 const LAST_WEEK = [1, 2, 3].map((n) => `2026-10-09,Cable Curl,,${n},40,12,,,,sample`);
 
 test('the “?” on the rest bar says why the rest is its length, above the bar, and goes on an outside tap or × without the timer', async ({ page }) => {
@@ -74,7 +74,7 @@ test('the “?” on the rest bar says why the rest is its length, above the bar
   await goto(page, 'Today');
   const curl = await addCard(page, 'Cable Curl');
 
-  // 50 × 12 at RIR 0: 89 % of the e1RM against a usual 71 %. 2:00, +30 s for the effort, +30 s for the load.
+  // 50 × 12 at RIR 0, 89 % of the e1RM: the research default's 2:00 and +30 s for the effort; nothing for the load.
   await curl.getByRole('textbox', { name: 'Weight' }).fill('50');
   await curl.getByRole('textbox', { name: 'Reps' }).fill('12');
   await curl.getByRole('group', { name: 'RIR' }).getByRole('button', { name: '0' }).click();
@@ -82,31 +82,30 @@ test('the “?” on the rest bar says why the rest is its length, above the bar
   await curl.getByRole('button', { name: /^Add set/ }).click();
   const timer = page.getByRole('timer', { name: 'Rest' }), time = timer.locator('.rest-main b');
   const why = page.getByRole('dialog', { name: 'Why this rest' });
-  await expect(time).toHaveText('3:00');
+  await expect(time).toHaveText('2:30');
   await fits(page, timer, why);
   await page.screenshot({ path: `${SHOTS}/1-bar-375.png` });
 
   const q = timer.getByRole('button', { name: /^Why this rest is / });
-  await expect(q).toHaveAccessibleName('Why this rest is 3:00');
+  await expect(q).toHaveAccessibleName('Why this rest is 2:30');
   await expect(q).toHaveAttribute('aria-expanded', 'false');
   await q.click();
   await expect(q).toHaveAttribute('aria-expanded', 'true');
   await expect(why.locator('li')).toHaveText([
-    'Basedefault for an isolation lift2:00',
+    'Research defaultsmall lift2:00',
     'RIR 0+30 s',
-    'Heavy set89 % of e1RM, usual 71 %+30 s',
-    'Rest3:00',
+    'Rest2:30',
   ]);
-  await expect(why.getByText('Why 3:00')).toBeVisible();
+  await expect(why.getByText('Why 2:30')).toBeVisible();
   await fits(page, timer, why);
   await page.screenshot({ path: `${SHOTS}/2-why-375.png` });
 
   // +30 s leaves it up and adds a line: kept for the curl from now on.
   await timer.getByRole('button', { name: '+30 s' }).click();
-  await expect(time).toHaveText('3:30');
-  await expect(why.locator('li').nth(3)).toHaveText('Your ±30 skept for this lift+30 s');
-  await expect(why.locator('li').last()).toHaveText('Rest3:30');
-  await expect(timer.getByRole('button', { name: 'Why this rest is 3:30' })).toBeVisible();
+  await expect(time).toHaveText('3:00');
+  await expect(why.locator('li').nth(2)).toHaveText('Your ±30 skept for this lift+30 s');
+  await expect(why.locator('li').last()).toHaveText('Rest3:00');
+  await expect(timer.getByRole('button', { name: 'Why this rest is 3:00' })).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/3-tapped-375.png` });
 
   // A tap elsewhere puts it away; the timer runs on.
@@ -122,7 +121,7 @@ test('the “?” on the rest bar says why the rest is its length, above the bar
   await page.keyboard.press('Escape');
   await expect(why).toHaveCount(0);
   await page.clock.fastForward(10_000);
-  await expect(time).toHaveText('3:20');
+  await expect(time).toHaveText('2:50');
 
   // A 320px phone: the bar and the popover still fit.
   await page.setViewportSize({ width: 320, height: 640 });
@@ -131,8 +130,20 @@ test('the “?” on the rest bar says why the rest is its length, above the bar
   await page.screenshot({ path: `${SHOTS}/4-why-320.png` });
   await page.keyboard.press('Escape');
 
-  // A warm-up: its fixed rest, one line.
+  // The next set starts from his setting, the 2:30 the tap kept, and says what research suggests.
   await page.setViewportSize({ width: 375, height: 812 });
+  const rir2 = curl.getByRole('group', { name: 'RIR' }).getByRole('button', { name: '2' });
+  await expect(rir2).toHaveAttribute('aria-pressed', 'false');
+  await rir2.click(); // RIR 2 moves nothing
+  await curl.getByRole('button', { name: /^Add set/ }).click();
+  await expect(time).toHaveText('2:30');
+  await timer.getByRole('button', { name: 'Why this rest is 2:30' }).click();
+  await expect(why.locator('li')).toHaveText(['Your settingResearch suggests 2:002:30']);
+  await fits(page, timer, why);
+  await page.screenshot({ path: `${SHOTS}/5-setting-375.png` });
+  await page.keyboard.press('Escape');
+
+  // A warm-up: its fixed rest, one line.
   await curl.getByRole('textbox', { name: 'Weight' }).fill('20');
   await curl.getByRole('button', { name: /^Details/ }).click();
   await curl.getByRole('group', { name: 'Flags' }).getByRole('button', { name: 'Warm-up' }).click();
@@ -141,7 +152,7 @@ test('the “?” on the rest bar says why the rest is its length, above the bar
   await timer.getByRole('button', { name: 'Why this rest is 1:00' }).click();
   await expect(why.locator('li')).toHaveText(['Warm-upisolation lift1:00']);
   await fits(page, timer, why);
-  await page.screenshot({ path: `${SHOTS}/5-warmup-375.png` });
+  await page.screenshot({ path: `${SHOTS}/6-warmup-375.png` });
   // × on the bar puts the timer away, and the popover with it.
   await timer.getByRole('button', { name: 'Close rest timer' }).click();
   await expect(timer).toHaveCount(0);

@@ -74,7 +74,7 @@ describe('±30 s (owner, 2026-10-19): the rest as set is kept for the lift', () 
 
 describe('why the rest is its length (the bar’s “?”)', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-16T18:30:00')); startRest(0, 'x'); restPush.mockClear(); });
-  const base = { what: 'Base', s: 120, note: 'default for an isolation lift' }, sw = { what: 'Superset switch', s: 20, note: 'default until 3 switches are timed' };
+  const base = { what: 'Research default', s: 120, note: 'small lift' }, sw = { what: 'Superset switch', s: 20, note: 'default until 3 switches are timed' };
 
   it('carries the switch’s lines and the full rest’s, and adds the ±30 s taps as a line of their own', () => {
     startRest(20, 'cable pushdown', 'Switch to Cable Pushdown', { seconds: 120, card: 'cable curl', label: 'Cable Curl · set 3 next', why: [base] }, vi.fn(), [sw]);
