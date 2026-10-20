@@ -60,6 +60,26 @@ async function installed(browser: Browser) {
 }
 const loads = (page: Page) => page.evaluate(() => Number(sessionStorage.getItem('loads'))).catch(() => null);
 const tookOver = (page: Page) => page.evaluate(() => sessionStorage.getItem('took-over') === '1').catch(() => null);
+/**
+ * Lets the deploy take over as Chromium does with no debugger attached. A new worker that skips waiting takes over once
+ * Chromium has stopped the old one, which it does as soon as that one is idle. But coming to the front also starts the
+ * sync and the thread's reload, and if one of their requests lands just as the old worker stops, it starts again to
+ * handle it. Playwright's debugger is attached to every worker, and a worker under a debugger is never stopped for being
+ * idle, so the new one waits behind it for as long as the test runs. So whenever the new deploy is waiting on an old
+ * worker that is running, this stops the old one, as its idle timer would have.
+ */
+async function stopsOldWorker(page: Page) {
+  type Version = { versionId: string; status: string; runningStatus: string };
+  const cdp = await page.context().newCDPSession(page);
+  const versions = new Map<string, Version>();
+  cdp.on('ServiceWorker.workerVersionUpdated', ({ versions: changed }: { versions: Version[] }) => {
+    for (const v of changed) versions.set(v.versionId, v);
+    const all = [...versions.values()];
+    const old = all.find((v) => v.status === 'activated' && v.runningStatus === 'running');
+    if (old && all.some((v) => v.status === 'installed')) void cdp.send('ServiceWorker.stopWorker', { versionId: old.versionId }).catch(() => {});
+  });
+  await cdp.send('ServiceWorker.enable');
+}
 /** The app goes to the background or comes back to the front, as iOS tells it (headless pages are always visible). */
 const visibility = (page: Page, state: 'hidden' | 'visible') => page.evaluate((s) => {
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => s });
@@ -91,6 +111,7 @@ test('a deploy taking over just after a tap keeps the thread it opened, and swit
   await expect(sheet).toBeVisible();
   const before = await loads(page);
   // Back at the front, the app looks for a deploy (main.tsx), finds one, and it takes over.
+  await stopsOldWorker(page);
   await visibility(page, 'visible');
   await expect.poll(() => tookOver(page), { timeout: 15_000 }).toBe(true);
   // Without a tap the reload follows at once (the next test); a second is plenty to see one.
