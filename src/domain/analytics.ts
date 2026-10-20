@@ -19,7 +19,8 @@ export const weekStart = (d: string): string => {
 };
 
 const zero = (): Record<Muscle, number> => Object.fromEntries(MUSCLES.map((m) => [m, 0])) as Record<Muscle, number>;
-const SESSION_CAP = 11;
+/** (a) Fractional sets of one muscle a session counts: past about 11, more sets in the session stop adding detectable growth (Remmert et al., SportRxiv 537). */
+export const SESSION_CAP = 11;
 
 export function weeklyMuscleSets(entries: SetEntry[], week: string): { sets: Record<Muscle, number>; unmapped: string[] } {
   const end = addDays(week, 7);

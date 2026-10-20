@@ -984,6 +984,11 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 /* Pain (item 08): the same box as a suggestion, its rule in the pain colour. In the session, sharp pain's stop line on the card;
    on Today, a lift likelier than not to hurt again. */
 .target-suggest.pain-suggest, .pain-stop { box-shadow: inset 3px 0 var(--pain); }
+/* Item 07: a muscle's next step; a held one's reason on its own line under it. */
+.volume-steps li small { grid-column: 1 / -1; margin-top: -6px; color: var(--muted); font-size: var(--fs-xs); }
+.volume-steps li span:nth-child(3) { text-align: right; white-space: nowrap; }
+.volume-steps li.hold span:nth-child(3) { color: var(--muted); }
+.volume-steps p.small { margin: 0; }
 .pain-stop { margin: 8px 0 12px; padding: 12px 16px; border-radius: var(--r-group); background: var(--surface-2); }
 .pain-stop p { margin: 0; }
 .pain-stop .left-row { margin: 10px 0 0; }

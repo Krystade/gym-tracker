@@ -30,6 +30,11 @@ export interface Pooled {
   lift(key: string): Posterior;
   /** Its family's value: person + shared part, without the lift's own deviation or data. */
   family(key: string): Posterior;
+  /**
+   * A weighted mean of lifts' values, Σ w·θ / Σ w (e.g. a muscle's, its lifts weighted by their share of its sets): the lifts'
+   * shared person and family parts counted once, not as if independent. `prior`: its variance before the data (for a test of 0).
+   */
+  combo(ws: readonly { key: string; w: number }[]): Posterior & { prior: number };
   n: number;
 }
 
@@ -106,8 +111,18 @@ export function pool(items: readonly PoolItem[], sim: (a: string, b: string) => 
     return c;
   };
   const person = post(new Float64Array(n).fill(sP2), sP2);
+  const combo = (ws: readonly { key: string; w: number }[]) => {
+    const total = ws.reduce((a, x) => a + x.w, 0);
+    const u = ws.filter((x) => x.w > 0).map((x) => ({ key: x.key, w: x.w / total }));
+    // Cov(Σ u·θ, e_i) = Σ u·Cov(θ_l, θ_i); Var(Σ u·θ) = Σ Σ u·u'·(sP² + tF²·K + tL²·[same lift]).
+    const c = new Float64Array(n);
+    for (const x of u) { const r = row(x.key, true); for (let i = 0; i < n; i++) c[i] += x.w * r[i]; }
+    let prior0 = 0;
+    for (const a of u) for (const b of u) prior0 += a.w * b.w * (sP2 + (a.key === b.key ? tF2 + tL2 : tF2 * Math.max(0, sim(a.key, b.key))));
+    return { ...post(c, prior0), prior: prior0 };
+  };
   return {
-    person, tF2, tL2, n,
+    person, tF2, tL2, n, combo,
     lift: (key) => post(row(key, true), sP2 + tF2 + tL2),
     family: (key) => post(row(key, false), sP2 + tF2),
   };

@@ -50,7 +50,7 @@ const SHIFT_PRIOR = { sd: READY, k: 2 } as const;
  * load; Vann 2021; Coleman 2024, even a week off cost no muscle) and a missed one little too (no study shows a deload helps,
  * Bell 2023 Delphi; his breaks unload him anyway). Both about as cheap: suggest at even odds.
  */
-const P_STAR = 0.5;
+export const P_STAR = 0.5;
 /** (a) Bell 2025 (SCJ), moderate recovery need: volume down 40–60 % (half the sets), load down about 10 % of RM, or 1–3 RIR further. */
 export const LIGHT = { volume: 0.5, load: 0.1, rir: 3 } as const;
 
@@ -178,6 +178,16 @@ export interface Systemic {
 const npdf = (x: number, v: number) => Math.exp(-0.5 * x * x / v) / Math.sqrt(2 * Math.PI * v);
 
 /**
+ * His energy (b) from `window` to `today` (the median logged) against his usual (the median before `window`): low when below
+ * (a: Saw 2016, subjective well-being tracks load). Null with none of either: a missing baseline is never low.
+ */
+export function energyOf(body: readonly BodyDay[], window: string, today: string): Systemic['energy'] {
+  const recent: number[] = [], usual: number[] = [];
+  for (const d of body) if (d.energy != null && d.date <= today) (d.date >= window ? recent : usual).push(d.energy);
+  return recent.length && usual.length ? { recent: median(recent), usual: median(usual), low: median(recent) < median(usual) } : null;
+}
+
+/**
  * Whether his performance is down across lifts on `today` (see the header), from the core fitted to the days before it and his
  * energy (`body`); `tapped`: a light week he started on this phone. Null with no training before today.
  */
@@ -213,9 +223,7 @@ function systemicOf(entries: readonly SetEntry[], body: readonly BodyDay[], toda
   const pShift = Number.isFinite(bf) ? bf / (1 + bf) : 1;
   const p = pShift * normCdf(-m / sd);
   const window = shifts.reduce((a, x) => (x.from < a ? x.from : a), shifts[0].from);
-  const recent: number[] = [], usual: number[] = [];
-  for (const d of body) if (d.energy != null && d.date <= today) (d.date >= window ? recent : usual).push(d.energy);
-  const energy = recent.length && usual.length ? { recent: median(recent), usual: median(usual), low: median(recent) < median(usual) } : null;
+  const energy = energyOf(body, window, today);
   const pain = [...new Set(entries.filter((e) => e.flags.includes('pain') && e.date >= window && e.date < today).map((e) => e.painRegion ?? likelyRegion(e.exercise)))].sort();
   const second = !!energy?.low || pain.length >= 2;
   const verdict = p <= P_STAR ? 'steady' : second ? 'deload' : 'alone';

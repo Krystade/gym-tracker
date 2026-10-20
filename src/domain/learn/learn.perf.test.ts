@@ -5,6 +5,8 @@ import { learn } from './index';
 import { painFit } from './pain';
 import { DELTA, kneeAfter, restDelta } from './rest';
 import { systemic } from './deload';
+import { volumeAdvice } from './volume';
+import { defaultProfile } from '../profile';
 import { paceFit, sessionLengths } from './session';
 import { paceLog, PACE_TRUTH } from './sessionSim.sample';
 
@@ -158,4 +160,30 @@ it('the deload check stays cheap as today’s sets are logged', () => {
   }
   times.sort((a, b) => a - b);
   expect(times[0], `per set (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(10);
+}, 120000);
+
+// Item 07's steps (learn/volume) on Stats, after a set is logged: 06's check, three weeks' muscle counts, the pooled per-muscle
+// shift, and item 08's pain risk for each muscle below its range (a refit of the pain fit per new log array, shared with Today's
+// cards). 5 years of training, every muscle priority 1 at 20–24 so all are below and asked; desktop ~3 ms a set; gated at 15 ms.
+it('the volume steps stay cheap after a set is logged', () => {
+  const { entries } = simulate(5, { sessions: 1000 });
+  const date = new Date(Date.parse(entries.reduce((d, e) => (e.date > d ? e.date : d), '')) + 2 * 864e5).toISOString().slice(0, 10);
+  const log = [...entries];
+  const p = defaultProfile();
+  const profile = { ...p, tiers: Object.fromEntries(Object.keys(p.tiers).map((m) => [m, 1])) as typeof p.tiers, targets: { ...p.targets, 1: [20, 24] as [number, number] } };
+  let n = 0;
+  const add = (): SetEntry[] => { n++; log.push({ ...log[0], id: `vol${n}`, date, seq: 1e7 + n, setNo: n }); return [...log]; };
+  volumeAdvice(add(), [], profile, date);
+  const times: number[] = [];
+  let asked = 0;
+  for (let k = 0; k < 9; k++) {
+    const next = add();
+    const t = performance.now();
+    const a = volumeAdvice(next, [], profile, date)!;
+    times.push(performance.now() - t);
+    asked = a.muscles.filter((x) => x.kind === 'raise' || x.kind === 'hold').length;
+  }
+  times.sort((a, b) => a - b);
+  expect(asked).toBeGreaterThan(3);
+  expect(times[0], `per set (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(15);
 }, 120000);

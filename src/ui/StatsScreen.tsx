@@ -19,6 +19,7 @@ import type { PhotosStore } from '../state/usePhotos';
 import { PhotosCard } from './PhotosScreen';
 import { LastWeekCard } from './WeekDigest';
 import { GoalSuggestion, PrioritySuggestion } from './TargetSuggestions';
+import { VolumeSteps } from './VolumeSteps';
 import type { SetEntry } from '../domain/types';
 import { activeProfileDb } from '../db/db';
 import { Input } from './Field';
@@ -125,6 +126,7 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
         <p className="muted small">Fractional sets this week (direct 1, indirect ½; a chin-up’s biceps ¾), against each priority’s target range (outlined). “On pace” is short of the target but keeping up with the week so far.</p>
         <MuscleBars sets={muscle.sets} profile={p} pace={weekPace(today)} />
         {muscle.unmapped.length > 0 && <p className="muted small">Not counted (unknown muscles): {muscle.unmapped.join(', ')}</p>}
+        {!readOnly && <VolumeSteps entries={store.entries} body={body.days} profile={p} today={today} />}
         <ChartTable caption="Fractional sets per muscle" head={['Muscle', 'This week / last week']}
           rows={MUSCLES.map((m) => [m, `${fmt(muscle.sets[m])} / ${fmt(lastWeek.sets[m])}`])} />
       </section>

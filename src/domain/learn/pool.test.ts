@@ -62,3 +62,39 @@ describe('learn/pool', () => {
     expect(p.lift('any').sd).toBeCloseTo(Math.sqrt(4 + 9), 6);
   });
 });
+
+describe('learn/pool combo: a weighted mean of lifts, their shared parts counted once', () => {
+  /** Solves A x = b (small, dense, Gaussian elimination with partial pivoting). */
+  const solve = (A: number[][], b: number[]) => {
+    const n = b.length, M = A.map((r, i) => [...r, b[i]]);
+    for (let c = 0; c < n; c++) {
+      const p = M.reduce((best, r, i) => (i >= c && Math.abs(r[c]) > Math.abs(M[best][c]) ? i : best), c);
+      [M[c], M[p]] = [M[p], M[c]];
+      for (let i = c + 1; i < n; i++) { const f = M[i][c] / M[c][c]; for (let j = c; j <= n; j++) M[i][j] -= f * M[c][j]; }
+    }
+    const x = Array(n).fill(0);
+    for (let i = n - 1; i >= 0; i--) { let s = M[i][n]; for (let j = i + 1; j < n; j++) s -= M[i][j] * x[j]; x[i] = s / M[i][i]; }
+    return x;
+  };
+  it('equals the brute-force Gaussian posterior of Σ w·θ / Σ w (the joint over every lift), and a single lift is lift()', () => {
+    const { items, sim } = world(7, { tF: 0.2, tL: 0.1, n: 6 });
+    const prior = { mean: 1, personSd: 0.2, liftSd: 0.3 };
+    const p = pool(items, sim, prior);
+    const keys = items.map((x) => x.key), n = keys.length;
+    const C = keys.map((a) => keys.map((b) => prior.personSd ** 2 + p.tF2 * (a === b ? 1 : sim(a, b)) + (a === b ? p.tL2 : 0)));
+    const S = C.map((r, i) => r.map((c, j) => c + (i === j ? items[i].v : 0)));
+    const w = [3, 0, 1, 0, 0, 2], tot = 6;
+    const cw = keys.map((_, i) => C.reduce((a, r, l) => a + (w[l] / tot) * r[i], 0)); // Cov(Σ u θ, e_i)
+    const mean = prior.mean + solve(S, items.map((x) => x.est - prior.mean)).reduce((a, z, i) => a + z * cw[i], 0);
+    const pv = w.reduce((a, wl, l) => a + w.reduce((b, wk, k) => b + (wl / tot) * (wk / tot) * C[l][k], 0), 0);
+    const v = pv - solve(S, cw).reduce((a, z, i) => a + z * cw[i], 0);
+    const c = p.combo(keys.map((key, i) => ({ key, w: w[i] })));
+    expect(c.mean).toBeCloseTo(mean, 10);
+    expect(c.sd).toBeCloseTo(Math.sqrt(v), 10);
+    expect(c.prior).toBeCloseTo(pv, 12);
+    expect(n).toBe(6);
+    const one = p.combo([{ key: 'l2', w: 5 }]);
+    expect(one.mean).toBeCloseTo(p.lift('l2').mean, 12);
+    expect(one.sd).toBeCloseTo(p.lift('l2').sd, 12);
+  });
+});
