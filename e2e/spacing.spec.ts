@@ -7,7 +7,8 @@ const FX = (f: string) => path.join(import.meta.dirname, 'fixtures', f);
 
 /** Cards whose content sits further from the top edge than the bottom (or the reverse) by more than 2px. */
 const unevenCards = (page: Page) => page.evaluate(() => [...document.querySelectorAll<HTMLElement>('main .card')].flatMap((c) => {
-  const kids = [...c.children].filter((k) => { const r = k.getBoundingClientRect(); return r.height > 0 && getComputedStyle(k).position !== 'absolute'; });
+  // checkVisibility: a closed <details>' content still has a box in WebKit (Lift settings, IA A8) though nothing of it shows.
+  const kids = [...c.children].filter((k) => { const r = k.getBoundingClientRect(); return r.height > 0 && k.checkVisibility() && getComputedStyle(k).position !== 'absolute'; });
   if (!kids.length || c.classList.contains('folded')) return [];
   const r = c.getBoundingClientRect(), cs = getComputedStyle(c);
   const top = kids[0].getBoundingClientRect().top - r.top - parseFloat(cs.borderTopWidth);
