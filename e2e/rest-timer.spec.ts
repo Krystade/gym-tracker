@@ -151,7 +151,7 @@ test('the rest bar fits a 375 px phone: time, words, −30 s, +30 s and ×, ever
 });
 
 // Owner, 2026-10-20: the last of 4 planned Cable Pushdown sets started a rest that said "set 5 next". A planned lift's last set
-// names the plan's next lift instead; the last set of the day's plan names no further set.
+// names the plan's next lift instead; the last set of the day's plan starts no rest (e2e/finish).
 test('the last planned set of a lift names the plan’s next lift, never a set past the plan', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-16T18:00:00') });
   await page.goto('/');
@@ -187,8 +187,9 @@ test('the last planned set of a lift names the plan’s next lift, never a set p
     }
     // The last planned set: no "Set n+1 next", and what comes next instead.
     if (k === 0) { await expect(timer.locator('.rest-next')).toHaveText(`Next ${names[1]}`); await page.screenshot({ path: 'test-results/rest-next-lift.png' }); }
-    else { await expect(sub).toContainText('Plan done'); await expect(timer.locator('.rest-next')).toHaveCount(0); }
-    await expect(timer).not.toContainText(`Set ${sets + 1} next`);
+    // The plan's last set: no rest at all (e2e/finish), so nothing to say a set comes next.
+    else { await expect(page.getByRole('group', { name: 'Plan done' })).toBeVisible(); await expect(timer).toHaveCount(0); }
+    await expect(page.locator('.rest-timer')).not.toContainText(`Set ${sets + 1} next`);
   }
   await page.screenshot({ path: 'test-results/rest-plan-done.png' });
 });
