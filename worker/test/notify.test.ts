@@ -98,7 +98,7 @@ describe('POST /notify: friend activity', () => {
     expect(world.reads.every((r) => r.uid === a)).toBe(true); // every read was as the sender
   });
 
-  it('a gym: only one the sender put there, new, with its name cut to 40 characters', async () => {
+  it('a gym: only one the sender put there, new, with its name cut at a word to 40 characters', async () => {
     const { world, a, b, net, read } = await pair({ friends: true });
     const name = `Planet Fitness 🏋️ Downtown and the long annex by the river`;
     world.put(`users/${b}/gymInbox/g1`, { from: a, fromName: 'liar', gym: { name, equipment: [] }, sent: 1 });
@@ -111,7 +111,7 @@ describe('POST /notify: friend activity', () => {
     expect((await call(a, 'POST', '/notify', { kind: 'gym', to: b, id: 'g1' })).status).toBe(200);
     const note = (await read()).notification;
     expect(note).toMatchObject({ title: 'Gym shared', data: { kind: 'gym', route: `friend.${a}` } });
-    expect(note.body).toBe('alice sent you a gym: Planet Fitness 🏋️ Downtown and the long a');
+    expect(note.body).toBe('alice sent you a gym: Planet Fitness 🏋️ Downtown and the long…');
   });
 
   it('a replayed claim sends nothing, even after the minute\'s hold is over', async () => {

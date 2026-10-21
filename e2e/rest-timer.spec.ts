@@ -186,7 +186,7 @@ test('the last planned set of a lift names the plan’s next lift, never a set p
       }
     }
     // The last planned set: no "Set n+1 next", and what comes next instead.
-    if (k === 0) await expect(timer.locator('.rest-next')).toHaveText(`Next ${names[1]}`);
+    if (k === 0) { await expect(timer.locator('.rest-next')).toHaveText(`Next ${names[1]}`); await page.screenshot({ path: 'test-results/rest-next-lift.png' }); }
     else { await expect(sub).toContainText('Plan done'); await expect(timer.locator('.rest-next')).toHaveCount(0); }
     await expect(timer).not.toContainText(`Set ${sets + 1} next`);
   }

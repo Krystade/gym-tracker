@@ -103,7 +103,7 @@ describe('the pain question, sent', () => {
     expect(Object.fromEntries(p.headers)).toMatchObject({ topic: 'pain', urgency: 'normal', ttl: String(8 * 3600) });
     const body = await phone.read(p.body);
     expect(body.notification).toMatchObject({
-      title: 'How’s your elbow this morning?', body: 'After Cable Pushdown yesterday · settled, still sore or worse?',
+      title: 'How’s your elbow today?', body: 'After Cable Pushdown yesterday · settled, still sore or worse?',
       navigate: 'https://krystade.github.io/gym-tracker/#open=pain', data: { kind: 'pain', route: 'pain' },
     });
     expect(JSON.stringify(body)).not.toMatch(/severity|note/i);
@@ -202,7 +202,7 @@ describe('property: the box never asks without pain the day before, and never tw
       const days = sends.map((x) => localDate(tz, x.at));
       for (const d of days) expect(painDays.has(addDays(d, -1)), `seed ${seed}: sent on ${d}`).toBe(true);
       expect(new Set(days).size, `seed ${seed}: twice on one day`).toBe(days.length);
-      for (const x of sends) expect(x.date).toBe('How’s your elbow this morning?');
+      for (const x of sends) expect(x.date).toBe('How’s your elbow today?');
       total += sends.length;
     }
     // The property was exercised: questions did go out.

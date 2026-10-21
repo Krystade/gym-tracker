@@ -79,6 +79,21 @@ export function cut(s: string, n: number): string {
   const seg = typeof Intl.Segmenter === 'function' ? [...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(t)].map((x) => x.segment) : [...t];
   return seg.slice(0, n).join('');
 }
+/**
+ * At most `n` characters as a person counts them, cut at a word with an ellipsis when it doesn't fit (never "Dumbbe"); a single
+ * word longer than the room is cut inside it, still with the ellipsis. A trailing separator (" ·", ":") goes before the ellipsis.
+ */
+export function clip(s: string, n: number): string {
+  const t = s.trim().replace(/\s+/g, ' ');
+  if (cut(t, n) === t) return t;
+  const room = cut(t, n - 1);
+  const at = room.lastIndexOf(' ');
+  const head = at > 0 && t[room.length] !== ' ' ? room.slice(0, at) : room;
+  return `${head.replace(/[\s·:,;–—-]+$/u, '')}…`;
+}
+/** What iOS shows of a notification on the 13 mini's lock screen and banners: a title line, and about two lines of body. */
+export const MAX_TITLE = 30;
+export const MAX_BODY = 90;
 /** A gym's name on the lock screen. */
 export const MAX_GYM = 40;
 
@@ -88,8 +103,8 @@ export const MAX_LABEL = 60;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 export const testNote = () => ({ title: 'Test notification', body: 'Notifications work on this phone.' });
-export const restNote = (label?: string | null) => ({ title: 'Rest done', body: label?.trim().slice(0, MAX_LABEL) || 'Time for your next set' });
-export const remindNote = (next?: string | null) => ({ title: 'Time to train', body: next ? `${next} is up · nothing logged yet` : 'Nothing logged yet today' });
+export const restNote = (label?: string | null) => ({ title: 'Rest done', body: clip(label ?? '', MAX_LABEL) || 'Time for your next set' });
+export const remindNote = (next?: string | null) => ({ title: 'Time to train', body: next ? `${clip(next, 40)} is up · nothing logged yet` : 'Nothing logged yet today' });
 /** Sessions are lift days; cardio-only days go beside them, never toward the goal. An app before them sends no `cardio`. */
 export const recapNote = (w: { sessions: number; sets: number; prs: number; cardio?: number } | null) => {
   const cardio = w?.cardio ? plural(w.cardio, 'cardio day') : '';
@@ -113,14 +128,15 @@ export const MAX_LIFT = 40;
  * notes). A tap opens Today at the one-tap question.
  */
 export const painNote = (region: PainRegion, lift: string) => ({
-  title: region === 'other' ? 'How’s the pain this morning?' : `How’s your ${region} this morning?`,
-  body: `After ${cut(lift, MAX_LIFT) || 'yesterday’s lift'} yesterday · settled, still sore or worse?`,
+  // A title of one line (MAX_TITLE: "How’s your lower back this morning?" was cut); the lift cut at a word.
+  title: region === 'other' ? 'How’s the pain today?' : `How’s your ${region} today?`,
+  body: `After ${clip(lift, MAX_LIFT) || 'yesterday’s lift'} yesterday · settled, still sore or worse?`,
 });
 
 // Friend activity. `name` is the sender's username, read by the Worker from their profile, never from the request.
 export const requestNote = (name: string) => ({ title: 'Friend request', body: `${name} wants to be friends` });
 export const acceptedNote = (name: string) => ({ title: 'New friend', body: `You and ${name} are friends` });
-export const gymNote = (name: string, gym: string) => ({ title: 'Gym shared', body: `${name} sent you a gym: ${cut(gym, MAX_GYM) || 'a gym'}` });
+export const gymNote = (name: string, gym: string) => ({ title: 'Gym shared', body: `${name} sent you a gym: ${clip(gym, MAX_GYM) || 'a gym'}` });
 /**
  * The pings, stored by key (firestore.rules allows exactly these), so their words can change without touching what's
  * stored. Adding one means the rules, this table and the app together.
