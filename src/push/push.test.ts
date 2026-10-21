@@ -86,7 +86,8 @@ describe('payload', () => {
 
   it('turns friend activity on for prefs saved before it existed, and keeps what was chosen', () => {
     const old = { kinds: { rest: false, remind: true, recap: false }, reminder: { days: [1], at: '07:00' }, recap: { day: 3, at: '09:00' } };
-    expect(withDefaults(old as never, 2)).toEqual({ ...old, kinds: { rest: false, remind: true, recap: false, activity: true, friends: true } });
+    expect(withDefaults(old as never, 2)).toEqual({ ...old, kinds: { rest: false, remind: true, recap: false, activity: true, friends: true, pain: true } });
+    expect(withDefaults({ ...defaultPrefs(2), kinds: { ...defaultPrefs(2).kinds, pain: false } }, 2).kinds.pain).toBe(false);
     expect(withDefaults({ ...defaultPrefs(2), kinds: { ...defaultPrefs(2).kinds, friends: false } }, 2).kinds.friends).toBe(false);
     expect(withDefaults({ ...defaultPrefs(2), kinds: { ...defaultPrefs(2).kinds, activity: false } }, 2).kinds.activity).toBe(false);
     expect(withDefaults(null, 2)).toEqual(defaultPrefs(2));

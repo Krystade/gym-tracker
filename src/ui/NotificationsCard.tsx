@@ -103,6 +103,7 @@ function Card({ signedIn, goal, entries }: { signedIn: boolean; goal: number; en
           {kind('rest', 'Rest timer', 'When a rest ends with the phone locked or in another app.')}
           {kind('activity', 'Friend activity', 'A friend request, a request or invite accepted, a gym sent to you.')}
           {kind('friends', 'Pings and messages', 'A friend’s 💪 or message. Mute one friend from their messages.')}
+          {kind('pain', 'Morning pain check', 'At 11:00 the day after a set that hurt: has it settled? One tap; it decides whether that lift holds or eases.')}
           {kind('remind', 'Workout reminder', 'On the days below, if nothing is logged by then.')}
           {prefs.kinds.remind && (
             <div className="notify-sub">

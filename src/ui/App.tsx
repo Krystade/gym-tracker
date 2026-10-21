@@ -129,6 +129,8 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
     setTab(tabOf(r)); window.scrollTo(0, 0);
     // The recap opens today's Today at the week's digest.
     if (r === 'recap') { setChosen(null); setRecapAt(Date.now()); }
+    // The pain question opens today's Today, where its card sits at the top.
+    if (r === 'pain') setChosen(null);
     // A friend's push opens their thread: one tap to answer with a ping.
     setThread(r.startsWith('friend.') ? { uid: r.slice('friend.'.length) } : null);
   });

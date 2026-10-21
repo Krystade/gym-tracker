@@ -161,3 +161,29 @@ describe('edit times in the CSV (round 10)', () => {
     expect(diffSets([mk(1, { editedAt: 5 })], [mk(1)]).same).toBe(1);
   });
 });
+
+describe('the next-morning check in the CSV (item 08)', () => {
+  const sore = mk(1, { flags: ['pain'], painRegion: 'elbow', painSeverity: 2, morning: 'sore', morningNote: 'stiff, "worse" lifting a kettle, then fine' });
+  it('round-trips the answer and its note; a set without one has none', () => {
+    const text = toCsv([sore, mk(2)]);
+    expect(text.split('\r\n')[0].split(',').slice(-2)).toEqual(['morning', 'morning_note']);
+    const { entries: back, errors } = parseCsv(text);
+    expect(errors).toEqual([]);
+    expect(back[0]).toMatchObject({ morning: 'sore', morningNote: sore.morningNote });
+    expect(back[1]).not.toHaveProperty('morning');
+    expect(back[1]).not.toHaveProperty('morningNote');
+    for (const m of ['settled', 'worse', 'skipped'] as const) expect(parseCsv(toCsv([mk(1, { flags: ['pain'], morning: m })])).entries[0].morning).toBe(m);
+  });
+  it('a file from before it reads as no answers; an answer this build doesn\'t know is refused, so the file is never overwritten', () => {
+    expect(parseCsv('date,exercise,set,weight_lb,reps,flags\n2026-01-05,Cable Curl,1,60,12,pain\n').entries[0]).not.toHaveProperty('morning');
+    expect(parseCsv('date,exercise,set,weight_lb,reps,flags,morning\n2026-01-05,Cable Curl,1,60,12,pain,meh\n').errors[0].message).toMatch(/morning/);
+  });
+  it('a column this build doesn’t know is passed over, not refused: how an older build reads the morning columns', () => {
+    const { entries, errors } = parseCsv('date,exercise,set,weight_lb,reps,flags,later_column\n2026-01-05,Cable Curl,1,60,12,pain,whatever\n');
+    expect(errors).toEqual([]);
+    expect(entries[0]).toMatchObject({ exercise: 'Cable Curl', flags: ['pain'] });
+  });
+  it('an answer given since a backup is a change to that set, so a restore shows it', () => {
+    expect(diffSets([mk(1, { flags: ['pain'] })], [mk(1, { flags: ['pain'], morning: 'settled' })]).changed).toHaveLength(1);
+  });
+});

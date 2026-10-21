@@ -391,6 +391,28 @@ test('Prompts: pain that keeps coming back, sharp pain, a variation for a stalle
   clean(found);
 });
 
+test('Prompts: the morning pain question, answered with a note (item 08)', async ({ page }, info) => {
+  const H = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source,pain_region,pain_severity';
+  const csv = [H, ...['2026-10-06', '2026-10-13'].flatMap((d) => [
+    `${d},Single Arm Cable Lateral Raise Behind Back,,1,22.5,15,,,,sample,,`,
+    `${d},Overhead Cable Triceps Extension With Rope,,1,1225,15,,pain,,sample,lower back,2`,
+    `${d},Cable Pushdown,,1,110,15,,pain,,sample,elbow,3`,
+  ])].join('\n');
+  await notched(page);
+  await page.clock.install({ time: new Date('2026-10-14T11:00:00') });
+  await page.goto('/');
+  await importLog(page, csv, null);
+  const found: string[] = [];
+  await goto(page, 'Today');
+  const q = page.getByRole('group', { name: 'Morning check' });
+  await expect(q).toHaveCount(2); // elbow (sharp) first, then the lower back
+  await check(page, info, found, 'prompt-morning');
+  await q.first().getByRole('button', { name: 'Still sore' }).click();
+  await page.getByRole('group', { name: 'Morning check' }).getByRole('textbox').fill('stiff and sore on waking, worse lifting the kettle, 1,000,000 % better by noon');
+  await check(page, info, found, 'prompt-morning-note');
+  clean(found);
+});
+
 // ---- The audit itself: it sees each kind of fault, and nothing on a clean page. ----
 
 test('the audit finds each kind of fault on a page built with them, and none on a clean one', async ({ page }) => {

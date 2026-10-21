@@ -1,4 +1,5 @@
-import { MAX_LABEL } from '../../src/push/payload';
+import { MAX_LABEL, MAX_LIFT, PAIN_REGIONS, type PainRegion } from '../../src/push/payload';
+import type { PainDay } from './pain';
 import type { Claim } from './notify';
 import { validZone } from './schedule';
 
@@ -31,10 +32,10 @@ export function subscription(v: unknown, local: boolean): Subscription {
 export interface Prefs {
   tz: string;
   /**
-   * `activity`: a friend's request, acceptance or gym. `friends`: their pings and messages. Missing (an app from before
-   * they existed) means on.
+   * `activity`: a friend's request, acceptance or gym. `friends`: their pings and messages. `pain`: the next-morning question
+   * after pain (item 08). Missing (an app from before they existed) means on.
    */
-  kinds: { rest: boolean; remind: boolean; recap: boolean; activity?: boolean; friends?: boolean };
+  kinds: { rest: boolean; remind: boolean; recap: boolean; activity?: boolean; friends?: boolean; pain?: boolean };
   /**
    * Days 0 = Sunday … 6 = Saturday, at local "HH:MM". `learn`: fitted to his log (the app's learned days and times, and quiet once
    * the week's goal is met); it can only make the reminder quieter or later, never add one. Missing (an older app) means on.
@@ -56,7 +57,7 @@ export function prefs(v: unknown): Prefs {
   return {
     tz: o.tz as string,
     kinds: { rest: bool(k.rest, 'rest'), remind: bool(k.remind, 'remind'), recap: bool(k.recap, 'recap'), activity: k.activity == null ? true : bool(k.activity, 'activity'),
-      friends: k.friends == null ? true : bool(k.friends, 'friends') },
+      friends: k.friends == null ? true : bool(k.friends, 'friends'), pain: k.pain == null ? true : bool(k.pain, 'pain') },
     reminder: { days: days.sort(), at: hhmm(r.at, 'at'), learn: r.learn == null ? true : bool(r.learn, 'learn') },
     recap: { day: int(c.day, 0, 6, 'day'), at: hhmm(c.at, 'at') },
     muted: o.muted == null ? [] : Array.isArray(o.muted) && o.muted.length <= 500 ? [...new Set(o.muted.map((u) => docId(u, 'muted')))] : bad('muted'),
@@ -77,13 +78,23 @@ export function timer(v: unknown): Timer {
 export interface Activity {
   date: string; next: string | null; week: { start: string; sessions: number; sets: number; prs: number; cardio: number };
   goal?: number; remind?: (string | null)[];
+  /** Pain days the phone hasn't asked about (item 08): at most two (yesterday and today), each a day, a region and a lift's name. */
+  pain?: PainDay[];
 }
 const learned = (v: unknown) => (v === null || v === 'off' ? v : hhmm(v, 'remind'));
+const region = (v: unknown) => (typeof v === 'string' && (PAIN_REGIONS as readonly string[]).includes(v) ? (v as PainRegion) : bad('region'));
+function painDays(v: unknown): PainDay[] {
+  if (!Array.isArray(v) || v.length > 2) return bad('pain');
+  const out = v.map((x) => { const o = obj(x, 'pain'); const lift = text(o.lift, MAX_LIFT, 'lift').trim(); return { date: date(o.date, 'pain'), region: region(o.region), lift: lift || bad('lift') }; });
+  if (new Set(out.map((p) => p.date)).size !== out.length) bad('pain');
+  return out;
+}
 export function activity(v: unknown): Activity {
   const o = obj(v, 'body'), w = obj(o.week, 'week');
   return {
     ...(o.goal != null && { goal: int(o.goal, 1, 7, 'goal') }),
     ...(o.remind != null && { remind: Array.isArray(o.remind) && o.remind.length === 7 ? o.remind.map(learned) : bad('remind') }),
+    ...(o.pain != null && { pain: painDays(o.pain) }),
     date: date(o.date, 'date'),
     next: o.next == null ? null : text(o.next, 40, 'next'),
     week: { start: date(w.start, 'start'), sessions: int(w.sessions, 0, 7, 'sessions'), sets: int(w.sets, 0, 10_000, 'sets'), prs: int(w.prs, 0, 10_000, 'prs'),

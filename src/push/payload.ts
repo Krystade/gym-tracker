@@ -6,11 +6,12 @@ export type ActivityKind = 'request' | 'accepted' | 'gym';
 /** A friend's ping (one tap, a preset) or message (up to 140 characters). */
 export type MessageKind = 'ping' | 'message';
 export type FriendKind = ActivityKind | MessageKind;
-export type Kind = 'test' | 'rest' | 'remind' | 'recap' | FriendKind;
+/** `pain`: the next-morning question about yesterday's pain (item 08, round 20). */
+export type Kind = 'test' | 'rest' | 'remind' | 'recap' | 'pain' | FriendKind;
 export const ACTIVITY_KINDS: readonly ActivityKind[] = ['request', 'accepted', 'gym'];
 
 /** Where a tap on the notification lands: the hash `#open=<route>` (see routes.ts). */
-export type Route = 'rest' | 'today' | 'recap' | 'friends' | `friend.${string}`;
+export type Route = 'rest' | 'today' | 'recap' | 'pain' | 'friends' | `friend.${string}`;
 
 export interface PushNote {
   title: string;
@@ -49,6 +50,8 @@ export const DELIVERY: Record<Kind, Delivery> = {
   rest: { ttl: 60, urgency: 'high', topic: 'rest' },
   remind: { ttl: 4 * 3600, urgency: 'normal', topic: 'remind' },
   recap: { ttl: 86400, urgency: 'low', topic: 'recap' },
+  // The question is about this morning: a phone that was off till the evening is better asked by Today's card.
+  pain: { ttl: 8 * 3600, urgency: 'normal', topic: 'pain' },
   test: { ttl: 600, urgency: 'normal', topic: 'test' },
   // A friend's: kept a day, and the topic is the sender's (friendTopic), so one waiting push per friend.
   request: { ttl: 86400, urgency: 'normal', topic: 'friend' },
@@ -59,7 +62,7 @@ export const DELIVERY: Record<Kind, Delivery> = {
 };
 
 /** Where each kind lands; a friend's kinds land on that friend (the route passed to buildPayload). */
-const ROUTE: Record<Kind, Route> = { rest: 'rest', remind: 'today', recap: 'recap', test: 'today', request: 'friends', accepted: 'friends', gym: 'friends', ping: 'friends', message: 'friends' };
+const ROUTE: Record<Kind, Route> = { rest: 'rest', remind: 'today', recap: 'recap', pain: 'pain', test: 'today', request: 'friends', accepted: 'friends', gym: 'friends', ping: 'friends', message: 'friends' };
 
 /**
  * The Topic header for pushes from one sender: 22 base64url characters of SHA-256(uid). A push still waiting at the push
@@ -96,6 +99,23 @@ export const recapNote = (w: { sessions: number; sets: number; prs: number; card
       : cardio ? `This week: no sessions · ${cardio}` : 'This week: no sessions logged',
   };
 };
+
+/**
+ * The regions a pain set can name (src/domain/types REGIONS; the same list, here so the Worker can check what it's sent without
+ * importing the app's domain).
+ */
+export const PAIN_REGIONS = ['elbow', 'lower back', 'shoulder', 'wrist', 'knee', 'other'] as const;
+export type PainRegion = (typeof PAIN_REGIONS)[number];
+/** A lift's name in the pain push: what fits a lock-screen line. */
+export const MAX_LIFT = 40;
+/**
+ * The next-morning question (item 08): the region and the lift that hurt yesterday, by name, nothing else (no severity, no
+ * notes). A tap opens Today at the one-tap question.
+ */
+export const painNote = (region: PainRegion, lift: string) => ({
+  title: region === 'other' ? 'How’s the pain this morning?' : `How’s your ${region} this morning?`,
+  body: `After ${cut(lift, MAX_LIFT) || 'yesterday’s lift'} yesterday · settled, still sore or worse?`,
+});
 
 // Friend activity. `name` is the sender's username, read by the Worker from their profile, never from the request.
 export const requestNote = (name: string) => ({ title: 'Friend request', body: `${name} wants to be friends` });

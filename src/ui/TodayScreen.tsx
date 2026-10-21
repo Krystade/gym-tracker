@@ -41,6 +41,7 @@ import { applyRotation, inProgram, RotationSuggestion } from './RotationSuggesti
 import { FriendName } from './FriendName';
 import { persistentPain } from '../domain/painPlan';
 import { PainPrompt } from './PainPrompt';
+import { MorningCheck } from './MorningCheck';
 import { systemic } from '../domain/learn/deload';
 import { deloadSnoozed, endLight, lightOn, snoozeDeload, startLight, tappedLight } from '../state/lightWeek';
 import { DeloadPrompt, LightWeekLine } from './DeloadPrompt';
@@ -246,6 +247,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       )}
       {date < today && <p className="card note-card past-day"><span>Logging to a past day</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={() => onDay(today)}>Back to today</button></p>}
       {carried && <p className="card note-card past-day"><span>Still logging {fmtDay(today, today)}’s workout</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={onSplit}>Today</button></p>}
+      {date === today && <MorningCheck store={store} today={today} />}
       {date === today && <TodayDigest owner={owner} entries={store.entries} profile={profile} today={today} recap={recap} />}
       <WeighIn body={body} date={date} />
       <Energy body={body} date={date} />

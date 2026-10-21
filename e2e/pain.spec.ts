@@ -61,15 +61,16 @@ async function setUp(page: Page) {
 }
 const card = (page: Page, lift: string) => page.locator(`[data-card="${lift.toLowerCase()}"]`);
 
-test('moderate pain last time holds the lift; one that keeps hurting is offered a swap, dismissible', async ({ page }) => {
+test('moderate pain session after session at the same load eases a step; one that keeps hurting is offered a swap, dismissible', async ({ page }) => {
   await setUp(page);
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('button', { name: /^Cable Pushdown/ }).first().click();
   const c = card(page, 'Cable Pushdown');
   const prompt = c.getByRole('group', { name: 'Pain keeps coming back' });
   await expect(prompt).toContainText('Cable Pushdown hurt in 5 of your last 5 sessions');
-  await expect(c.getByLabel('Target')).toContainText('Hold: 15 · 15 · 15 @ 110 lb');
-  await expect(c.getByLabel('Target')).toContainText('Moderate pain last time: hold until it’s mild or gone');
+  // Round 20: moderate at 110 in each of the last five, not falling: the hold that wasn't working eases a step.
+  await expect(c.getByLabel('Target')).toContainText('Lighter: 15 · 15 · 15 @ 105 lb');
+  await expect(c.getByLabel('Target')).toContainText('Moderate pain twice at this weight: one step lighter');
   await c.scrollIntoViewIfNeeded();
   await fits(page);
   await page.screenshot({ path: `${SHOTS}/today-hold-and-prompt.png` });
@@ -110,4 +111,79 @@ test('pain on and off for weeks: the care card suggests getting it looked at', a
   await care.scrollIntoViewIfNeeded();
   await fits(page);
   await page.screenshot({ path: `${SHOTS}/care-physio.png` });
+});
+
+// Round 20: the next-morning question. Yesterday (13 October) the pushdowns hurt the elbow, moderately, for the first time.
+const MORNING = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source,pain_region,pain_severity,morning';
+const plainWeeks = (more: string[]) => [MORNING,
+  ...WEEKS.flatMap((d) => [...rows(d, 'Bench Press', ['185x8', '185x8', '185x8']), ...rows(d, 'Cable Pushdown', ['110x15', '110x15', '110x15'])].map((r) => `${r},`)),
+  ...more].join('\n');
+const sorePushdowns = (date: string, morning = '') => ['110x15', '110x15', '110x15'].map((x, i) => {
+  const [w, r] = x.split('x');
+  return i === 2 ? `${date},Cable Pushdown,,${i + 1},${w},${r},,pain,,sample,elbow,2,${morning}` : `${date},Cable Pushdown,,${i + 1},${w},${r},,,,sample,,,`;
+});
+async function load(page: Page, csv: string) {
+  await notched(page);
+  await page.clock.install({ time: new Date('2026-10-14T09:30:00') });
+  await page.goto('/');
+  await goto(page, 'More');
+  await page.getByLabel('Import CSV').setInputFiles({ name: 'morning.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+  await expect(page.getByText(/✓ Imported \d+ new sets/)).toBeVisible();
+  await goto(page, 'Today');
+}
+
+test('the morning after pain, Today asks once: one tap, a note if you like, and the target says what it did', async ({ page }) => {
+  await load(page, plainWeeks(sorePushdowns('2026-10-13')));
+  const q = page.getByRole('group', { name: 'Morning check' });
+  await expect(q).toContainText('How’s your elbow this morning?');
+  await expect(q).toContainText('After Cable Pushdown yesterday.');
+  await fits(page);
+  for (const b of await q.getByRole('button').all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await page.screenshot({ path: `${SHOTS}/morning-card.png` });
+  await q.getByRole('button', { name: 'Settled' }).click();
+  await expect(q).toContainText('Saved: your elbow settled.');
+  await q.getByRole('textbox').fill('a bit stiff on waking, gone by 9');
+  await page.screenshot({ path: `${SHOTS}/morning-note.png` });
+  await q.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('group', { name: 'Morning check' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('button', { name: /^Cable Pushdown/ }).first().click();
+  const t = card(page, 'Cable Pushdown').getByLabel('Target');
+  await expect(t).toContainText('Hold: 15 · 15 · 15 @ 110 lb');
+  await expect(t).toContainText('Pain settled overnight: holding 110 lb');
+  await card(page, 'Cable Pushdown').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${SHOTS}/morning-settled-hold.png` });
+  // Saved on the sets: it's in the backup, note and all, and the question doesn't come back.
+  await goto(page, 'History');
+  await goto(page, 'Today');
+  await expect(page.getByRole('group', { name: 'Morning check' })).toHaveCount(0);
+});
+
+test('Not now is no answer: the card goes and the target is the plain hold', async ({ page }) => {
+  await load(page, plainWeeks(sorePushdowns('2026-10-13')));
+  await page.getByRole('group', { name: 'Morning check' }).getByRole('button', { name: 'Not now' }).click();
+  await expect(page.getByRole('group', { name: 'Morning check' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('button', { name: /^Cable Pushdown/ }).first().click();
+  await expect(card(page, 'Cable Pushdown').getByLabel('Target')).toContainText('Moderate pain last time: hold until it’s mild or gone');
+});
+
+test('still sore after the last two sessions at 110: one step lighter (answers read from a backup)', async ({ page }) => {
+  await load(page, plainWeeks([...sorePushdowns('2026-10-09', 'sore'), ...sorePushdowns('2026-10-12', 'sore')]));
+  await expect(page.getByRole('group', { name: 'Morning check' })).toHaveCount(0); // the 12th was answered, and isn't yesterday
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('button', { name: /^Cable Pushdown/ }).first().click();
+  const t = card(page, 'Cable Pushdown').getByLabel('Target');
+  await expect(t).toContainText('Lighter: 15 · 15 · 15 @ 105 lb');
+  await expect(t).toContainText('Still sore next morning, twice: one step lighter');
+  await card(page, 'Cable Pushdown').scrollIntoViewIfNeeded();
+  await fits(page);
+  await page.screenshot({ path: `${SHOTS}/morning-sore-twice-ease.png` });
+});
+
+test('a tap on the 11:00 push opens Today at the question', async ({ page }) => {
+  await load(page, plainWeeks(sorePushdowns('2026-10-13')));
+  await goto(page, 'Stats');
+  await page.evaluate(() => { location.hash = '#open=pain'; });
+  await expect(page.getByRole('group', { name: 'Morning check' })).toBeInViewport();
 });

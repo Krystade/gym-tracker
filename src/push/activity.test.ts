@@ -55,5 +55,15 @@ describe('activityOf', () => {
     expect(a.remind![2]).toBe('off'); // Tuesday: never
     expect(JSON.stringify(a)).not.toMatch(/Bench/);
   });
-});
 
+  it('names the region and lift of pain yesterday or today not yet asked about; nothing else of it (item 08)', () => {
+    const hurt = (date: string, ex: string, more: Partial<SetEntry> = {}): SetEntry => ({ ...s(date, ex, 110, 12, ['pain']), painRegion: 'elbow', painSeverity: 2, note: 'private words', ...more });
+    const a = activityOf([s('2026-10-12', 'Bench Press', 140, 8), hurt('2026-10-13', 'Cable Pushdown')], null, [], TODAY);
+    expect(a.pain).toEqual([{ date: '2026-10-13', region: 'elbow', lift: 'Cable Pushdown' }]);
+    expect(JSON.stringify(a)).not.toMatch(/private|Bench|110|painSeverity/);
+    expect(activityOf([hurt('2026-10-12', 'Cable Pushdown')], null, [], TODAY)).not.toHaveProperty('pain'); // two days ago
+    expect(activityOf([hurt('2026-10-13', 'Cable Pushdown', { morning: 'settled' })], null, [], TODAY)).not.toHaveProperty('pain'); // answered
+    expect(activityOf([hurt('2026-10-13', 'Cable Pushdown', { morning: 'skipped' })], null, [], TODAY)).not.toHaveProperty('pain'); // dismissed
+    expect(activityOf([hurt(TODAY, 'A Very Long Lift Name With Many Words In It Indeed')], null, [], TODAY).pain![0].lift).toHaveLength(40);
+  });
+});

@@ -173,11 +173,11 @@ describe('rest timer', () => {
 });
 
 describe('reminder and recap', () => {
-  // Tuesday 20 October 2026, 12:00 in New York (EDT).
-  const TUE_NOON = Date.parse('2026-10-20T16:00:00Z');
-  const TUE_6PM = Date.parse('2026-10-20T22:00:00Z');
+  // Tuesday 19 October 2027, 12:00 in New York (EDT). In the future: a Durable Object runs an alarm set in the real past at once.
+  const TUE_NOON = Date.parse('2027-10-19T16:00:00Z');
+  const TUE_6PM = Date.parse('2027-10-19T22:00:00Z');
 
-  async function planned(lastLogged: string, week: Record<string, unknown> = { start: '2026-10-19', sessions: 2, sets: 31, prs: 1 }) {
+  async function planned(lastLogged: string, week: Record<string, unknown> = { start: '2027-10-18', sessions: 2, sets: 31, prs: 1 }) {
     const e = await enrolled(undefined, TUE_NOON);
     await call(e.uid, 'PUT', '/prefs', PREFS);
     await call(e.uid, 'POST', '/activity', { date: lastLogged, next: 'Day B', week });
@@ -185,7 +185,7 @@ describe('reminder and recap', () => {
   }
 
   it('fires at the chosen time on a planned day when nothing is logged', async () => {
-    const { uid, net, phone } = await planned('2026-10-19');
+    const { uid, net, phone } = await planned('2027-10-18');
     expect(await runInDurableObject(box(uid), (_o, st) => st.storage.getAlarm())).toBe(TUE_6PM);
     await setClock(uid, TUE_6PM);
     await runDurableObjectAlarm(box(uid));
@@ -193,19 +193,19 @@ describe('reminder and recap', () => {
     expect((await phone.read(pushes(net)[0].body)).notification).toMatchObject({ title: 'Time to train', body: 'Day B is up · nothing logged yet' });
     expect(pushes(net)[0].headers.get('topic')).toBe('remind');
     // Next: Friday 18:00 EDT.
-    expect(await runInDurableObject(box(uid), (_o, st) => st.storage.get<{ remindAt: number }>('plan'))).toMatchObject({ remindAt: Date.parse('2026-10-23T22:00:00Z') });
+    expect(await runInDurableObject(box(uid), (_o, st) => st.storage.get<{ remindAt: number }>('plan'))).toMatchObject({ remindAt: Date.parse('2027-10-22T22:00:00Z') });
   });
 
   it('stays quiet when something was logged today', async () => {
-    const { uid, net } = await planned('2026-10-20');
+    const { uid, net } = await planned('2027-10-19');
     await setClock(uid, TUE_6PM);
     await runDurableObjectAlarm(box(uid));
     expect(pushes(net)).toHaveLength(0);
   });
 
   it('the weekly recap carries the counts the app sent', async () => {
-    const { uid, net, phone } = await planned('2026-10-20', { start: '2026-10-19', sessions: 4, sets: 61, prs: 2 });
-    const sunday = Date.parse('2026-10-25T23:00:00Z'); // Sunday 19:00 EDT
+    const { uid, net, phone } = await planned('2027-10-19', { start: '2027-10-18', sessions: 4, sets: 61, prs: 2 });
+    const sunday = Date.parse('2027-10-24T23:00:00Z'); // Sunday 19:00 EDT
     await runInDurableObject(box(uid), async (_o, st) => { const p = await st.storage.get<{ remindAt: number }>('plan'); await st.storage.put('plan', { ...p, remindAt: null }); });
     await setClock(uid, sunday);
     await runDurableObjectAlarm(box(uid));
@@ -215,28 +215,28 @@ describe('reminder and recap', () => {
   });
 
   it('the recap names cardio-only days apart from sessions; an app that sends none still works', async () => {
-    const { uid, net, phone } = await planned('2026-10-20', { start: '2026-10-19', sessions: 2, sets: 30, prs: 1, cardio: 1 });
+    const { uid, net, phone } = await planned('2027-10-19', { start: '2027-10-18', sessions: 2, sets: 30, prs: 1, cardio: 1 });
     await runInDurableObject(box(uid), async (_o, st) => { const p = await st.storage.get<{ remindAt: number }>('plan'); await st.storage.put('plan', { ...p, remindAt: null }); });
-    await setClock(uid, Date.parse('2026-10-25T23:00:00Z'));
+    await setClock(uid, Date.parse('2027-10-24T23:00:00Z'));
     await runDurableObjectAlarm(box(uid));
     expect((await phone.read(pushes(net)[0].body)).notification.body).toBe('This week: 2 sessions + 1 cardio day · 30 sets · 1 PR');
-    expect((await call(uid, 'POST', '/activity', { date: '2026-10-20', next: null, week: { start: '2026-10-19', sessions: 2, sets: 30, prs: 1, cardio: 8 } })).status).toBe(400);
+    expect((await call(uid, 'POST', '/activity', { date: '2027-10-19', next: null, week: { start: '2027-10-18', sessions: 2, sets: 30, prs: 1, cardio: 8 } })).status).toBe(400);
   });
 
   it('a recap with counts from an earlier week says nothing was logged', async () => {
-    const { uid, net, phone } = await planned('2026-10-14', { start: '2026-10-12', sessions: 3, sets: 40, prs: 0 });
+    const { uid, net, phone } = await planned('2027-10-13', { start: '2027-10-11', sessions: 3, sets: 40, prs: 0 });
     await runInDurableObject(box(uid), async (_o, st) => { const p = await st.storage.get<{ remindAt: number }>('plan'); await st.storage.put('plan', { ...p, remindAt: null }); });
-    await setClock(uid, Date.parse('2026-10-25T23:00:00Z'));
+    await setClock(uid, Date.parse('2027-10-24T23:00:00Z'));
     await runDurableObjectAlarm(box(uid));
     expect((await phone.read(pushes(net)[0].body)).notification.body).toBe('This week: no sessions logged');
   });
 });
 
 describe('the reminder fitted to his log (item 16)', () => {
-  const TUE_NOON = Date.parse('2026-10-20T16:00:00Z');
-  const TUE_6PM = Date.parse('2026-10-20T22:00:00Z');
-  const TUE_740PM = Date.parse('2026-10-20T23:40:00Z');
-  const week = { start: '2026-10-19', sessions: 1, sets: 15, prs: 0 };
+  const TUE_NOON = Date.parse('2027-10-19T16:00:00Z');
+  const TUE_6PM = Date.parse('2027-10-19T22:00:00Z');
+  const TUE_740PM = Date.parse('2027-10-19T23:40:00Z');
+  const week = { start: '2027-10-18', sessions: 1, sets: 15, prs: 0 };
   const learned = [null, null, '19:40', null, null, 'off', null]; // Tuesday 19:40, Friday not one of his days
   const alarm = (uid: string) => runInDurableObject(box(uid), (_o, st) => st.storage.getAlarm());
   const remindAt = (uid: string) => runInDurableObject(box(uid), async (_o, st) => (await st.storage.get<{ remindAt: number | null }>('plan'))?.remindAt);
@@ -249,39 +249,39 @@ describe('the reminder fitted to his log (item 16)', () => {
 
   it('waits for the learned time, re-planned when the app sends it, and an older app keeps his time', async () => {
     const { uid, net, phone } = await on();
-    await call(uid, 'POST', '/activity', { date: '2026-10-19', next: 'Day B', week });
+    await call(uid, 'POST', '/activity', { date: '2027-10-18', next: 'Day B', week });
     expect(await alarm(uid)).toBe(TUE_6PM);
-    expect((await call(uid, 'POST', '/activity', { date: '2026-10-19', next: 'Day B', week, goal: 3, remind: learned })).status).toBe(200);
+    expect((await call(uid, 'POST', '/activity', { date: '2027-10-18', next: 'Day B', week, goal: 3, remind: learned })).status).toBe(200);
     expect(await alarm(uid)).toBe(TUE_740PM);
     await setClock(uid, TUE_740PM);
     await runDurableObjectAlarm(box(uid));
     expect(pushes(net)).toHaveLength(1);
     expect((await phone.read(pushes(net)[0].body)).notification.title).toBe('Time to train');
     // Friday is off: next is the Tuesday after, 19:40.
-    expect(await remindAt(uid)).toBe(Date.parse('2026-10-27T23:40:00Z'));
+    expect(await remindAt(uid)).toBe(Date.parse('2027-10-26T23:40:00Z'));
   });
 
   it('learning off: his days and time, whatever the app learned', async () => {
     const { uid } = await on({ ...PREFS, reminder: { ...PREFS.reminder, learn: false } });
-    await call(uid, 'POST', '/activity', { date: '2026-10-19', next: null, week, remind: learned });
+    await call(uid, 'POST', '/activity', { date: '2027-10-18', next: null, week, remind: learned });
     expect(await alarm(uid)).toBe(TUE_6PM);
     expect(((await call(uid, 'GET', '/status')).json as { prefs: { reminder: { learn: boolean } } }).prefs.reminder.learn).toBe(false);
   });
 
   it("quiet once the week's sessions reach his goal; not before", async () => {
     const met = await on();
-    await call(met.uid, 'POST', '/activity', { date: '2026-10-19', next: null, week: { ...week, sessions: 3 }, goal: 3 });
+    await call(met.uid, 'POST', '/activity', { date: '2027-10-18', next: null, week: { ...week, sessions: 3 }, goal: 3 });
     await setClock(met.uid, TUE_6PM);
     await runDurableObjectAlarm(box(met.uid));
     expect(pushes(met.net)).toHaveLength(0);
     const short = await on();
-    await call(short.uid, 'POST', '/activity', { date: '2026-10-19', next: null, week: { ...week, sessions: 2 }, goal: 3 });
+    await call(short.uid, 'POST', '/activity', { date: '2027-10-18', next: null, week: { ...week, sessions: 2 }, goal: 3 });
     await setClock(short.uid, TUE_6PM);
     await runDurableObjectAlarm(box(short.uid));
     expect(pushes(short.net)).toHaveLength(1);
     // Last week's count says nothing about this week's goal.
     const old = await on();
-    await call(old.uid, 'POST', '/activity', { date: '2026-10-16', next: null, week: { start: '2026-10-12', sessions: 3, sets: 40, prs: 0 }, goal: 3 });
+    await call(old.uid, 'POST', '/activity', { date: '2027-10-15', next: null, week: { start: '2027-10-11', sessions: 3, sets: 40, prs: 0 }, goal: 3 });
     await setClock(old.uid, TUE_6PM);
     await runDurableObjectAlarm(box(old.uid));
     expect(pushes(old.net)).toHaveLength(1);
@@ -289,22 +289,22 @@ describe('the reminder fitted to his log (item 16)', () => {
 
   it("one a day: a later learned time for today after today's went out sends nothing more", async () => {
     const { uid, net } = await on();
-    await call(uid, 'POST', '/activity', { date: '2026-10-19', next: null, week });
+    await call(uid, 'POST', '/activity', { date: '2027-10-18', next: null, week });
     await setClock(uid, TUE_6PM);
     await runDurableObjectAlarm(box(uid));
     expect(pushes(net)).toHaveLength(1);
     await setClock(uid, TUE_6PM + 60_000);
-    await call(uid, 'POST', '/activity', { date: '2026-10-19', next: null, week, remind: learned });
+    await call(uid, 'POST', '/activity', { date: '2027-10-18', next: null, week, remind: learned });
     expect(await alarm(uid)).toBe(TUE_740PM);
     await setClock(uid, TUE_740PM);
     await runDurableObjectAlarm(box(uid));
     expect(pushes(net)).toHaveLength(1);
-    expect(await remindAt(uid)).toBe(Date.parse('2026-10-27T23:40:00Z'));
+    expect(await remindAt(uid)).toBe(Date.parse('2027-10-26T23:40:00Z'));
   });
 
   it('refuses a malformed learned schedule or goal', async () => {
     const { uid } = await on();
-    const body = { date: '2026-10-19', next: null, week };
+    const body = { date: '2027-10-18', next: null, week };
     expect((await call(uid, 'POST', '/activity', { ...body, remind: learned.slice(1) })).status).toBe(400);
     expect((await call(uid, 'POST', '/activity', { ...body, remind: [...learned.slice(1), '25:00'] })).status).toBe(400);
     expect((await call(uid, 'POST', '/activity', { ...body, remind: [...learned.slice(1), 'on'] })).status).toBe(400);

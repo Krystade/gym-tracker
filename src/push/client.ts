@@ -6,8 +6,11 @@ import type { Activity } from './activity';
 // Nothing here runs unless config.ts names a Worker; until this phone is turned on, nothing calls it.
 
 export interface PushPrefs {
-  /** `activity`: a friend request, a request or invite accepted, a gym sent to you. `friends`: their pings and messages. */
-  kinds: { rest: boolean; remind: boolean; recap: boolean; activity: boolean; friends: boolean };
+  /**
+   * `activity`: a friend request, a request or invite accepted, a gym sent to you. `friends`: their pings and messages. `pain`:
+   * the next-morning question after pain (item 08).
+   */
+  kinds: { rest: boolean; remind: boolean; recap: boolean; activity: boolean; friends: boolean; pain: boolean };
   /** Days 0 = Sunday … 6 = Saturday, at local "HH:MM". `learn`: fitted to his log (src/domain/learn/remind); unset is on. */
   reminder: { days: number[]; at: string; learn?: boolean };
   recap: { day: number; at: string };
@@ -36,7 +39,7 @@ export function spreadDays(goal: number): number[] {
   return table[Math.min(7, Math.max(1, Math.round(goal)))];
 }
 export const defaultPrefs = (goal: number): PushPrefs => ({
-  kinds: { rest: true, remind: false, recap: true, activity: true, friends: true },
+  kinds: { rest: true, remind: false, recap: true, activity: true, friends: true, pain: true },
   reminder: { days: spreadDays(goal), at: '18:00' },
   recap: { day: 0, at: '18:00' },
 });

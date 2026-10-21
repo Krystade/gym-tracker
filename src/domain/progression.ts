@@ -8,7 +8,7 @@ import { dropsOf, type Drop } from './learn/jump';
 import { floorRung, ladderOf, nextRung, prevRung, type Ladder } from './learn/ladder';
 import { isLight, LIGHT } from './learn/deload';
 import { fitRange, type RangeFit } from './learn/range';
-import { painGate, type PainGate } from './painPlan';
+import { painGate, painWhy, type PainGate } from './painPlan';
 import { addedLoad, bodyShare } from './learn/bodyweight';
 
 /**
@@ -286,10 +286,7 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
     const w = down ?? top;
     const aimed = fewer ? perSet.map((r) => Math.max(1, r - 1)) : perSet;
     if (fewer) easeBy = 'reps';
-    const why = gate.spill ? `${gate.region[0].toUpperCase()}${gate.region.slice(1)} hurt on ${gate.from} lately: hold for now`
-      : kind === 'ease' ? (easeBy === 'reps' ? 'Sharp pain last time: one rep fewer a set' : easeBy === 'help' ? 'Sharp pain last time: a step more help' : 'Sharp pain last time: one step lighter')
-      : gate.zone === 3 ? 'Sharp pain last time: hold, or go lighter'
-      : `${gate.unknown ? 'Pain' : 'Moderate pain'} last time: hold until it’s mild or gone`;
+    const why = painWhy(gate, kind === 'hold' ? 'hold' : easeBy ?? 'load', lb(w));
     return { kind, weight: w, reps: Math.min(...aimed), perSet: aimed, last: last.sets, why, pain: gate, ...(kind === 'ease' && { easeBy }), text: `${lb(w)} × ${aimed.join(' · ')}${unit ? ' s' : ''}` };
   }
   // Up once the sets at the top weight total within 2 reps of all at the top of the range (12/12/10 at 3 × 8–12), none below its bottom.

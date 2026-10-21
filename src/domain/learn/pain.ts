@@ -28,6 +28,10 @@ import { betaCdf } from './num';
 // a grid, and averaged by posterior weight (Bayesian model averaging, as the capacity fit does over (τ, ρ)). The grid is (c)
 // log-uniform, and h stops at 224 days (a: Smidt 2002, Lancet 359:657, a wait-and-see policy resolved 83 % of lateral elbow
 // pain within a year: pain does not last for ever; at h = 224 d a third of the effect is left after a year).
+// The next morning (round 20): where he answered the morning question on a session's pain, that region was looked at once more,
+// the next day, through the lift that hurt: one more lift-session for that lift on that day, with pain if still sore or worse,
+// without if it settled (c: the weight of one look). So the fit learns from it like any session (b): pain that settles every time
+// fades the risk, pain that lingers keeps it up. An answer counts only from its morning on (never before it could be given).
 
 /**
  * (a) The pain-monitoring model's zones (Silbernagel & Crossley 2015, JOSPT 45:876, fig. 10: 0–2 safe, 2–5 acceptable, above 5
@@ -55,8 +59,15 @@ const fade = (hi: number, d: number) => (d > MAXD ? 0 : FADE[hi][Math.max(0, d)]
 /** One lift's sessions on one day: its index, its region's, the day and whether any set hurt. */
 interface Event { lift: number; region: number; day: number; y: number }
 
-/** Each lift-session in the order done (by day, then by its first set), with its lift and region. */
-function eventsOf(entries: readonly SetEntry[]): { ev: Event[]; keys: string[]; regions: string[] } {
+/** The next morning's answer on a pain set as an outcome: 1 still sore or worse, 0 settled, null none (or skipped). */
+const morningY = (e: SetEntry): number | null => (!e.morning || e.morning === 'skipped' ? null : e.morning === 'settled' ? 0 : 1);
+
+/**
+ * Each lift-session in the order done (by day, then by its first set), with its lift and region; and each next-morning answer as
+ * one more, first thing on the day after (see the header). `upTo`: the last day an answer may count on (a risk asked for a day
+ * leaves out the mornings after it); none: all.
+ */
+function eventsOf(entries: readonly SetEntry[], upTo = Infinity): { ev: Event[]; keys: string[]; regions: string[] } {
   const byDate = new Map<string, SetEntry[]>();
   for (const e of entries) {
     if (isCardioEntry(e) || isCardio(e.exercise)) continue;
@@ -66,8 +77,16 @@ function eventsOf(entries: readonly SetEntry[]): { ev: Event[]; keys: string[]; 
   const keys: string[] = [], regions: string[] = [], regionOf: number[] = [];
   const lix = new Map<string, number>(), rix = new Map<string, number>();
   const ev: Event[] = [];
+  let mornings: Event[] = [];
+  const answers = new Map<number, number>();
+  const flush = (before: number) => {
+    if (!mornings.length) return;
+    const due = mornings.filter((x) => x.day < before && x.day <= upTo);
+    if (due.length) { ev.push(...due); mornings = mornings.filter((x) => x.day >= before); }
+  };
   for (const date of [...byDate.keys()].sort()) {
     const day = dayOf(date);
+    flush(day + 1); // the mornings after earlier days, this one's included: before its sessions
     const at = new Map<number, Event>();
     for (const e of byDate.get(date)!.sort(byOrderDone)) {
       const k = liftKey(e.exercise);
@@ -81,9 +100,18 @@ function eventsOf(entries: readonly SetEntry[]): { ev: Event[]; keys: string[]; 
       }
       let x = at.get(l);
       if (!x) { x = { lift: l, region: regionOf[l], day, y: 0 }; at.set(l, x); ev.push(x); }
-      if (e.flags.includes('pain')) x.y = 1;
+      if (e.flags.includes('pain')) {
+        x.y = 1;
+        const y = e.morning ? morningY(e) : null;
+        if (y != null) answers.set(l, Math.max(answers.get(l) ?? 0, y));
+      }
+    }
+    if (answers.size) {
+      for (const [l, y] of answers) mornings.push({ lift: l, region: regionOf[l], day: day + 1, y });
+      answers.clear();
     }
   }
+  flush(Infinity);
   return { ev, keys, regions };
 }
 
@@ -110,9 +138,9 @@ export interface PainFit {
   risk(exercise: string, date: string): PainRisk;
 }
 
-/** The fit (see the header). Pure: the same log gives the same result. */
-export function fitPain(entries: readonly SetEntry[]): PainFit {
-  const { ev, keys, regions } = eventsOf(entries);
+/** The fit (see the header). Pure: the same log gives the same result. `upTo`: as eventsOf (a day number, dayOf). */
+export function fitPain(entries: readonly SetEntry[], upTo = Infinity): PainFit {
+  const { ev, keys, regions } = eventsOf(entries, upTo);
   const S = ev.length, L = keys.length, R = regions.length;
   // The person's rate before each session, and its log score alone (the flat baseline).
   const piP = new Float64Array(S);
@@ -230,5 +258,13 @@ export const painFit: (entries: readonly SetEntry[]) => PainFit = perLog(fitPain
  * that hurt on the first lift raises the next elbow lift's risk), later days don't.
  */
 export function painRisk(entries: readonly SetEntry[], exercise: string, date: string): PainRisk {
-  return painFit(logBefore(entries, addDays(date, 1))).risk(exercise, date);
+  const log = logBefore(entries, addDays(date, 1));
+  // A morning answer counts from its morning on: with none in the log, every day's fit is the one fit.
+  if (!answered(log)) return painFit(log).risk(exercise, date);
+  const fits = fitsAt(log);
+  let fit = fits.get(date);
+  if (!fit) { if (fits.size > 8) fits.clear(); fits.set(date, fit = fitPain(log, dayOf(date))); }
+  return fit.risk(exercise, date);
 }
+const answered = perLog((entries) => entries.some((e) => e.flags.includes('pain') && e.morning != null && e.morning !== 'skipped'));
+const fitsAt = perLog(() => new Map<string, PainFit>());

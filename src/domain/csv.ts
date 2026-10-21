@@ -1,11 +1,11 @@
 import { normalizeName, setId } from './ids';
 import { byOrderDone } from './stats';
-import { isFlag, isRegion, type Flag, type SetEntry } from './types';
+import { isFlag, isMorning, isRegion, type Flag, type SetEntry } from './types';
 import { parseTags } from './tags';
 
 export const CSV_HEADER = ['date', 'exercise', 'as_written', 'set', 'weight_lb', 'reps', 'rir', 'flags', 'note', 'source', 'pain_region', 'pain_severity',
   'logged_at', 'target_weight_lb', 'target_reps', 'target_sets', 'gym', 'entered_at',
-  'duration_s', 'distance_mi', 'incline_pct', 'level', 'floors', 'cardio_aim', 'tags', 'edited_at'] as const;
+  'duration_s', 'distance_mi', 'incline_pct', 'level', 'floors', 'cardio_aim', 'tags', 'edited_at', 'morning', 'morning_note'] as const;
 const REQUIRED = ['date', 'exercise', 'set', 'weight_lb', 'reps'];
 
 export interface CsvError { row: number; message: string }
@@ -23,7 +23,7 @@ export function toCsv(entries: SetEntry[]): string {
         e.rir == null ? '' : String(e.rir), e.flags.join(';'), e.note ?? '', e.source, e.painRegion ?? '', e.painSeverity == null ? '' : String(e.painSeverity),
         e.loggedAt ?? '', e.target?.weight != null ? String(e.target.weight) : '', e.target ? String(e.target.reps) : '', e.target ? String(e.target.sets) : '', e.gym ?? '', e.enteredAt ?? '',
         ...[e.cardio?.seconds, e.cardio?.miles, e.cardio?.incline, e.cardio?.level, e.cardio?.floors, e.cardio?.aim].map((v) => (v == null ? '' : String(v))), (e.tags ?? []).join(';'),
-        e.editedAt != null ? new Date(e.editedAt).toISOString() : ''].map(esc).join(','),
+        e.editedAt != null ? new Date(e.editedAt).toISOString() : '', e.morning ?? '', e.morningNote ?? ''].map(esc).join(','),
     );
   }
   return lines.join('\r\n') + '\r\n';
@@ -104,6 +104,10 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     if (enteredAt && !Number.isFinite(Date.parse(enteredAt))) return fail(`Bad entered_at "${enteredAt}"`);
     const editedRaw = col(r, 'edited_at').trim(), editedAt = editedRaw ? Date.parse(editedRaw) : undefined;
     if (editedAt !== undefined && !Number.isFinite(editedAt)) return fail(`Bad edited_at "${editedRaw}"`);
+    // The next-morning check (item 08): older files have no such column, and an older build ignores it.
+    const morning = col(r, 'morning').trim().toLowerCase();
+    if (morning && !isMorning(morning)) return fail(`Unknown morning "${morning}"`);
+    const morningNote = col(r, 'morning_note');
     // Cardio: a flagged row needs a duration; the other numbers are optional. Older files have none of these columns.
     const cn = (name: string) => num(col(r, name));
     const isCardioRow = flagParts.includes('cardio');
@@ -136,6 +140,8 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
       ...(cardio && { cardio }),
       ...(tags.length > 0 && { tags }),
       ...(editedAt !== undefined && { editedAt }),
+      ...(morning && isMorning(morning) && { morning }),
+      ...(morningNote !== '' && { morningNote }),
     });
   });
   return { entries, errors };
