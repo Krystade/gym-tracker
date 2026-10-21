@@ -303,7 +303,7 @@ test('your status: set inline, capped at 24, seen on your friend’s feed; Invit
 
   // Fewer than three friends: an Invite button in the page, above the tab bar, and it brings the invite controls up.
   const invite = crew(a.page).getByRole('button', { name: 'Invite a friend' });
-  await invite.scrollIntoViewIfNeeded();
+  await invite.evaluate((e) => e.scrollIntoView({ block: 'nearest' })); // the browser's own scroll, which keeps its scroll-margin clear of the tab bar
   const [ib, tabs] = [await invite.boundingBox(), await a.page.getByRole('navigation', { name: 'Sections' }).boundingBox()];
   expect(ib!.y + ib!.height).toBeLessThanOrEqual(tabs!.y);
   await a.page.screenshot({ path: `${SHOTS}/crew-a.png` });

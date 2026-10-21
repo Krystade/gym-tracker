@@ -881,7 +881,7 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .crew-session b { color: var(--text); font-weight: 600; }
 .crew .chart-table { margin-top: 4px; }
 /* Invite sits in the page under the Crew lines (it floated over the page and covered "Add a friend"): a tonal pill. */
-.crew-invite { margin: 12px 0 4px; border-radius: var(--r-pill); padding: 0 20px 0 16px; background: var(--fill); color: var(--accent-text); gap: 8px; }
+.crew-invite { margin: 12px 0 4px; border-radius: var(--r-pill); padding: 0 20px 0 16px; background: var(--fill); color: var(--accent-text); gap: 8px; scroll-margin-bottom: calc(var(--sab) + 72px); }
 
 /* The friends card under Crew: flat grouped cells, pill buttons. */
 .friends-page .card button:not(.link, .msg-button, .mini.icon) { border-radius: var(--r-pill); }
