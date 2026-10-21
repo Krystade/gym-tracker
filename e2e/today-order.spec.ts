@@ -67,7 +67,7 @@ test('before training on a digest week, with a ping and an unseen workout: the f
 async function phone(page: Page) {
   await page.clock.install({ time: T });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from(sixWeeksCsv()) });
   await expect(page.getByText(/✓ Imported \d+ new sets/)).toBeVisible();
   await goto(page, 'Today');

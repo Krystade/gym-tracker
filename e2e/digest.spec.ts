@@ -123,10 +123,12 @@ test('Today: last week from Monday, one line until tapped open; hides until next
 test('Today: opened or closed, the digest stays as left for that week, per profile; a new week starts collapsed', async ({ page }) => {
   await seed(page, '2026-10-12T18:00:00'); // a Monday: Me has last week
   // Sam, a second profile on this phone, with the same weeks.
+  await goto(page, 'People');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   const bar = page.getByRole('group', { name: 'Who’s training' });
   await expect(bar.getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...ROWS].join('\n')) });
   await expect(page.getByText(`✓ Imported ${ROWS.length} new sets`)).toBeVisible();
   await goto(page, 'Today');
