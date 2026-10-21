@@ -39,6 +39,8 @@ import { recoveryOf, type RecoveryFit } from './recovery';
 //
 // Verdicts, by day (owner Q2): checked in this order.
 // - After a layoff of BREAK_DAYS or more (or no training yet): Go today, always (a: deload.BREAK_DAYS: a week off unloads).
+// - The weekly goal met already: "Goal met · extra session optional", a Go, never Rest (owner, S4: his goal is size, and extra
+//   weekly volume only helps it: a: Pelland 2026's weekly volume dose-response). The planner's rest reasons stay on the days ahead.
 // - Rest today: only when the planner (S3, learn/schedule) says today isn't in the best plan AND resting keeps the weekly goal
 //   reachable (at least one spare day). Without a planner (`todayInPlan` not given) there is never a Rest: (c), no action.
 //   learn/schedule.readinessPlanned runs the planner and passes its answer here.
@@ -293,6 +295,8 @@ export interface Week {
   daysLeft: number; slack: number;
   /** No spare day: the goal needs every day left (or is already out of reach). */
   tight: boolean;
+  /** The goal met before today: no session needed this week. */
+  met: boolean;
 }
 
 export function weekOf(entries: readonly SetEntry[], goal: number, today: string): Week {
@@ -301,7 +305,7 @@ export function weekOf(entries: readonly SetEntry[], goal: number, today: string
   for (const e of entries) if (e.date >= start && e.date < today && !e.flags.includes('warmup') && !isCardioEntry(e)) ds.add(e.date);
   const done = ds.size, needed = Math.max(0, goal - done), daysLeft = 7 - days(start, today);
   const slack = daysLeft - needed;
-  return { goal, done, needed, daysLeft, slack, tight: needed > 0 && slack <= 0 };
+  return { goal, done, needed, daysLeft, slack, tight: needed > 0 && slack <= 0, met: goal > 0 && needed === 0 };
 }
 
 // ---- Verdict --------------------------------------------------------------------------------------------------------------
@@ -309,8 +313,11 @@ export function weekOf(entries: readonly SetEntry[], goal: number, today: string
 export type VerdictKind = 'go' | 'tight' | 'light' | 'rest';
 export interface Verdict {
   kind: VerdictKind;
-  /** Why: a layoff, the planner's rest day, a deload, a light week, a tight week, the planner's training day, or no planner. */
-  why: 'layoff' | 'plan-rest' | 'deload' | 'light' | 'tight' | 'plan' | 'default';
+  /**
+   * Why: a layoff, the goal met (an extra session, optional), the planner's rest day, a deload, a light week, a tight week, the
+   * planner's training day, or no planner.
+   */
+  why: 'layoff' | 'goal-met' | 'plan-rest' | 'deload' | 'light' | 'tight' | 'plan' | 'default';
   label: string;
 }
 export interface VerdictFacts {
@@ -318,7 +325,8 @@ export interface VerdictFacts {
   sinceLast: number | null;
   /** learn/deload's verdict, and whether a light week is on. */
   systemic: Systemic['verdict'] | null; lightOn: boolean;
-  week: Pick<Week, 'slack' | 'tight'>;
+  /** `met`: the goal met before today (left out: not met). */
+  week: Pick<Week, 'slack' | 'tight'> & { met?: boolean };
   /** S3's planner: is today in the best plan? Undefined/null without one: never Rest. */
   todayInPlan?: boolean | null;
 }
@@ -326,6 +334,11 @@ export interface VerdictFacts {
 /** The day's verdict from its facts (see the header for the order and the evidence). */
 export function verdictOf(f: VerdictFacts): Verdict {
   if (f.sinceLast == null || f.sinceLast >= BREAK_DAYS) return { kind: 'go', why: 'layoff', label: 'Go today' };
+  if (f.week.met) {
+    // A light week or a deload suggested: an extra session, if any, is a light one.
+    const light = f.systemic === 'deload' || f.lightOn;
+    return light ? { kind: 'light', why: 'goal-met', label: 'Goal met · go light if you train' } : { kind: 'go', why: 'goal-met', label: 'Goal met · extra session optional' };
+  }
   if (f.todayInPlan === false && !f.week.tight && f.week.slack >= 1) return { kind: 'rest', why: 'plan-rest', label: 'Rest today' };
   if (f.systemic === 'deload' || f.lightOn) return { kind: 'light', why: f.systemic === 'deload' ? 'deload' : 'light', label: f.week.tight ? 'Go light · tight week' : 'Go light' };
   if (f.week.tight) return { kind: 'tight', why: 'tight', label: 'Go today · tight week' };
@@ -499,6 +512,7 @@ export function readiness(input: ReadinessInput): Readiness {
       : { rule: 'Pain risk lowers a set', kind: 'default', method: 'no pain flagged yet: the pain model prior alone is not evidence', acts: false },
     { rule: `A layoff of ${BREAK_DAYS}+ days: always Go`, kind: 'research', cite: 'Coleman 2024 (a week off cost no muscle); Rogerson 2024; Bell 2025 (deloads last 5–7 days)', acts: layoff },
     { rule: 'Go light in a deload or light week', kind: 'research', cite: 'Grandou 2020 (a sustained drop is the overreaching marker); Saw 2016; Bell 2025 (light week)', acts: verdict.kind === 'light' },
+    { rule: 'The goal met: an extra session is optional, never Rest', kind: 'research', cite: 'Pelland 2026 (weekly volume dose-response: more weekly sets, more growth); owner (S4: the goal is size)', acts: verdict.why === 'goal-met' },
     { rule: 'No Rest when the weekly goal has no spare day', kind: 'research', cite: 'Pelland 2026 (weekly volume dose-response); Schoenfeld, Grgic & Krieger 2019 and Boutagy & McKean 2026 (frequency adds nothing detectable at equal volume)', acts: week.tight && !layoff },
     input.todayInPlan == null
       ? { rule: 'Rest today only off the best plan', kind: 'default', method: 'no planner yet (S3): today counts as planned, so never Rest', acts: false }

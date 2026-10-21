@@ -24,6 +24,9 @@ import { planAims, volumeAdvice, type PlanAim } from './volume';
 //   Exact ties: the earlier day (c: the plans tied are equal on every count).
 // Rest is never chosen at the goal's cost: tier 1 fixes how many days train before Ready is looked at, and readiness.verdictOf
 // shows Rest only with a spare day.
+// Today rests for recovery only when waiting gains at least REST_GAIN (one) set at full strength over the week, counted unrounded
+// (owner, S4): the best plan that trains today is taken otherwise. The whole-set grid alone would rest today for 0.2 of a set
+// that happens to round up.
 //
 // Evidence labels: (a) research, cited; (b) learned from his log, by the method named; (c) a neutral default that takes no action.
 // - (a) The goal first, and no more than it: weekly volume drives growth and strength (Pelland 2026), and with volume equated more
@@ -63,6 +66,16 @@ export function readyOnSetGrid(r: Pick<SessionReady, 'ready' | 'total'>): number
   if (r.ready == null || !(r.total > 0)) return r.ready;
   return Math.round((Math.round((r.ready * r.total) / 100) * 100) / r.total);
 }
+/**
+ * (owner, S4) Today rests for recovery only if the week's plan gains at least this many sets at full strength by waiting (the
+ * expected sets, Σ sets · P(full strength) · (1 − pain risk), unrounded); else the best plan that trains today stands.
+ */
+export const REST_GAIN = 1;
+/**
+ * Expected sets at full strength as Ready counts them (pain-weighted), unrounded: Ready · sets. (Ready is a whole percent, so this
+ * is within half a hundredth of a set per set of Σ sets · P(full) · (1 − pain).)
+ */
+export const fullSets = (r: Pick<SessionReady, 'ready' | 'total'>): number => (r.ready == null ? 0 : (r.ready * r.total) / 100);
 /** Numerics: equal volume or availability within this. */
 const EPS = 1e-9;
 
@@ -287,6 +300,11 @@ export interface WeekPlan {
   week: Week;
   /** The plan's counts, tier by tier (sessions, volume score, Σ Ready, Σ availability). */
   score: PlanScore;
+  /**
+   * When the best plan rested today for recovery: the sets at full strength (unrounded) waiting gains over the best plan that
+   * trains today, and whether that was under REST_GAIN so today trains after all (`held`). Null when today wasn't rested so.
+   */
+  restGain: { sets: number; held: boolean } | null;
   patterns: number; scored: number;
   volume: PlanVolume[];
   evidence: Evidence[];
@@ -309,16 +327,17 @@ export function slotVolume(slots: readonly Slot[]): Vol {
   return v;
 }
 
-const restLabel = (r: Omit<RestReason, 'label'>, today: string, by?: string): string => {
+/** `trained`: he has trained today (the goal is met today, not by today's session still to come). */
+const restLabel = (r: Omit<RestReason, 'label'>, today: string, by?: string, trained = false): string => {
   switch (r.kind) {
-    case 'goal-met': return !by ? 'Goal met' : by === today ? 'Goal met today' : `Goal met by ${dayLabel(by, today)}`;
+    case 'goal-met': return !by ? 'Goal met' : by === today ? (trained ? 'Goal met today' : 'Goal met with today’s session') : `Goal met by ${dayLabel(by, today)}`;
     case 'recovering': {
       const ms = r.muscles ?? [];
       if (!ms.length || !r.freshBy) return 'Recovering: fresher later this week';
       const names = ms.length > 3 ? `${ms.slice(0, 3).join(', ')} …` : ms.join(', ');
       return `Recovering: ${names} fresh by ${dayLabel(r.freshBy, today)}`;
     }
-    case 'usual': return 'Not one of your usual days';
+    case 'usual': return 'Less usual for you than the days planned';
     default: return 'Spare day';
   }
 };
@@ -411,7 +430,16 @@ export function planWeek(input: PlanInput, model: Pick<ReadinessModel, 'sessionR
     ready: (s, d) => readyOnSetGrid(srOf(s, d)),
   };
   const search = searchWeek(facts);
-  const { best } = search;
+  // Owner (S4): rest today for recovery only for a whole set or more at full strength, unrounded.
+  const pickSets = (x: PlanPick) => x.order.reduce<number>((a, s, d) => (s != null && x.mask & (1 << d) ? a + fullSets(srOf(s, d)) : a), 0);
+  let best = search.best;
+  let restGain: WeekPlan['restGain'] = null;
+  const trainToday = search.bestWith[0];
+  if (!(best.mask & 1) && trainToday && decidedBy(best, trainToday) === 'ready') {
+    const sets = pickSets(best) - pickSets(trainToday);
+    restGain = { sets, held: sets < REST_GAIN };
+    if (restGain.held) best = trainToday;
+  }
 
   // Light days: a light week on, or a deload suggested today (its week from today).
   let lw: { from: string; to: string } | null = null, deload = false;
@@ -439,7 +467,7 @@ export function planWeek(input: PlanInput, model: Pick<ReadinessModel, 'sessionR
         r = { kind: 'recovering', muscles, freshBy: sr?.freshBy ?? null };
       } else r = { kind: t === 'availability' ? 'usual' : 'spare' };
     }
-    return { ...base, fixed: null, session: null, ready: null, light: false, rest: { ...r, label: restLabel(r, today, by) } };
+    return { ...base, fixed: null, session: null, ready: null, light: false, rest: { ...r, label: restLabel(r, today, by, trained) } };
   });
 
   // The volume table: done, planned (a light day's sets at LIGHT.volume) and the gap to each band.
@@ -464,6 +492,11 @@ export function planWeek(input: PlanInput, model: Pick<ReadinessModel, 'sessionR
       acts: search.kept < search.options,
     },
     {
+      rule: 'Rest today for recovery only for a whole set or more', kind: 'research',
+      cite: `owner (S4): waiting must gain ${REST_GAIN} set at full strength, unrounded; Pelland 2026 (a session missed is weekly volume lost)`,
+      acts: restGain != null && restGain.held,
+    },
+    {
       rule: 'Which days: the most sets at full strength', kind: 'research', cite: 'learn/readiness: Raastad & Hallén 2000; Morán-Navarro 2017; Vieira 2022 (recovery per muscle)',
       acts: restDays.some((x) => x.rest?.kind === 'recovering'),
     },
@@ -483,7 +516,7 @@ export function planWeek(input: PlanInput, model: Pick<ReadinessModel, 'sessionR
   ];
 
   return {
-    today, days, todayInPlan: (best.mask & 1) !== 0, week, score: best.score, patterns: search.patterns, scored: search.scored, volume, evidence,
+    today, days, todayInPlan: (best.mask & 1) !== 0, week, score: best.score, restGain, patterns: search.patterns, scored: search.scored, volume, evidence,
   };
 }
 

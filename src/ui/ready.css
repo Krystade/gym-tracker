@@ -1,0 +1,81 @@
+/* ---- Readiness S4: Today's READY tile, the week strip under it, and the Why sheet's body ---- */
+
+.ready-card { margin: 0 0 12px; padding: 4px 16px 12px; border-radius: var(--r-group); background: var(--surface); }
+.ready-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
+.ready-k { font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-2); }
+.ready-acts { display: flex; align-items: center; gap: 4px; margin-right: -8px; }
+.ready-link { display: inline-flex; align-items: center; justify-content: center; gap: 2px; min-width: 44px; min-height: 44px; padding: 0 8px; background: none; color: var(--accent-text); font-size: var(--fs-sub); font-weight: 600; }
+.ready-link .flip { rotate: 180deg; }
+.ready-main { display: flex; align-items: flex-start; gap: 14px; }
+.ready-n { flex: none; min-width: 52px; font-size: 40px; line-height: 44px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--text); }
+.ready-say { min-width: 0; flex: 1; padding-top: 1px; }
+.ready-say p { margin: 0; }
+.ready-verdict { font-size: var(--fs-body); line-height: 22px; font-weight: 600; color: var(--ok); overflow-wrap: anywhere; }
+.ready-card[data-kind='tight'] .ready-verdict, .ready-card[data-kind='light'] .ready-verdict { color: var(--accent-text); }
+.ready-card[data-kind='rest'] .ready-verdict { color: var(--text); }
+.ready-line { font-size: var(--fs-sub); line-height: 20px; color: var(--text-2); overflow-wrap: anywhere; }
+.ready-line b { color: var(--text); font-weight: 600; }
+.ready-note { margin: 8px 0 0; font-size: var(--fs-sm); line-height: 18px; color: var(--text-2); }
+/* The check-in under the number: Energy (and the cycle row), a hairline above. */
+.ready-checkin { margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--hairline); }
+.ready-checkin .energy { margin: 0; }
+.ready-checkin .chips.energy + .chips.energy { margin-top: 4px; }
+
+/* Folded after the day's first set: one line, a tap opens it. */
+.ready-card.folded { padding: 0; }
+.ready-fold { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 0 16px; border-radius: var(--r-group); background: none; color: var(--text-2); text-align: left; font-size: var(--fs-sub); font-weight: 400; }
+.ready-fold .ic { margin-left: auto; color: var(--text-3); flex: none; }
+.ready-n-sm { font-size: 22px; line-height: 26px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.ready-fold-t { min-width: 0; overflow-wrap: anywhere; }
+.ready-fold-t span { color: var(--text-2); }
+
+/* The week strip: a mark a day from today, the rest days' reasons under it. */
+.week-strip { margin: 0 0 16px; padding: 10px 16px 12px; border-radius: var(--r-group); background: var(--surface); }
+.ws-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ws-head h2 { margin: 0; font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-2); }
+.ws-head span { font-size: var(--fs-sm); color: var(--text-2); }
+.ws-days { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(var(--n, 7), minmax(0, 1fr)); gap: 4px; }
+.ws-days li { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
+.ws-day { font-size: var(--fs-xs); line-height: 16px; color: var(--text-2); }
+.ws-days li:first-child .ws-day { color: var(--text); font-weight: 600; }
+.ws-mark { display: block; width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box; }
+.ws-days li[data-mark='train'] .ws-mark { background: var(--accent); }
+.ws-days li[data-mark='light'] .ws-mark { background: color-mix(in oklab, var(--accent) 45%, var(--surface)); border: 2px solid var(--accent); }
+.ws-days li[data-mark='rest'] .ws-mark { border: 2px solid var(--fill-2); }
+.ws-days li[data-mark='optional'] .ws-mark { border: 2px dashed var(--accent); }
+.ws-s { min-height: 14px; max-width: 100%; font-size: 11px; line-height: 14px; color: var(--text-2); text-align: center; overflow-wrap: anywhere; }
+.ws-why { list-style: none; margin: 10px 0 0; padding: 8px 0 0; border-top: 1px solid var(--hairline); display: grid; gap: 4px; }
+.ws-why li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; font-size: var(--fs-sm); line-height: 18px; }
+.ws-why b { color: var(--text); font-weight: 600; }
+.ws-why span { color: var(--text-2); overflow-wrap: anywhere; }
+
+/* The Why sheet's body. */
+.why-hero { display: flex; align-items: flex-start; gap: 14px; margin: 0 0 8px; }
+.why-hero > b { flex: none; font-size: 40px; line-height: 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.why-hero p { margin: 0; }
+.why-v { font-size: var(--fs-body); line-height: 22px; font-weight: 600; }
+.why-b { font-size: var(--fs-sub); line-height: 20px; color: var(--text-2); }
+.why-gain { margin: 8px 0 0; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface); font-size: var(--fs-sub); line-height: 20px; }
+.why-p { margin: 6px 0 0; color: var(--text-2); line-height: 18px; }
+.why-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sub); font-variant-numeric: tabular-nums; }
+.why-table th, .why-table td { padding: 7px 0; text-align: left; border-top: 1px solid var(--hairline); line-height: 20px; vertical-align: top; }
+.why-table thead th { border-top: 0; padding-top: 0; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); }
+.why-table tbody th { font-weight: 400; color: var(--text); padding-right: 8px; overflow-wrap: anywhere; }
+.why-table td { color: var(--text-2); padding-right: 8px; white-space: nowrap; }
+.why-table td:last-child, .why-table th:last-child { text-align: right; padding-right: 0; }
+.why-table td.ok { color: var(--ok); }
+.why-table td.warn { color: var(--warn); }
+.why-lines { margin: 16px 0 0; display: grid; gap: 12px; }
+.why-lines div { display: grid; gap: 2px; }
+.why-lines dt { font-size: var(--fs-sm); color: var(--text-2); }
+.why-lines dd { margin: 0; font-size: var(--fs-sub); line-height: 20px; }
+.why-lines dd span { display: block; }
+.why-vol { list-style: none; margin: 8px 0 0; padding: 0; }
+.why-vol li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 8px 0 12px; border-top: 1px solid var(--hairline); }
+.why-vol li:first-child { border-top: 0; }
+.why-vol-m { font-size: var(--fs-sub); overflow-wrap: anywhere; }
+.why-vol-n { font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* One bar: done (the bright accent), then planned (the accent), then the track; the range bracketed under it. Opaque colours only. */
+.why-bar { grid-column: 1 / -1; position: relative; display: block; height: 8px; border-radius: 4px;
+  background: linear-gradient(to right, var(--accent-hi) 0 var(--done), var(--accent) var(--done) var(--plan), var(--fill) var(--plan) 100%); }
+.why-bar::after { content: ''; position: absolute; left: var(--lo); width: calc(var(--hi) - var(--lo)); top: 11px; height: 2px; border-radius: 1px; background: var(--text-3); }

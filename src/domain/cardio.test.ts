@@ -112,7 +112,8 @@ describe('program', () => {
     expect(per(1)).toBeLessThan(per(4));
   });
   it('a logged cardio slot counts for adherence, and a cardio-only day moves the rotation', () => {
-    const p = buildProgram(tier(2), [], { days: 2, perSession: 10 }, NOW);
+    // Built before the day it logs (a plan before the program's build day is a past cycle's: program.cycleDone).
+    const p = buildProgram(tier(2), [], { days: 2, perSession: 10 }, new Date('2026-10-14T12:00:00Z'));
     const d = p.days.findIndex((x) => x.slots.some((s) => s.minutes != null));
     const slot = p.days[d].slots.find((s) => s.minutes != null)!;
     const plan: DayPlan = { key: 'day:2026-10-15', date: '2026-10-15', day: d, skips: [], swaps: {} };

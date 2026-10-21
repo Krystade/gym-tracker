@@ -4,7 +4,7 @@ import type { SetEntry } from './types';
 import { CATALOG, PROGRAM_LIFTS } from './catalog';
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
 import { defaultProfile, LEGACY_TARGETS, type Profile, type Tier } from './profile';
-import { PREFERENCE, addSlot, adherence, buildProgram, programBlock, rebuildLike, volumeDiffers, candidates, cardioSlot, DEFAULT_PICK, nextDay, primaryExercise, programVolume, type DayPlan, type Program } from './program';
+import { PREFERENCE, addSlot, adherence, buildProgram, programBlock, rebuildLike, volumeDiffers, candidates, cardioSlot, cycleDone, DEFAULT_PICK, nextDay, planToRecord, primaryExercise, programVolume, type DayPlan, type Program } from './program';
 
 let seq = 0;
 const s = (date: string, exercise: string, reps = 10, over: Partial<SetEntry> = {}): SetEntry => ({
@@ -121,6 +121,42 @@ describe('nextDay', () => {
     // Today's own plan doesn't count until tomorrow.
     expect(nextDay(P4, [...plans, plan('2026-10-01', 1)], [s('2026-09-01', 'Cable Curl'), s('2026-10-01', 'Cable Curl')], '2026-10-01')).toBe(1);
     expect(nextDay(P4, [...plans, plan('2026-10-01', 1)], [s('2026-09-01', 'Cable Curl'), s('2026-10-01', 'Cable Curl')], '2026-10-02')).toBe(2);
+  });
+  // Readiness S4 (decision 4): a rebuilt program starts its cycle fresh; days trained before it was built are the old program's.
+  it('a program rebuilt starts the cycle fresh: days before its createdAt don’t count; days from it on do (both sides)', () => {
+    const dates = ['2026-09-01', '2026-09-03', '2026-09-05'];
+    const plans = dates.map((d, i) => plan(d, i)); // A, B, C done
+    const logged = dates.map((d) => s(d, 'Cable Curl'));
+    expect(nextDay(P4, plans, logged, '2026-09-08')).toBe(3); // the old program's cycle: D next
+    // Built on the 6th (local; createdAt is stored as the UTC instant): A.
+    const rebuilt: Program = { ...P4, createdAt: new Date(2026, 8, 6, 9, 0).toISOString() };
+    expect(nextDay(rebuilt, plans, logged, '2026-09-08')).toBe(0);
+    expect([...cycleDone(rebuilt, plans, logged, '2026-09-08')]).toEqual([]);
+    // From its build day on: counted. A trained on the 6th itself, B on the 7th: C next.
+    const after = [...plans, plan('2026-09-06', 0), plan('2026-09-07', 1)];
+    const more = [...logged, s('2026-09-06', 'Cable Curl'), s('2026-09-07', 'Cable Curl')];
+    expect(nextDay(rebuilt, after, more, '2026-09-08')).toBe(2);
+    expect([...cycleDone(rebuilt, after, more, '2026-09-08')].sort()).toEqual([0, 1]);
+    // Built the day after the last of them: nothing done yet.
+    expect(nextDay({ ...P4, createdAt: new Date(2026, 8, 8, 9, 0).toISOString() }, after, more, '2026-09-09')).toBe(0);
+  });
+  it('a program built late in the evening counts that day’s session: its local day, not the UTC one', () => {
+    // 23:30 local: the next day in UTC west of Greenwich (California's 18:00 already is). The day's plan, made after it, counts.
+    const late: Program = { ...P4, createdAt: new Date(2026, 8, 6, 23, 30).toISOString() };
+    const d = '2026-09-06';
+    expect(nextDay(late, [plan(d, 0)], [s(d, 'Cable Curl')], '2026-09-07')).toBe(1);
+    expect([...cycleDone(late, [plan(d, 0)], [s(d, 'Cable Curl')], '2026-09-07')]).toEqual([0]);
+    // And the day before it still doesn't (pair).
+    expect(nextDay(late, [plan('2026-09-05', 0)], [s('2026-09-05', 'Cable Curl')], '2026-09-07')).toBe(0);
+  });
+  it('planToRecord records the suggested day (Today’s, from the week’s plan) when none is stored; else nextDay', () => {
+    const d = '2026-09-10';
+    expect(planToRecord(P4, [], [s(d, 'Cable Curl')], d, 2)).toMatchObject({ day: 2, slots: P4.days[2].slots });
+    expect(planToRecord(P4, [], [s(d, 'Cable Curl')], d)).toMatchObject({ day: 0 });
+    expect(planToRecord(P4, [], [s(d, 'Cable Curl')], d, null)).toMatchObject({ day: 0 });
+    expect(planToRecord(P4, [], [s(d, 'Cable Curl')], d, 9)).toMatchObject({ day: 0 }); // not a day of it
+    // A plan stored already (he picked a day) wins over the suggestion.
+    expect(planToRecord(P4, [plan(d, 3)], [s(d, 'Cable Curl')], d, 2)).toMatchObject({ day: 3 });
   });
 });
 

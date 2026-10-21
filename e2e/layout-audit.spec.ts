@@ -344,6 +344,104 @@ test('Finishing: the Finish bar, the summary in the plan’s place, and a sessio
   clean(found);
 });
 
+// ---- Readiness S4: the READY tile at the top of Today, the week strip, the Why sheet (render check's rules too). ----
+
+/** A clock time ("17:40", "7:05", "5pm"): owner Q2, by the day only, so none in the tile, the strip or the sheet (learn/readiness's detector). */
+const CLOCK = /\d{1,2}:\d{2}|\b\d{1,2}\s?(am|pm)\b/i;
+
+test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded after a set, the week strip, the Why sheet to its end', async ({ page }, info) => {
+  test.setTimeout(240_000);
+  const found: string[] = [];
+  // PNGs of the screen as the phone shows it, when asked for (READY_PNG=<dir>).
+  const png = async (name: string) => { if (process.env.READY_PNG) await page.screenshot({ path: `${process.env.READY_PNG}/${info.project.name}-${name}.png` }); };
+  const tile = page.getByRole('region', { name: 'Ready' });
+  const strip = page.getByRole('region', { name: 'This week' });
+  const noClock = async () => {
+    const text = (await tile.innerText()) + (await strip.count() ? await strip.innerText() : '');
+    expect(text.match(CLOCK), text).toBeNull();
+  };
+  // The render check's rules over the tile and the strip (the rest of Today is the plain audit's).
+  const look = async (state: string) => { await noClock(); await check(page, info, found, state, [], '.ready-card, .week-strip'); await png(state); };
+  const at = async (day: string) => { await page.clock.setSystemTime(new Date(`${day}T18:00:00`)); await page.reload(); await goto(page, 'Today'); };
+  const goal = async (n: number) => { await goto(page, 'Priorities'); await page.getByRole('textbox', { name: 'Sessions per week goal' }).fill(String(n)); await goto(page, 'Today'); };
+
+  // A new user: a calm line, no number (never a 0), the Energy chips in the tile.
+  await phone(page);
+  await expect(tile).toContainText('Log a few sessions');
+  await expect(tile.locator('.ready-n')).toHaveCount(0);
+  await expect(tile.getByRole('group', { name: 'Energy' })).toBeVisible();
+  await look('ready-new-user');
+
+  // Ten weeks of Mon/Wed/Fri, a 3-day program built today (Tuesday), the goal 2: Go, the session, its sets, the week strip.
+  await importLog(page);
+  await goto(page, 'Today');
+  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Days per week' }).fill('3');
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  await expect(tile.locator('.ready-n')).toHaveText(/^(\d+|<1)$/);
+  await expect(tile.locator('.ready-verdict')).toHaveText('Go today');
+  await expect(tile).toContainText(/\d+ of \d+ sets at full strength/);
+  await expect(strip.getByRole('listitem').first()).toContainText('Today');
+  await expect(strip.locator('.ws-days > li')).toHaveCount(6); // Tuesday to Sunday
+  // Today's plan is the week plan's session for today (owner Q3), whichever day that is.
+  const planned = (await tile.locator('.ready-line b').first().textContent())!;
+  await expect(page.getByRole('region', { name: 'Today’s plan' })).toContainText(planned);
+  await look('ready-go');
+
+  // Why ›: the sheet, its muscles, sources, energy, deload, pain and the week's sets, to its end.
+  await tile.getByRole('button', { name: /^Why/ }).click();
+  const d = page.getByRole('dialog', { name: 'Why' });
+  await expect(d).toBeVisible();
+  await expect(page.locator('html')).toHaveClass(/sheet-lock/);
+  await expect(d.locator('.why-table tbody tr').first()).toBeVisible();
+  await expect(d).toContainText(/research \d+% · you \d+%/);
+  expect((await d.innerText()).match(CLOCK)).toBeNull();
+  await check(page, info, found, 'ready-why', [], '[role=dialog]');
+  await png('ready-why');
+  await d.locator('.st-sh-body').evaluate((b) => { b.scrollTop = b.scrollHeight; });
+  await check(page, info, found, 'ready-why-end', [], '[role=dialog]');
+  await png('ready-why-end');
+  await d.getByRole('button', { name: 'Done' }).click();
+  await expect(d).toHaveCount(0);
+
+  // Goal 6 from Tuesday: 6 days for 6 sessions, no spare day.
+  await goal(6);
+  await expect(tile.locator('.ready-verdict')).toHaveText('Go today · tight week');
+  await expect(strip.locator('.ws-days > li[data-mark=rest]')).toHaveCount(0);
+  await look('ready-tight');
+  await goal(2);
+
+  // The day's first set: the tile folds to one line; a tap opens it again, and folds it.
+  const card = await addCard(page, 'Bench Press');
+  await logSet(page, card, '18:05:00', '245', '5');
+  await expect(tile.getByRole('button', { name: /Ready/ })).toHaveAttribute('aria-expanded', 'false');
+  await expect(tile.getByRole('group', { name: 'Energy' })).toHaveCount(0);
+  await expect(strip).toHaveCount(0);
+  await look('ready-folded');
+  await tile.getByRole('button', { name: /Ready/ }).click();
+  await expect(tile.getByRole('group', { name: 'Energy' })).toBeVisible();
+  await look('ready-reopened');
+  await tile.getByRole('button', { name: 'Fold Ready' }).click();
+  await expect(tile.getByRole('group', { name: 'Energy' })).toHaveCount(0);
+
+  // Wednesday, goal 1, met on Tuesday: a Go, "extra session optional", never Rest; the days ahead rest, "Goal met".
+  await page.clock.resume();
+  await goal(1);
+  await at(add(DAY0, 1));
+  await expect(tile.locator('.ready-verdict')).toHaveText('Goal met · extra session optional');
+  await expect(strip.locator('.ws-days > li').first()).toHaveAttribute('data-mark', 'optional');
+  await expect(strip.locator('.ws-why')).toContainText('Goal met');
+  await look('ready-goal-met');
+
+  // Eight days on from the last session: a layoff, always Go, said calmly.
+  await at(add(DAY0, 8));
+  await expect(tile.locator('.ready-verdict')).toHaveText('Go today');
+  await expect(tile).toContainText('First session in 8 days');
+  await look('ready-layoff');
+  clean(found);
+});
+
 test('More: an import held back, and Duplicate imports with its days, the copies that differ, the confirm and the result', async ({ page }, info) => {
   test.setTimeout(120_000);
   await phone(page);
@@ -491,6 +589,12 @@ test('Prompts: the light week offered and started, the volume steps on Stats', a
   await offer.getByRole('button', { name: 'Start light week' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Light week' })).toContainText('half the sets');
   await check(page, info, found, 'prompt-light-week');
+  // The READY tile in a light week: "Go light", its render check (and a PNG when asked for, READY_PNG=<dir>).
+  const tile = page.getByRole('region', { name: 'Ready' });
+  await expect(tile.locator('.ready-verdict')).toHaveText(/go light/i);
+  expect((await tile.innerText()).match(CLOCK)).toBeNull();
+  await check(page, info, found, 'ready-light', [], '.ready-card, .week-strip');
+  if (process.env.READY_PNG) await page.screenshot({ path: `${process.env.READY_PNG}/${info.project.name}-ready-light.png` });
   await goto(page, 'Priorities');
   await page.getByRole('combobox', { name: 'Chest' }).selectOption({ index: 0 });
   const one = page.getByRole('group', { name: 'Weekly sets' }).getByRole('listitem').filter({ hasText: /^1 ·/ });

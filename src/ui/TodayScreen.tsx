@@ -52,6 +52,21 @@ import { MorningCheck } from './MorningCheck';
 import { systemic } from '../domain/learn/deload';
 import { deloadSnoozed, endLight, lightOn, snoozeDeload, startLight, tappedLight } from '../state/lightWeek';
 import { DeloadPrompt, LightWeekLine } from './DeloadPrompt';
+import { ReadyCard } from './ReadyTile';
+import { readyMorning, suggestedDay, type ReadyInput } from './readyView';
+import { sizing } from '../domain/learn/session';
+import { kneePlan } from '../domain/learn/rest';
+import { warmupCount } from '../domain/suggest';
+import { usualMinutes } from '../domain/timing';
+
+const ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+/** The same array while it holds the same sets (a set logged today makes a new log with the same days before it). */
+function useSameRefs<T>(xs: readonly T[]): readonly T[] {
+  const last = useRef(xs);
+  const a = last.current;
+  if (a !== xs && !(a.length === xs.length && a.every((x, i) => x === xs[i]))) last.current = xs;
+  return last.current;
+}
 
 export function TodayScreen({ me, who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews }: {
   /** Whose sets these are, named only when several people share the phone. */
@@ -75,7 +90,27 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   const [extra, setExtra] = useState<string[]>(() => getDraft<string[]>(owner, `${CARDS}:${date}`, date) ?? []);
   useEffect(() => { saveDraft(owner, `${CARDS}:${date}`, date, extra); }, [owner, date, extra]);
   const logged = dayOrder(store.entries, date);
-  const plan = todayPlanFor(programs, store.entries, date);
+  // Readiness S4: the day's READY tile and week plan (learn/schedule), as the day started; its session for today is Today's
+  // suggestion (the plan may reorder the program's days).
+  const isToday0 = date === today;
+  // Item 06's light week as tapped on this phone (a tap bumps deloadTaps), read here first: the tile reads it too.
+  const [deloadTaps, setDeloadTaps] = useState(0);
+  const tapped = tappedLight(owner);
+  const before = useSameRefs(store.entries.filter((e) => e.date < today));
+  const gymCtx = useMemo(() => (gyms.active ? { available: availableSet(gyms.active, [...PROGRAM_LIFTS, ...exerciseNames(before as SetEntry[]), ...gyms.active.include]), include: gyms.active.include } : {}), [gyms.active, before]);
+  // No program: the quick day for the time he usually has (as Suggested today builds it), the session it reads.
+  const quickForReady = useMemo(() => {
+    if (programs.program || !isToday0) return null;
+    const warm = (ex: string) => warmupCount(before as SetEntry[], ex, today);
+    const size = sizing(before, today, { warmups: warm, knee: kneePlan(before, today) ?? undefined });
+    const mins = usualMinutes(before as SetEntry[], today);
+    return quickDay(profile, before as SetEntry[], today, (sl) => size.seconds(sl) <= mins * 60, gymCtx);
+  }, [programs.program, isToday0, before, today, profile, gymCtx]);
+  const readyIn: ReadyInput = useMemo(() => ({ entries: store.entries, body: body.days, program: programs.program, plans: programs.plans, profile, quick: quickForReady, today, tz: ZONE, tapped }),
+    [store.entries, body.days, programs.program, programs.plans, profile, quickForReady, today, owner, deloadTaps]); // `tapped` changes only with a tap
+  const morning = useMemo(() => (isToday0 ? readyMorning(readyIn) : null), [isToday0, readyIn]);
+  const suggested = morning ? suggestedDay(morning) : null;
+  const plan = todayPlanFor(programs, store.entries, date, isToday0 ? suggested : null);
   // The day's δ for his rest knees (item 17): the timer and the plan's length use the same. A plan not saved yet is a new object
   // each render, so it's keyed by what it says.
   const planSig = plan && JSON.stringify(plan);
@@ -83,8 +118,6 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     [programs.program, planSig, store.entries, settings]);
   // Item 06: a light week on the day (started here, or read from the log's light sets), and, on today outside one, whether his
   // strength is down across lifts with a second signal: then a light week is offered, and rotation offers wait.
-  const [deloadTaps, setDeloadTaps] = useState(0);
-  const tapped = tappedLight(owner);
   const light = lightOn(owner, store.entries, date);
   const sys = useMemo(() => (date === today ? systemic(store.entries, body.days, today, tapped) : null),
     [store.entries, body.days, today, date, deloadTaps]); // `tapped` changes only with a tap, which bumps deloadTaps
@@ -96,9 +129,9 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   // Only today: looking back at an older day must not record it and move today's rotation.
   useEffect(() => {
     if (!programs.program || date !== today) return;
-    const r = planToRecord(programs.program, programs.plans, store.entries, date);
+    const r = planToRecord(programs.program, programs.plans, store.entries, date, suggested);
     if (r) void programs.savePlan(r);
-  }, [programs.program, programs.plans, programs.savePlan, store.entries, date, today]);
+  }, [programs.program, programs.plans, programs.savePlan, store.entries, date, today, suggested]);
   const addCard = (n: string) => setExtra((xs) => (xs.some((x) => sameExercise(x, n)) ? xs : [...xs, n]));
   // Null = automatic: open while the day has lifts left, folded once every planned lift is done or skipped.
   const [planOpen, setPlanOpen] = useState<boolean | null>(null);
@@ -293,6 +326,8 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       </div>
       {/* Which gym only matters once there's a choice of them. */}
       {gyms.gyms.length > 1 && gyms.active && <button className="gym-line" onClick={onOpenGym}><span>at <b className="pname">{gyms.active.name}</b></span><Icon name="chev-right" size={16} sw={2} /></button>}
+      {/* Owner Q5: the tile at the top of Today, about today only; the Energy chips in it. */}
+      {date === today && morning && <ReadyCard input={readyIn} morning={morning} body={body} worked={worked} sys={sys} />}
       {news && onOpenNews && (
         <button className="today-news" onClick={() => onOpenNews({ uid: news.uid, name: news.name })}>
           <Icon name="message" size={22} /><span><FriendName me={me} friend={news} bare /> {news.text}</span><span className="small reply">tap to reply</span>
@@ -303,8 +338,8 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       {date === today && <MorningCheck store={store} today={today} />}
       {date === today && <TodayDigest owner={owner} entries={store.entries} profile={profile} today={today} recap={recap} />}
       <WeighIn body={body} date={date} />
-      <Energy body={body} date={date} />
-      <CycleRow date={date} />
+      {/* A past day: its energy and cycle phase here (today's are in the tile). */}
+      {date !== today && <><Energy body={body} date={date} /><CycleRow date={date} /></>}
       {light && <LightWeekLine to={light.to} today={today} onEnd={() => { endLight(owner, store.entries, date); snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
       {offerDeload && sys && <DeloadPrompt s={sys} onStart={() => { startLight(owner, today); setDeloadTaps((n) => n + 1); }} onLater={() => { snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
       {date === today && update && programs.program && <ProgramUpdateCard owner={owner} program={programs.program} update={update}

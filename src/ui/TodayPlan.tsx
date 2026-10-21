@@ -32,10 +32,14 @@ export const sizedHow = (L: Lengths, by: Sizing['by']): string => by === 'pace' 
 /** Done for the plan: a working set, or a cardio bout. */
 const doneEntry = (e: SetEntry) => isWorking(e) || !!e.cardio;
 
-export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: string): DayPlan | null => {
+/**
+ * The day's plan: the one stored, else the suggested day (readiness S4: today's session in the week's plan, which may reorder the
+ * days, owner Q3), else program.nextDay. He can still pick any day on the plan.
+ */
+export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: string, suggested?: number | null): DayPlan | null => {
   if (!store.program) return null;
-  return store.plans.find((x) => x.date === date)
-    ?? { key: `day:${date}`, date, day: nextDay(store.program, store.plans, entries, date), skips: [], swaps: {} };
+  const day = suggested != null && suggested >= 0 && suggested < store.program.days.length ? suggested : nextDay(store.program, store.plans, entries, date);
+  return store.plans.find((x) => x.date === date) ?? { key: `day:${date}`, date, day, skips: [], swaps: {} };
 };
 
 const daySlots = (program: Program, plan: DayPlan): Slot[] => (plan.quick != null ? plan.slots ?? [] : (program.days[plan.day] ?? program.days[0]).slots);

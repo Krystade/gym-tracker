@@ -106,7 +106,9 @@ describe('learn/readiness: a lift’s P(full strength)', () => {
 
 describe('learn/readiness: the verdict (table)', () => {
   // Every combination of the facts that decide it.
-  const weeks: VerdictFacts['week'][] = [{ slack: -1, tight: true }, { slack: 0, tight: true }, { slack: 1, tight: false }, { slack: 3, tight: false }, { slack: 6, tight: false }];
+  const weeks: VerdictFacts['week'][] = [{ slack: -1, tight: true }, { slack: 0, tight: true }, { slack: 1, tight: false }, { slack: 3, tight: false }, { slack: 6, tight: false },
+    // The goal met before today (needed 0: as many days spare as are left).
+    { slack: 1, tight: false, met: true }, { slack: 4, tight: false, met: true }];
   const grid: VerdictFacts[] = [];
   for (const sinceLast of [null, 0, 1, BREAK_DAYS - 1, BREAK_DAYS, 30])
     for (const systemic of [null, 'deload', 'break', 'light', 'few', 'steady', 'alone'] as const)
@@ -125,8 +127,21 @@ describe('learn/readiness: the verdict (table)', () => {
     expect(short.some((r) => r.v.kind === 'light')).toBe(true);
   });
 
+  it('the goal met (owner S4): “Goal met · extra session optional”, a Go, never Rest, even on the planner’s rest day; light if light', () => {
+    const xs = rows.filter((r) => !layoff(r.f) && r.f.week.met);
+    expect(xs.filter((r) => r.f.todayInPlan === false).length).toBeGreaterThan(20);
+    for (const { f, v } of xs) {
+      const light = f.systemic === 'deload' || f.lightOn;
+      expect(v, JSON.stringify(f)).toEqual(light
+        ? { kind: 'light', why: 'goal-met', label: 'Goal met · go light if you train' }
+        : { kind: 'go', why: 'goal-met', label: 'Goal met · extra session optional' });
+    }
+    // Pair: the same facts with the goal not met rest on the planner's rest day.
+    expect(rows.filter((r) => !layoff(r.f) && !r.f.week.met && r.f.todayInPlan === false && r.f.week.slack >= 1).every((r) => r.v.kind === 'rest')).toBe(true);
+  });
+
   it('a deload or a light week: Go light (unless a layoff, or the planner’s rest day with a spare day)', () => {
-    const xs = rows.filter((r) => !layoff(r.f) && (r.f.systemic === 'deload' || r.f.lightOn) && !(r.f.todayInPlan === false && r.f.week.slack >= 1));
+    const xs = rows.filter((r) => !layoff(r.f) && !r.f.week.met && (r.f.systemic === 'deload' || r.f.lightOn) && !(r.f.todayInPlan === false && r.f.week.slack >= 1));
     expect(xs.length).toBeGreaterThan(50);
     for (const { f, v } of xs) {
       expect(v.kind, JSON.stringify(f)).toBe('light');
@@ -147,7 +162,7 @@ describe('learn/readiness: the verdict (table)', () => {
     const none = rows.filter((r) => r.f.todayInPlan == null);
     expect(none.length).toBeGreaterThan(100);
     expect(none.every((r) => r.v.kind !== 'rest')).toBe(true);
-    const rest = rows.filter((r) => r.f.todayInPlan === false && !layoff(r.f) && r.f.week.slack >= 1);
+    const rest = rows.filter((r) => r.f.todayInPlan === false && !layoff(r.f) && !r.f.week.met && r.f.week.slack >= 1);
     expect(rest.length).toBeGreaterThan(20);
     expect(rest.every((r) => r.v.kind === 'rest' && r.v.label === 'Rest today')).toBe(true);
   });
@@ -157,10 +172,11 @@ describe('learn/readiness: the week', () => {
   // 2026-03-02 is a Monday.
   const es = [...session('2026-03-02', 'DB Curl', 3, 10, false), ...session('2026-03-04', 'DB Curl', 3, 10, false)];
   it('sessions before today this week, still needed, days left (today in), and the slack', () => {
-    expect(weekOf(es, 3, '2026-03-05')).toEqual({ goal: 3, done: 2, needed: 1, daysLeft: 4, slack: 3, tight: false });
-    expect(weekOf(es, 6, '2026-03-05')).toEqual({ goal: 6, done: 2, needed: 4, daysLeft: 4, slack: 0, tight: true });
+    expect(weekOf(es, 3, '2026-03-05')).toEqual({ goal: 3, done: 2, needed: 1, daysLeft: 4, slack: 3, tight: false, met: false });
+    expect(weekOf(es, 6, '2026-03-05')).toEqual({ goal: 6, done: 2, needed: 4, daysLeft: 4, slack: 0, tight: true, met: false });
     expect(weekOf(es, 7, '2026-03-05').tight).toBe(true); // out of reach: still no spare day
-    expect(weekOf(es, 2, '2026-03-08')).toMatchObject({ needed: 0, daysLeft: 1, tight: false }); // goal met on Sunday
+    expect(weekOf(es, 2, '2026-03-08')).toMatchObject({ needed: 0, daysLeft: 1, tight: false, met: true }); // goal met on Sunday
+    expect(weekOf(es, 2, '2026-03-04')).toMatchObject({ done: 1, needed: 1, met: false }); // pair: one short
     expect(weekOf(es, 2, '2026-03-09')).toMatchObject({ done: 0, needed: 2, daysLeft: 7 }); // a new week
   });
 });
@@ -256,7 +272,12 @@ describe('learn/readiness: the day on a synthetic lifter', () => {
 
   it('a light week on: Go light; zero slack: Go today · tight week, never Rest', () => {
     const lightLog = [...entries, ...session(yesterday, 'DB Curl', 2, 10, false, { flags: ['light'] })];
-    expect(readiness(input({ entries: lightLog })).verdict).toMatchObject({ kind: 'light', why: 'light', label: 'Go light' });
+    // A goal not met yet, with a spare day (the synthetic lifter has met goal 3 by today).
+    const notMet = readiness(input({ entries: lightLog, weeklyGoal: 4 }));
+    expect(notMet.week).toMatchObject({ met: false, tight: false });
+    expect(notMet.verdict).toMatchObject({ kind: 'light', why: 'light', label: 'Go light' });
+    // Met: an extra session, light if any, never Rest (owner S4).
+    expect(readiness(input({ entries: lightLog, todayInPlan: false })).verdict).toMatchObject({ kind: 'light', why: 'goal-met', label: 'Goal met · go light if you train' });
     const tight = readiness(input({ weeklyGoal: 7, todayInPlan: false }));
     expect(tight.week.tight).toBe(true);
     expect(tight.verdict).toMatchObject({ kind: 'tight', label: 'Go today · tight week' });

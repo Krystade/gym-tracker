@@ -242,11 +242,15 @@ const trainedOn = (entries: SetEntry[], date: string) => trainedDates(entries).h
 
 /**
  * The program days done in the current cycle: the days trained before `today` (a plan with nothing logged, or a quick day, doesn't
- * count), in date order, cut into cycles. A cycle closes once every day is done, or when a day comes round again before it is
- * (so a reordered week still counts each day once).
+ * count) since the program was built (readiness S4: a rebuilt program starts its cycle fresh; its day numbers are new days), in
+ * date order, cut into cycles. A cycle closes once every day is done, or when a day comes round again before it is (so a
+ * reordered week still counts each day once).
  */
 export function cycleDone(p: Program, plans: readonly DayPlan[], entries: readonly SetEntry[], today: string): Set<number> {
-  const xs = plans.filter((x) => x.date < today && x.quick == null && x.day < p.days.length && trainedOn(entries as SetEntry[], x.date)).sort((a, b) => a.date.localeCompare(b.date));
+  // createdAt is a UTC instant; plans are local days. Built at 18:00 in California is the next day in UTC: its local day.
+  const built = new Date(p.createdAt);
+  const since = Number.isNaN(built.getTime()) ? '' : localDate(built);
+  const xs = plans.filter((x) => x.date < today && x.date >= since && x.quick == null && x.day < p.days.length && trainedOn(entries as SetEntry[], x.date)).sort((a, b) => a.date.localeCompare(b.date));
   let done = new Set<number>();
   for (const x of xs) {
     if (done.has(x.day)) done = new Set();
@@ -286,12 +290,16 @@ export function adherence(p: Program, plans: DayPlan[], entries: SetEntry[], sin
   return { planned, done };
 }
 
-/** The plan to store for `date` once working sets are logged: fixes the rotation and snapshots the day's slots. Null when nothing needs saving. */
-export function planToRecord(p: Program, plans: DayPlan[], entries: SetEntry[], date: string): DayPlan | null {
+/**
+ * The plan to store for `date` once working sets are logged: fixes the rotation and snapshots the day's slots. Null when nothing
+ * needs saving. `suggested`: the day Today suggested (readiness S4: the week's plan may put another day first), else nextDay.
+ */
+export function planToRecord(p: Program, plans: DayPlan[], entries: SetEntry[], date: string, suggested?: number | null): DayPlan | null {
   if (!trainedOn(entries, date)) return null;
   const stored = plans.find((x) => x.date === date);
   if (stored?.slots) return null;
-  const base = stored ?? { key: `day:${date}`, date, day: nextDay(p, plans, entries, date), skips: [], swaps: {} };
+  const pick = suggested != null && suggested >= 0 && suggested < p.days.length ? suggested : nextDay(p, plans, entries, date);
+  const base = stored ?? { key: `day:${date}`, date, day: pick, skips: [], swaps: {} };
   const day = p.days[base.day] ?? p.days[0];
   return day ? { ...base, day: p.days[base.day] ? base.day : 0, slots: structuredClone(day.slots) } : null;
 }

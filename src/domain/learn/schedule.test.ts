@@ -7,7 +7,7 @@ import { rng } from './num';
 import { readiness, readinessModel } from './readiness';
 import { shuffleSessions, simulateRecovery } from './recoverySim.sample';
 import {
-  decidedBy, MAX_PATTERNS, planWeek, PRIORITY_WEIGHT, ranksAbove, readinessPlanned, readyOnSetGrid, searchWeek, sessionOptions, slotVolume, volumeScore,
+  decidedBy, fullSets, MAX_PATTERNS, planWeek, PRIORITY_WEIGHT, ranksAbove, readinessPlanned, readyOnSetGrid, REST_GAIN, searchWeek, sessionOptions, slotVolume, volumeScore,
   type PlanFacts, type PlanInput, type PlanPick, type WeekPlan,
 } from './schedule';
 import { planAims, volumeAdvice } from './volume';
@@ -233,6 +233,9 @@ describe('learn/schedule: the week', () => {
     expect(trainDays(p)).toEqual(['today', 'Sat']);
     expect(p.days.slice(1, 5).every((d) => d.rest!.kind === 'usual')).toBe(true);
     expect(p.days[6].rest!.kind).toBe('goal-met');
+    expect(p.days[6].rest!.label).toBe('Goal met by Sat'); // by the session planned that day
+    // The goal met by today's session, still to come: said so (once trained, "Goal met today": the pair below).
+    expect(planWeek(input({ entries: log, today: MON, weeklyGoal: 1 })).days[1].rest!.label).toBe('Goal met with today’s session');
     expect(p.evidence.find((e) => e.rule.startsWith('Ties'))).toMatchObject({ kind: 'learned', acts: true });
     expect(p.evidence.find((e) => e.rule.startsWith('Today counts'))).toMatchObject({ kind: 'research', acts: true });
     // Pair: a Wednesday lifter, the same week: today and Wednesday.
@@ -248,28 +251,48 @@ describe('learn/schedule: the week', () => {
 
   it('never Rest when the goal is at risk: zero slack trains every day left; and the verdict is never Rest then (table)', () => {
     let tight = 0, rested = 0;
-    for (const lifted of [false, true]) for (let k = 0; k < 7; k++) for (const goal of [1, 2, 3, 4, 5, 6, 7]) {
-      const today = addD(MON, k);
-      // Lifted: a session every day of the week before today (k done).
-      const week = lifted ? Array.from({ length: k }, (_, i) => session(addD(MON, i), 'Bench Press', 3, 10, false)).flat() : [];
-      const done = lifted ? k : 0;
-      const r = readinessPlanned(input({ entries: [...log, ...week], today, weeklyGoal: goal }));
+    // Sore: a synthetic lifter (learn/recovery fitted) with its upper day done this cycle and the legs to failure yesterday.
+    const { entries: sim } = simulateRecovery(1, { sessions: 60, failFrac: 0.3 });
+    const SIM_MON = nextMonday(addD(sim.at(-1)!.date, 1)), simPlans = [plan(sim.at(-1)!.date, 0)];
+    for (const lifted of ['none', 'daily', 'sore'] as const) for (let k = 0; k < 7; k++) for (const goal of [1, 2, 3, 4, 5, 6, 7]) {
+      const today = addD(lifted === 'sore' ? SIM_MON : MON, k);
+      // Daily: a session every day of the week before today (k done).
+      const week = lifted === 'daily' ? Array.from({ length: k }, (_, i) => session(addD(MON, i), 'Bench Press', 3, 10, false)).flat() : [];
+      const sore = [...session(addD(today, -1), 'Leg Press', 5, 12, true), ...session(addD(today, -1), 'Leg Extension', 4, 12, true)];
+      const done = lifted === 'daily' ? k : lifted === 'sore' && k > 0 ? 1 : 0;
+      const r = readinessPlanned(lifted === 'sore'
+        ? input({ entries: [...sim, ...sore], today, weeklyGoal: goal, plans: simPlans })
+        : input({ entries: [...log, ...week], today, weeklyGoal: goal }));
       const p = r.plan!;
       const T = Math.min(Math.max(0, goal - done), 7 - k);
       expect(p.days.filter((d) => d.train).length).toBe(T); // the goal met whenever it can be, never more
       if (goal - done >= 7 - k) { tight++; expect(p.days.every((d) => d.train)).toBe(true); expect(r.verdict.kind).not.toBe('rest'); }
-      if (r.verdict.kind === 'rest') { rested++; expect(r.week.slack).toBeGreaterThanOrEqual(1); expect(p.todayInPlan).toBe(false); }
+      if (r.verdict.kind === 'rest') {
+        rested++;
+        expect(r.week.slack).toBeGreaterThanOrEqual(1); expect(p.todayInPlan).toBe(false); expect(r.week.met).toBe(false);
+        expect(p.restGain!.sets).toBeGreaterThanOrEqual(1);
+      }
     }
     expect(tight).toBeGreaterThan(30);
-    expect(rested).toBeGreaterThanOrEqual(10); // the table holds rest days too
+    expect(rested).toBeGreaterThanOrEqual(10); // the table holds rest days too (the sore lifter's)
   });
 
-  it('the goal met: every day rests, “Goal met”, and the verdict is Rest; trained today anyway: today is in the plan (pair)', () => {
+  it('the goal met: the days ahead rest, “Goal met”; the verdict is a Go, “extra session optional”, never Rest (owner S4); trained today anyway: today is in the plan (pair)', () => {
     const done = [...log, ...session(MON, 'Bench Press', 3, 10, false), ...session('2026-03-03', 'Lat Pulldown', 3, 10, false)];
     const p = planWeek(input({ entries: done, today: WED, weeklyGoal: 2 }));
     expect(p.week.needed).toBe(0);
+    expect(p.week.met).toBe(true);
     expect(p.days.every((d) => !d.train && d.rest!.kind === 'goal-met' && d.rest!.label === 'Goal met')).toBe(true);
-    expect(readinessPlanned(input({ entries: done, today: WED, weeklyGoal: 2 })).verdict.kind).toBe('rest');
+    const r = readinessPlanned(input({ entries: done, today: WED, weeklyGoal: 2 }));
+    expect(r.verdict).toEqual({ kind: 'go', why: 'goal-met', label: 'Goal met · extra session optional' });
+    expect(r.evidence.find((e) => e.rule.startsWith('The goal met'))).toMatchObject({ kind: 'research', acts: true });
+    // A light week on: the extra session, if any, light; still never Rest.
+    expect(readinessPlanned(input({ entries: done, today: WED, weeklyGoal: 2, tapped: { from: MON } })).verdict).toEqual({ kind: 'light', why: 'goal-met', label: 'Goal met · go light if you train' });
+    // Pair: one session short, the same week is not met, and the verdict is not the goal's.
+    const short = readinessPlanned(input({ entries: done, today: WED, weeklyGoal: 3 }));
+    expect(short.week.met).toBe(false);
+    expect(short.verdict.why).not.toBe('goal-met');
+    expect(short.evidence.find((e) => e.rule.startsWith('The goal met'))!.acts).toBe(false);
     const extra = [...done, ...session(WED, 'DB Curl', 2, 10, false)];
     const q = planWeek(input({ entries: extra, today: WED, weeklyGoal: 2 }));
     expect(q.days[0]).toMatchObject({ train: true, fixed: 'trained' });
@@ -292,6 +315,41 @@ describe('learn/schedule: the week', () => {
     expect(tie.days[0]).toMatchObject({ train: true, fixed: null });
     const far = planWeek(input({ entries: log, today: MON, weeklyGoal: 1, program: upper }), readAt(log, MON, 80, 94));
     expect(far.days[0]).toMatchObject({ train: false, rest: { kind: 'recovering' } });
+  });
+
+  it('rest today for recovery only when waiting gains a whole set at full strength, unrounded (owner S4: REST_GAIN; table, pairs)', () => {
+    expect(REST_GAIN).toBe(1);
+    expect(fullSets({ ready: 81, total: 10 })).toBeCloseTo(8.1, 12);
+    expect(fullSets({ ready: null, total: 10 })).toBe(0);
+    // One 10-set session, the week's one: today `now`, every later day 90 (9 sets).
+    const ten = program([['Upper', [slot('Bench Press', 4), slot('Lat Pulldown', 3), slot('DB Curl', 3)]]]);
+    const at = (now: number) => {
+      const i = input({ entries: log, today: MON, weeklyGoal: 1, program: ten });
+      const p = planWeek(i, readAt(log, MON, now, 90));
+      return { p, v: readiness({ ...i, todayInPlan: p.todayInPlan }).verdict };
+    };
+    // [today's Ready, rests today, the gain (sets), held back from a rest]
+    const T: [number, boolean, number | null, boolean][] = [
+      [90, false, null, false], // equal: today
+      [86, false, null, false], // 8.6 and 9 sets both round to 9: the grid ties, today
+      [84, false, 0.6, true], // 8.4 rounds to 8, a whole set less on the grid; unrounded 0.6 of a set: today trains
+      [81, false, 0.9, true],
+      [80, true, 1, false], // exactly a set: rest
+      [70, true, 2, false],
+    ];
+    for (const [now, rests, gain, held] of T) {
+      const { p, v } = at(now);
+      expect(p.days[0].train, `${now}`).toBe(!rests);
+      expect(v.kind === 'rest', `${now}`).toBe(rests);
+      if (gain == null) expect(p.restGain, `${now}`).toBeNull();
+      else { expect(p.restGain!.sets, `${now}`).toBeCloseTo(gain, 9); expect(p.restGain!.held, `${now}`).toBe(held); }
+      expect(p.evidence.find((e) => e.rule.startsWith('Rest today for recovery'))!.acts, `${now}`).toBe(held);
+      expect(p.days.filter((d) => d.train).length).toBe(1); // the goal's one session either way
+    }
+    // Held back: today trains the session, its own Ready; the rest days' reasons stand.
+    const held = at(84).p;
+    expect(held.days[0]).toMatchObject({ train: true, fixed: null, session: { name: 'Upper' } });
+    expect(held.days.slice(1).every((d) => !d.train && d.rest!.kind === 'goal-met')).toBe(true);
   });
 
   it('a layoff: today trains though it reads least ready; two days off, the same readings rest today (pair)', () => {
@@ -474,10 +532,11 @@ describe('learn/schedule: Ready moves the days', () => {
         const names = (p: WeekPlan) => p.days.filter((d) => d.train).map((d) => d.session!.name).sort();
         expect(names(a)).toEqual(names(b));
         a.volume.forEach((v, k) => expect(v.planned).toBeCloseTo(b.volume[k].planned, 9));
-        if (a.days.findIndex((d) => d.train) !== b.days.findIndex((d) => d.train)) moved++;
+        const plan = (p: WeekPlan) => p.days.map((d) => d.session?.name ?? '-').join(' ');
+        if (plan(a) !== plan(b)) moved++;
       }
     }
-    expect(moved).toBeGreaterThan(3); // ...while Ready does move the days (else this proves little)
+    expect(moved).toBeGreaterThan(3); // ...while Ready does move the sessions between days (else this proves little)
   });
 });
 
