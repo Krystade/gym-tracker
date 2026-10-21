@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { restPush } = vi.hoisted(() => ({ restPush: vi.fn() }));
 vi.mock('../push/client', () => ({ restPush, restAlertState: () => null, subscribeRestAlert: () => () => {} }));
 vi.mock('../push/config', () => ({ PUSH_ON: true }));
-const { adjustRest, currentRest, restLines, revertSwitch, startRest } = await import('./RestTimer');
+const { adjustRest, closeTimers, currentOffer, currentRest, finishNow, keepGoing, offerFinish, restLines, revertSwitch, startRest } = await import('./RestTimer');
 
 describe('the rest timer’s lock-screen alert', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-16T18:30:00')); restPush.mockClear(); startRest(0, 'x'); restPush.mockClear(); });
@@ -101,5 +101,60 @@ describe('why the rest is its length (the bar’s “?”)', () => {
   it('a rest started without its lines has nothing to explain', () => {
     startRest(120, 'cable curl');
     expect(restLines(currentRest()!)).toBeNull();
+  });
+});
+
+describe('after the plan’s last set (owner, 2026-10-20): no rest, Finish or Keep going in the bar’s place', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-16T18:30:00')); startRest(0, 'x'); restPush.mockClear(); });
+
+  it('ends the rest before it and calls off its lock-screen alert; no rest starts, so no alert is set', () => {
+    startRest(120, 'cable curl', 'Cable Curl · set 3 next');
+    restPush.mockClear();
+    offerFinish({ finish: vi.fn() });
+    expect(currentRest()).toBeNull();
+    expect(currentOffer()).not.toBeNull();
+    expect(restPush.mock.calls).toEqual([[null, undefined]]);
+  });
+
+  it('Keep going takes the offer away and starts the rest it held back, from the set’s own time', () => {
+    const t0 = Date.now(), resume = vi.fn(() => startRest(120, 'cable curl', 'Cable Curl · set 4 next', undefined, undefined, undefined, t0));
+    offerFinish({ finish: vi.fn(), resume });
+    vi.setSystemTime(t0 + 20_000);
+    keepGoing();
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(currentOffer()).toBeNull();
+    expect(currentRest()?.until).toBe(t0 + 120_000); // 1:40 left, not a fresh 2:00
+    expect(restPush).toHaveBeenLastCalledWith(t0 + 120_000, 'Cable Curl · set 4 next');
+  });
+
+  it('Finish takes the offer away and says so; nothing starts', () => {
+    const finish = vi.fn();
+    offerFinish({ finish, resume: vi.fn() });
+    restPush.mockClear();
+    finishNow();
+    expect(finish).toHaveBeenCalledTimes(1);
+    expect(currentOffer()).toBeNull();
+    expect(currentRest()).toBeNull();
+  });
+
+  it('a further set logged instead starts its rest as usual, and the offer goes', () => {
+    offerFinish({ finish: vi.fn() });
+    startRest(90, 'leg curl', 'Leg Curl · set 2 next');
+    expect(currentOffer()).toBeNull();
+    expect(currentRest()?.card).toBe('leg curl');
+  });
+
+  it('ignored, it stays; the session closing by itself takes it and any rest away, alert and all', () => {
+    offerFinish({ finish: vi.fn() });
+    vi.setSystemTime(Date.now() + 3600e3);
+    expect(currentOffer()).not.toBeNull();
+    restPush.mockClear();
+    closeTimers();
+    expect(currentOffer()).toBeNull();
+    expect(restPush.mock.calls).toEqual([[null, undefined]]);
+    // Nothing running: nothing to call off.
+    restPush.mockClear();
+    closeTimers();
+    expect(restPush).not.toHaveBeenCalled();
   });
 });

@@ -92,10 +92,12 @@ function CardioForm({ name, initial, submitLabel, onSubmit, onCancel, onDelete, 
 }
 
 /** A cardio machine on Today: its target, today's bouts and the form. Folds once the planned bout is logged. */
-export function CardioCard({ exercise, date, today: realToday = date, store, onOpen, plannedMinutes = null, gym, who, openReq = null }: {
+export function CardioCard({ exercise, date, today: realToday = date, store, onOpen, plannedMinutes = null, gym, who, openReq = null, completesPlan, onPlanDone }: {
   exercise: string; date: string; today?: string; store: SetsStore; onOpen: (name: string) => void; plannedMinutes?: number | null; gym?: string; who?: string;
   /** Open it if it's folded: see LiftCard. */
   openReq?: object | null;
+  /** A bout that did the plan's last planned item: Finish or Keep going (see LiftCard; a bout has no rest to hold back). */
+  completesPlan?: (entries: SetEntry[]) => boolean; onPlanDone?: () => void;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
   const [opened, setOpened] = useState(false);
@@ -132,6 +134,7 @@ export function CardioCard({ exercise, date, today: realToday = date, store, onO
     const e = await store.add({ date, exercise, weight: 0, reps: null, flags: ['cardio'], gym, note,
       cardio: { ...c, ...(target.aim != null && { aim: target.aim }) }, ...(at !== undefined && { at: at ? new Date(`${date}T${at}:00`) : null }) });
     if (e) setPr(prToast(store.entries, e));
+    if (e && at === undefined && date === realToday && completesPlan?.([...store.entries.filter((x) => x.id !== e.id), e])) onPlanDone?.();
     return !!e;
   }
   return (

@@ -86,6 +86,11 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
   .rest-timer { gap: 2px; } .rest-timer .mini:not(.icon) { min-width: 44px; padding: 0 5px; }
 }
 .rest-timer.done .rest-main b { color: var(--accent-text); }
+/* After the plan's last set: the bar, slimmer, offers Finish (the one accent fill) and Keep going; left alone it does nothing. */
+.finish-bar { padding-top: 4px; padding-bottom: 4px; }
+.finish-bar .rest-main { margin: 0; min-height: 44px; gap: 8px; }
+.finish-bar .rest-main .ic { color: var(--ok); flex: none; }
+.rest-timer.finish-bar .mini.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; padding: 0 16px; }
 /* The "?": the bar's leading glyph, a 44px tap round it that reaches into the bar's padding and the gap. */
 .rest-why-btn { flex: none; display: grid; place-items: center; width: 44px; min-height: 44px; margin: 0 -8px; padding: 0; background: none; color: var(--accent-text); border-radius: var(--r-pill); }
 .rest-why-btn[aria-expanded='true'] { background: var(--fill); }
@@ -389,6 +394,32 @@ li.set-row { display: flex; align-items: center; gap: 8px; }
 .summary-lifts { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
 .summary-lifts li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
 .summary-lifts .up { color: var(--ok); }
+/* The plan turned into the day's summary (FinishCard). */
+.finish-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -10px -10px 0 0; min-height: 44px; }
+.finish-head h2 { display: flex; align-items: center; gap: 8px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.finish-head h2 .ic { color: var(--ok); flex: none; }
+.finish-why { margin: 0 0 4px; }
+.finish-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 0; }
+.finish-stats > div { background: var(--surface-2); border-radius: var(--r-md); padding: 8px 10px; min-width: 0; }
+.finish-stats dt { color: var(--muted); font-size: var(--fs-sm); }
+.finish-stats dd { margin: 0; font-size: var(--fs-xl); line-height: 28px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.finish-stats dd small { font-size: var(--fs-sm); font-weight: 500; color: var(--muted); }
+.finish-prs { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+.finish-prs li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.finish-sub { margin: 14px 0 6px; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+.finish-muscles { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.finish-muscles li { display: grid; grid-template-columns: minmax(0, 7.5em) minmax(40px, 1fr) auto; align-items: center; gap: 10px; font-size: var(--fs-sub); }
+.finish-muscles li > span:first-child { overflow-wrap: anywhere; }
+.finish-muscles small { color: var(--muted); font-size: var(--fs-sm); }
+/* The week so far against its band: short of it, in it, past it. */
+/* The track: up to the band's low end dim, the band itself lighter; the week so far fills it. */
+.finish-bar-track { position: relative; height: 6px; border-radius: 3px; background: linear-gradient(to right, var(--fill) var(--lo, 0%), var(--fill-2) var(--lo, 0%)); }
+.finish-bar-track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--text-3); }
+.finish-muscles li.on .finish-bar-track i { background: var(--ok); }
+.finish-muscles li.over .finish-bar-track i { background: var(--warn); }
+.finish-next { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); display: grid; gap: 4px; }
+.finish-next p { margin: 0; }
+button.wide.finish-more { margin: 14px 0 0; color: var(--accent-text); }
 .pr { background: var(--accent); color: var(--accent-ink); font-weight: 700; border-radius: var(--r-md); padding: 10px 12px; margin: 8px 0; }
 .settings-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
 .settings-grid label { display: grid; gap: 6px; font-size: var(--fs-sm); color: var(--muted); }

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { Profile } from '../domain/profile';
 import { planToRecord, quickDay } from '../domain/program';
 import type { SetsStore } from '../state/useSets';
@@ -21,7 +21,12 @@ import { isHoldLift, swapSuggestions } from '../domain/care';
 import { dayRestDelta, inPlanOrder, leftToDo, plannedNames, TodayPlan, todayPlanFor } from './TodayPlan';
 import { DELTA } from '../domain/learn/rest';
 import { WeighIn } from './WeighIn';
-import { RestTimer, revertSwitch } from './RestTimer';
+import { closeTimers, currentRest, offerFinish, RestTimer, revertSwitch } from './RestTimer';
+import { FinishCard } from './FinishCard';
+import { sessionClose, showSummary } from '../domain/finish';
+import { quietAfter } from '../domain/learn/session';
+import { finishedOn, markFinished } from '../state/finish';
+import { onMinute } from '../state/clock';
 import type { BodyStore } from '../state/useBody';
 import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
@@ -116,6 +121,41 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   const done = !!programs.program && !!plan && left.length === 0 && store.entries.some((e) => e.date === date && isWorking(e));
   const open = planOpen ?? !done;
   const hasPlan = date >= today || programs.plans.some((p) => p.date === date) || logged.length > 0;
+
+  // Finishing (owner, 2026-10-20; domain/finish): the session closes on Finish, or by itself once nothing has been logged for his
+  // quiet time (learn/session quietAfter), never while a rest is still on the timer; a set logged after opens it again. Then, or
+  // once everything planned is done, the plan turns into the day's summary. Today only (the session day, past midnight too).
+  const [finishRev, setFinishRev] = useState(0);
+  const fin = useMemo(() => finishedOn(owner, date), [owner, date, finishRev]);
+  const isToday = date === today;
+  const quiet = useMemo(() => (isToday ? quietAfter(store.entries, date)?.seconds ?? null : null), [store.entries, date, isToday]);
+  const closeAt = (now: number) => sessionClose(store.entries, date, now, { quiet, tapped: fin.done, restUntil: currentRest()?.until });
+  const close = closeAt(Date.now());
+  // Each minute (and on coming back), whether it has closed since: only a change renders Today (a minute going by renders nothing).
+  const [, recheck] = useReducer((n: number) => n + 1, 0);
+  const howNow = useRef<() => boolean>(() => false);
+  howNow.current = () => isToday && closeAt(Date.now()).how !== close.how;
+  useEffect(() => onMinute(() => { if (howNow.current()) recheck(); }), []);
+  const worked = store.entries.some((e) => e.date === date && isWorking(e));
+  const summary = isToday && showSummary(close, done, fin.more ?? null, worked);
+  // Closed by itself: the Finish bar and any rest go, and the rest's lock-screen alert is called off.
+  useEffect(() => { if (isToday && close.how === 'auto') closeTimers(); }, [isToday, close.how]);
+  // The summary has been on screen: a session that closes by itself later doesn't wait for the next open (below).
+  useEffect(() => { if (summary && !fin.seen) markFinished(owner, date, { seen: true }); }, [summary, fin.seen, owner, date]);
+  // The plan's last planned set (owner: "a set timer still starts after my last one"): no rest, Finish or Keep going instead.
+  const completesPlan = isToday && programs.program && plan
+    ? (after: SetEntry[]) => leftToDo(programs.program!, plan, store.entries).length > 0 && leftToDo(programs.program!, plan, after).length === 0
+    : undefined;
+  const onPlanDone = (resume: () => void) => offerFinish({ resume, finish: () => { markFinished(owner, date, { done: Date.now() }); setFinishRev((n) => n + 1); } });
+  const addMore = () => { markFinished(owner, date, { more: Date.now() }); setFinishRev((n) => n + 1); setPlanOpen(true); };
+  // A session before today's that closed by itself while the app was away: its summary waits for the next open, until dismissed
+  // or today's first set (a week back at most).
+  const lastDay = useMemo(() => {
+    if (!isToday || logged.length) return null;
+    const d = store.entries.reduce((m, e) => (e.date < date && e.date >= addDays(date, -7) && e.date > m && isWorking(e) ? e.date : m), '');
+    return d || null;
+  }, [store.entries, date, isToday, logged.length]);
+  const lastUnseen = lastDay != null && !finishedOn(owner, lastDay).seen ? lastDay : null;
 
   // Supersets, noticed from the day's log: lifts gone round with short switches. "Not a superset" holds for the day.
   const [notSuper, setNotSuper] = useState(() => notSupersets(owner, date));
@@ -246,7 +286,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
         </button>
       )}
       {date < today && <p className="card note-card past-day"><span>Logging to a past day</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={() => onDay(today)}>Back to today</button></p>}
-      {carried && <p className="card note-card past-day"><span>Still logging {fmtDay(today, today)}’s workout</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={onSplit}>Today</button></p>}
+      {carried && <p className="card note-card past-day"><span>{close.how ? `${fmtDay(today, today)}’s workout is done` : `Still logging ${fmtDay(today, today)}’s workout`}</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={onSplit}>Today</button></p>}
       {date === today && <MorningCheck store={store} today={today} />}
       {date === today && <TodayDigest owner={owner} entries={store.entries} profile={profile} today={today} recap={recap} />}
       <WeighIn body={body} date={date} />
@@ -254,13 +294,21 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       <CycleRow date={date} />
       {light && <LightWeekLine to={light.to} today={today} onEnd={() => { endLight(owner, store.entries, date); snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
       {offerDeload && sys && <DeloadPrompt s={sys} onStart={() => { startLight(owner, today); setDeloadTaps((n) => n + 1); }} onLater={() => { snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
-      {programs.program && plan && hasPlan && (
+      {lastUnseen && (
+        <FinishCard entries={store.entries} date={lastUnseen} today={today} profile={profile} program={programs.program} plans={programs.plans} how="auto" body={body.days} settings={settings} owner={owner}
+          onDismiss={() => { markFinished(owner, lastUnseen, { seen: true }); setFinishRev((n) => n + 1); }} />
+      )}
+      {summary && (
+        <FinishCard entries={store.entries} date={date} today={today} profile={profile} program={programs.program} plans={programs.plans} how={close.how} body={body.days} settings={settings} owner={owner}
+          planName={programs.program && plan ? (plan.quick != null ? 'Quick' : (programs.program.days[plan.day] ?? programs.program.days[0])?.name) : undefined} onMore={addMore} />
+      )}
+      {programs.program && plan && hasPlan && !summary && (
         <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today} open={open} onToggle={() => setPlanOpen(!open)}
           buildQuick={(fits) => quickDay(profile, store.entries, date, fits, available ? { available, include: gyms.active!.include } : {})}
           onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} loadFor={loadFor} rangeFor={settings.get} keptRest={(ex) => settings.get(ex).rest} restDelta={restDelta} />
       )}
       {/* No program: a quick session from what the week is behind on, once there's a history to go by. Never on a past day. */}
-      {!programs.program && date === today && store.entries.some((e) => e.date < date) && (
+      {!programs.program && date === today && !summary && store.entries.some((e) => e.date < date) && (
         <SuggestedToday profile={profile} entries={store.entries} date={date} gym={gyms.active} loadFor={loadFor} onOpen={goTo} />
       )}
       {cards.length === 0 && <p className="muted">{date < today ? 'Nothing logged that day.' : 'Nothing logged yet today.'}</p>}
@@ -269,9 +317,10 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
         swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
         openReq={openReq && sameExercise(openReq.to, n) ? openReq : null}
         supersetWith={groupOf(n)?.lifts.filter((x) => !sameExercise(x, n))} onNotSuperset={() => { const g = groupOf(n); if (g) dismiss(g); }}
-        switchAfter={switchAfter} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} restDelta={restDelta} light={!!light} />)}
+        switchAfter={switchAfter} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} restDelta={restDelta} light={!!light}
+        completesPlan={completesPlan} onPlanDone={onPlanDone} />)}
       {/* Below the cards, so the card you're logging on never moves down. */}
-      <SessionSummary entries={store.entries} date={date} past={date < today} />
+      {!summary && <SessionSummary entries={store.entries} date={date} past={date < today} />}
       <button className="wide add-exercise" data-tour="add" onClick={() => setPicking(true)}>Add exercise</button>
       <RestTimer />
     </div></div>

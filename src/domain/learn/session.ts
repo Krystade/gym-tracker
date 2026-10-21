@@ -4,7 +4,7 @@ import { liftFactsVersion } from '../lifts';
 import { isWorking, settingsKey } from '../progression';
 import { byOrderDone, doneAt, perLog, sameExercise } from '../stats';
 import { supersets, type GapModel, type Superset } from '../superset';
-import { isIsolation, planSeconds, SET_WORK, stepsLeft, stepsOf, type PlanSlot, type Step } from '../timing';
+import { isIsolation, planSeconds, REST_MAX_S, SET_WORK, stepsLeft, stepsOf, type PlanSlot, type Step } from '../timing';
 import type { SetEntry } from '../types';
 import { dayOf } from './capacity';
 import { logBefore } from './index';
@@ -546,6 +546,41 @@ export function paceBefore(entries: readonly SetEntry[], date: string): PaceFit 
   LAST = { date, log, facts, fit };
   return fit;
 }
+
+/**
+ * When a session has gone quiet (owner, 2026-10-20: "I may add more sets or exercises but I may just be done"): nothing logged
+ * for `seconds` after the last set, and Today closes the session itself (its summary; any timer alert called off). A set logged
+ * after opens it again. Evidence labels as above:
+ * - (b) Learned from his gaps between sets on the days before `date` (the gaps the pace fit reads, readDay: a set entered late, a
+ *   cardio bout and a superset's switches left out): their upper fence, past which a gap is a break and not a rest.
+ * - (a) The fence is Tukey's, Q3 + 1.5·IQR (Tukey 1977, Exploratory Data Analysis: the boxplot's outlier rule), the one this file
+ *   already uses for a break; on ln seconds, as gaps are skewed. Quartiles, so a few breaks in his log hardly move it.
+ * - (c) Never inside the longest rest the timer gives (REST_MAX_S) and its set (SET_WORK): it only ever holds a close back. Gaps
+ *   much alike (an IQR near 0) would otherwise put the fence at his usual gap.
+ * - (c) Under MIN_DAYS timed days or PERSON_MIN gaps: null, and nothing closes by itself (a neutral default that takes no action).
+ */
+export interface Quiet { seconds: number; gaps: number; days: number }
+const quietOf = perLog((log): Quiet | null => {
+  const byDate = new Map<string, SetEntry[]>();
+  for (const e of log) { const d = byDate.get(e.date); if (d) d.push(e); else byDate.set(e.date, [e]); }
+  let gm: GapModel | null = null;
+  const modelOf = () => (gm ??= gapModel(log, lastDate(log)));
+  const ys: number[] = [];
+  let days = 0;
+  for (const sets of byDate.values()) {
+    const g = dayGaps(sets, modelOf);
+    if (!g.n) continue;
+    days++;
+    for (let j = 0; j < g.n; j++) ys.push(g.y[j]);
+  }
+  const n = ys.length;
+  if (n < PERSON_MIN || days < MIN_DAYS) return null;
+  ys.sort((a, b) => a - b);
+  const q = (p: number) => { const i = (n - 1) * p, lo = Math.floor(i); return ys[lo] + (ys[Math.min(lo + 1, n - 1)] - ys[lo]) * (i - lo); };
+  return { seconds: Math.max(REST_MAX_S + SET_WORK, Math.exp(q(0.75) + FENCE * (q(0.75) - q(0.25)))), gaps: n, days };
+});
+/** How long a session on `date` may go quiet before it closes (see Quiet), as of the days before it; null: it never closes by itself. */
+export const quietAfter = (entries: readonly SetEntry[], date: string): Quiet | null => quietOf(logBefore(entries, date));
 
 /** Owner, 2026-10-20: when the plan's length and his pace differ by more than this (s), both are shown. */
 export const SHOW_BOTH = 600;

@@ -272,6 +272,52 @@ test('Today mid-session: big numbers, Details, a superset, the rest bar and its 
   clean(found);
 });
 
+test('Finishing: the Finish bar, the summary in the plan’s place, and a session that closed while away on the next open', async ({ page }, info) => {
+  test.setTimeout(180_000);
+  await phone(page);
+  const found: string[] = [];
+  await importLog(page);
+  await goto(page, 'Today');
+  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Days per week' }).fill('3');
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await expect(page.getByRole('heading', { name: /^Day A/ })).toBeVisible();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  const rows = page.getByRole('list', { name: 'Planned exercises' }).getByRole('listitem');
+  const n = await rows.count();
+  for (let i = 1; i < n; i++) await rows.nth(i).getByRole('button', { name: 'Skip' }).click();
+  const name = (await rows.first().locator('.plan-name').getAttribute('data-exercise'))!;
+  const sets = Number((await rows.first().locator('.plan-count').textContent())!.split('/')[1]);
+  await rows.first().locator('.plan-name').click();
+  const card = page.locator(`[data-card="${name.toLowerCase()}"]`);
+  for (let i = 0; i < sets; i++) {
+    const w = card.getByRole('textbox', { name: 'Weight' });
+    if ((await w.inputValue()) === '') await w.fill('1225');
+    await logSet(page, card, `18:${String(30 + 3 * i).padStart(2, '0')}:00`);
+    if (i < sets - 1) await expect(card.getByRole('list', { name: /^Sets for/ }).getByRole('listitem')).toHaveCount(i + 1);
+  }
+  const bar = page.getByRole('group', { name: 'Plan done' });
+  await expect(bar).toBeVisible();
+  await check(page, info, found, 'finish-bar');
+  await bar.getByRole('button', { name: 'Finish' }).click();
+  await expect(page.getByRole('region', { name: 'Workout summary' })).toBeVisible();
+  await check(page, info, found, 'finish-summary');
+  // The next day, two sets and away: it closes while the app is gone, and its summary waits for the next open, the morning after.
+  const day2 = add(DAY0, 1);
+  await page.goto('about:blank');
+  await page.clock.setSystemTime(new Date(`${day2}T18:00:00`));
+  await page.goto('/');
+  const curl = await addCard(page, 'Cable Pushdown');
+  for (const t of ['18:30:00', '18:33:00']) { await page.clock.pauseAt(new Date(`${day2}T${t}`)); await curl.getByRole('button', { name: /^Add set/ }).click(); }
+  await expect(curl.getByRole('list', { name: /^Sets for/ }).getByRole('listitem')).toHaveCount(2);
+  await page.goto('about:blank');
+  await page.clock.setSystemTime(new Date(`${add(DAY0, 2)}T09:00:00`));
+  await page.goto('/');
+  await expect(page.getByRole('region', { name: 'Last workout' })).toBeVisible();
+  await check(page, info, found, 'finish-next-open');
+  clean(found);
+});
+
 test('More: an import held back, and Duplicate imports with its days, the copies that differ, the confirm and the result', async ({ page }, info) => {
   test.setTimeout(120_000);
   await phone(page);

@@ -3,7 +3,7 @@ import { addDays } from '../analytics';
 import { liftKey } from '../ids';
 import { isIsolation, planSeconds, SET_WORK, stepsOf, type Step } from '../timing';
 import type { SetEntry } from '../types';
-import { paceBefore, paceFit, sessionLengths, SHOW_BOTH } from './session';
+import { paceBefore, paceFit, quietAfter, sessionLengths, SHOW_BOTH } from './session';
 import { paceLog, sessionSteps, trueGap, trueSeconds, type PaceSim } from './sessionSim.sample';
 
 const secs = (e: SetEntry) => Date.parse(e.loggedAt!) / 1000;
@@ -293,5 +293,65 @@ describe('learn/session: the plan and his pace, as shown', () => {
     expect(L.plan).toBe(planSeconds(PLAN));
     const first = Date.parse(log.find((e) => e.date === date)!.loggedAt!);
     expect(L.endsAt).toBe(first + (L.plan - SET_WORK) * 1000);
+  });
+});
+
+describe('learn/session: when a session has gone quiet (auto-finish)', () => {
+  /** Every gap between his timed sets on the days before `date`, in seconds. */
+  const gapsBefore = (entries: SetEntry[], date: string): number[] => {
+    const out: number[] = [];
+    for (const d of [...new Set(entries.map((e) => e.date))].filter((d) => d < date)) {
+      const day = entries.filter((e) => e.date === d).sort((a, b) => secs(a) - secs(b));
+      for (let i = 1; i < day.length; i++) out.push(secs(day[i]) - secs(day[i - 1]));
+    }
+    return out;
+  };
+  /** Tukey's upper fence on ln gaps, worked out here on its own (quantiles by linear interpolation). */
+  const fence = (gaps: number[]) => {
+    const s = gaps.map(Math.log).sort((a, b) => a - b), n = s.length;
+    const q = (p: number) => { const i = (n - 1) * p, lo = Math.floor(i); return s[lo] + (s[Math.min(lo + 1, n - 1)] - s[lo]) * (i - lo); };
+    return Math.exp(q(0.75) + 1.5 * (q(0.75) - q(0.25)));
+  };
+
+  it('is Tukey’s fence on his ln gaps: past nearly every gap between his sets, short of a 20 min break', () => {
+    const sim = paceLog(21, { sessions: 60 });
+    const date = addDays(sim.days.at(-1)!, 2);
+    const q = quietAfter(sim.entries, date)!;
+    const gaps = gapsBefore(sim.entries, date);
+    expect(gaps.length).toBeGreaterThan(500);
+    expect(q.seconds).toBeCloseTo(fence(gaps), 6);
+    expect(q.gaps).toBe(gaps.length);
+    expect(q.days).toBe(60);
+    const over = gaps.filter((g) => g > q.seconds).length / gaps.length;
+    expect(over).toBeGreaterThan(0);
+    expect(over).toBeLessThan(0.02);
+    expect(q.seconds).toBeLessThan(20 * 60);
+  });
+
+  it('a few breaks in his log barely move it (quartiles, not the mean)', () => {
+    const clean = quietAfter(paceLog(22, { sessions: 60 }).entries, '2026-01-01')!;
+    const broken = quietAfter(paceLog(22, { sessions: 60, breaks: 0.04 }).entries, '2026-01-01')!;
+    expect(broken.seconds / clean.seconds).toBeGreaterThan(0.85);
+    expect(broken.seconds / clean.seconds).toBeLessThan(1.25);
+  });
+
+  it('learns from the days before the session only: today’s own long gap doesn’t move it', () => {
+    const sim = paceLog(23, { sessions: 20 });
+    const date = addDays(sim.days.at(-1)!, 2), t0 = Date.parse(`${date}T17:00:00Z`);
+    const today = [0, 200, 3600].map((t, i): SetEntry => ({ id: `q${i}`, date, seq: 9000 + i, exercise: 'Bench Press', setNo: i + 1, weight: 100, reps: 10, flags: [], source: 'app', loggedAt: new Date(t0 + t * 1000).toISOString() }));
+    expect(quietAfter([...sim.entries, ...today], date)!.seconds).toBe(quietAfter(sim.entries, date)!.seconds);
+  });
+
+  it('(c) never inside the timer’s longest rest and its set, however alike his gaps are', () => {
+    const day = (d: string) => [0, 180, 360, 540, 720].map((t, i): SetEntry => ({ id: `${d}${i}`, date: d, seq: i, exercise: 'Bench Press', setNo: i + 1, weight: 100, reps: 10, flags: [], source: 'app', loggedAt: new Date(Date.parse(`${d}T17:00:00Z`) + t * 1000).toISOString() }));
+    const q = quietAfter([...day('2026-10-12'), ...day('2026-10-14')], '2026-10-16')!;
+    expect(q.seconds).toBe(300 + 40); // REST_MAX_S + SET_WORK, not the 3:00 every gap is
+  });
+
+  it('(c) with under two timed days to learn from: none, so nothing closes by itself', () => {
+    const sim = paceLog(24, { sessions: 3 });
+    expect(quietAfter(sim.entries, sim.days[1])).toBeNull();
+    expect(quietAfter(sim.entries, sim.days[2])).not.toBeNull();
+    expect(quietAfter([], '2026-10-20')).toBeNull();
   });
 });

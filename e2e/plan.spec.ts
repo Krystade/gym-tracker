@@ -61,9 +61,12 @@ test('the plan stays open while lifts are left, and folds once the day is done',
     await expect(logged).toHaveCount(i + 1); // saved before the next set goes in
     await expect(list).toBeVisible(); // one lift started isn't the day done
   }
+  // The day done: the plan turns into its summary (owner, 2026-10-20), and Add more brings it back, open.
   await expect(list).toBeHidden();
+  const sum = page.getByRole('region', { name: 'Workout summary' });
+  await expect(sum.getByRole('heading', { level: 2 })).toHaveText('Plan done · Day A');
+  await sum.getByRole('button', { name: 'Add more' }).click();
   await expect(page.getByRole('heading', { name: /^Today’s plan · Day A/ })).toBeVisible();
-  await page.getByRole('button', { name: /^Today’s plan/ }).click();
   await expect(list).toBeVisible();
 });
 

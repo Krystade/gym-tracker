@@ -15,6 +15,12 @@ import { Icon } from './icons';
  */
 interface Rest { until: number; card: string; label?: string; total?: number; full?: Rest; start?: number; keep?: (seconds: number) => void; why?: RestPart[]; tapped?: number }
 let rest: Rest | null = null;
+/**
+ * After the plan's last set (owner, 2026-10-20: "a set timer still starts after my last one"): no rest, and in the bar's place
+ * Finish and Keep going. `finish`: what Finish does; `resume`: the rest held back, which Keep going starts.
+ */
+interface Offer { finish: () => void; resume?: () => void }
+let offer: Offer | null = null;
 const subs = new Set<() => void>();
 const set = (r: Rest | null) => { rest = r; for (const f of subs) f(); };
 const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f); }; };
@@ -24,15 +30,27 @@ const setRest = (r: Rest | null) => { set(r); restPush(r ? r.until : null, r?.la
 /**
  * Starts (or starts over) the rest after a set; with `full`, a superset's switch instead of that rest. `keep`: where the lift's
  * rest goes once ±30 s changes it (the full rest's, inside a superset). `why`: this rest's (or switch's) lines; `full.why`, the
- * full rest's.
+ * full rest's. `from`: when it began (epoch ms), if before now: a rest held back by the Finish bar runs from its set.
  */
-export const startRest = (seconds: number, card: string, label?: string, full?: { seconds: number; card: string; label?: string; why?: RestPart[] }, keep?: (seconds: number) => void, why?: RestPart[]) => {
-  const now = Date.now();
+export const startRest = (seconds: number, card: string, label?: string, full?: { seconds: number; card: string; label?: string; why?: RestPart[] }, keep?: (seconds: number) => void, why?: RestPart[], from?: number) => {
+  const now = from ?? Date.now();
+  offer = null;
   setRest({ until: now + seconds * 1000, card, label, total: seconds * 1000, start: now, why,
     ...(full ? { full: { until: now + full.seconds * 1000, card: full.card, label: full.label, total: full.seconds * 1000, start: now, keep, why: full.why } } : { keep }) });
 };
 /** The rest running, if any (for tests). */
 export const currentRest = () => rest;
+/** The plan's last set is in: the rest before it ends (its alert called off) and none starts; Finish and Keep going show instead. */
+export const offerFinish = (o: Offer) => { offer = o; setRest(null); };
+/** The Finish bar up, if it is (for tests). */
+export const currentOffer = () => offer;
+/** Keep going: the bar goes, and the rest it held back starts. */
+export const keepGoing = () => { const o = offer; offer = null; set(rest); o?.resume?.(); };
+/** Finish: the bar goes, and the session is finished. */
+export const finishNow = () => { const o = offer; offer = null; set(rest); o?.finish(); };
+/** The session closed: the bar and any rest go, and the rest's lock-screen alert is called off (nothing to call off, nothing sent). */
+export const closeTimers = () => { if (!rest && !offer) return; offer = null; setRest(null); };
+
 /**
  * ±30 s: a later end (from now, once it's done), or an earlier one but never before now. The whole rest as it then stands
  * is the progress line's whole, and the lift keeps it for next time.
@@ -72,6 +90,7 @@ const amount = (p: RestPart) => !p.add ? mss(p.s) : `${p.s < 0 ? '−' : '+'}${M
  */
 export function RestTimer() {
   const r = useSyncExternalStore(subscribe, () => rest);
+  const ask = useSyncExternalStore(subscribe, () => offer);
   const alert = useSyncExternalStore(subscribeRestAlert, restAlertState);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -84,6 +103,8 @@ export function RestTimer() {
   const gone = !r || now >= r.until + DONE_FOR;
   useEffect(() => { if (r && gone) set(null); }, [r, gone]);
   const running = !gone && left > 0;
+  // The Finish bar stands in the rest's place: with no rest, it's up while offered.
+  const finishing = gone && !!ask;
 
   // The "?": why this rest is its length, above the bar. A tap anywhere but on it or the bar's buttons puts it away (and does
   // what it was for); ±30 s leave it up, so the line for them can be seen to change.
@@ -124,7 +145,7 @@ export function RestTimer() {
     if (!el) return;
     root.style.setProperty('--rest-h', `${el.offsetHeight + 8}px`);
     return () => { root.style.removeProperty('--rest-h'); };
-  }, [gone]);
+  }, [gone, finishing]);
   // A new rest: the form just used stays clear of the bar.
   useEffect(() => {
     if (!r) return;
@@ -133,6 +154,14 @@ export function RestTimer() {
     if (form && top != null && form.getBoundingClientRect().bottom > top) form.scrollIntoView({ block: 'nearest' });
   }, [r?.until, r?.card]);
 
+  if (finishing) return (
+    // Slim, and nothing happens if it's left alone: the session closes by itself once it has gone quiet (TodayScreen).
+    <div ref={bar} className="rest-timer finish-bar" role="group" aria-label="Plan done">
+      <p className="rest-main"><Icon name="check" size={22} sw={2.5} /><span className="rest-words"><span>Plan done</span><span className="muted small">No rest timer</span></span></p>
+      <button type="button" className="mini" onClick={keepGoing}>Keep going</button>
+      <button type="button" className="mini primary" onClick={finishNow}>Finish</button>
+    </div>
+  );
   if (gone) return null;
   const what = r?.full ? 'Switch' : 'Rest';
   // Under the time: what comes next ("Set 3 next", or the lift to switch to), unless the lock-screen alert couldn't be set.

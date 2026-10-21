@@ -33,12 +33,13 @@ type CardProps = Parameters<typeof LiftCard>[0] & { plannedMinutes?: number | nu
 /** A cardio machine gets its own card: time and distance, not weight and reps. */
 export function ExerciseCard({ plannedMinutes, ...p }: CardProps) {
   return isCardio(p.exercise)
-    ? <CardioCard exercise={p.exercise} date={p.date} today={p.today} store={p.store} onOpen={p.onOpen} plannedMinutes={plannedMinutes} gym={p.gym} who={p.who} openReq={p.openReq} />
+    ? <CardioCard exercise={p.exercise} date={p.date} today={p.today} store={p.store} onOpen={p.onOpen} plannedMinutes={plannedMinutes} gym={p.gym} who={p.who} openReq={p.openReq}
+      completesPlan={p.completesPlan} onPlanDone={p.onPlanDone && (() => p.onPlanDone!(() => {}))} />
     : <LiftCard {...p} />;
 }
 
 function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = null, who, swappedFrom, left = [], onGo,
-  supersetWith, onNotSuperset, switchAfter, onSwitch, aside, restDelta, light = false }: {
+  supersetWith, onNotSuperset, switchAfter, onSwitch, aside, restDelta, light = false, completesPlan, onPlanDone }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
   /** The plan sent you to this card: open it if it's folded. Each request once (a render of the card's own keeps it). */
   openReq?: object | null;
@@ -59,6 +60,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   restDelta?: number;
   /** A light week is on (item 06): its targets, and its working sets marked light. */
   light?: boolean;
+  /** With the log as it is after a set: that set did the plan's last planned set (no rest then: `onPlanDone`, given the rest held back). */
+  completesPlan?: (entries: SetEntry[]) => boolean; onPlanDone?: (resume: () => void) => void;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
   // Folded or open as the user last chose: true folded, false open; null, automatic: folded once the plan's sets are done.
@@ -131,7 +134,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     // go in the round, a short switch instead, and that lift's card comes up.
     if (at === undefined && date === realToday) {
       const label = `${exercise} · set ${working.length + (isWorking(e) ? 1 : 0) + 1} next`;
-      const switchTo = switchAfter?.([...store.entries.filter((x) => x.id !== e.id), e], e.id);
+      const after = [...store.entries.filter((x) => x.id !== e.id), e];
+      const switchTo = switchAfter?.(after, e.id);
       // The rest for this set: the lift's base (his setting, his knee once his sets show it, else research) and its effort
       // (domain/timing restFor). The knee reads the log as it was before this set (the core as of the days before is cached
       // for that array) and the day's sets so far with this one.
@@ -141,10 +145,15 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
         const s = settingsNow.current;
         void s.save({ ...s.get(exercise, hold), rest: Math.min(600, Math.max(30, full.why.base + chosen - full.seconds)) });
       };
-      if (switchTo) {
-        startRest(switchTo.seconds, switchTo.to.toLowerCase(), `Switch to ${switchTo.to}`, { seconds: full.seconds, card: exercise.toLowerCase(), label, why: full.parts }, keep, switchTo.parts);
-        onSwitch?.(switchTo.to);
-      } else startRest(full.seconds, exercise.toLowerCase(), label, undefined, keep, full.parts);
+      // `from`: a rest held back by the Finish bar runs from this set, should Keep going start it.
+      const begin = (from?: number) => {
+        if (switchTo) {
+          startRest(switchTo.seconds, switchTo.to.toLowerCase(), `Switch to ${switchTo.to}`, { seconds: full.seconds, card: exercise.toLowerCase(), label, why: full.parts }, keep, switchTo.parts, from);
+          onSwitch?.(switchTo.to);
+        } else startRest(full.seconds, exercise.toLowerCase(), label, undefined, keep, full.parts, from);
+      };
+      // The plan's last planned set (owner, 2026-10-20): no rest, and no switch inside a superset either; Finish or Keep going.
+      if (completesPlan?.(after) && onPlanDone) { const t = Date.now(); onPlanDone(() => begin(t)); } else begin();
     }
     // The same rule as the PR badge; a set that broke several records names the best one.
     setPr(prToast(store.entries, e));
