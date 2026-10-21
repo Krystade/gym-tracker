@@ -195,19 +195,20 @@ function liftNames(entries: readonly SetEntry[], from: string, to: string): Map<
 }
 
 /**
- * The lifts you and a friend both do, each with each one's own change (e1rmChange, in %) over the same span; the most trained
- * first. Only percentages leave here: nobody's loads are set against anybody else's.
+ * A friend's lifts that have a change over [from, to], each with each one's own (e1rmChange, in %; yours null: too new to say, or
+ * not one you do): the lifts both do first, then theirs alone, the most trained first. Their page shows it whether or not you share a lift. Only
+ * percentages leave here: nobody's loads are set against anybody else's.
  */
-export function sharedChanges(mine: readonly SetEntry[], theirs: readonly SetEntry[], from: string, to: string, max = 5): { lift: string; me: number; them: number }[] {
+export function progressRows(mine: readonly SetEntry[], theirs: readonly SetEntry[], from: string, to: string, max = 5): { lift: string; me: number | null; them: number }[] {
   const a = liftNames(mine, from, to), b = liftNames(theirs, from, to);
-  const rows: { lift: string; me: number; them: number; n: number }[] = [];
-  for (const [k, name] of a) {
-    const other = b.get(k);
-    if (!other) continue;
-    const me = e1rmChange(mine, name, from, to), them = e1rmChange(theirs, other, from, to);
-    if (me && them) rows.push({ lift: name, me: me.pct, them: them.pct, n: me.sessions + them.sessions });
+  const rows: { lift: string; me: number | null; them: number; both: boolean; n: number }[] = [];
+  for (const [k, name] of b) {
+    const own = a.get(k);
+    const them = e1rmChange(theirs, name, from, to), me = own ? e1rmChange(mine, own, from, to) : null;
+    if (!them) continue; // their page: a lift of theirs with no change yet says nothing about them
+    rows.push({ lift: own ?? name, me: me?.pct ?? null, them: them.pct, both: !!me, n: (me?.sessions ?? 0) + them.sessions });
   }
-  return rows.sort((x, y) => y.n - x.n || x.lift.localeCompare(y.lift)).slice(0, max).map(({ lift, me, them }) => ({ lift, me, them }));
+  return rows.sort((x, y) => Number(y.both) - Number(x.both) || y.n - x.n || x.lift.localeCompare(y.lift)).slice(0, max).map(({ lift, me, them }) => ({ lift, me, them }));
 }
 
 /** The next round number on an e1RM: steps of 5 under 50, 10 under 150, else 25; `progress` along the step from the last one. */
@@ -268,11 +269,12 @@ export function quickFix(entries: readonly SetEntry[], muscle: Muscle, today: st
 }
 
 /** The line under Stats' ring: what the rest of the week needs, said as an invitation, never a scolding. */
-export function streakNudge({ sessions, goal, streak: run, today, trainedToday }: { sessions: number; goal: number; streak: number; today: string; trainedToday: boolean }): { lead: string; rest: string } {
-  if (sessions >= goal) return { lead: 'Goal met.', rest: run >= 2 ? ` ${run} weeks in a row.` : ' Your streak starts here.' };
+/** `whose`: "your", or on a friend's Stats "@jo’s". */
+export function streakNudge({ sessions, goal, streak: run, today, trainedToday }: { sessions: number; goal: number; streak: number; today: string; trainedToday: boolean }, whose = 'your'): { lead: string; rest: string } {
+  if (sessions >= goal) return { lead: 'Goal met.', rest: run >= 2 ? ` ${run} weeks in a row.` : ` ${whose[0].toUpperCase()}${whose.slice(1)} streak starts here.` };
   const need = goal - sessions, dow = days(weekStart(today), today);
   const free = 6 - dow + (trainedToday ? 0 : 1);
-  if (need <= free) return { lead: `${need} more session${need === 1 ? '' : 's'}`, rest: run + 1 >= 2 ? ` by Sunday makes it ${run + 1} weeks.` : ' by Sunday meets your goal.' };
+  if (need <= free) return { lead: `${need} more session${need === 1 ? '' : 's'}`, rest: run + 1 >= 2 ? ` by Sunday makes it ${run + 1} weeks.` : ` by Sunday meets ${whose} goal.` };
   return { lead: `${sessions} of ${goal}`, rest: ' this week. A new week starts Monday.' };
 }
 
@@ -296,7 +298,7 @@ export function prsBetween(entries: SetEntry[], from: string, to: string): SetEn
 
 /** The PR card on Stats: the newest PR of the last 7 days (an e1RM one first on its day), and what it moved. */
 export interface PrCard { set: SetEntry; kinds: RecordKind[]; detail: string }
-export function prCard(entries: SetEntry[], today: string): PrCard | null {
+export function prCard(entries: SetEntry[], today: string, whose = 'your'): PrCard | null {
   const kinds = prKinds(entries), from = addDays(today, -6);
   const cands = entries.filter((e) => kinds.has(e.id) && e.date >= from && e.date <= today);
   if (!cands.length) return null;
@@ -306,7 +308,7 @@ export function prCard(entries: SetEntry[], today: string): PrCard | null {
   const v = e1rm(set);
   if (k.includes('e1rm') && v != null) {
     const prior = Math.max(-Infinity, ...sessionsFor(entries, set.exercise).filter((x) => x.date < set.date).flatMap((x) => x.sets.map(e1rm)).filter((x): x is number => x != null));
-    return { set, kinds: k, detail: prior > 0 ? `e1RM ${Math.round(v)} lb, up ${Math.round(v - prior)} lb on your best` : `e1RM ${Math.round(v)} lb` };
+    return { set, kinds: k, detail: prior > 0 ? `e1RM ${Math.round(v)} lb, up ${Math.round(v - prior)} lb on ${whose} best` : `e1RM ${Math.round(v)} lb` };
   }
   return { set, kinds: k, detail: prToast(entries, set)?.replace(/^PR! /, '') ?? 'A new record' };
 }

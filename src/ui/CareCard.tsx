@@ -12,7 +12,7 @@ const WarnIcon = () => (
 );
 
 /** Pain-flagged sets per region over 8 weeks. Records and surfaces; never diagnoses. */
-export function CareCard({ entries, today }: { entries: SetEntry[]; today: string }) {
+export function CareCard({ entries, today, who }: { entries: SetEntry[]; today: string; /** A friend's username. */ who?: string }) {
   const report = painReport(entries, today, 8);
   // Pain on and off for 2 weeks or more (NHS: see a GP after 2 weeks of self-care; item 08). A pattern, never a diagnosis.
   const long = lingering(entries, today);
@@ -20,7 +20,7 @@ export function CareCard({ entries, today }: { entries: SetEntry[]; today: strin
     <section className="card" aria-labelledby="care-h">
       <h2 id="care-h">Joint &amp; back care</h2>
       {long.map((l) => (
-        <p key={l.region} className="warn small care-physio"><WarnIcon /> {l.region === 'other' ? 'Pain' : `Pain in your ${l.region}`} has come and gone for {plural(l.weeks, 'week')}. Worth getting it looked at by a physio or GP.</p>
+        <p key={l.region} className="warn small care-physio"><WarnIcon /> {l.region === 'other' ? 'Pain' : `Pain in ${who ? `@${who}’s` : 'your'} ${l.region}`} has come and gone for {plural(l.weeks, 'week')}. Worth getting it looked at by a physio or GP.</p>
       ))}
       {report.length === 0 && <p className="muted">No pain logged in the last 8 weeks.</p>}
       {report.map((r) => {

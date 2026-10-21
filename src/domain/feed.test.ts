@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
 import { defaultProfile } from './profile';
 import {
-  behindMuscles, board, e1rmChange, liftTrend, friendPrs, goalWeek, LIVE_MS, liftKind, liveSince, milestone, prCard, ringSets, sessionCard, setKind, sharedChanges,
+  behindMuscles, board, e1rmChange, liftTrend, friendPrs, goalWeek, LIVE_MS, liftKind, liveSince, milestone, prCard, ringSets, sessionCard, setKind, progressRows,
   recentPrs, streakNudge, topLifts, usualSession, weekSets, weekStreak,
 } from './feed';
 import { learn } from './learn';
@@ -166,15 +166,32 @@ describe('e1rmChange: each person against their own start', () => {
   });
 });
 
-describe('sharedChanges: the lifts you both do, as each one’s own change', () => {
+describe('progressRows: a friend’s lifts, each one’s own change, on their page whether or not you do them', () => {
   const series = (lift: string, w: number[]) => w.flatMap((x, i) => s(lift, 1, { weight: x, reps: 5 }, addDay('2026-08-24', i * 7)));
-  it('lists only lifts both do, matched whatever the case, the most trained first, and no loads', () => {
+  it('lists the lifts both do first (matched whatever the case), the most trained first, and no loads', () => {
     const mine = [...series('Bench Press', [200, 202, 204, 206, 208]), ...series('Barbell Squat', [300, 305, 310, 315, 320, 325, 330]), ...series('Leg Press', [400, 410, 420])];
     const theirs = [...series('bench press', [100, 104, 108, 112, 116]), ...series('Barbell Squat', [150, 155, 160])];
-    const got = sharedChanges(mine, theirs, '2026-08-20', TODAY);
+    const got = progressRows(mine, theirs, '2026-08-20', TODAY);
     expect(got.map((g) => g.lift)).toEqual(['Barbell Squat', 'Bench Press']);
-    expect(got[1].them).toBeGreaterThan(got[1].me);
+    expect(got[1].them!).toBeGreaterThan(got[1].me!);
     expect(Object.keys(got[0]).sort()).toEqual(['lift', 'me', 'them']);
+  });
+  it('keeps a lift only they do, after the shared ones, with no change of yours', () => {
+    // Leg Curl has more sessions (7) than Bench Press both together (6): shared still comes first.
+    const mine = series('Bench Press', [200, 202, 204]);
+    const theirs = [...series('Leg Curl', [80, 85, 90, 95, 100, 105, 110]), ...series('Bench Press', [100, 104, 108])];
+    const got = progressRows(mine, theirs, '2026-08-20', TODAY);
+    expect(got.map((g) => [g.lift, g.me == null, g.them == null])).toEqual([['Bench Press', false, false], ['Leg Curl', true, false]]);
+  });
+  it('says nothing of a lift of theirs too new to have a change, even one where yours has', () => {
+    const mine = series('Barbell Squat', [300, 310, 320]);
+    const theirs = [...series('Barbell Squat', [150]), ...series('Cable Fly', [20])];
+    expect(progressRows(mine, theirs, '2026-08-20', TODAY)).toEqual([]);
+    expect(progressRows([], theirs, '2026-08-20', TODAY)).toEqual([]);
+  });
+  it('shows at most five', () => {
+    const theirs = ['A Curl', 'B Curl', 'C Curl', 'D Curl', 'E Curl', 'F Curl'].flatMap((n) => series(n, [20, 25, 30]));
+    expect(progressRows([], theirs, '2026-08-20', TODAY)).toHaveLength(5);
   });
 });
 
@@ -231,6 +248,9 @@ describe('streakNudge', () => {
     expect(streakNudge({ sessions: 4, goal: 4, streak: 6, today: TODAY, trainedToday: true })).toEqual({ lead: 'Goal met.', rest: ' 6 weeks in a row.' });
     expect(streakNudge({ sessions: 2, goal: 2, streak: 1, today: TODAY, trainedToday: true })).toEqual({ lead: 'Goal met.', rest: ' Your streak starts here.' });
     // Sunday, 2 to go, one day left.
+    // A friend's: named, never "your".
+    expect(streakNudge({ sessions: 0, goal: 2, streak: 0, today: TODAY, trainedToday: false }, '@jo’s')).toEqual({ lead: '2 more sessions', rest: ' by Sunday meets @jo’s goal.' });
+    expect(streakNudge({ sessions: 2, goal: 2, streak: 1, today: TODAY, trainedToday: true }, '@jo’s')).toEqual({ lead: 'Goal met.', rest: ' @jo’s streak starts here.' });
     expect(streakNudge({ sessions: 1, goal: 3, streak: 4, today: '2026-10-18', trainedToday: false })).toEqual({ lead: '1 of 3', rest: ' this week. A new week starts Monday.' });
   });
 });
@@ -249,6 +269,10 @@ describe('prCard: the newest PR this week', () => {
     expect(c.set.id).toBe(e[1].id);
     expect(c.detail).toBe(`e1RM ${Math.round(245 * (1 + 5 / 30))} lb, up ${Math.round((245 - 225) * (1 + 5 / 30))} lb on your best`);
     expect(prCard(e, '2026-10-25')).toBeNull(); // over a week ago
+  });
+  it('on a friend’s Stats, names whose best it was', () => {
+    const e = [...s('Back Squat', 1, { weight: 225, reps: 5 }, '2026-10-01'), ...s('Back Squat', 1, { weight: 245, reps: 5, loggedAt: at('07:20') })];
+    expect(prCard(e, TODAY, '@jo’s')!.detail).toMatch(/ lb on @jo’s best$/);
   });
 });
 

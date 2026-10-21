@@ -343,15 +343,15 @@ test('Friends and a friend’s view fit each phone', async ({ browser }) => {
   await expect(fp.getByRole('region', { name: 'Last 8 weeks' })).toBeVisible();
   await check(b.page, 'friend-page');
   await fp.getByRole('button', { name: 'Stats', exact: true }).click();
-  await expect(b.page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
+  await expect(b.page.getByRole('heading', { name: `@${a.name}’s stats`, level: 1 })).toBeVisible();
   await check(b.page, 'friend-stats');
   await b.page.getByRole('button', { name: `@${a.name}`, exact: true }).click();
   await fp.getByRole('button', { name: 'History', exact: true }).click();
-  await expect(b.page.getByRole('heading', { name: 'History', level: 1 })).toBeVisible();
+  await expect(b.page.getByRole('heading', { name: `@${a.name}’s history`, level: 1 })).toBeVisible();
   await check(b.page, 'friend-history');
   await b.page.getByRole('button', { name: `@${a.name}`, exact: true }).click();
   await fp.getByRole('button', { name: 'Lifts', exact: true }).click();
-  await expect(b.page.getByRole('heading', { name: 'Lifts', level: 1 })).toBeVisible();
+  await expect(b.page.getByRole('heading', { name: `@${a.name}’s lifts`, level: 1 })).toBeVisible();
   await check(b.page, 'friend-lifts');
   await b.page.getByRole('button', { name: /Bench Press/ }).click();
   await check(b.page, 'friend-exercise');

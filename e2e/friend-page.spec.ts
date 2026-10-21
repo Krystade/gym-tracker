@@ -77,9 +77,13 @@ test('a friend’s page opens inside Friends from what the phone keeps, compares
   await expect(pill).toHaveText('LIVE');
   expect((await pill.boundingBox())!.y).toBeGreaterThanOrEqual((await fp.locator('.fp-ring').boundingBox())!.y + 92);
   await expect(fp.getByRole('article', { name: /^Now, Push/ })).toContainText('80 × 6');
+  // 75 × 8 then 80 × 6: the top set is the best of two, never “2 sets” of 80 × 6; Cable Fly's two were the same.
+  await expect(fp.getByRole('article', { name: /^Now, Push/ }).getByRole('listitem').filter({ hasText: 'Bench Press' })).toContainText('80 × 6best of 2 sets');
+  await expect(fp.getByRole('article', { name: /^Now, Push/ }).getByRole('listitem').filter({ hasText: 'Cable Fly' })).toContainText('20 × 12all 2 sets');
 
   // You and them: percentages against each one's own start, and no load at all.
   const shared = fp.getByRole('region', { name: `You and @${fr.name}` });
+  // Shown without a tap: the two lifts both do, then their Cable Fly (too new for a change) is left out.
   await expect(shared.locator('.fp-vs')).toHaveCount(2);
   await expect(shared.locator('.fp-vs').first()).toContainText('Barbell Squat');
   await expect(shared.getByRole('img', { name: 'You +11%' })).toBeVisible();
@@ -110,11 +114,17 @@ test('a friend’s page opens inside Friends from what the phone keeps, compares
 
   // Their whole log only when asked for: Stats reads it, Back comes back to the page, Friends back to the list.
   await fp.getByRole('button', { name: 'Stats', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
+  // Their Stats names them; nothing on it says “your”.
+  await expect(page.getByRole('heading', { name: `@${fr.name}’s stats`, level: 1 })).toBeVisible();
+  await expect(page.getByText(`Dashed line: @${fr.name}’s goal of 2 sessions.`)).toBeVisible();
+  await expect(page.locator('main')).not.toContainText(/\byours?\b/i);
   await expect(page.getByRole('combobox', { name: 'Chest' })).toBeDisabled();
   expect(reads.some((u) => u.includes(fr.uid))).toBe(true);
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: `${SHOTS}/friend-stats-375-full.png`, fullPage: true });
   await page.getByRole('button', { name: `@${fr.name}` }).first().click();
   await fp.getByRole('button', { name: 'History', exact: true }).click();
+  await expect(page.getByRole('heading', { name: `@${fr.name}’s history`, level: 1 })).toBeVisible();
   await expect(page.getByRole('button', { name: /Bench Press/ }).first()).toBeVisible();
   await page.getByRole('button', { name: `@${fr.name}` }).first().click();
   await fp.getByRole('button', { name: 'Friends', exact: true }).click();

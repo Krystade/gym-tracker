@@ -78,10 +78,10 @@ export function lastTraining(days: Day[]): Day | null {
 }
 
 /**
- * One lift of a session at a glance: its working sets, and the top one (heaviest, then most reps at that weight). A cardio
- * machine is one line with its minutes added up (`seconds`), `sets` its entries.
+ * One lift of a session at a glance: its working sets, and the top one (heaviest, then most reps at that weight); `times`: how
+ * many of the sets were that top set. A cardio machine is one line with its minutes added up (`seconds`), `sets` its entries.
  */
-export interface LiftDone { exercise: string; sets: number; weight: number; reps: number | null; hold: boolean; seconds?: number }
+export interface LiftDone { exercise: string; sets: number; times: number; weight: number; reps: number | null; hold: boolean; seconds?: number }
 export interface SessionDone { date: string; lifts: LiftDone[] }
 
 /** The newest day with a working set or cardio, each lift once in the order it was started. Null with nothing trained. */
@@ -93,28 +93,42 @@ export function latestSession(entries: SetEntry[]): SessionDone | null {
 
 /** One day's session, each lift once in the order it was started (see latestSession). Null for a day with no working set or cardio. */
 export function sessionOn(entries: SetEntry[], date: string): SessionDone | null {
-  const lifts = new Map<string, LiftDone>();
+  const lifts = new Map<string, LiftDone>(), done = new Map<string, SetEntry[]>();
   for (const e of entries.filter((x) => x.date === date).sort((a, b) => a.seq - b.seq)) {
     const cardio = isCardioEntry(e);
     if (!cardio && !isWorking(e)) continue;
     const key = e.exercise.toLowerCase(), l = lifts.get(key);
     if (cardio) {
       const seconds = e.cardio?.seconds ?? 0;
-      if (l) { l.sets++; l.seconds = (l.seconds ?? 0) + seconds; } else lifts.set(key, { exercise: e.exercise, sets: 1, weight: 0, reps: null, hold: false, seconds });
+      if (l) { l.sets++; l.times++; l.seconds = (l.seconds ?? 0) + seconds; } else lifts.set(key, { exercise: e.exercise, sets: 1, times: 1, weight: 0, reps: null, hold: false, seconds });
       continue;
     }
+    (done.get(key) ?? done.set(key, []).get(key)!).push(e);
     const top = { weight: e.weight, reps: e.reps, hold: e.flags.includes('hold') };
-    if (!l) { lifts.set(key, { exercise: e.exercise, sets: 1, ...top }); continue; }
+    if (!l) { lifts.set(key, { exercise: e.exercise, sets: 1, times: 1, ...top }); continue; }
     l.sets++;
     if (e.weight > l.weight || (e.weight === l.weight && (e.reps ?? -1) > (l.reps ?? -1))) Object.assign(l, top);
+  }
+  for (const [key, sets] of done) {
+    const l = lifts.get(key)!;
+    l.times = sets.filter((e) => e.weight === l.weight && e.reps === l.reps && e.flags.includes('hold') === l.hold).length;
   }
   return lifts.size ? { date, lifts: [...lifts.values()] } : null;
 }
 
-/** "Bench Press 3×185×8 · Pull-up 3×BW×10 · Treadmill 20:00": sets × top weight × reps, a lift each. */
-export const fmtSession = (s: SessionDone): string => s.lifts.map((l) => l.seconds != null
-  ? `${l.exercise} ${fmtClock(l.seconds)}`
-  : `${l.exercise} ${l.sets}×${fmtAdded(l.weight)}×${l.reps ?? '?'}${l.hold ? 's' : ''}`).join(' · ');
+/** The words beside a lift's top set: "best of 3 sets" when it wasn't every set (one 55 × 10 never reads as three), else "all 3 sets". */
+export const setsNote = (l: Pick<LiftDone, 'sets' | 'times'>): string =>
+  l.sets === 1 ? '1 set' : l.times >= l.sets ? `all ${l.sets} sets` : `best of ${l.sets} sets`;
+
+/**
+ * "Bench Press 3×185×8 · Squat 225×5 best of 4 · Treadmill 20:00": sets × weight × reps when every set was the same, else the
+ * top set and how many it was the best of; a lift each.
+ */
+export const fmtSession = (s: SessionDone): string => s.lifts.map((l) => {
+  if (l.seconds != null) return `${l.exercise} ${fmtClock(l.seconds)}`;
+  const top = `${fmtAdded(l.weight)}×${l.reps ?? '?'}${l.hold ? 's' : ''}`;
+  return l.times >= l.sets ? `${l.exercise} ${l.sets}×${top}` : `${l.exercise} ${top} best of ${l.sets}`;
+}).join(' · ');
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

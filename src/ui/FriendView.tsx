@@ -21,8 +21,8 @@ export type FriendTab = 'history' | 'lifts' | 'stats';
 const noop = async () => {};
 
 /** A friend's whole log on your own screens, read-only (opened from their page: readFriend reads it then). */
-export function Screens({ data, tab, exercise, today, gyms, onOpen, onExerciseBack }: {
-  data: FriendData; tab: FriendTab; exercise: string | null; today: string; gyms: GymsStore; onOpen: (n: string) => void; onExerciseBack: () => void;
+export function Screens({ name, data, tab, exercise, today, gyms, onOpen, onExerciseBack }: {
+  /** Their username: every heading and line names them, never "your". */ name: string; data: FriendData; tab: FriendTab; exercise: string | null; today: string; gyms: GymsStore; onOpen: (n: string) => void; onExerciseBack: () => void;
 }) {
   // Stand-ins for the phone's stores, built from what they synced; nothing on them writes.
   const { store, body, programs, settings, raw } = useMemo(() => {
@@ -39,10 +39,10 @@ export function Screens({ data, tab, exercise, today, gyms, onOpen, onExerciseBa
   }, [data]);
   const profile = useFittedProfile(raw, programs.program, store.entries, today);
   if (exercise) return <ExerciseScreen readOnly name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={today} onLog={() => {}} onBack={onExerciseBack} onRenamed={() => {}} />;
-  if (tab === 'history') return <HistoryScreen store={store} onOpen={onOpen} />;
-  if (tab === 'lifts') return <LiftsScreen loggedOnly store={store} onOpen={onOpen} />;
+  if (tab === 'history') return <HistoryScreen who={name} store={store} onOpen={onOpen} />;
+  if (tab === 'lifts') return <LiftsScreen who={name} loggedOnly store={store} onOpen={onOpen} />;
   return (<>
-    <StatsScreen readOnly store={store} profile={profile} programs={programs} body={body} photos={null} today={today} onOpenPhotos={() => {}} />
+    <StatsScreen readOnly who={name} store={store} profile={profile} programs={programs} body={body} photos={null} today={today} onOpenPhotos={() => {}} />
     <TheirGyms list={(data.meta.gyms as { gyms?: Gym[] } | undefined)?.gyms ?? []} gyms={gyms} />
   </>);
 }

@@ -23,8 +23,8 @@ function byExercise(sets: SetEntry[]): [string, SetEntry[]][] {
 }
 
 /** Without onAddTo (a friend's log) it's read-only. `focus`: a day to open and scroll to (a record tapped on a lift's screen). */
-export function HistoryScreen({ store, onOpen, onAddTo, focus = null, onFocused }: {
-  store: SetsStore; onOpen: (name: string) => void; onAddTo?: (date: string) => void; focus?: string | null; onFocused?: () => void;
+export function HistoryScreen({ who, store, onOpen, onAddTo, focus = null, onFocused }: {
+  /** A friend's username: their log, read-only. */ who?: string; store: SetsStore; onOpen: (name: string) => void; onAddTo?: (date: string) => void; focus?: string | null; onFocused?: () => void;
 }) {
   const sessions = useMemo(() => sessionsByDate(store.entries), [store.entries]);
   const today = localDate(new Date());
@@ -73,13 +73,14 @@ export function HistoryScreen({ store, onOpen, onAddTo, focus = null, onFocused 
     }
     return out;
   }, [sessions]);
-  if (!sessions.length) return (<><h1>History</h1><p className="muted">No history yet — import it under More.</p></>);
+  const title = who ? `@${who}’s history` : 'History';
+  if (!sessions.length) return (<><h1 className={who ? 'who-title' : undefined}>{title}</h1><p className="muted">{who ? `No sessions from @${who} yet.` : 'No history yet — import it under More.'}</p></>);
   const [ty, tm] = today.split('-').map(Number);
   const lastMonth = tm === 1 ? `${ty - 1}-12` : `${ty}-${String(tm - 1).padStart(2, '0')}`;
   const monthName = (key: string) => new Date(Number(key.slice(0, 4)), Number(key.slice(5)) - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   return (
     <>
-      <h1>History</h1>
+      <h1 className={who ? 'who-title' : undefined}>{title}</h1>
       {months.map((mo, mi) => {
         const open = mi === 0 || mo.key >= lastMonth || mo.key === at?.slice(0, 7), rendered = open || shown.has(mo.key);
         return (

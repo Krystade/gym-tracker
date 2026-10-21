@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { cleanStatus, dayKinds, fmtSession, fmtWeek, lastTraining, latestSession, crewDays, sessionLabel, statusLength, weekNumbers } from './crew';
+import { cleanStatus, dayKinds, fmtSession, fmtWeek, lastTraining, latestSession, crewDays, sessionLabel, setsNote, statusLength, weekNumbers } from './crew';
 
 let seq = 0;
 const s = (exercise: string, n = 1, over: Partial<SetEntry> = {}, date = '2026-10-14'): SetEntry[] =>
@@ -87,9 +87,9 @@ describe('latestSession', () => {
     // Shuffled: the order comes from when each set was done, not from the list.
     const got = latestSession([...day].reverse().concat(older));
     expect(got?.date).toBe('2026-10-14');
-    expect(got?.lifts.map((l) => [l.exercise, l.sets, l.weight, l.reps])).toEqual([
-      ['Bench Press', 3, 185, 9], // heaviest, then most reps at it; warm-ups don't count
-      ['Barbell Row', 3, 135, 10],
+    expect(got?.lifts.map((l) => [l.exercise, l.sets, l.weight, l.reps, l.times])).toEqual([
+      ['Bench Press', 3, 185, 9, 1], // heaviest, then most reps at it; warm-ups don't count; the top set done once
+      ['Barbell Row', 3, 135, 10, 1],
     ]);
   });
   it('passes over a newer day of warm-ups only, and is null with nothing trained', () => {
@@ -104,7 +104,36 @@ describe('latestSession', () => {
   });
 });
 
+describe('times: how many of a lift’s working sets were its top set', () => {
+  it('counts the sets at the top weight and reps, whatever order they came in', () => {
+    const got = latestSession([
+      ...s('Bench Press', 1, { weight: 50, reps: 10 }), ...s('Bench Press', 1, { weight: 55, reps: 10 }), ...s('Bench Press', 1, { weight: 50, reps: 8 }),
+      ...s('Barbell Row', 3, { weight: 135, reps: 10 }),
+      ...s('Leg Press', 1, { weight: 300, reps: 12 }), ...s('Leg Press', 1, { weight: 300, reps: 10 }), ...s('Leg Press', 1, { weight: 300, reps: 12 }),
+      ...s('Plank', 1, { weight: 0, reps: 45, flags: ['hold'] }), ...s('Plank', 1, { weight: 0, reps: 45, flags: ['hold'] }),
+    ])!;
+    expect(got.lifts.map((l) => [l.exercise, l.sets, l.times])).toEqual([['Bench Press', 3, 1], ['Barbell Row', 3, 3], ['Leg Press', 3, 2], ['Plank', 2, 2]]);
+  });
+});
+
+describe('setsNote: the words beside a lift’s top set, so one set at 55 × 10 never reads as three', () => {
+  const lift = (sets: number, times: number) => ({ exercise: 'Bench Press', sets, times, weight: 55, reps: 10, hold: false });
+  it('is “best of N sets” when the top set was not every set', () => {
+    expect(setsNote(lift(3, 1))).toBe('best of 3 sets');
+    expect(setsNote(lift(5, 4))).toBe('best of 5 sets');
+  });
+  it('is “all N sets” when every set was the top set, and “1 set” for one', () => {
+    expect(setsNote(lift(3, 3))).toBe('all 3 sets');
+    expect(setsNote(lift(2, 2))).toBe('all 2 sets');
+    expect(setsNote(lift(1, 1))).toBe('1 set');
+  });
+});
+
 describe('fmtSession', () => {
+  it('says a top set that was not every set is the best of them, never sets × top', () => {
+    const got = latestSession([...s('Bench Press', 1, { weight: 50, reps: 10 }), ...s('Bench Press', 1, { weight: 55, reps: 10 }), ...s('Bench Press', 1, { weight: 50, reps: 8 })])!;
+    expect(fmtSession(got)).toBe('Bench Press 55×10 best of 3');
+  });
   it('reads as sets × top weight × reps, bodyweight as BW, holds in seconds, cardio as its time', () => {
     const got = latestSession([
       ...s('Bench Press', 3, { weight: 185, reps: 8 }),

@@ -20,7 +20,7 @@ const fmtDay = (date: string, today: string) => (date === today ? 'today' : date
 const setText = (e: SetEntry) => `${fmtAdded(e.weight)} × ${e.reps ?? '?'}`;
 
 /** The week's ring: a segment per session (its kind), out of your goal; sets against last week by the same day; PRs; the streak. */
-export function WeekRing({ entries, profile, today, program }: { entries: SetEntry[]; profile: Profile; today: string; program?: { done: number; planned: number } | null }) {
+export function WeekRing({ entries, profile, today, program, who }: { entries: SetEntry[]; profile: Profile; today: string; program?: { done: number; planned: number } | null; /** A friend's username. */ who?: string }) {
   const v = useMemo(() => {
     const goal = profile.weeklyGoal;
     const w = goalWeek(entries, today, goal);
@@ -31,7 +31,7 @@ export function WeekRing({ entries, profile, today, program }: { entries: SetEnt
     return { w, segs, sets: weekSets(entries, today), prs: prsBetween(entries, from, today).length, st, trainedToday: days.includes(today), goal };
   }, [entries, profile.weeklyGoal, today]);
   const diff = v.sets.sets - v.sets.before;
-  const n = streakNudge({ sessions: v.w.sessions, goal: v.goal, streak: v.st.current, today, trainedToday: v.trainedToday });
+  const n = streakNudge({ sessions: v.w.sessions, goal: v.goal, streak: v.st.current, today, trainedToday: v.trainedToday }, who ? `@${who}’s` : 'your');
   return (
     <section className="card st-week" aria-label="This week">
       <h2 className="sr-only">This week</h2>
@@ -55,8 +55,8 @@ export function WeekRing({ entries, profile, today, program }: { entries: SetEnt
 
 const CONFETTI = 16;
 /** The newest PR of the last 7 days; confetti the first time this phone shows it, never again. */
-export function PrCardView({ entries, today, juice }: { entries: SetEntry[]; today: string; /** Off on a friend's Stats. */ juice: boolean }) {
-  const pr = useMemo(() => prCard(entries, today), [entries, today]);
+export function PrCardView({ entries, today, juice, who }: { entries: SetEntry[]; today: string; /** Off on a friend's Stats. */ juice: boolean; who?: string }) {
+  const pr = useMemo(() => prCard(entries, today, who ? `@${who}’s` : 'your'), [entries, today, who]);
   const [owner] = useState(activeProfileDb);
   const [burst] = useState(() => juice && !!pr && getPref<string>(owner, 'stats:pr-seen') !== pr.set.id);
   useEffect(() => { if (juice && pr) setPref(owner, 'stats:pr-seen', pr.set.id); }, [juice, pr, owner]);
@@ -137,7 +137,7 @@ function Milestones({ trends }: { trends: Trend[] }) {
 }
 
 /** Behind this week: only the muscles under target and under the week's pace, each with a lift of yours that works it. */
-export function BehindCard({ entries, profile, today, onOpen }: { entries: SetEntry[]; profile: Profile; today: string; onOpen?: (name: string) => void }) {
+export function BehindCard({ entries, profile, today, onOpen, who }: { entries: SetEntry[]; profile: Profile; today: string; onOpen?: (name: string) => void; /** A friend's username. */ who?: string }) {
   const rows = useMemo(() => behindMuscles(entries, profile, today), [entries, profile, today]);
   if (!rows.length) return null;
   const pace = (Date.parse(`${today}T12:00:00Z`) - Date.parse(`${weekStart(today)}T12:00:00Z`)) / 864e5 / 7;
@@ -158,7 +158,7 @@ export function BehindCard({ entries, profile, today, onOpen }: { entries: SetEn
           );
         })}
       </ul>
-      <p className="muted small">The line: where today should be. Each lift is one of yours that works it.</p>
+      <p className="muted small">The line: where today should be. Each lift is one of {who ? `@${who}’s` : 'yours'} that works it.</p>
     </section>
   );
 }

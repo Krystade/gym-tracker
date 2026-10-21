@@ -49,7 +49,7 @@ function BodyChart({ points, today }: { points: { date: string; weight: number; 
   );
 }
 
-export function BodyCard({ body, today }: { body: BodyStore; today: string }) {
+export function BodyCard({ body, today, who }: { body: BodyStore; today: string; /** A friend's username. */ who?: string }) {
   const t = trend(body.days);
   const recent = t.filter((p) => ms(p.date) >= ms(today) - 90 * 864e5);
   const r = rate(t);
@@ -58,7 +58,7 @@ export function BodyCard({ body, today }: { body: BodyStore; today: string }) {
   return (
     <section className="card" aria-labelledby="body-h">
       <h2 id="body-h">Body weight</h2>
-      {!t.length ? <p className="muted">Weigh in on the Today tab, or import MyFitnessPal’s export under More.</p> : (<>
+      {!t.length ? <p className="muted">{who ? `No weigh-ins from @${who}.` : 'Weigh in on the Today tab, or import MyFitnessPal’s export under More.'}</p> : (<>
         <div className="tiles">
           <div className="tile"><span>Trend</span><b>{t.at(-1)!.trend.toFixed(1)} lb</b></div>
           <div className="tile"><span>4-week rate</span><b className="sm">{r ? `${signed(r.lbPerWeek)} lb/week` : '—'}</b>{r && <span>{signed(r.pctPerWeek, 2)} % of body weight</span>}</div>

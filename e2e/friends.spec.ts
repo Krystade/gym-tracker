@@ -86,7 +86,7 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   await expect(fp.getByRole('heading', { name: `@${a.name}`, level: 1 })).toBeVisible();
   await expect(b.page.getByRole('navigation', { name: 'Sections' }).getByRole('button')).toHaveText(['Today', 'History', 'Lifts', 'Stats', 'Friends', 'More']);
   await fp.getByRole('button', { name: 'Stats', exact: true }).click();
-  await expect(b.page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
+  await expect(b.page.getByRole('heading', { name: `@${a.name}’s stats`, level: 1 })).toBeVisible();
   await expect(b.page.getByRole('combobox', { name: 'Chest' })).toBeDisabled();
   await b.page.getByRole('button', { name: `@${a.name}`, exact: true }).click();
   await fp.getByRole('button', { name: 'History', exact: true }).click();

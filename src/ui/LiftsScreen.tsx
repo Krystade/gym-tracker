@@ -10,7 +10,7 @@ import { searchLifts } from '../domain/search';
 import { Input } from './Field';
 
 /** `loggedOnly`: a friend's lifts, without the catalogue's never-logged ones. */
-export function LiftsScreen({ store, onOpen, loggedOnly }: { store: SetsStore; onOpen: (name: string) => void; loggedOnly?: boolean }) {
+export function LiftsScreen({ who, store, onOpen, loggedOnly }: { /** A friend's username. */ who?: string; store: SetsStore; onOpen: (name: string) => void; loggedOnly?: boolean }) {
   const [q, setQ] = useState('');
   const today = localDate(new Date());
   const query = q.trim().toLowerCase();
@@ -22,7 +22,7 @@ export function LiftsScreen({ store, onOpen, loggedOnly }: { store: SetsStore; o
   const fresh = found && !loggedOnly ? found.filter((n) => !mine.has(n)).slice(0, 40) : [];
   return (
     <>
-      <h1>Lifts</h1>
+      <h1 className={who ? 'who-title' : undefined}>{who ? `@${who}’s lifts` : 'Lifts'}</h1>
       <Input type="search" aria-label="Filter lifts" placeholder="Search lifts" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="lift-list">
         {names.map((n) => {

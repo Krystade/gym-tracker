@@ -25,7 +25,9 @@ async function crewOf(request: APIRequestContext) {
   const [me, medal, live, rest] = await Promise.all([long('me'), long('medal'), long('live'), long('rest')].map((n) => account(request, n)));
   const legs = (d: number, h = 17) => session(at(d, h), [['Barbell Squat', [[405, 5], [405, 5], [425, 3]]], ['Romanian Deadlift', [[315, 8], [315, 8]]]]);
   const push = (d: number, h = 17) => session(at(d, h), [['Bench Press', [[275, 5], [275, 5]]], ['Single Arm Cable Lateral Raise Behind Back', [[22.5, 15], [22.5, 15]]]]);
-  const medalSets = [...legs(29), ...push(22), ...legs(15), ...push(8), ...legs(4), ...push(1, 9)];
+  // A lift only Medal does, coming on: the comparison's row with a dash for you, under a long name.
+  const curl = (d: number, w: number) => session(at(d, 19), [['Single Leg Seated Leg Curl Machine', [[w, 12], [w - 10, 12]]]]);
+  const medalSets = [...legs(29), ...curl(29, 90), ...push(22), ...legs(15), ...curl(15, 100), ...push(8), ...legs(4), ...curl(4, 110), ...push(1, 9)];
   const yest = iso(at(1, 9));
   await Promise.all([
     log(request, me, [...legs(30), ...push(23), ...legs(16), ...push(9), ...legs(2), ...push(1)]),
@@ -74,6 +76,10 @@ test('Friends: the feed, a friend’s page and its 8-week board, a thread', asyn
   await crew(page).getByTestId(`crew-${medal.name}`).getByRole('button', { name: `@${medal.name}`, exact: true }).click();
   const fp = page.getByRole('region', { name: `@${medal.name}`, exact: true });
   await expect(fp.getByRole('region', { name: 'Last 8 weeks' })).toBeVisible();
+  // The comparison is there without a tap: the lifts both do, then Medal's own with a dash for you.
+  const vs = fp.getByRole('region', { name: `You and @${medal.name}` });
+  await expect(vs.locator('.fp-vs').last()).toContainText('Single Leg Seated Leg Curl Machine');
+  await expect(vs.getByRole('img', { name: 'You no change yet' })).toBeVisible();
   await check(page, info, found, 'friend-page');
   // The owner's screenshot, put back: the board's old rings and medal outside the tile. The audit has to see both.
   const old = await page.addStyleTag({ content: `.fp .fp-tile.today { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text-2) }
@@ -95,13 +101,24 @@ test('Friends: the feed, a friend’s page and its 8-week board, a thread', asyn
   // Live's page: training now, the live ring on today's tile.
   await page.locator('.fp-back').click();
   await crew(page).getByTestId(`crew-${live.name}`).getByRole('button', { name: `@${live.name}`, exact: true }).click();
-  await expect(page.getByRole('region', { name: `@${live.name}`, exact: true }).locator('.fp-live')).toHaveText('LIVE');
+  const lp = page.getByRole('region', { name: `@${live.name}`, exact: true });
+  await expect(lp.locator('.fp-live')).toHaveText('LIVE');
+  // Nothing of Live's has two sessions two weeks apart: the comparison still shows, saying so.
+  await expect(lp.getByRole('region', { name: `You and @${live.name}` })).toContainText('No change to show yet');
   await check(page, info, found, 'friend-page-live');
 
   // More, signed in, from the Home Screen with notifications on: every switch, the reminder's days and time.
   await goto(page, 'More');
   await expect(page.getByRole('checkbox', { name: /Workout reminder/ })).toBeVisible();
   await check(page, info, found, 'more-notifications');
+
+  // Live's whole Stats, named for them. Last: the full-page shot of a page this tall leaves a gap in the chrome's pin (a
+  // screenshot artefact; the phone takes none) that a shorter page after it keeps.
+  await goto(page, 'Friends');
+  await crew(page).getByTestId(`crew-${live.name}`).getByRole('button', { name: `@${live.name}`, exact: true }).click();
+  await page.getByRole('region', { name: `@${live.name}`, exact: true }).getByRole('button', { name: 'Stats', exact: true }).click();
+  await expect(page.getByRole('heading', { name: `@${live.name}’s stats`, level: 1 })).toBeVisible();
+  await check(page, info, found, 'friend-stats');
   clean(found);
 });
 

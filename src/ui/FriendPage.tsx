@@ -3,7 +3,7 @@ import { cloudError, loadCloud } from '../cloud/firebase';
 import { readFriend, type Friend, type FriendData, type FriendNews } from '../cloud/friends';
 import { addDays, weekStart } from '../domain/analytics';
 import { latestSession, sessionLabel } from '../domain/crew';
-import { board, friendPrs, goalWeek, KIND_SHORT, liveSince, recentPrs, ringSets, sessionCard, sharedChanges, usualSession, weekStreak, type Card, type Tile } from '../domain/feed';
+import { board, friendPrs, goalWeek, KIND_SHORT, liveSince, recentPrs, ringSets, progressRows, sessionCard, usualSession, weekStreak, type Card, type Tile } from '../domain/feed';
 import { fmtAdded } from '../domain/format';
 import type { PresetKey } from '../domain/messages';
 import type { SetEntry } from '../domain/types';
@@ -46,7 +46,7 @@ export function FriendPage({ uid, friend, entries, today, gyms, news, onBack, on
       </div>
       {whole?.error ? <p role="alert" className="warn">{whole.error}</p>
         : !whole?.data ? <p className="muted">Loading @{friend.name}’s log…</p>
-        : <Screens data={whole.data} tab={deep} exercise={exercise} today={today} gyms={gyms} onOpen={(n) => { setExercise(n); window.scrollTo(0, 0); }} onExerciseBack={() => setExercise(null)} />}
+        : <Screens name={friend.name} data={whole.data} tab={deep} exercise={exercise} today={today} gyms={gyms} onOpen={(n) => { setExercise(n); window.scrollTo(0, 0); }} onExerciseBack={() => setExercise(null)} />}
     </>);
   }
   return <Profile uid={uid} friend={friend} entries={entries} today={today} news={news} onBack={onBack} onMessage={onMessage} onDeep={go} />;
@@ -78,7 +78,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep 
       sets, prs, day, live: liveSince(day, now), week: goalWeek(sets, today, goal), streak: weekStreak(sets, today, goal, 8),
       prsWeek: sets.filter((e) => prs.has(e.id) && e.date >= weekStart(today)).length,
       card: last ? sessionCard(sets, last.date, prs, now) : null, rows, sessions: rows.flat().filter((t) => t.sets > 0).length,
-      recent: recentPrs(sets, prs, 3), shared: sharedChanges(entries, sets, addDays(today, -55), today),
+      recent: recentPrs(sets, prs, 3), shared: progressRows(entries, sets, addDays(today, -55), today),
       ring: ringSets(day), usual: usualSession(sets, today),
     };
   }, [w, from, today, entries, minute]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -119,7 +119,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep 
 
       {error ? <p role="alert" className="warn">{error}</p> : !v ? <p className="muted">Loading…</p> : (<>
         {v.card && <SessionBox c={v.card} today={today} now={now} />}
-        {v.shared.length > 0 && <Shared name={friend.name} rows={v.shared} />}
+        <Shared name={friend.name} rows={v.shared} />
         <section className="card fp-board-card" aria-label="Last 8 weeks">
           <h2>Last 8 weeks <span>{v.sessions} session{v.sessions === 1 ? '' : 's'}</span></h2>
           <Board rows={v.rows} picked={picked} onPick={(d) => setPicked(picked === d ? null : d)} />
@@ -176,19 +176,23 @@ function SessionBox({ c, today, now, inBoard }: { c: Card; today: string; now: n
   );
 }
 
-/** You and them on the lifts you both do: each one's e1RM change against their own start, never one's load against the other's. */
-function Shared({ name, rows }: { name: string; rows: { lift: string; me: number; them: number }[] }) {
-  const max = Math.max(5, ...rows.flatMap((r) => [Math.abs(r.me), Math.abs(r.them)]));
+/**
+ * The comparison, always on their page (no tap to Stats): their lifts, the ones you both do first, each one's e1RM change against
+ * their own start, never one's load against the other's. Yours too new to say, or not a lift of yours: a dash.
+ */
+function Shared({ name, rows }: { name: string; rows: { lift: string; me: number | null; them: number }[] }) {
+  const max = Math.max(5, ...rows.flatMap((r) => [Math.abs(r.me ?? 0), Math.abs(r.them)]));
   const pct = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x) < 10 ? Math.abs(x).toFixed(1).replace(/\.0$/, '') : Math.round(Math.abs(x))}%`;
-  const bar = (x: number, who: string, cls: string) => (
-    <div className={`fp-bar ${cls}`} aria-label={`${who} ${pct(x)}`} role="img">
-      <i><b style={{ '--w': `${(Math.max(0, x) / max) * 100}%` } as CSSProperties} /></i><span>{pct(x)}</span>
+  const bar = (x: number | null, who: string, cls: string) => (
+    <div className={`fp-bar ${cls}`} aria-label={`${who} ${x == null ? 'no change yet' : pct(x)}`} role="img">
+      <i><b style={{ '--w': `${(Math.max(0, x ?? 0) / max) * 100}%` } as CSSProperties} /></i><span>{x == null ? '–' : pct(x)}</span>
     </div>
   );
   return (
     <section className="card fp-shared" aria-label={`You and @${name}`}>
       <h2>You and @{name} <span>e1RM change, 8 weeks</span></h2>
       <p className="fp-legend"><span><i className="me" />You</span><span><i />@{name}</span><span className="fp-own">each from their own start</span></p>
+      {!rows.length && <p className="muted small fp-none">No change to show yet: a lift needs two sessions two weeks apart.</p>}
       {rows.map((r) => (
         <div key={r.lift} className="fp-vs">
           <span className="fp-vs-l">{r.lift}</span>

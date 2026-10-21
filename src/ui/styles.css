@@ -976,8 +976,8 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 .digest .digest-lifts { list-style: none; margin: 0; padding: 0; }
 .digest .digest-lifts li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid var(--line); }
 .digest .digest-lifts li:first-child { border-top: 0; }
-.digest .digest-lifts li > span:first-child { overflow-wrap: anywhere; }
-.digest .digest-lifts li > span:last-child { white-space: nowrap; font-size: var(--fs-sm); }
+.digest .digest-lifts li > span:first-child { overflow-wrap: anywhere; min-width: 0; flex: 1; }
+.digest .digest-lifts li > span:last-child { white-space: nowrap; font-size: var(--fs-sm); flex: none; }
 .digest .digest-pr { color: var(--accent); font-weight: 600; }
 .digest .digest-hide { margin: 12px 0 0; }
 .digest .digest-toggle .muted { font-weight: 400; }

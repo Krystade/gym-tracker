@@ -3,7 +3,7 @@ import { cloudError, loadCloud } from '../cloud/firebase';
 import { sendPing, type Friend, type FriendNews } from '../cloud/friends';
 import { activeProfileDb } from '../db/db';
 import { fmtClock, fmtMiles } from '../domain/cardio';
-import { dayKinds, latestSession, sessionLabel, statusLength, STATUS_MAX } from '../domain/crew';
+import { dayKinds, latestSession, sessionLabel, setsNote, statusLength, STATUS_MAX } from '../domain/crew';
 import { friendPrs, goalWeek, KIND_SHORT, liveSince, ringSets, sessionCard, usualSession, type Card, type CardLift, type GoalWeek } from '../domain/feed';
 import { fmtAdded } from '../domain/format';
 import { PRESETS, shortAgo, type InboxDoc, type PresetKey } from '../domain/messages';
@@ -182,7 +182,8 @@ function RailPerson({ p, draw, delay, onOpen }: { p: Person; draw: boolean; dela
 }
 
 export const topText = (l: CardLift) => (l.seconds != null ? fmtClock(l.seconds) : `${fmtAdded(l.weight)} × ${l.reps ?? '?'}${l.hold ? 's' : ''}`);
-export const subText = (l: CardLift) => (l.seconds != null ? (l.miles != null ? `${fmtMiles(l.miles)} mi` : '') : `${l.sets} set${l.sets === 1 ? '' : 's'}`);
+/** Beside the top set: "best of 3 sets" unless every set was it ("all 3 sets"), so one 55 × 10 never reads as three. */
+export const subText = (l: CardLift) => (l.seconds != null ? (l.miles != null ? `${fmtMiles(l.miles)} mi` : '') : setsNote(l));
 
 /** One person's session today: who, when, the kinds as a bar, each lift's top set, and reactions (yours to send, or theirs to you). */
 function SessionCard({ p, now, news, onOpen, onMessage, sending, burst, error, sent, got, onReact }: {

@@ -135,7 +135,7 @@ describe('a set with help, everywhere else (item 14)', () => {
   it('reads BW−N wherever a set is written', () => {
     expect([fmtAdded(0), fmtAdded(-30), fmtAdded(25), fmtAdded(-12.5)]).toEqual(['BW', 'BW−30', '25', 'BW−12.5']);
     expect(fmtSet(set('2026-09-01', DIPS, -30, 10, 1))).toBe('BW−30 × 10');
-    expect(fmtSession(sessionOn(sess('2026-09-01', -30, [10, 9]), '2026-09-01')!)).toBe(`${DIPS} 2×BW−30×10`);
+    expect(fmtSession(sessionOn(sess('2026-09-01', -30, [10, 9]), '2026-09-01')!)).toBe(`${DIPS} BW−30×10 best of 2`);
   });
   it('is a bodyweight set: nothing in it is external load, so no e1RM', () => {
     expect(derivedFlags([], -30, 10)).toEqual(['bodyweight']);
