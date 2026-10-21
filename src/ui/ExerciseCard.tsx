@@ -14,7 +14,7 @@ import { SetRowContent } from './SetRow';
 import { suggest } from '../domain/suggest';
 import { Icon } from './icons';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
-import { hhmm, paces, restFor, suggestTime, switchFor } from '../domain/timing';
+import { hhmm, paces, restFor, suggestTime, type RestPart } from '../domain/timing';
 import { kneeAfter } from '../domain/learn/rest';
 import { andList } from '../domain/superset';
 import { startRest } from './RestTimer';
@@ -51,7 +51,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   /** The other lifts of its superset today, and the tap that says it isn't one. */
   supersetWith?: string[]; onNotSuperset?: () => void;
   /** With the log as it is after the set `id`: the superset's next lift to switch to, null for its full rest, undefined if in none. */
-  switchAfter?: (entries: SetEntry[], id: string) => string | null | undefined;
+  switchAfter?: (entries: SetEntry[], id: string) => { to: string; seconds: number; parts: RestPart[] } | null | undefined;
   onSwitch?: (exercise: string) => void;
   /** Shown under the card's head, before its numbers: the suggestion to rotate a stalled lift. */
   aside?: ReactNode;
@@ -142,9 +142,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
         void s.save({ ...s.get(exercise, hold), rest: Math.min(600, Math.max(30, full.why.base + chosen - full.seconds)) });
       };
       if (switchTo) {
-        const sw = switchFor(pace);
-        startRest(sw.seconds, switchTo.toLowerCase(), `Switch to ${switchTo}`, { seconds: full.seconds, card: exercise.toLowerCase(), label, why: full.parts }, keep, sw.parts);
-        onSwitch?.(switchTo);
+        startRest(switchTo.seconds, switchTo.to.toLowerCase(), `Switch to ${switchTo.to}`, { seconds: full.seconds, card: exercise.toLowerCase(), label, why: full.parts }, keep, switchTo.parts);
+        onSwitch?.(switchTo.to);
       } else startRest(full.seconds, exercise.toLowerCase(), label, undefined, keep, full.parts);
     }
     // The same rule as the PR badge; a set that broke several records names the best one.

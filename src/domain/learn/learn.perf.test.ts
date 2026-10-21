@@ -11,6 +11,8 @@ import { paceFit, sessionLengths } from './session';
 import { paceLog, PACE_TRUTH } from './sessionSim.sample';
 import { fitReminder } from './remind';
 import { addDays } from '../analytics';
+import { gapModel } from './switch';
+import { simulate as switchSim } from './switchSim.sample';
 
 // Shared CI runners are 2-4x slower than a desktop and vary run to run, so wall-clock budgets there catch only an
 // order-of-magnitude regression. Locally (and on the phone's terms) the budgets stand as written.
@@ -220,6 +222,38 @@ it('fits 5 years of reminder history in under 100 ms, once a day; a set logged t
     const next = [...log];
     const t = performance.now();
     fitReminder(next, today, 'UTC');
+    per.push(performance.now() - t);
+  }
+  per.sort((a, b) => a - b);
+  expect(per[0], `per set (ms): ${per.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5 * SLACK);
+}, 120000);
+
+// Item 15's gap model (learn/switch) refits once a day, on the first read of a new day: 5 years of timed sessions (1,000, most
+// with a pair alternated or supersetted: every one offers a group to judge) is ~80 ms on desktop Node, soft EM to convergence.
+// Gated at 150 ms; a set logged today reuses the day's fit (the days before are the same objects) in under 5 ms.
+it('fits 5 years of supersets in under 150 ms, once a day; a set logged today reuses it in under 5 ms', () => {
+  const log = switchSim({ walk: 30, set: 40, rest: 120 }, '2026-01-05', 1000, 3, (_, r) => (r.next() < 0.5 ? 'superset' : r.next() < 0.5 ? 'alternate' : 'straight'));
+  const last = log.reduce((d, e) => (e.date > d ? e.date : d), '');
+  for (let k = 0; k < 3; k++) gapModel([...log], addDays(last, 1 + k));
+  const times: number[] = [];
+  for (let k = 0; k < 5; k++) {
+    const next = [...log];
+    const t = performance.now();
+    gapModel(next, addDays(last, 10 + k));
+    times.push(performance.now() - t);
+  }
+  times.sort((a, b) => a - b);
+  const today = addDays(last, 10), m = gapModel(log, today);
+  expect(m.days).toBe(1000);
+  expect(m.switches).toBeGreaterThan(500);
+  expect(times[0], `fits (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(150 * SLACK);
+  const per: number[] = [];
+  const day = [...log];
+  for (let k = 0; k < 9; k++) {
+    day.push({ ...log[0], id: `gap${k}`, date: today, seq: 1e7 + k, loggedAt: `${today}T18:0${k}:00.000Z` });
+    const next = [...day];
+    const t = performance.now();
+    expect(gapModel(next, today)).toBe(m);
     per.push(performance.now() - t);
   }
   per.sort((a, b) => a - b);

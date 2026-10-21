@@ -5,10 +5,11 @@ import { fmtDay, fmtSet, plural } from '../domain/format';
 import { localDate } from '../domain/ids';
 import type { SetEntry } from '../domain/types';
 import { Fragment, memo, useEffect, useMemo, useState } from 'react';
-import { paces, sessionMinutes, usualGap } from '../domain/timing';
+import { sessionMinutes } from '../domain/timing';
+import { gapModel } from '../domain/learn/switch';
 import { prIds } from '../domain/records';
-import { andList, supersets } from '../domain/superset';
-import { notSupersets } from '../state/notSuperset';
+import { andList, supersets, type GapModel } from '../domain/superset';
+import { allNotSupersets, notSupersets } from '../state/notSuperset';
 import { activeProfileDb } from '../db/db';
 import { Icon } from './icons';
 
@@ -27,7 +28,6 @@ export function HistoryScreen({ store, onOpen, onAddTo, focus = null, onFocused 
 }) {
   const sessions = useMemo(() => sessionsByDate(store.entries), [store.entries]);
   const today = localDate(new Date());
-  const pace = useMemo(() => paces(store.entries), [store.entries]);
   const prs = useMemo(() => prIds(store.entries), [store.entries]);
   // Each set done in a superset, and the lifts it went with: worked out for a day when that day is shown, not for every
   // day in the log. "Not a superset" is this phone's own: a friend's log has none.
@@ -35,12 +35,16 @@ export function HistoryScreen({ store, onOpen, onAddTo, focus = null, onFocused 
   const supersetsOn = useMemo(() => {
     const owner = own ? activeProfileDb() : null, days = new Map<string, SetEntry[]>(), done = new Map<string, Map<string, string[]>>();
     for (const e of store.entries) if (e.loggedAt) { const d = days.get(e.date); if (d) d.push(e); else days.set(e.date, [e]); }
+    // His gap model as of today (learn/switch), fitted once, when a day is first shown: today reads as Today does.
+    let fitted: GapModel | null = null;
+    const fit = () => (fitted ??= gapModel(store.entries, today, owner ? allNotSupersets(owner) : {}));
+    const model: GapModel = { day: (r) => fit().day(r), prior: (k) => fit().prior(k) };
     return (date: string): Map<string, string[]> => {
       let out = done.get(date);
       if (out) return out;
       out = new Map();
       const day = days.get(date) ?? [];
-      for (const g of supersets(day, date, (ex) => usualGap(pace, ex), { dismissed: owner ? notSupersets(owner, date) : [] })) {
+      for (const g of supersets(day, date, model, { dismissed: owner ? notSupersets(owner, date) : [] })) {
         for (const id of g.after.keys()) {
           const ex = day.find((e) => e.id === id)!.exercise;
           out.set(id, g.lifts.filter((x) => !sameExercise(x, ex)));
@@ -49,7 +53,7 @@ export function HistoryScreen({ store, onOpen, onAddTo, focus = null, onFocused 
       done.set(date, out);
       return out;
     };
-  }, [store.entries, pace, own]);
+  }, [store.entries, own, today]);
   // Kept from the first render: the caller clears its copy once it's used, and the day stays open.
   const [at] = useState(focus);
   useEffect(() => {

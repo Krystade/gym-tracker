@@ -6,6 +6,8 @@ const NAME = 'notSuperset';
 type Saved = Record<string, string[][]>;
 
 export const notSupersets = (owner: string, date: string): string[][] => getPref<Saved>(owner, NAME)?.[date] ?? [];
+/** Every day's, by date (what the gap model learns from: learn/switch). */
+export const allNotSupersets = (owner: string): Readonly<Saved> => getPref<Saved>(owner, NAME) ?? {};
 
 export function markNotSuperset(owner: string, date: string, keys: string[]) {
   const all: Saved = { ...getPref<Saved>(owner, NAME), [date]: [...notSupersets(owner, date), keys] };

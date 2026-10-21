@@ -155,7 +155,7 @@ test('a set that switches to the superset’s other lift renders Today once, and
   await recordRenders(page);
   // Back to curls after the rest: a pair, so a short switch and the pushdown's card comes up.
   await at(curl, '18:33:30');
-  await expect(page.getByRole('timer', { name: 'Switch' })).toContainText('0:20');
+  await expect(page.getByRole('timer', { name: 'Switch' })).toContainText('0:15');
   await expect(push.locator('.card-head .link')).toBeFocused();
   await settle(page);
   expect(await commitsOf(today(page))).toBe(1);

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PACE, planSeconds, restFor, paces, switchFor, perSessionForMinutes, perSetSeconds, restAfter, restSeconds, sessionDay, sessionMinutes, SET_WORK, stepsLeft, stepsOf, suggestTime, usualGap, usualMinutes } from './timing';
+import { DEFAULT_PACE, planSeconds, restFor, paces, switchFor, perSessionForMinutes, perSetSeconds, restAfter, restSeconds, sessionDay, sessionMinutes, SET_WORK, stepsLeft, stepsOf, suggestTime, usualMinutes } from './timing';
+import { coldGaps, gapModel } from './learn/switch';
+import { supersets } from './superset';
 import type { SetEntry } from './types';
 import type { Program } from './program';
 
@@ -27,7 +29,7 @@ describe('paces', () => {
     // A set every 2:30: five gaps.
     const p = paces([0, 1, 2, 3, 4, 5].map((i) => ({ ...at('2026-09-28', '18:00'), loggedAt: new Date(Date.parse('2026-09-28T18:00:00') + i * 150_000).toISOString() })));
     expect(perSetSeconds(p, 'Bench Press')).toBe(150);
-    expect(restAfter(p, 'Bench Press', null)).toEqual({ seconds: 180 }); // a compound (owner, 2026-10-19)
+    expect(restAfter(coldGaps(), 'Bench Press', null)).toEqual({ seconds: 180 }); // a compound (owner, 2026-10-19)
     expect(restSeconds('Bench Press')).toBe(180);
     expect(restSeconds('Cable Curl')).toBe(120);
   });
@@ -144,41 +146,51 @@ describe('supersets in the pace', () => {
     expect(p.transition).toBe(240);
     expect(p.transition).toBe(before.transition);
     expect(p.perSet).toEqual(before.perSet);
-    expect(p.superSwitch).toBe(70);
-    expect(before.superSwitch).toBeUndefined();
+    // The switch is learned apart (learn/switch): 70 s, a little short of it from the trials' prior.
+    const m = gapModel([...straight, ...superset], '2026-09-27');
+    expect(m.switches).toBeGreaterThan(5);
+    expect(m.switchSeconds('Cable Curl', 'Cable Pushdown')).toBeGreaterThan(60);
+    expect(m.switchSeconds('Cable Curl', 'Cable Pushdown')).toBeLessThanOrEqual(70);
+    expect(gapModel(straight, '2026-09-27').switches).toBe(0);
   });
 
-  it('learns no switch from a warm-up on the way to the next lift', () => {
+  it('times a switch from working set to working set, a warm-up on the way inside it', () => {
     // Each switch to the pushdown goes through a warm-up set of it first.
     const warm = (d: string, s: number) => ({ ...t(d, s, 'Cable Pushdown'), flags: ['warmup' as const] });
     const days = ['2026-09-24', '2026-09-25', '2026-09-26'].flatMap((d) => [
       t(d, 0, 'Cable Curl'), warm(d, 20), t(d, 60, 'Cable Pushdown'), t(d, 210, 'Cable Curl'), warm(d, 230), t(d, 280, 'Cable Pushdown'),
     ]);
-    expect(paces(days).superSwitch).toBeUndefined();
-    // Two switches are too few to go by.
-    expect(paces(superset.slice(0, 4)).superSwitch).toBeUndefined();
+    const m = gapModel(days, '2026-09-27');
+    expect(m.switches).toBeGreaterThan(2);
+    expect(m.switchSeconds('Cable Curl', 'Cable Pushdown')).toBeGreaterThan(50); // the 60 s, not the warm-up's 20 or 40
   });
 
   it('counts two lifts alternated with a full rest each way as plain switches', () => {
     const alt = ['2026-09-24', '2026-09-25', '2026-09-26'].flatMap((d) => [t(d, 0, 'Cable Curl'), t(d, 150, 'Cable Pushdown'), t(d, 300, 'Cable Curl')]);
     const p = paces(alt);
     expect(p.transition).toBe(150);
-    expect(p.superSwitch).toBeUndefined();
+    // Nothing tells its gaps apart: never over even odds, on any of the days.
+    const m = gapModel(alt, '2026-09-27');
+    for (const d of ['2026-09-24', '2026-09-25', '2026-09-26']) expect(supersets(alt, d, m)).toEqual([]);
   });
 
   it('runs a short switch after a lift with another to go in the round, the lift’s full rest after the last', () => {
-    const none = paces(straight), learned = paces([...straight, ...superset]);
-    expect(restAfter(none, 'Cable Curl', 'Cable Pushdown')).toEqual({ seconds: 20, switchTo: 'Cable Pushdown' });
-    expect(restAfter(learned, 'Cable Curl', 'Cable Pushdown')).toEqual({ seconds: 30, switchTo: 'Cable Pushdown' }); // 70 s less the set
+    const none = gapModel(straight, '2026-09-27'), learned = gapModel([...straight, ...superset], '2026-09-27');
+    expect(restAfter(none, 'Cable Curl', 'Cable Pushdown')).toEqual({ seconds: 5, switchTo: 'Cable Pushdown' }); // the trials' 0:45, less the set
+    const sw = restAfter(learned, 'Cable Curl', 'Cable Pushdown');
+    expect(sw.switchTo).toBe('Cable Pushdown');
+    expect(sw.seconds).toBeGreaterThan(20); // his 70 s, less the set: toward 0:30
+    expect(sw.seconds).toBeLessThanOrEqual(30);
     expect(restAfter(learned, 'Cable Pushdown', null)).toEqual({ seconds: 120 });
     expect(restAfter(learned, 'Bench Press', null)).toEqual({ seconds: 180 });
     expect(restAfter(learned, 'Bench Press', undefined)).toEqual({ seconds: 180 });
   });
 
-  it('measures "well inside the rest" against the lift’s usual time between sets', () => {
-    const p = paces(straight);
-    expect(usualGap(p, 'Bench Press')).toBe(150);
-    expect(usualGap(p, 'Cable Curl')).toBe(160); // 2:00 rest and the set
+  it('reads a lift’s rest from his own gaps, else research’s rest and the set', () => {
+    const m = gapModel(straight, '2026-09-27');
+    expect(Math.exp(m.rest('Bench Press').mean)).toBeGreaterThan(145); // his 150 s, pulled a little toward 3:40
+    expect(Math.exp(m.rest('Bench Press').mean)).toBeLessThan(160);
+    expect(Math.exp(coldGaps().rest('Cable Curl').mean)).toBeCloseTo(160, 6); // 2:00 rest and the set
   });
 });
 
@@ -191,9 +203,9 @@ describe('the rest timer’s base (owner, 2026-10-20: prescribe from the evidenc
   // His real gaps: 5:00 – 7:30 between sets, 10 of them on the pushdown over two days, 5 on the bench.
   const habit = [...run('2026-10-01', [300, 360, 420, 450, 390]), ...run('2026-10-03', [330, 400, 450, 300, 420]), ...run('2026-10-05', [360, 420, 450, 390, 330], 'Bench Press')];
   it('is the research default whatever his gaps have been: 2:00 a small lift, 3:00 a big one', () => {
-    const p = paces(habit);
-    expect(restAfter(p, 'Cable Pushdown', null)).toEqual({ seconds: 120 });
-    expect(restAfter(p, 'Bench Press', null)).toEqual({ seconds: 180 });
+    const p = paces(habit), m = gapModel(habit, '2026-10-06');
+    expect(restAfter(m, 'Cable Pushdown', null)).toEqual({ seconds: 120 });
+    expect(restAfter(m, 'Bench Press', null)).toEqual({ seconds: 180 });
     expect(restFor(set('Cable Pushdown', 50, 12)).seconds).toBe(120);
     expect(restFor(set('Bench Press', 135, 8)).seconds).toBe(180);
     // The instrument: the gaps were learned, as paces (estimates go by them).
@@ -201,11 +213,11 @@ describe('the rest timer’s base (owner, 2026-10-20: prescribe from the evidenc
     expect(perSetSeconds(p, 'Bench Press')).toBe(390);
   });
   it('is his own setting, from the timer’s ±30 s, where he has kept one; a superset’s switch is still the switch', () => {
-    const p = paces(habit);
+    const p = gapModel(habit, '2026-10-06');
     expect(restSeconds('Cable Pushdown', 90)).toBe(90);
     expect(restSeconds('Cable Pushdown', 210)).toBe(210);
     expect(restAfter(p, 'Cable Pushdown', null, 90)).toEqual({ seconds: 90 });
-    expect(restAfter(p, 'Cable Pushdown', 'Cable Curl', 90)).toEqual({ seconds: 20, switchTo: 'Cable Curl' });
+    expect(restAfter(p, 'Cable Pushdown', 'Cable Curl', 90)).toEqual({ seconds: 5, switchTo: 'Cable Curl' });
     expect(restFor(set('Bench Press', 135, 8), { kept: 150 })).toMatchObject({ seconds: 150, why: { base: 150, from: 'kept' } });
   });
 });
@@ -238,7 +250,6 @@ describe('restFor: the rest after a set, from the lift’s base and the set’s 
 });
 
 describe('why a rest is its length: restFor’s and switchFor’s parts, line by line', () => {
-  const none = paces([]);
   const sum = (r: { parts: { s: number }[] }) => r.parts.reduce((a, x) => a + x.s, 0);
   it('a working set: his setting, what research suggests where it differs, then what effort added, adding up to the rest', () => {
     const r = restFor(set('Bench Press', 164, 5, { rir: 0 }), { kept: 150 });
@@ -283,9 +294,22 @@ describe('why a rest is its length: restFor’s and switchFor’s parts, line by
       expect(sum(r), JSON.stringify({ kept, rir, w, warmup })).toBe(r.seconds);
     }
   });
-  it('a superset’s switch: learned less the set, else the default', () => {
-    expect(switchFor(none)).toEqual({ seconds: 20, parts: [{ what: 'Superset switch', s: 20, note: 'default until 3 switches are timed' }] });
-    expect(switchFor({ perSet: new Map(), transition: 120, superSwitch: 75 })).toEqual({ seconds: 35, parts: [{ what: 'Superset switch', s: 35, note: 'your usual switch, less the set itself' }] });
-    expect(switchFor({ perSet: new Map(), transition: 120, superSwitch: 30 }).seconds).toBe(10);
+  it('a superset’s switch: his (else the trials’), less the set, never under 0', () => {
+    const A = 'Cable Curl', B = 'Cable Pushdown';
+    expect(switchFor(coldGaps(), A, B)).toEqual({ seconds: 5, parts: [
+      { what: 'Switch in trials', s: 45, note: 'trials go straight on, set included' }, { what: 'Less the set itself', s: -40, add: true }] });
+    // His pair, 1:15 a switch: his line, from how many.
+    const round = (d: string, g: number) => [0, g, g + 150, 2 * g + 150].map((s, i) => ({ ...at(d, '18:00', i % 2 ? B : A), loggedAt: new Date(Date.parse(`${d}T18:00:00`) + s * 1000).toISOString() }));
+    const days = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08'];
+    const slow = switchFor(gapModel(days.flatMap((d) => round(d, 75)), '2026-10-09'), A, B);
+    expect(slow.parts[0]).toMatchObject({ what: 'Your switch', note: 'from 8 timed, set included' });
+    expect(sum(slow)).toBe(slow.seconds);
+    // A pair he goes straight from (25 s with the set): 0:00, the floor's line making up the sum.
+    const quick = switchFor(gapModel(days.flatMap((d) => round(d, 25)), '2026-10-09'), A, B);
+    expect(quick.seconds).toBe(0);
+    expect(quick.parts.at(-1)?.what).toBe('At least 0:00');
+    expect(sum(quick)).toBe(0);
+    // Another pair of his: like his other switches.
+    expect(switchFor(gapModel(days.flatMap((d) => round(d, 75)), '2026-10-09'), A, 'Face Pull').parts[0].note).toBe('like your other switches, set included');
   });
 });

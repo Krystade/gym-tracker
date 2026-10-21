@@ -187,9 +187,9 @@ export function restPush(until: number | null, label = ''): void {
   const l = load();
   if (!l.device || !l.prefs?.kinds.rest) return;
   clearTimeout(restCancel);
-  if (until == null) { setAlert(null); void api('DELETE', '/timer').catch(() => {}); return; }
-  const seconds = Math.round((until - Date.now()) / 1000);
-  if (seconds < 5) return;
+  const seconds = until == null ? 0 : Math.round((until - Date.now()) / 1000);
+  // Ended, or too short to push (a superset's switch can be 0:00): the bar ends it, and the alert of the rest before is called off.
+  if (until == null || seconds < 5) { setAlert(null); void api('DELETE', '/timer').catch(() => {}); return; }
   api('POST', '/timer', { sub: l.device, seconds, label }).then(() => setAlert('ok'), () => setAlert('failed'));
   restCancel = setTimeout(() => { if (document.visibilityState === 'visible') void api('DELETE', '/timer').catch(() => {}); }, Math.max(0, until - Date.now() - 3000));
 }

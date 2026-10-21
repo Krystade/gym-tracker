@@ -1,9 +1,10 @@
-import { defaultSettings, isWorking, settingsKey } from './progression';
+import { defaultSettings, settingsKey } from './progression';
 import { daySets, doneAt, perLog, sameExercise } from './stats';
 import { addDays } from './analytics';
 import type { Program, ProgramDay } from './program';
 import type { SetEntry } from './types';
-import { supersets, type Superset } from './superset';
+import { supersets, type Gap, type Superset } from './superset';
+import { gapModel, lastDate, type SwitchModel } from './learn/switch';
 
 /** Seconds, until your own data takes over: a set plus its rest, a switch between lifts (paces: suggestTime's fallback). */
 export const DEFAULT_PACE = { compound: 180, isolation: 120, transition: 120 } as const;
@@ -18,11 +19,10 @@ export const timedDay = (entries: SetEntry[], date: string): SetEntry[] =>
   daySets(entries, date).filter((e) => e.loggedAt).sort((a, b) => secs(a) - secs(b));
 
 /**
- * `superSwitch`: inside a superset, the median time from a set of one lift to the next lift's set (once there are 3).
- * `perSet`: per lift, every gap's median, for a late set's time and telling a superset's switch from a rest. A lift's rest goes
- * by none of these (restFor): they describe the habit, not what's best. How long a session takes is learn/session's.
+ * `perSet`: per lift, every gap's median, for a late set's time. A lift's rest goes by none of these (restFor): they describe
+ * the habit, not what's best. How long a session takes is learn/session's; a superset's switch, learn/switch's.
  */
-export interface Paces { perSet: Map<string, number>; transition: number; superSwitch?: number }
+export interface Paces { perSet: Map<string, number>; transition: number }
 
 /** One timed day per date, each in the order done, the days oldest first. */
 function timedDays(entries: readonly SetEntry[]): SetEntry[][] {
@@ -51,21 +51,20 @@ const medians = (lists: Map<string, number[]>, min: number): Map<string, number>
 
 /**
  * Your pace from timed days: per lift, the median time from one set to the next (≤ 10 min); between lifts, the median switch
- * (≤ 15 min). A superset's gaps are neither: its switches are learned apart (`superSwitch`), and the rest after its round is
- * no lift's own rest and no switch between lifts.
+ * (≤ 15 min). A superset's gaps are neither (learn/switch learns its switches), and the rest after its round is no lift's own
+ * rest and no switch between lifts.
  */
 export const paces: (entries: SetEntry[]) => Paces = perLog((entries) => pacesOf(entries));
 // Once per log array: Today alone reads it in every card. Shared, so never changed by a caller.
 function pacesOf(entries: readonly SetEntry[]): Paces {
   const days = timedDays(entries);
-  // Which gaps are a superset's depends on each lift's usual time between sets: first without leaving any out.
-  const raw = medians(gapLists(days), MIN_SAMPLES);
-  const usual = (exercise: string) => raw.get(settingsKey(exercise)) ?? REST.isolation + SET_WORK;
-  const sw: number[] = [], ss: number[] = [];
+  // Which gaps are a superset's: each day read as Today read it, with his gap model as of the log's last day.
+  const model = days.length ? gapModel(entries, lastDate(entries)) : null;
+  const sw: number[] = [];
   const inside = new Map<SetEntry[], (i: number) => boolean>();
   for (const day of days) {
     const of = new Map<string, Superset>();
-    for (const g of supersets(day, day[0].date, usual)) for (const id of g.after.keys()) of.set(id, g);
+    for (const g of supersets(day, day[0].date, model!)) for (const id of g.after.keys()) of.set(id, g);
     // Set i follows a set of a superset with a set of one of its lifts.
     const within = (i: number) => !!of.get(day[i - 1].id)?.keys.includes(settingsKey(day[i].exercise));
     inside.set(day, within);
@@ -73,13 +72,11 @@ function pacesOf(entries: readonly SetEntry[]): Paces {
       const gap = secs(day[i]) - secs(day[i - 1]);
       if (gap <= 0 || gap > MAX_SWITCH || sameExercise(day[i].exercise, day[i - 1].exercise)) continue;
       if (!within(i)) sw.push(gap);
-      else if (of.get(day[i - 1].id)!.after.get(day[i - 1].id) != null && isWorking(day[i])) ss.push(gap);
     }
   }
   const own = gapLists(days, (day, i) => inside.get(day)!(i));
   return {
     perSet: medians(own, MIN_SAMPLES), transition: sw.length >= MIN_SAMPLES ? median(sw) : DEFAULT_PACE.transition,
-    ...(ss.length >= MIN_SAMPLES && { superSwitch: median(ss) }),
   };
 }
 
@@ -178,23 +175,28 @@ export function restFor(set: SetEntry, o: { kept?: number; knee?: KneeRest | nul
   return { seconds, why: { base, from, effort }, parts };
 }
 
-/** A lift's usual time from one set to the next: learned, else the 2:00 rest and the set. A superset's switch is well under it. */
-export const usualGap = (p: Paces, exercise: string): number => p.perSet.get(settingsKey(exercise)) ?? REST.isolation + SET_WORK;
-
 /**
- * The timer after a set. Inside a superset with a lift still to go in the round (`next`): a short switch, the learned one less
- * the set itself (at least 10 s), else 0:20. Otherwise, the lift's full rest (`kept`: the one you set, see restSeconds).
+ * The timer after a set. Inside a superset with a lift still to go in the round (`next`): the switch (switchFor). Otherwise,
+ * the lift's full rest (`kept`: the one you set, see restSeconds).
  */
-export function restAfter(p: Paces, exercise: string, next: string | null | undefined, kept?: number): { seconds: number; switchTo?: string } {
+export function restAfter(model: SwitchModel, exercise: string, next: string | null | undefined, kept?: number): { seconds: number; switchTo?: string } {
   if (!next) return { seconds: restSeconds(exercise, kept) };
-  return { seconds: switchSeconds(p), switchTo: next };
+  return { seconds: switchFor(model, exercise, next).seconds, switchTo: next };
 }
-/** Inside a superset, the switch to the round's next lift: the learned one less the set itself (at least 10 s), else 0:20. */
-export const switchSeconds = (p: Paces): number => switchFor(p).seconds;
-/** The same, with its line for the timer's "?" (RestPart). */
-export function switchFor(p: Paces): { seconds: number; parts: RestPart[] } {
-  const seconds = p.superSwitch == null ? 20 : Math.max(10, Math.round(p.superSwitch - SET_WORK));
-  return { seconds, parts: [{ what: 'Superset switch', s: seconds, note: p.superSwitch == null ? 'default until 3 switches are timed' : 'your usual switch, less the set itself' }] };
+/**
+ * Inside a superset, the switch from `from` to the round's next lift `to`, with its lines for the timer's "?" (RestPart). No
+ * rest between the paired lifts (a: Zhang, Weakley et al. 2025, Sports Med: 15 of the 19 trials went straight on; Maia et al.
+ * 2014, JSCR 28(9): the shortest rest between them did best), so the switch is only the time to get there: his switch, its
+ * median (learn/switch, b: pooled person → family → pair; today's pace and switches move it), less the set itself (SET_WORK,
+ * a); with none of his own, the trials' (a). Never under 0. `today`: the day's rests and this group's switches so far.
+ */
+export function switchFor(model: SwitchModel, from: string, to: string, today: { rests?: readonly Gap[]; switches?: readonly Gap[] } = {}): { seconds: number; parts: RestPart[] } {
+  const gap = Math.round(model.switchSeconds(from, to, today)), sum = gap - SET_WORK, seconds = Math.max(0, sum);
+  const pair = Math.round(model.pairSwitches(from, to) + (today.switches?.filter((g) => (sameExercise(g.from, from) && sameExercise(g.to, to)) || (sameExercise(g.from, to) && sameExercise(g.to, from))).length ?? 0));
+  const note = pair ? `from ${pair} timed, set included` : model.switches >= 0.5 || today.switches?.length ? 'like your other switches, set included' : 'trials go straight on, set included';
+  const parts: RestPart[] = [{ what: pair || model.switches >= 0.5 || today.switches?.length ? 'Your switch' : 'Switch in trials', s: gap, note }, { what: 'Less the set itself', s: -SET_WORK, add: true }];
+  if (seconds !== sum) parts.push({ what: 'At least 0:00', s: seconds - sum, add: true });
+  return { seconds, parts };
 }
 
 /**

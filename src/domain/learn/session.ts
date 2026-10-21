@@ -3,8 +3,8 @@ import { liftKey } from '../ids';
 import { liftFactsVersion } from '../lifts';
 import { isWorking, settingsKey } from '../progression';
 import { byOrderDone, doneAt, perLog, sameExercise } from '../stats';
-import { supersets, type Superset } from '../superset';
-import { isIsolation, paces, planSeconds, SET_WORK, stepsLeft, stepsOf, usualGap, type PlanSlot, type Step } from '../timing';
+import { supersets, type GapModel, type Superset } from '../superset';
+import { isIsolation, planSeconds, SET_WORK, stepsLeft, stepsOf, type PlanSlot, type Step } from '../timing';
 import type { SetEntry } from '../types';
 import { dayOf } from './capacity';
 import { logBefore } from './index';
@@ -12,6 +12,7 @@ import { backward, cholesky, forward } from './num';
 import { LIFT_LOG_SD, PERSON_MIN } from './pace';
 import { pool, type Pooled } from './pool';
 import { DELTA, kneePlan } from './rest';
+import { gapModel, lastDate } from './switch';
 import { liftSimilarity } from './tags';
 
 // Item 11: how long a session takes HIM — the forecast (owner, 2026-10-20: "exactly accurate to what I do"). It describes; it
@@ -81,10 +82,10 @@ interface DayGaps { n: number; y: Float64Array; x: Float64Array; key: string[]; 
 const NONE: DayGaps = { n: 0, y: new Float64Array(0), x: new Float64Array(0), key: [] };
 
 /**
- * A day's gaps (see the header for what's left out). `usual(ex)`: the lift's usual set-to-set time, which tells a superset's
- * switch from a rest (timing.supersets); asked only of a day whose lifts weren't each done in one run (else no superset).
+ * A day's gaps (see the header for what's left out). `model()`: the gap model that tells a superset's switch from a rest
+ * (superset.supersets, learn/switch); asked only of a day whose lifts weren't each done in one run (else no superset).
  */
-function readDay(sets: readonly SetEntry[], usual: () => (ex: string) => number): DayGaps {
+function readDay(sets: readonly SetEntry[], model: () => GapModel): DayGaps {
   const lifts = sets.filter((e) => !cardio(e));
   if (!lifts.length || lifts.some((e) => !e.loggedAt)) return NONE;
   const day = sets.filter((e) => e.loggedAt).sort(byOrderDone);
@@ -97,7 +98,7 @@ function readDay(sets: readonly SetEntry[], usual: () => (ex: string) => number)
     seen.add(k);
   }
   const of = new Map<string, Superset>();
-  if (back) for (const g of supersets(day, day[0].date, usual())) for (const id of g.after.keys()) of.set(id, g);
+  if (back) for (const g of supersets(day, day[0].date, model())) for (const id of g.after.keys()) of.set(id, g);
   const y: number[] = [], x: number[] = [], key: string[] = [];
   const row = new Float64Array(P);
   for (let i = 1; i < day.length; i++) {
@@ -113,17 +114,17 @@ function readDay(sets: readonly SetEntry[], usual: () => (ex: string) => number)
 }
 
 // A day's gaps, cached by its sets: the store never changes a set in place, so the same objects are the same day (as
-// learn/pace). A day that could hold a superset is read again when its lifts' usual times move.
-const DAYS = new WeakMap<SetEntry, { sets: readonly SetEntry[]; gaps: DayGaps; usual: string | null }>();
-function dayGaps(sets: readonly SetEntry[], usualOf: () => (ex: string) => number): DayGaps {
+// learn/pace). A day that could hold a superset is read again when the gap model it was read with is refitted.
+const DAYS = new WeakMap<SetEntry, { sets: readonly SetEntry[]; gaps: DayGaps; model: GapModel | null }>();
+function dayGaps(sets: readonly SetEntry[], modelOf: () => GapModel): DayGaps {
   const hit = DAYS.get(sets[0]);
   let same = !!hit && hit.sets.length === sets.length;
   for (let i = 0; same && i < sets.length; i++) same = hit!.sets[i] === sets[i];
-  let sig: string | null = null;
-  const usual = () => { const u = usualOf(); sig = [...new Set(sets.map((e) => settingsKey(e.exercise)))].map((k) => u(k)).join(); return u; };
-  if (same && (hit!.usual == null || (usual(), sig === hit!.usual))) return hit!.gaps;
-  const gaps = readDay(sets, usual);
-  DAYS.set(sets[0], { sets: [...sets], gaps, usual: sig });
+  let used: GapModel | null = null;
+  const model = () => (used = modelOf());
+  if (same && (hit!.model == null || hit!.model === modelOf())) return hit!.gaps;
+  const gaps = readDay(sets, model);
+  DAYS.set(sets[0], { sets: [...sets], gaps, model: used });
   return gaps;
 }
 
@@ -369,12 +370,12 @@ export interface PaceFit {
 function fit(entries: readonly SetEntry[]): PaceFit | null {
   const byDate = new Map<string, SetEntry[]>();
   for (const e of entries) { const d = byDate.get(e.date); if (d) d.push(e); else byDate.set(e.date, [e]); }
-  let usual: ((ex: string) => number) | null = null;
-  const usualOf = () => { if (!usual) { const pc = paces(entries as SetEntry[]); usual = (ex) => usualGap(pc, ex); } return usual; };
+  let gm: GapModel | null = null;
+  const modelOf = () => (gm ??= gapModel(entries, lastDate(entries)));
   const read: { no: number; gaps: DayGaps }[] = [];
   let n = 0;
   for (const date of [...byDate.keys()].sort()) {
-    const gaps = dayGaps(byDate.get(date)!, usualOf);
+    const gaps = dayGaps(byDate.get(date)!, modelOf);
     if (gaps.n) { read.push({ no: dayOf(date), gaps }); n += gaps.n; }
   }
   if (n < PERSON_MIN || read.length < MIN_DAYS) return null;
@@ -450,7 +451,7 @@ function fit(entries: readonly SetEntry[]): PaceFit | null {
       return { mean, sd: Math.sqrt(avg((m) => m.lifts.lift(k).sd ** 2 + (m.lifts.lift(k).mean - mean) ** 2)) };
     },
     overhead: avg((m) => m.overhead),
-    forecast: (steps, o) => forecast(live, steps, o, { lastDay, posMax, isBreak, usualOf }),
+    forecast: (steps, o) => forecast(live, steps, o, { lastDay, posMax, isBreak, modelOf }),
   };
 }
 
@@ -462,7 +463,7 @@ function maxPos(d: Day): number {
 }
 
 function forecast(live: readonly { m: Member; w: number }[], steps: readonly Step[], o: { date: string; today?: readonly SetEntry[] },
-  c: { lastDay: number; posMax: number; isBreak: (y: number, x: ArrayLike<number>, o: number) => boolean; usualOf: () => (ex: string) => number }): Forecast {
+  c: { lastDay: number; posMax: number; isBreak: (y: number, x: ArrayLike<number>, o: number) => boolean; modelOf: () => GapModel }): Forecast {
   const today = (o.today ?? []).filter((e) => e.loggedAt).sort(byOrderDone);
   const last = today.at(-1);
   const elapsed = last ? secs(last) - secs(today[0]) + SET_WORK : 0;
@@ -484,7 +485,7 @@ function forecast(live: readonly { m: Member; w: number }[], steps: readonly Ste
     prev = { exercise: s.exercise, warmup: !!s.warmup, cardio: bout };
   }
   // How today is going: its own gaps (a break today is in the time so far, and says nothing of the pace).
-  const tg = today.length > 1 ? readDay(o.today!, c.usualOf) : NONE;
+  const tg = today.length > 1 ? readDay(o.today!, c.modelOf) : NONE;
   const todays: number[] = [];
   for (let j = 0; j < tg.n; j++) if (!c.isBreak(tg.y[j], tg.x, j * P)) todays.push(j);
   const layoff = Math.max(0, dayOf(o.date) - c.lastDay);

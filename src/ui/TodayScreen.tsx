@@ -32,9 +32,10 @@ import { TodayDigest } from './WeekDigest';
 import { SuggestedToday } from './SuggestedToday';
 import { Icon } from './icons';
 import type { SetEntry } from '../domain/types';
-import { paces, usualGap } from '../domain/timing';
-import { lastSupersets, nextAfter, supersets, type Superset } from '../domain/superset';
-import { markNotSuperset, notSupersets } from '../state/notSuperset';
+import { switchFor, type RestPart } from '../domain/timing';
+import { lastSupersets, restsOf, supersets, switchesOf, timedWorking, type Superset } from '../domain/superset';
+import { gapModel } from '../domain/learn/switch';
+import { allNotSupersets, markNotSuperset, notSupersets } from '../state/notSuperset';
 import { carryOver, rotation, type Carry, type Rotation } from '../domain/rotation';
 import { applyRotation, inProgram, RotationSuggestion } from './RotationSuggestion';
 import { FriendName } from './FriendName';
@@ -116,15 +117,25 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   const hasPlan = date >= today || programs.plans.some((p) => p.date === date) || logged.length > 0;
 
   // Supersets, noticed from the day's log: lifts gone round with short switches. "Not a superset" holds for the day.
-  const pace = useMemo(() => paces(store.entries), [store.entries]);
   const [notSuper, setNotSuper] = useState(() => notSupersets(owner, date));
+  // His gap model (learn/switch), fitted on the days before this one: what tells a switch from a rest, and his switch's length.
+  const model = useMemo(() => gapModel(store.entries, date, allNotSupersets(owner)), [store.entries, date, owner, notSuper]);
   // Last session's groups start today's from the first set, for a session with all of a group's lifts (cards or planned).
   const session = [...cards, ...(programs.program && plan ? plannedNames(programs.program, plan).filter((n) => plannedSets(programs.program, plan, n) != null) : [])].join('\n');
-  const last = useMemo(() => lastSupersets(store.entries, date, (ex) => usualGap(pace, ex), { lifts: session.split('\n'), dismissedOn: (d) => notSupersets(owner, d) }),
-    [store.entries, date, pace, owner, session]);
-  const groupsIn = (entries: SetEntry[]) => supersets(entries, date, (ex) => usualGap(pace, ex), { dismissed: notSuper, planned: (ex) => plannedSets(programs.program, plan, ex), carried: last });
+  const last = useMemo(() => lastSupersets(store.entries, date, model, { lifts: session.split('\n'), dismissedOn: (d) => notSupersets(owner, d) }),
+    [store.entries, date, model, owner, session]);
+  const groupsIn = (entries: SetEntry[]) => supersets(entries, date, model, { dismissed: notSuper, planned: (ex) => plannedSets(programs.program, plan, ex), carried: last });
   const groups = groupsIn(store.entries);
   const groupOf = (n: string) => groups.find((g) => g.live && g.lifts.some((x) => sameExercise(x, n)));
+  // After the set `id`, inside a group with a lift still to go in the round: that lift, and the switch to it (timing.switchFor),
+  // moved by the day's rests and this group's switches so far.
+  const switchAfter = (entries: SetEntry[], id: string): { to: string; seconds: number; parts: RestPart[] } | undefined => {
+    const g = groupsIn(entries).find((x) => x.after.has(id)), to = g?.after.get(id);
+    const from = entries.find((e) => e.id === id);
+    if (!g || !to || !from) return undefined;
+    const day = timedWorking(entries, date);
+    return { to, ...switchFor(model, from.exercise, to, { rests: restsOf(day), switches: switchesOf(day, g.keys, g.after) }) };
+  };
   const dismiss = (g: Superset) => { markNotSuperset(owner, date, g.keys); setNotSuper(notSupersets(owner, date)); revertSwitch(); };
   // After a set with another lift to go in the round, that lift's card comes up, ready for its set. A new request each time,
   // so the same lift comes up again; not cleared after, which would render Today again.
@@ -256,7 +267,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
         swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
         openReq={openReq && sameExercise(openReq.to, n) ? openReq : null}
         supersetWith={groupOf(n)?.lifts.filter((x) => !sameExercise(x, n))} onNotSuperset={() => { const g = groupOf(n); if (g) dismiss(g); }}
-        switchAfter={(entries, id) => nextAfter(groupsIn(entries), id)} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} restDelta={restDelta} light={!!light} />)}
+        switchAfter={switchAfter} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} restDelta={restDelta} light={!!light} />)}
       {/* Below the cards, so the card you're logging on never moves down. */}
       <SessionSummary entries={store.entries} date={date} past={date < today} />
       <button className="wide add-exercise" data-tour="add" onClick={() => setPicking(true)}>Add exercise</button>

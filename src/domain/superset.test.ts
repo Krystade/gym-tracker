@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { lastSupersets, nextAfter, supersets } from './superset';
-import { paces, restAfter } from './timing';
+import { coldGaps, gapModel } from './learn/switch';
+import { restAfter } from './timing';
 import type { SetEntry } from './types';
 
 const D = '2026-10-16';
@@ -26,8 +27,8 @@ function runOn(D: string, ...steps: (string | number)[]): SetEntry[] {
   }
   return out;
 }
-/** No pace learned yet: 2:00 rest plus the set. */
-const usual = () => 160;
+/** Nothing learned yet: the trials' switch against the research rests (learn/switch). */
+const usual = coldGaps();
 const afters = (day: SetEntry[], i = 0) => day.map((s) => supersets(day, D, usual)[i]?.after.get(s.id));
 
 describe('supersets', () => {
@@ -107,10 +108,12 @@ describe('supersets', () => {
     expect(day.map((s) => nextAfter(groups, s.id))).toEqual([B, null, B, null, X, null, X, null]);
   });
 
-  it('judges "well inside the rest" by the lift’s own usual time between sets', () => {
+  it('reads a gap against his own rest for the lift, learned from the days before', () => {
     const day = run(A, 70, B, 150, A, 70, B);
-    expect(supersets(day, D, () => 160)).toHaveLength(1); // 70 s against 2:40
-    expect(supersets(day, D, (ex) => (ex === A ? 100 : 160))).toEqual([]); // 70 s against A's 1:40 is a normal rest
+    expect(supersets(day, D, usual)).toHaveLength(1); // 70 s against research's 2:00 and the set: a switch
+    // He rests about 1:15 between sets of both: 70 s is his rest, and 150 s more than it. Not a superset.
+    const fast = ['2026-10-02', '2026-10-06', '2026-10-09', '2026-10-13'].flatMap((d) => runOn(d, A, 75, A, 80, A, 70, A, 300, B, 75, B, 72, B, 78, B));
+    expect(supersets([...fast, ...day], D, gapModel([...fast, ...day], D))).toEqual([]);
   });
 
   it('stays for the rest of the day once found, through other lifts and straight sets', () => {
@@ -140,6 +143,17 @@ describe('supersets', () => {
     expect(supersets(run(A, 60, C, 150, A), D, usual, { dismissed: [['cable curl', 'cable pushdown']] }).map((g) => g.lifts)).toEqual([[A, C]]);
   });
 
+  it('weighs every place the round could rest, not the one that fits best', () => {
+    // 80 s reads a little like a switch (λ ≈ +0.3), and 160 s much like a rest: read with the round resting after the curl,
+    // the 160 s is the switch. Averaged over both places it falls short; the better place alone would call it one.
+    const day = run(A, 80, B, 160, A);
+    const pace = usual.day([]);
+    expect(pace.llr(A, B, 80)).toBeGreaterThan(0);
+    expect(pace.llr(B, A, 160)).toBeLessThan(-1);
+    expect(supersets(day, D, usual)).toEqual([]);
+    expect(supersets(run(A, 60, B, 160, A), D, usual)).toHaveLength(1);
+  });
+
   it('is not sets entered back to back, seconds apart', () => {
     expect(supersets(run(A, 5, B, 8, A, 5, B), D, usual)).toEqual([]);
   });
@@ -150,19 +164,22 @@ describe('supersets', () => {
   });
 
   it('times each position of a round: a switch after every lift with another to go, the lift’s full rest after the last', () => {
-    const timers = (day: SetEntry[], p = paces([])) => {
+    const timers = (day: SetEntry[], p = coldGaps()) => {
       const groups = supersets(day, D, usual);
       return day.map((s) => restAfter(p, s.exercise, nextAfter(groups, s.id)).seconds);
     };
-    // Nothing learned: 0:20 switches, 2:00 rests. A pair, a tri-set, a circuit of four.
-    expect(timers(run(A, 60, B, 150, A, 60, B))).toEqual([20, 120, 20, 120]);
-    expect(timers(run(A, 60, B, 60, C, 150, A, 60, B, 60, C))).toEqual([20, 20, 120, 20, 20, 120]);
-    expect(timers(run(A, 50, B, 50, C, 50, E, 150, A, 50, B, 50, C, 50, E))).toEqual([20, 20, 20, 120, 20, 20, 20, 120]);
+    // Nothing learned: the trials' switch (0:45 with the set, 0:05 without), 2:00 rests. A pair, a tri-set, a circuit of four.
+    expect(timers(run(A, 60, B, 150, A, 60, B))).toEqual([5, 120, 5, 120]);
+    expect(timers(run(A, 60, B, 60, C, 150, A, 60, B, 60, C))).toEqual([5, 5, 120, 5, 5, 120]);
+    expect(timers(run(A, 50, B, 50, C, 50, E, 150, A, 50, B, 50, C, 50, E))).toEqual([5, 5, 5, 120, 5, 5, 5, 120]);
     // Not a superset: every set gets the full rest.
     expect(timers(run(A, 150, A, 150, A, 180, B, 150, B))).toEqual([120, 120, 120, 120, 120]);
-    // A learned switch of 1:15 (less the set), and the research default's 2:00 after the round whatever the pace.
-    const p = { perSet: new Map([['cable pushdown', 140]]), transition: 120, superSwitch: 75 };
-    expect(timers(run(A, 60, B, 150, A, 60, B), p)).toEqual([35, 120, 35, 120]);
+    // His switches of 1:15 (less the set: 0:35) move it most of the way there; the round's rest stays the research 2:00.
+    const past = ['2026-10-02', '2026-10-06', '2026-10-09', '2026-10-13'].flatMap((d) => runOn(d, A, 75, B, 150, A, 75, B, 150, A, 75, B));
+    const [sw, rest] = timers(run(A, 60, B, 150, A, 60, B), gapModel([...past, ...run(A)], D));
+    expect(sw).toBeGreaterThan(25);
+    expect(sw).toBeLessThanOrEqual(35);
+    expect(rest).toBe(120);
   });
 });
 
@@ -171,10 +188,10 @@ describe('supersets carried over from last session', () => {
   /** Last week's pair, alternated: curls and pushdowns. */
   const pair = () => runOn(LAST, A, 60, B, 150, A, 60, B);
   const lastFor = (entries: SetEntry[], lifts: string[], dismissedOn?: (date: string) => string[][]) =>
-    lastSupersets(entries, D, usual, { lifts, dismissedOn }).map((g) => g.lifts);
+    lastSupersets(entries, D, gapModel(entries, D, Object.fromEntries([...new Set(entries.map((e) => e.date))].map((d) => [d, dismissedOn?.(d) ?? []]))), { lifts, dismissedOn }).map((g) => g.lifts);
   /** Today's groups, with what last session carries for today's lifts. */
   const today = (past: SetEntry[], day: SetEntry[], lifts: string[], o: { dismissed?: string[][]; planned?: (ex: string) => number | null } = {}) =>
-    supersets([...past, ...day], D, usual, { ...o, carried: lastSupersets([...past, ...day], D, usual, { lifts }) });
+    { const all = [...past, ...day], m = gapModel(all, D); return supersets(all, D, m, { ...o, carried: lastSupersets(all, D, m, { lifts }) }); };
   const after = (past: SetEntry[], day: SetEntry[], lifts: string[]) => {
     const groups = today(past, day, lifts);
     return day.map((s) => nextAfter(groups, s.id));
@@ -247,7 +264,7 @@ describe('supersets carried over from last session', () => {
   it('times the first round as the switch and the full rest', () => {
     const day = run(A, 60, B);
     const g = today(pair(), day, [A, B]);
-    expect(day.map((s) => restAfter(paces([]), s.exercise, nextAfter(g, s.id)).seconds)).toEqual([20, 120]);
+    expect(day.map((s) => restAfter(coldGaps(), s.exercise, nextAfter(g, s.id)).seconds)).toEqual([5, 120]);
   });
 
   it('goes by today’s plan: a lift whose planned sets are done is out of the round', () => {

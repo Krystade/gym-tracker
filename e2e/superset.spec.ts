@@ -84,7 +84,7 @@ test('two lifts alternated become a pair: a switch to the other card, the full r
 
   // Back to curls after the rest: it's a pair. A short switch, and the pushdown card comes up.
   await logSet(page, curl, '18:33:30');
-  await expect(sw).toContainText('0:20');
+  await expect(sw).toContainText('0:15');
   await expect(rest).toHaveCount(0);
   await expect(curl.locator('.superset-line')).toHaveText(/^Superset with Cable Pushdown/);
   await expect(push.locator('.superset-line')).toHaveText(/^Superset with Cable Curl/);
@@ -93,8 +93,9 @@ test('two lifts alternated become a pair: a switch to the other card, the full r
   await page.screenshot({ path: `${SHOTS}/1-switch.png` });
   // Its “?” says why the switch is short.
   const why = (w: string) => page.getByRole('dialog', { name: `Why this ${w}` }).locator('li');
-  await sw.getByRole('button', { name: 'Why this switch is 0:20' }).click();
-  await expect(why('switch')).toHaveText(['Superset switchdefault until 3 switches are timed0:20']);
+  await sw.getByRole('button', { name: 'Why this switch is 0:15' }).click();
+  // His switch so far (the trials’ 0:45 moved by today’s 1:00), less the set itself.
+  await expect(why('switch')).toHaveText(['Your switchfrom 1 timed, set included0:55', 'Less the set itself−40 s', 'Switch0:15']);
   await fits(page);
   await page.screenshot({ path: `${SHOTS}/1b-switch-why.png` });
   await page.keyboard.press('Escape');
@@ -116,7 +117,7 @@ test('two lifts alternated become a pair: a switch to the other card, the full r
 
   // A switch running, then "Not a superset": it becomes the curl's full rest, and the lines go.
   await logSet(page, curl, '18:37:00');
-  await expect(sw).toContainText('0:20');
+  await expect(sw).toContainText('0:17');
   await page.clock.fastForward(5_000);
   await push.getByRole('button', { name: 'Not a superset' }).click();
   await expect(rest).toContainText('1:55');
@@ -165,11 +166,11 @@ test('a tri-set: a switch after each of the first two lifts, the full rest after
   await expect(rest).toContainText('2:00');
 
   await logSet(page, curl, '18:34:30');
-  await expect(sw).toContainText('0:20');
+  await expect(sw).toContainText('0:15');
   await cameUp(page, push);
   await expect(curl.locator('.superset-line')).toHaveText(/^Superset with Cable Pushdown and Face Pull/);
   await logSet(page, push, '18:35:30');
-  await expect(sw).toContainText('0:20');
+  await expect(sw).toContainText('0:15');
   await cameUp(page, pull);
   await fits(page);
   await page.screenshot({ path: `${SHOTS}/4-tri-set.png` });
@@ -178,12 +179,13 @@ test('a tri-set: a switch after each of the first two lifts, the full rest after
   await expect(sw).toHaveCount(0);
 
   // Three more rounds: the cards grow, and the one that comes up still has its Add set clear of the bar.
-  for (const [a, b, c] of [['18:39:00', '18:40:00', '18:41:00'], ['18:43:30', '18:44:30', '18:45:30'], ['18:48:00', '18:49:00', '18:50:00']]) {
+  // Each round's switches move his switch (today's so far): 0:17, then 0:18.
+  for (const [a, b, c, sws] of [['18:39:00', '18:40:00', '18:41:00', '0:17'], ['18:43:30', '18:44:30', '18:45:30', '0:18'], ['18:48:00', '18:49:00', '18:50:00', '0:18']]) {
     await logSet(page, curl, a);
-    await expect(sw).toContainText('0:20');
+    await expect(sw).toContainText(sws);
     await cameUp(page, push);
     await logSet(page, push, b);
-    await expect(sw).toContainText('0:20');
+    await expect(sw).toContainText(sws);
     await cameUp(page, pull);
     await logSet(page, pull, c);
     await expect(rest).toContainText('2:00');
@@ -216,7 +218,7 @@ test('last session’s superset holds from the first round; done separately toda
   await expect(rest).toContainText('2:00');
   await logSet(page, push, '2026-10-02T18:31:00', '50');
   await logSet(page, curl, '2026-10-02T18:33:30');
-  await expect(sw).toContainText('0:20');
+  await expect(sw).toContainText('0:15');
   await logSet(page, push, '2026-10-02T18:34:30');
   await expect(rest).toContainText('2:00');
 
@@ -225,7 +227,7 @@ test('last session’s superset holds from the first round; done separately toda
   await expect(curl.locator('.superset-line')).toHaveText(/^Superset with Cable Pushdown/);
   await expect(push.locator('.superset-line')).toHaveText(/^Superset with Cable Curl/);
   await logSet(page, curl, '2026-10-09T18:30:00', '40');
-  await expect(sw).toContainText('0:20');
+  await expect(sw).toContainText('0:19');
   await expect(rest).toHaveCount(0);
   await cameUp(page, push);
   await fits(page);
@@ -234,7 +236,7 @@ test('last session’s superset holds from the first round; done separately toda
   await expect(rest).toContainText('2:00');
   await expect(sw).toHaveCount(0);
   await logSet(page, curl, '2026-10-09T18:33:30');
-  await expect(sw).toContainText('0:20');
+  await expect(sw).toContainText('0:19');
   await logSet(page, push, '2026-10-09T18:34:30');
   await expect(rest).toContainText('2:00');
 
