@@ -462,7 +462,7 @@ export const dayOf = dayNo;
  * How much the level's variance (ln e1RM) grows over `days` with no session: the learned drift per √week (b), plus the layoff
  * term past two weeks (a: Bosquet 2013). The same step the level filter takes between sessions.
  */
-export function aheadVar(core: Core, days: number): number {
+export function aheadVar(core: Pick<Core, 'drift'>, days: number): number {
   const d = Math.max(0, days);
   return core.drift * core.drift * d / 7 + LAYOFF * LAYOFF * Math.max(0, d / 7 - 2);
 }

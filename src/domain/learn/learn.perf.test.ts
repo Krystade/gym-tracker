@@ -13,6 +13,9 @@ import { fitReminder } from './remind';
 import { addDays } from '../analytics';
 import { gapModel } from './switch';
 import { simulate as switchSim } from './switchSim.sample';
+import { fitCore } from './capacity';
+import { fitRecovery } from './recovery';
+import { simulateRecovery } from './recoverySim.sample';
 
 // Shared CI runners are 2-4x slower than a desktop and vary run to run, so wall-clock budgets there catch only an
 // order-of-magnitude regression. Locally (and on the phone's terms) the budgets stand as written.
@@ -259,3 +262,19 @@ it('fits 5 years of supersets in under 150 ms, once a day; a set logged today re
   per.sort((a, b) => a - b);
   expect(per[0], `per set (ms): ${per.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5 * SLACK);
 }, 120000);
+
+it('refits per-muscle recovery on 2k sets in under 20 ms after one more set', () => {
+  const { entries } = simulateRecovery(1, { sessions: 190, failFrac: 0.2 });
+  const last = entries.at(-1)!, today = addDays(last.date, 1), core = fitCore(entries);
+  for (let k = 0; k < 3; k++) fitRecovery([...entries], core, today, 'UTC');
+  const times: number[] = [];
+  for (let k = 0; k < 7; k++) {
+    const next = [...entries, { ...last, id: `rec${k}`, seq: last.seq + 1 + k, setNo: last.setNo + 1 + k }];
+    const t = performance.now();
+    fitRecovery(next, core, today, 'UTC').freshBy('Chest');
+    times.push(performance.now() - t);
+  }
+  times.sort((a, b) => a - b);
+  expect(entries.length).toBeGreaterThan(2000);
+  expect(times[0], `refits (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(20 * SLACK);
+}, 60000);
