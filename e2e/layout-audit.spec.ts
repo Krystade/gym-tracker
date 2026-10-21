@@ -355,7 +355,7 @@ test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded
   // PNGs of the screen as the phone shows it, when asked for (READY_PNG=<dir>).
   const png = async (name: string) => { if (process.env.READY_PNG) await page.screenshot({ path: `${process.env.READY_PNG}/${info.project.name}-${name}.png` }); };
   const tile = page.getByRole('region', { name: 'Ready' });
-  const strip = page.getByRole('region', { name: 'This week' });
+  const strip = page.getByRole('region', { name: 'Week plan' });
   const noClock = async () => {
     const text = (await tile.innerText()) + (await strip.count() ? await strip.innerText() : '');
     expect(text.match(CLOCK), text).toBeNull();

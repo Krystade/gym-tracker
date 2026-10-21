@@ -81,8 +81,8 @@ export function ReadyTile({ t, onWhy, onFold }: { t: TileView; onWhy: () => void
 
 export function WeekStrip({ s }: { s: StripView }) {
   return (
-    <section className="week-strip" aria-label="This week">
-      <div className="ws-head"><h2>This week</h2><span>{s.goal}</span></div>
+    <section className="week-strip" aria-label="Week plan">
+      <div className="ws-head"><h2>Week plan</h2><span>{s.goal}</span></div>
       <ol className="ws-days" style={{ '--n': s.days.length } as CSSProperties}>
         {s.days.map((d) => (
           <li key={d.date} data-mark={d.mark} aria-label={`${d.label}: ${d.mark === 'rest' ? 'rest' : d.mark === 'optional' ? 'optional' : d.session ?? 'train'}${d.mark === 'light' ? ', light' : ''}`}>

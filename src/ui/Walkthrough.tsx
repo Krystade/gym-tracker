@@ -24,7 +24,7 @@ function markSeen() {
 
 interface Box { top: number; left: number; width: number; height: number }
 
-function targetBox(at: string[]): { box: Box; fixed: boolean } | null {
+function targetBox(at: string[]): { box: Box; span: number; fixed: boolean } | null {
   const els = at.flatMap((t) => [...document.querySelectorAll<HTMLElement>(`[data-tour="${t}"]`)]);
   if (!els.length) return null;
   const rs = els.map((e) => e.getBoundingClientRect());
@@ -33,7 +33,9 @@ function targetBox(at: string[]): { box: Box; fixed: boolean } | null {
   const top = Math.min(...rs.map((r) => r.top)) - PAD, left = Math.max(EDGE, Math.min(...rs.map((r) => r.left)) - PAD);
   const right = Math.min(innerWidth - EDGE, Math.max(...rs.map((r) => r.right)) + PAD), bottom = Math.min(innerHeight - EDGE, Math.max(...rs.map((r) => r.bottom)) + PAD);
   const box = { top, left, width: right - left, height: bottom - top };
-  return { box, fixed: els.every((e) => e.closest('.tabs')) };
+  // Unclamped, to scroll by: a target below the screen has its ring's bottom clamped, and so a height that's wrong (negative).
+  const span = Math.max(...rs.map((r) => r.bottom)) + PAD - top;
+  return { box, span, fixed: els.every((e) => e.closest('.tabs')) };
 }
 
 /** A few short cards in a sheet above the tabs, each lighting up the part of the screen it talks about. Skip or Done closes it for good. */
@@ -68,8 +70,8 @@ export function Walkthrough({ onClose }: { onClose: () => void }) {
       if (!t || placed) return;
       placed = true;
       const sheetTop = sheet.current?.getBoundingClientRect().top ?? innerHeight;
-      if (!t.fixed && (t.box.top < 8 || t.box.top + t.box.height > sheetTop - 8)) {
-        window.scrollBy({ top: t.box.top - Math.max(8, (sheetTop - t.box.height) / 2), behavior: 'instant' });
+      if (!t.fixed && (t.box.top < 8 || t.box.top + t.span > sheetTop - 8)) {
+        window.scrollBy({ top: t.box.top - Math.max(8, (sheetTop - t.span) / 2), behavior: 'instant' });
         measure();
       }
     };
