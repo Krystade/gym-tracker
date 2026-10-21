@@ -52,7 +52,7 @@ async function importRows(page: Page, r: string[], name: string) {
   await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles({ name, mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...r].join('\n')) });
   await expect(page.getByText(`✓ Imported ${r.length} new sets`)).toBeVisible();
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
 }
 
 test('the weekly goal: suggested from the last 8 weeks, dismissed until it changes, then taken with a tap', async ({ page }) => {
@@ -73,8 +73,8 @@ test('the weekly goal: suggested from the last 8 weeks, dismissed until it chang
   await expect(sug).toHaveCount(0);
   await expect(goal).toHaveValue('2'); // nothing changed by itself
   await page.reload();
-  await goto(page, 'Stats');
-  await expect(page.getByRole('heading', { name: 'Priorities' })).toBeVisible();
+  await goto(page, 'Priorities');
+  await expect(page.getByRole('heading', { name: 'Muscle priorities' })).toBeVisible();
   await expect(sug).toHaveCount(0);
 
   // A fifth day a week: the suggestion is now 5, a new one, so it shows again.
@@ -83,9 +83,10 @@ test('the weekly goal: suggested from the last 8 weeks, dismissed until it chang
   await sug.getByRole('button', { name: 'Set goal to 5' }).click();
   await expect(goal).toHaveValue('5');
   await expect(sug).toHaveCount(0);
+  await goto(page, 'Stats');
   await expect(page.getByText('Dashed line: your goal of 5 sessions.')).toBeVisible();
   await page.reload();
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
   await expect(goal).toHaveValue('5');
 });
 
@@ -118,7 +119,7 @@ test('priorities: listed from what was trained, applied with a tap, or dismissed
   await sug.getByRole('button', { name: 'Dismiss' }).click();
   await expect(sug).toHaveCount(0);
   await page.reload();
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
   await expect(page.getByRole('combobox', { name: 'Hamstrings' })).toHaveValue('1');
   await expect(sug).toHaveCount(0);
   await page.getByRole('combobox', { name: 'Calves' }).selectOption('1');

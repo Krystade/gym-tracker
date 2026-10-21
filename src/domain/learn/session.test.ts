@@ -3,7 +3,9 @@ import { addDays } from '../analytics';
 import { liftKey } from '../ids';
 import { isIsolation, planSeconds, SET_WORK, stepsOf, type Step } from '../timing';
 import type { SetEntry } from '../types';
-import { paceBefore, paceFit, quietAfter, sessionLengths, SHOW_BOTH } from './session';
+import { paceBefore, paceFit, quietAfter, sessionLengths, SHOW_BOTH, sizing } from './session';
+import { quickDay } from '../program';
+import { defaultProfile, type Profile } from '../profile';
 import { paceLog, sessionSteps, trueGap, trueSeconds, type PaceSim } from './sessionSim.sample';
 
 const secs = (e: SetEntry) => Date.parse(e.loggedAt!) / 1000;
@@ -353,5 +355,33 @@ describe('learn/session: when a session has gone quiet (auto-finish)', () => {
     expect(quietAfter(sim.entries, sim.days[1])).toBeNull();
     expect(quietAfter(sim.entries, sim.days[2])).not.toBeNull();
     expect(quietAfter([], '2026-10-20')).toBeNull();
+  });
+});
+
+describe('learn/session sizing: a minutes plan at his real pace (owner, 2026-10-20)', () => {
+  const SLOTS = [{ exercise: 'Bench Press', sets: 3 }, { exercise: 'Lat Pulldown', sets: 3 }, { exercise: 'Cable Curl', sets: 2 }];
+  const profile = (): Profile => ({ ...defaultProfile(), tiers: { ...defaultProfile().tiers, Chest: 1, Lats: 1, Quads: 2, Biceps: 2 } });
+  it('sizes by his pace once 2 days are timed: the day it builds takes him about the minutes asked, not twice them', () => {
+    const sim = paceLog(21, { sessions: 40, truth: { base: Math.log(330) } }); // a slow lifter: ~5:30 a gap
+    const date = addDays(sim.days.at(-1)!, 2);
+    const s = sizing(sim.entries, date, {});
+    expect(s.by).toBe('pace');
+    const fit = paceBefore(sim.entries, date)!;
+    expect(s.seconds(SLOTS)).toBeCloseTo(fit.forecast(stepsOf(SLOTS), { date }).seconds, 6);
+    const asked = 45 * 60;
+    const now = quickDay(profile(), sim.entries, date, (x) => s.seconds(x) <= asked);
+    const before = quickDay(profile(), sim.entries, date, (x) => planSeconds(stepsOf(x), { overhead: fit.overhead }) <= asked);
+    expect(now.length).toBeGreaterThan(0);
+    const truth = (x: typeof now) => trueSeconds(sim, stepsOf(x));
+    expect(truth(now)).toBeLessThan(asked * 1.15); // what it takes him: about what he asked for
+    expect(truth(before)).toBeGreaterThan(asked * 1.4); // the timer's rests: far longer for him
+    expect(now.reduce((a, x) => a + x.sets, 0)).toBeLessThan(before.reduce((a, x) => a + x.sets, 0));
+  });
+  it('with under 2 timed days: the timer’s rests size it, and it says so', () => {
+    const sim = paceLog(22, { sessions: 1 });
+    const s = sizing(sim.entries, addDays(sim.days[0], 2), {});
+    expect(s.by).toBe('plan');
+    expect(s.seconds(SLOTS)).toBe(planSeconds(stepsOf(SLOTS)));
+    expect(sizing([], '2026-10-20').by).toBe('plan');
   });
 });

@@ -5,10 +5,10 @@ import { availableSet, type Gym } from '../domain/equipment';
 import { PROGRAM_LIFTS } from '../domain/catalog';
 import { isWorking } from '../domain/progression';
 import { exerciseNames, sameExercise } from '../domain/stats';
-import { planSeconds, stepsOf, usualMinutes } from '../domain/timing';
-import { paceBefore, sessionLengths } from '../domain/learn/session';
+import { usualMinutes } from '../domain/timing';
+import { sessionLengths, sizing } from '../domain/learn/session';
 import { kneePlan } from '../domain/learn/rest';
-import { atPace } from './TodayPlan';
+import { sizedLength } from './TodayPlan';
 import { warmupCount } from '../domain/suggest';
 import { cardioTarget } from '../domain/cardio';
 import { isHoldLift } from '../domain/care';
@@ -33,15 +33,15 @@ export function SuggestedToday({ profile, entries, date, gym, loadFor, onOpen }:
     const cache = new Map<string, number>();
     return (ex: string) => { const k = ex.toLowerCase(); if (!cache.has(k)) cache.set(k, warmupCount(before, ex, date)); return cache.get(k)!; };
   }, [entries, date]);
-  // His switch overhead, from the days before today.
-  const overhead = useMemo(() => paceBefore(entries, date)?.overhead ?? 0, [entries, date]);
+  // Sized at his own pace (learn/session sizing), else at the timer's rests (research or his knees where in use; not his rest
+  // settings, which a tap on the timer changes mid-session). Both read only the days before today.
+  const size = useMemo(() => sizing(entries, date, { warmups: warm, knee: kneePlan(entries, date) ?? undefined }), [entries, date, warm]);
   const slots = useMemo(() => {
     const available = gym ? availableSet(gym, [...PROGRAM_LIFTS, ...exerciseNames(entries), ...gym.include]) : undefined;
-    // Sized at the plan's length: the timer's rests, research or his knees where in use (not his rest settings, which a tap on the
-    // timer changes mid-session). quickDay and the knees read only the days before today, so a set logged now never moves the list.
-    return quickDay(profile, entries, date, (s) => planSeconds(stepsOf(s, warm), { overhead, knee: kneePlan(entries, date) ?? undefined }) <= mins * 60, available ? { available, include: gym!.include } : {});
-  }, [profile, entries, date, mins, warm, overhead, gym]);
-  // His recent pace for it, when over 10 min from the plan's length (owner).
+    // quickDay reads only the days before today, so a set logged now never moves the list.
+    return quickDay(profile, entries, date, (s) => size.seconds(s) <= mins * 60, available ? { available, include: gym!.include } : {});
+  }, [profile, entries, date, mins, size, gym]);
+  // How long it runs, saying which number sized it (owner).
   const L = useMemo(() => slots.length ? sessionLengths(entries, date, slots, { warmups: warm }) : null, [entries, date, slots, warm]);
   const doneOf = (ex: string) => entries.filter((e) => e.date === date && sameExercise(e.exercise, ex) && (isWorking(e) || !!e.cardio)).length;
   const finished = slots.filter((s) => doneOf(s.exercise) >= s.sets).length;
@@ -62,7 +62,7 @@ export function SuggestedToday({ profile, entries, date, gym, loadFor, onOpen }:
             if (Number.isInteger(n) && n >= 5 && n <= 180) setMins(n);
           }} />
         </label>
-        {L?.both && <p className="muted small suggested-pace" aria-label="Plan length">≈ {Math.round(L.plan / 60)} min · {atPace(L.pace!)}</p>}
+        {L && <p className="muted small suggested-pace" aria-label="Plan length">{sizedLength(L, size.by)}</p>}
         <ol className="suggested-slots" aria-label="Suggested exercises">
           {slots.map((s) => {
             const done = doneOf(s.exercise);

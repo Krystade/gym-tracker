@@ -98,7 +98,7 @@ test('a log kept on the phone before an account moves over on first sign-in, pri
   await goto(b, 'Lifts');
   await b.getByRole('button', { name: /Cable Curl/ }).click();
   await expect(b.getByRole('img', { name: 'Estimated 1RM over time' }).locator('circle.pt')).toHaveCount(2);
-  await goto(b, 'Stats');
+  await goto(b, 'Priorities');
   await expect(b.getByRole('combobox', { name: 'Calves' })).toHaveValue('1');
   await expect(b.getByRole('textbox', { name: 'Sessions per week goal' })).toHaveValue('3');
 });

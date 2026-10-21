@@ -10,6 +10,8 @@ import { isLight, LIGHT } from './learn/deload';
 import { fitRange, type RangeFit } from './learn/range';
 import { painGate, painWhy, type PainGate } from './painPlan';
 import { addedLoad, bodyShare } from './learn/bodyweight';
+import { tagsOf } from './learn/tags';
+import type { TrainingGoal } from './profile';
 
 /**
  * A first target carried over from another variation when this lift was rotated in (domain/rotation): an estimate, used until
@@ -19,16 +21,39 @@ export interface Seed { weight: number; reps: number; from: string; date: string
 // testSnoozedUntil: the "time for a test" banner stays hidden until this day.
 /** `like`: the catalog lift this one works like, chosen on its page (round 15); its muscles, pattern and gear are that lift's. */
 /** `rest`: seconds, the rest last set for this lift with the timer's ±30 s; the timer starts there (domain/timing restSeconds). */
-export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number; testSnoozedUntil?: string; seed?: Seed; like?: string; rest?: number }
+/** `ownRange`: repMin–repMax were typed on the lift's page, so they win over the training goal's default (resolveSettings). */
+export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number; testSnoozedUntil?: string; seed?: Seed; like?: string; rest?: number; ownRange?: true }
 
 export const settingsKey = (name: string): string => liftKey(name);
 
-/** `hold`: the lift is timed — known by name, or by its log (callers that have the log pass it). */
-export function defaultSettings(name: string, hold = isHold(name)): ExerciseSettings {
+/** A barbell compound: what the 'strength' goal moves to 5–8 (profile.goalOf). */
+export const isBarbellCompound = (name: string): boolean => !resolveLift(name).iso && tagsOf(name).imp === 'barbell';
+
+/**
+ * `hold`: the lift is timed — known by name, or by its log (callers that have the log pass it). `goal`: the profile's training
+ * goal (profile.goalOf): 'strength' gives a barbell compound 5–8 (a: Currier 2026, ACSM, load ≥ 80 % 1RM ✔ for strength, QoE
+ * 79 %, 6 reviews, n=6,574; learn/range's envelope floor for the class is 5). 'size' keeps 8–12 / 10–15 (c: neutral, within
+ * the 5–30 reps growth is alike over).
+ */
+export function defaultSettings(name: string, hold = isHold(name), goal: TrainingGoal = 'size'): ExerciseSettings {
   // Holds count seconds: 20–40 s, as in the back-resilience block.
   if (hold) return { key: settingsKey(name), repMin: 20, repMax: 40, increment: 5 };
+  if (goal === 'strength' && isBarbellCompound(name)) return { key: settingsKey(name), repMin: 5, repMax: 8, increment: 5 };
   const iso = resolveLift(name).iso;
   return { key: settingsKey(name), repMin: iso ? 10 : 8, repMax: iso ? 15 : 12, increment: 5 };
+}
+
+/**
+ * A lift's settings as used: its saved row, with the goal's default range unless the range is its own. Own: typed on its page
+ * (`ownRange`), or, for a row saved before that mark, a range that is no goal's default (a typed one). A row saved for its rest
+ * or a seed carries whatever default it was shown, which is not a choice.
+ */
+export function resolveSettings(saved: ExerciseSettings | undefined, name: string, hold: boolean | undefined, goal: TrainingGoal): ExerciseSettings {
+  const d = defaultSettings(name, hold, goal);
+  if (!saved) return d;
+  const isDefault = (g: TrainingGoal) => { const x = defaultSettings(name, hold, g); return x.repMin === saved.repMin && x.repMax === saved.repMax; };
+  if (saved.ownRange || (!isDefault('size') && !isDefault('strength'))) return saved;
+  return { ...saved, repMin: d.repMin, repMax: d.repMax };
 }
 
 export const isWorking = (s: SetEntry): boolean => !s.flags.includes('warmup') && !s.flags.includes('partial') && s.reps != null && s.reps > 0;

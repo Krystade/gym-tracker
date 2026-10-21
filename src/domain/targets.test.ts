@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultProfile, DEFAULT_TARGETS, type Profile } from './profile';
+import { defaultProfile, DEFAULT_TARGETS, LEGACY_TARGETS, type Profile } from './profile';
 import { customTiers, fitTargets, weeklyBudget } from './targets';
 import type { SetEntry } from './types';
 
@@ -34,7 +34,7 @@ describe('fitTargets', () => {
     expect(t[1][1]).toBeLessThan(DEFAULT_TARGETS[1][1]);
     expect(t[1][0]).toBeGreaterThanOrEqual(t[2][0]);
     expect(t[2][0]).toBeGreaterThanOrEqual(t[3][0]);
-    for (const tier of [1, 2, 3, 4] as const) { expect(t[tier][1]).toBeGreaterThanOrEqual(t[tier][0]); expect(t[tier][1]).toBeGreaterThanOrEqual(1); expect((t[tier][0] * 2) % 1).toBe(0); }
+    for (const tier of [1, 2, 3] as const) { expect(t[tier][1]).toBeGreaterThanOrEqual(t[tier][0]); expect(t[tier][1]).toBeGreaterThanOrEqual(1); expect((t[tier][0] * 2) % 1).toBe(0); }
     // Every muscle at its midpoint fills about the capacity, no more.
     const mid = (Object.values(p.tiers) as (1 | 2 | 3 | 4)[]).reduce((a, tier) => a + (t[tier][0] + t[tier][1]) / 2, 0);
     expect(mid).toBeLessThanOrEqual(28 * 1.5 + 9); // rounding to 0.5 on 18 muscles
@@ -54,11 +54,24 @@ describe('fitTargets', () => {
   });
 });
 
+describe('excluded priority', () => {
+  it('keeps priority 4 at [0, 0] however the week scales', () => {
+    const p = defaultProfile();
+    for (const sets of [10, 28, 400]) expect(fitTargets(p, { sets, sessions: 2, perSession: sets / 2 }, 1.5).targets[4]).toEqual([0, 0]);
+  });
+  it('keeps a hand-set range saved under the old defaults', () => {
+    const p = { ...defaultProfile(), custom: [1, 2, 3, 4] as (1 | 2 | 3 | 4)[], targets: { ...LEGACY_TARGETS } };
+    expect(fitTargets(p, { sets: 28, sessions: 2, perSession: 14 }, 1.5).targets).toEqual(LEGACY_TARGETS);
+  });
+});
+
 describe('customTiers', () => {
   it('reads a saved profile without the field: tiers that differ from the defaults are hand-set', () => {
-    const old = { ...defaultProfile(), targets: { ...DEFAULT_TARGETS, 2: [6, 9] as [number, number] } };
+    const old = { ...defaultProfile(), targets: { ...LEGACY_TARGETS, 2: [6, 9] as [number, number] } };
     delete (old as Partial<Profile>).custom;
     expect(customTiers(old)).toEqual([2]);
+    // Saved under the old defaults, auto: new defaults don't make its ranges hand-set.
+    expect(customTiers({ ...old, targets: { ...LEGACY_TARGETS } })).toEqual([]);
     expect(customTiers({ ...old, custom: [] })).toEqual([]);
   });
 });

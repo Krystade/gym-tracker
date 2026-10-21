@@ -13,10 +13,15 @@ test('stats: empty state, then charts after import, and priorities edit', async 
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Stats');
-  for (const h of ['This week', 'Muscle volume', 'Sessions per week', 'Weekly tonnage', 'Calendar', 'Priorities']) {
+  for (const h of ['This week', 'Muscle volume', 'Sessions per week', 'Weekly tonnage', 'Calendar']) {
     await expect(page.getByRole('heading', { name: h, exact: true }).first()).toBeAttached();
   }
+  // Priorities live in settings (owner, 2026-10-20): Stats links there.
+  await expect(page.getByRole('heading', { name: 'Muscle priorities' })).toHaveCount(0);
+  await page.getByRole('button', { name: /^Priorities and goal/ }).click();
+  await expect(page.getByRole('heading', { name: 'Priorities and goal', level: 1 })).toBeVisible();
   await page.getByRole('combobox', { name: 'Biceps' }).selectOption('1');
+  await goto(page, 'Stats');
   await expect(page.getByRole('heading', { name: 'Priority 1' })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);

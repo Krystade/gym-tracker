@@ -11,7 +11,7 @@ test('cardio: a priority plans treadmill slots; logging one fills the plan, Hist
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
 
   // Cardio is a priority next to the muscles, in minutes a week.
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
   await page.getByRole('combobox', { name: 'Cardio' }).selectOption('2');
   await expect(page.getByLabel('Cardio this week')).toHaveText('This week: 0 of 40–60 min');
 
@@ -58,7 +58,7 @@ test('cardio: a priority plans treadmill slots; logging one fills the plan, Hist
 
   await goto(page, 'History');
   await expect(page.getByText('20:00 · 1.3 mi · −2%').first()).toBeVisible();
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
   await expect(page.getByLabel('Cardio this week')).toHaveText('This week: 20 of 40–60 min');
 });
 

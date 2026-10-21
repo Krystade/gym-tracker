@@ -1,5 +1,5 @@
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
-import { DEFAULT_LOW_SHARE, type Profile, type Tier } from './profile';
+import { DEFAULT_LOW_SHARE, goalOf, type Profile, type Tier } from './profile';
 import { liftKey, localDate } from './ids';
 import { defaultSettings, isWorking } from './progression';
 import { daySets, perLog, sameExercise } from './stats';
@@ -8,11 +8,16 @@ import type { SetEntry } from './types';
 import { PROGRAM_LIFTS } from './catalog';
 import { CARDIO_TARGETS, cardioSlots, cardioTierOf, pickMachine, weeklyCardioMinutes } from './cardio';
 import { weekStart } from './analytics';
+import { perSessionForMinutes } from './timing';
 
 /** `minutes`: a cardio slot (one bout of that long on `exercise`, a machine); its `sets` is 1 and the rep range is unused. */
 export interface Slot { exercise: string; sets: number; repMin: number; repMax: number; minutes?: number }
 export interface ProgramDay { name: string; slots: Slot[] }
-export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string; /** Minutes per session it was built for; unset when built by sets. */ minutes?: number; /** Set once its days were hand-edited; a rebuild drops it. */ edited?: boolean; newToYou?: string[]; unavailable?: Muscle[]; /** Cardio has a weekly goal but this gym has no cardio machine. */ cardioUnavailable?: boolean }
+/**
+ * `aims`: the weekly sets each muscle was planned at (owner, 2026-10-20: learn/volume planAims), and `block` the day those were
+ * read, which starts its 3-week block (programUpdateDue).
+ */
+export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string; aims?: Partial<Record<Muscle, number>>; block?: string; /** Minutes per session it was built for; unset when built by sets. */ minutes?: number; /** Set once its days were hand-edited; a rebuild drops it. */ edited?: boolean; newToYou?: string[]; unavailable?: Muscle[]; /** Cardio has a weekly goal but this gym has no cardio machine. */ cardioUnavailable?: boolean }
 /** What happened to the program on one date: which day was run, and what was skipped or swapped. */
 /** `slots` is the day as planned when the session was logged, so later program edits don't rewrite history. */
 /** `quick`: a one-off Quick day built for this many minutes; its `slots` are the day, and it doesn't move the rotation. */
@@ -102,14 +107,19 @@ function bestTier(ex: string, p: Profile): Tier {
   return (direct.length ? Math.min(...direct) : 4) as Tier;
 }
 
-export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days: number; perSession: number }, now: Date, ctx: BuildContext = {}): Program {
+/**
+ * `opts.aims`: each muscle's weekly sets to plan at, [lower, upper] (learn/volume planAims: a +20 % step from his own volume,
+ * owner 2026-10-20); a muscle without one is planned at its priority's range.
+ */
+export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days: number; perSession: number; aims?: Partial<Record<Muscle, [number, number]>> }, now: Date, ctx: BuildContext = {}): Program {
   const { days, perSession } = opts;
+  const goalFor = (m: Muscle): [number, number] => opts.aims?.[m] ?? profile.targets[profile.tiers[m]];
   const today = localDate(now);
   const achieved = zero();
   const weekly = new Map<string, number>();
   const saturated = new Set<Muscle>(); // no lift left with room this week
   const cands = new Map<Muscle, string[]>(MUSCLES.map((m) => [m, candidates(m, entries, today, ctx)]));
-  const missing = MUSCLES.filter((m) => !cands.get(m)!.length && profile.targets[profile.tiers[m]][0] > 0);
+  const missing = MUSCLES.filter((m) => !cands.get(m)!.length && goalFor(m)[0] > 0);
   for (const m of missing) saturated.add(m);
   // Worth a warning only for priority 1–2: a gym that can't train a priority 3–4 muscle is no news.
   const unavailable = missing.filter((m) => profile.tiers[m] <= 2);
@@ -118,7 +128,7 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   // weighted by tier, goes next; once every lower target is met, the same toward the upper targets. Using the
   // fraction (not the raw gap) keeps priority 1's big targets from starving every other tier.
   const score = (m: Muscle, bound: 0 | 1) => {
-    const goal = profile.targets[profile.tiers[m]][bound];
+    const goal = goalFor(m)[bound];
     return goal > 0 ? (TIER_WEIGHT[profile.tiers[m]] * (goal - achieved[m])) / goal : 0;
   };
   // Whole pairs per day, so an odd sets-per-session never pushes a day over it.
@@ -127,7 +137,7 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   const lowBudget = (profile.lowShare ?? DEFAULT_LOW_SHARE) * days * dayCap;
   let low = 0;
   const isLow = (m: Muscle) => profile.tiers[m] >= 3;
-  const prioritiesShort = () => MUSCLES.some((m) => !isLow(m) && !saturated.has(m) && achieved[m] < profile.targets[profile.tiers[m]][1]);
+  const prioritiesShort = () => MUSCLES.some((m) => !isLow(m) && !saturated.has(m) && achieved[m] < goalFor(m)[1]);
   const perDay = Array.from({ length: days }, () => new Map<string, number>());
   const totals = Array(days).fill(0) as number[];
   const room = (ex: string, d: number) => (perDay[d].get(ex) ?? 0) + UNIT <= MAX_SETS_PER_DAY;
@@ -172,11 +182,12 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   }
   return {
     key: 'program', perSession, createdAt: now.toISOString(), newToYou, unavailable,
+    ...(opts.aims && { block: today, aims: Object.fromEntries(Object.entries(opts.aims).map(([m, [lo]]) => [m, lo])) }),
     ...(goal > 0 && !cardioMachine && { cardioUnavailable: true }),
     days: perDay.map((m, i) => ({
       name: `Day ${String.fromCharCode(65 + i)}`,
       slots: [
-        ...order.filter((ex) => m.has(ex)).map((ex) => { const st = defaultSettings(ex); return { exercise: ex, sets: m.get(ex)!, repMin: st.repMin, repMax: st.repMax }; }),
+        ...order.filter((ex) => m.has(ex)).map((ex) => { const st = defaultSettings(ex, undefined, goalOf(profile)); return { exercise: ex, sets: m.get(ex)!, repMin: st.repMin, repMax: st.repMax }; }),
         ...(cardio.has(i) ? [cardioSlot(cardioMachine!, cardio.get(i)!)] : []),
       ],
     })),
@@ -185,6 +196,29 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
 
 /** A cardio slot of `minutes` on `machine`. */
 export const cardioSlot = (machine: string, minutes: number): Slot => ({ exercise: machine, sets: 1, repMin: 0, repMax: 0, minutes });
+
+/** (a) A volume block: Barsuhn 2025's 3 weeks (learn/volume BASE_WEEKS): the aims are read again after each. */
+export const BLOCK_DAYS = 21;
+/** The 3-week blocks since the program's aims were read (its build day for one built before them). */
+export const programBlock = (p: Program, today: string): number =>
+  Math.max(0, Math.floor((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${(p.block ?? p.createdAt).slice(0, 10)}T12:00:00Z`)) / 864e5 / BLOCK_DAYS));
+
+/**
+ * A program built like `p` (its days, sets or minutes per session) at `aims`. By minutes: the most sets per session whose every
+ * day `est`imates within them (minutes).
+ */
+export function rebuildLike(p: { days: number; perSession: number; minutes?: number }, profile: Profile, entries: SetEntry[], now: Date, ctx: BuildContext,
+  aims: Partial<Record<Muscle, [number, number]>> | undefined, est: (day: ProgramDay) => number): Program {
+  const { days } = p;
+  const build = (perSession: number) => buildProgram(profile, entries, { days, perSession, aims }, now, ctx);
+  return p.minutes != null ? { ...build(perSessionForMinutes(p.minutes, build, est)), minutes: p.minutes } : build(p.perSession);
+}
+
+/** Whether two programs' weekly sets differ by a set or more for any muscle: an update worth offering. */
+export const volumeDiffers = (a: Program, b: Program): boolean => {
+  const x = programVolume(a), y = programVolume(b);
+  return MUSCLES.some((m) => Math.abs(x[m] - y[m]) >= 1);
+};
 
 /** Adds a slot to a day: a lift before the day's first cardio slot, so cardio stays last; cardio at the end. */
 export function addSlot(day: ProgramDay, slot: Slot) {
@@ -273,7 +307,7 @@ export function quickDay(profile: Profile, entries: SetEntry[], date: string, fi
   const m0 = tier <= 2 && short > 0 ? pickMachine(entries, date, (n) => !ctx.available || ctx.available.has(n)) : null;
   let cardio: Slot[] = m0 ? [cardioSlot(m0, Math.min(20, Math.max(10, Math.round(short / 5) * 5)))] : [];
   if (cardio.length && !fits(cardio)) cardio = [];
-  const lifts = () => [...day].map(([exercise, sets]) => { const st = defaultSettings(exercise); return { exercise, sets, repMin: st.repMin, repMax: st.repMax }; });
+  const lifts = () => [...day].map(([exercise, sets]) => { const st = defaultSettings(exercise, undefined, goalOf(profile)); return { exercise, sets, repMin: st.repMin, repMax: st.repMax }; });
   const slots = () => [...lifts(), ...cardio];
   for (;;) {
     const open = MUSCLES.filter((m) => !done.has(m));

@@ -35,6 +35,8 @@ import { addDays } from '../domain/analytics';
 import type { ThreadWith } from './ThreadSheet';
 import { TodayDigest } from './WeekDigest';
 import { SuggestedToday } from './SuggestedToday';
+import { ProgramUpdateCard, useProgramUpdate } from './ProgramUpdate';
+import type { Program } from '../domain/program';
 import { Icon } from './icons';
 import type { SetEntry } from '../domain/types';
 import { switchFor, type RestPart } from '../domain/timing';
@@ -212,6 +214,12 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
 
   const available = useMemo(() => (gyms.active ? availableSet(gyms.active, [...PROGRAM_LIFTS, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined),
     [gyms.active, store.entries]);
+  // Owner decision 2: at a 3-week block boundary, the program offers to step toward his ranges (never by itself).
+  const ctx = useMemo(() => (available ? { available, include: gyms.active!.include } : {}), [available, gyms.active]);
+  const [updateTaps, setUpdateTaps] = useState(0);
+  const [replaced, setReplaced] = useState<Program | null>(null);
+  useEffect(() => { if (!replaced) return; const t = setTimeout(() => setReplaced(null), 8000); return () => clearTimeout(t); }, [replaced]);
+  const update = useProgramUpdate({ owner, program: date === today ? programs.program : null, entries: store.entries, body: body.days, profile, today, ctx, keptRest: undefined, taps: updateTaps });
 
   // A stalled lift's next variation, on its card: today only, for a lift in the program, before its first working set
   // (once it's started, switching would only muddle today's plan). Worked out once per lift per log change.
@@ -294,6 +302,9 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       <CycleRow date={date} />
       {light && <LightWeekLine to={light.to} today={today} onEnd={() => { endLight(owner, store.entries, date); snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
       {offerDeload && sys && <DeloadPrompt s={sys} onStart={() => { startLight(owner, today); setDeloadTaps((n) => n + 1); }} onLater={() => { snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
+      {date === today && update && programs.program && <ProgramUpdateCard owner={owner} program={programs.program} update={update}
+        onUpdate={(next) => { setReplaced(programs.program); void programs.save(next); }} onLater={() => setUpdateTaps((n) => n + 1)} />}
+      {replaced && <p className="undo-note" role="status">Program updated. <button className="mini" onClick={() => { void programs.save(replaced); setReplaced(null); }}>Undo</button></p>}
       {lastUnseen && (
         <FinishCard entries={store.entries} date={lastUnseen} today={today} profile={profile} program={programs.program} plans={programs.plans} how="auto" body={body.days} settings={settings} owner={owner}
           onDismiss={() => { markFinished(owner, lastUnseen, { seen: true }); setFinishRev((n) => n + 1); }} />

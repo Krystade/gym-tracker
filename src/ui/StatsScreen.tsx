@@ -1,12 +1,9 @@
-import { CARDIO_TARGETS, cardioTierOf, thisWeekCardio } from '../domain/cardio';
-import { useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { FittedProfileStore } from '../state/useFittedProfile';
 import type { ProgramStore } from '../state/useProgram';
 import { adherence } from '../domain/program';
 import { addDays, calendarDays, weekStart, weeklyMuscleSets, weeklySummary } from '../domain/analytics';
 import { MUSCLES } from '../domain/muscles';
-import type { Tier } from '../domain/profile';
 import { fmtWeight, plural } from '../domain/format';
 import { BarChart } from './charts/BarChart';
 import { MuscleBars, weekPace } from './charts/MuscleBars';
@@ -18,96 +15,33 @@ import type { BodyStore } from '../state/useBody';
 import type { PhotosStore } from '../state/usePhotos';
 import { PhotosCard } from './PhotosScreen';
 import { LastWeekCard } from './WeekDigest';
-import { GoalSuggestion, PrioritySuggestion } from './TargetSuggestions';
 import { VolumeSteps } from './VolumeSteps';
-import type { SetEntry } from '../domain/types';
-import { activeProfileDb } from '../db/db';
-import { Input } from './Field';
+import { Icon } from './icons';
+import { goalLabel, Priorities } from './PrioritiesScreen';
+import { thisWeekCardio } from '../domain/cardio';
 import { BehindCard, PrCardView, Stronger, WeekRing } from './StatsCards';
 
 const tons = (n: number) => (n >= 1000 ? `${fmtWeight(Math.round(n / 100) / 10)}k` : fmtWeight(Math.round(n)));
 const fmt = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
 
-const fmtN = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
-
-/** One priority's weekly range: fitted to the week, or yours, with a way to set it or hand it back. */
-function TierTarget({ t, profile, who }: { t: Tier; profile: FittedProfileStore; who?: string }) {
-  const [lo, hi] = profile.profile.targets[t];
-  const mine = profile.fit.custom.includes(t);
-  const [edit, setEdit] = useState<[string, string] | null>(null);
-  const v = edit && [Number(edit[0]), Number(edit[1])] as [number, number];
-  const ok = !!v && v.every((n) => Number.isFinite(n) && n >= 0 && n <= 40) && v[0] <= v[1] && edit!.every((x) => x.trim() !== '');
-  return (
-    <li className="tier-target">
-      <span>{t} · {fmtN(lo)}–{fmtN(hi)} sets · <span className="muted">{mine ? (who ? `set by @${who}` : 'yours') : 'auto'}</span></span>
-      {edit ? (
-        <span className="tier-edit">
-          <label>Min<Input aria-label="Min" inputMode="decimal" value={edit[0]} onChange={(e) => setEdit([e.target.value, edit[1]])} /></label>
-          <label>Max<Input aria-label="Max" inputMode="decimal" value={edit[1]} onChange={(e) => setEdit([edit[0], e.target.value])} /></label>
-          <button className="mini" disabled={!ok} onClick={async () => { await profile.setTarget(t, v); setEdit(null); }}>Save</button>
-        </span>
-      ) : mine
-        ? <button className="mini" onClick={() => void profile.setTarget(t, null)}>Use auto</button>
-        : <button className="mini" onClick={() => setEdit([fmtN(lo), fmtN(hi)])}>Edit</button>}
-    </li>
-  );
-}
-
-/** `entries` and `today`: what the suggested goal and priorities are read from (your own Stats only). */
-function Priorities({ profile, readOnly, who, cardioMinutes, entries, today }: { profile: FittedProfileStore; readOnly?: boolean; who?: string; cardioMinutes: number; entries: SetEntry[]; today: string }) {
-  const p = profile.profile;
-  const [goal, setGoal] = useState(String(p.weeklyGoal));
-  const [owner] = useState(activeProfileDb);
-  return (
-    <fieldset className="card plain" id="priorities" disabled={readOnly}>
-      <h2>Priorities</h2>
-      <label className="goal-row">Sessions per week goal
-        <Input aria-label="Sessions per week goal" inputMode="numeric" value={goal}
-          onChange={(e) => {
-            setGoal(e.target.value);
-            const n = Number(e.target.value);
-            if (Number.isInteger(n) && n >= 1 && n <= 7) void profile.save({ ...p, weeklyGoal: n });
-          }} />
-      </label>
-      {!readOnly && <GoalSuggestion owner={owner} entries={entries} profile={p} today={today} onAccept={(n) => { setGoal(String(n)); void profile.save({ ...p, weeklyGoal: n }); }} />}
-      <section className="sub" role="group" aria-label="Weekly sets">
-        <p className="muted small">Weekly sets per muscle, fitted to {profile.budget.sessions} sessions × {profile.budget.perSession} sets. 1 gets the most, 4 the least.</p>
-        <ol className="tier-targets">{([1, 2, 3, 4] as Tier[]).map((t) => <TierTarget key={t} t={t} profile={profile} who={who} />)}</ol>
-      </section>
-      {!readOnly && <PrioritySuggestion owner={owner} entries={entries} profile={p} today={today} onApply={(tiers) => void profile.save({ ...p, tiers })} />}
-      <div className="prio-grid">
-        {MUSCLES.map((m) => (
-          <label key={m}>{m}
-            <select aria-label={m} value={p.tiers[m]} onChange={(e) => void profile.save({ ...p, tiers: { ...p.tiers, [m]: Number(e.target.value) as Tier } })}>
-              {([1, 2, 3, 4] as Tier[]).map((t) => <option key={t} value={t}>{t} · {p.targets[t][0]}–{p.targets[t][1]} sets</option>)}
-            </select>
-          </label>
-        ))}
-      </div>
-      {/* Cardio is planned in minutes a week, not sets. */}
-      <div className="prio-grid cardio-prio">
-        <label>Cardio
-          <select aria-label="Cardio" value={cardioTierOf(p)} onChange={(e) => void profile.save({ ...p, cardioTier: Number(e.target.value) as Tier })}>
-            {([1, 2, 3, 4] as Tier[]).map((t) => <option key={t} value={t}>{t} · {CARDIO_TARGETS[t][0]}–{CARDIO_TARGETS[t][1]} min</option>)}
-          </select>
-        </label>
-        {/* Priority 4 (or none): no range to fall short of, just the minutes. */}
-        <p className="muted small" aria-label="Cardio this week">This week: {cardioTierOf(p) === 4 ? cardioMinutes : `${cardioMinutes} of ${CARDIO_TARGETS[cardioTierOf(p)][0]}–${CARDIO_TARGETS[cardioTierOf(p)][1]}`} min</p>
-      </div>
-    </fieldset>
-  );
-}
-
 /** A friend's Stats: no photos, and their priorities shown but not editable. */
-export function StatsScreen({ store, profile, programs, body, photos, today, onOpenPhotos, readOnly, who, onOpenLift }: {
+export function StatsScreen({ store, profile, programs, body, photos, today, onOpenPhotos, readOnly, who, onOpenLift, onOpenPriorities }: {
   /** A friend's username: named wherever your own Stats says "your". */ who?: string;
   store: SetsStore; profile: FittedProfileStore; programs: ProgramStore; body: BodyStore; photos: PhotosStore | null; today: string; onOpenPhotos: () => void; readOnly?: boolean;
   /** A lift named on a card (Getting stronger, a muscle's fix): its screen. */ onOpenLift?: (name: string) => void;
+  /** Priorities and the training goal live in settings (owner, 2026-10-20): a row here opens them. */ onOpenPriorities?: () => void;
 }) {
   const p = profile.profile;
+  const prioLink = !readOnly && onOpenPriorities && (
+    <ul className="card more-list" aria-label="Settings">
+      <li><button className="more-row" onClick={onOpenPriorities}><span>Priorities and goal</span><span className="more-note">{goalLabel(p)}</span><Icon name="chev-right" size={20} sw={2} className="more-chev" /></button></li>
+    </ul>
+  );
+  // A friend's priorities stay on their Stats, read-only; your own are under More (owner, 2026-10-20).
+  const friendPrio = (cardioMinutes: number) => readOnly && <Priorities profile={profile} readOnly who={who} cardioMinutes={cardioMinutes} entries={store.entries} today={today} />;
   // A new user sets priorities before the first workout, so they're here with an empty log too.
   const title = who ? `@${who}’s stats` : 'Stats';
-  if (!store.entries.length) return (<><h1 className={who ? 'who-title' : undefined}>{title}</h1><p className="muted">{who ? `No sessions from @${who} yet.` : 'No sessions yet — log a workout or import your history under More.'}</p><BodyCard body={body} today={today} who={who} />{photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}<Priorities profile={profile} readOnly={readOnly} who={who} cardioMinutes={0} entries={store.entries} today={today} /></>);
+  if (!store.entries.length) return (<><h1 className={who ? 'who-title' : undefined}>{title}</h1><p className="muted">{who ? `No sessions from @${who} yet.` : 'No sessions yet — log a workout or import your history under More.'}</p><BodyCard body={body} today={today} who={who} />{photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}{prioLink}{friendPrio(0)}</>);
   const weeks = weeklySummary(store.entries, 12, today);
   const muscle = weeklyMuscleSets(store.entries, weekStart(today));
   const lastWeek = weeklyMuscleSets(store.entries, weeks.at(-2)!.week);
@@ -150,7 +84,7 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
       <BodyCard body={body} today={today} who={who} />
       {photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}
       <CareCard entries={store.entries} today={today} who={who} />
-      <Priorities profile={profile} readOnly={readOnly} cardioMinutes={thisWeekCardio(store.entries, today)} entries={store.entries} today={today} />
+      {prioLink}{friendPrio(thisWeekCardio(store.entries, today))}
     </>
   );
 }

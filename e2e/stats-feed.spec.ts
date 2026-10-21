@@ -39,11 +39,12 @@ async function seed(page: Page, reduce = false, width = 375) {
   await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'synthetic.csv', mimeType: 'text/csv', buffer: Buffer.from(csv()) });
   await expect(page.getByText(/Imported \d+ new/)).toBeVisible();
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
   // Goal 3.
   const goal = page.getByRole('textbox', { name: 'Sessions per week goal' });
   await goal.fill('3');
   await goal.blur();
+  await goto(page, 'Stats');
   await page.evaluate(() => window.scrollTo(0, 0));
 }
 test.use({ serviceWorkers: 'block' });

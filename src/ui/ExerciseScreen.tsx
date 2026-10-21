@@ -128,7 +128,10 @@ function SettingsEditor({ name, settings, hold, entries }: { name: string; setti
       </div>
       {ladder && cur.increment === 5 && <p className="muted small">Going up uses {ladder.step} lb steps, learned from {ladder.pool && ladder.source === 'pool' ? `your ${ladder.pool === 'plates' ? 'plate' : ladder.pool} weights` : 'this lift’s weights'}. Type an increment to fix it.</p>}
       {problem && <p role="status" className="small err">{problem}</p>}
-      <button className="wide" disabled={!valid} onClick={async () => { await settings.save({ ...cur, repMin: vMin, repMax: vMax, increment: vInc }); setSaved(true); }}>
+      <button className="wide" disabled={!valid} onClick={async () => { const { ownRange: _o, ...rest } = cur;
+        // A range other than the one shown by default is his own, and wins over the training goal's (progression.resolveSettings).
+        const own = cur.ownRange || vMin !== cur.repMin || vMax !== cur.repMax;
+        await settings.save({ ...rest, repMin: vMin, repMax: vMax, increment: vInc, ...(own && { ownRange: true as const }) }); setSaved(true); }}>
         {saved ? 'Saved' : 'Save settings'}
       </button>
     </section>

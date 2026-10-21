@@ -4,7 +4,7 @@ import { liftFactsVersion } from '../lifts';
 import { isWorking, settingsKey } from '../progression';
 import { byOrderDone, doneAt, perLog, sameExercise } from '../stats';
 import { supersets, type GapModel, type Superset } from '../superset';
-import { isIsolation, planSeconds, REST_MAX_S, SET_WORK, stepsLeft, stepsOf, type PlanSlot, type Step } from '../timing';
+import { isIsolation, planSeconds, REST_MAX_S, SET_WORK, stepsLeft, stepsOf, type KneeAt, type PlanSlot, type Step } from '../timing';
 import type { SetEntry } from '../types';
 import { dayOf } from './capacity';
 import { logBefore } from './index';
@@ -581,6 +581,20 @@ const quietOf = perLog((log): Quiet | null => {
 });
 /** How long a session on `date` may go quiet before it closes (see Quiet), as of the days before it; null: it never closes by itself. */
 export const quietAfter = (entries: readonly SetEntry[], date: string): Quiet | null => quietOf(logBefore(entries, date));
+
+/**
+ * How a plan built to minutes (Quick, Suggested today, a program by minutes) is sized (owner, 2026-10-20: "a 45-min plan takes
+ * me about 97"). 'pace': at his own pace, the forecast above (b), so the minutes he gives are the minutes it takes him. 'plan':
+ * fewer than MIN_DAYS timed days (or too few gaps) to know his pace, so the timer's rests size it (timing.planSeconds: research
+ * defaults, his knees where in use) and the screen says so. The rest timer itself is never sized by this: it stays prescriptive.
+ */
+export interface Sizing { by: 'pace' | 'plan'; seconds: (slots: readonly PlanSlot[]) => number }
+export function sizing(entries: readonly SetEntry[], date: string, o: { warmups?: (ex: string) => number; kept?: (ex: string) => number | undefined; knee?: KneeAt } = {}): Sizing {
+  const fit = paceBefore(entries, date);
+  const warmups = o.warmups ?? (() => 0);
+  if (fit) return { by: 'pace', seconds: (slots) => (slots.length ? fit.forecast(stepsOf(slots, warmups), { date }).seconds : 0) };
+  return { by: 'plan', seconds: (slots) => planSeconds(stepsOf(slots, warmups), { kept: o.kept, knee: o.knee }) };
+}
 
 /** Owner, 2026-10-20: when the plan's length and his pace differ by more than this (s), both are shown. */
 export const SHOW_BOTH = 600;

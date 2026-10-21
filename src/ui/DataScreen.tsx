@@ -24,13 +24,14 @@ import { exerciseNames, sessionsByDate } from '../domain/stats';
 import { localDate } from '../domain/ids';
 import { fmtDay, plural } from '../domain/format';
 import { Icon } from './icons';
+import { goalLabel } from './PrioritiesScreen';
 
 const KIND: Partial<Record<CsvKind, string>> = { body: 'Body data', 'mfp-weight': 'MyFitnessPal weight', 'mfp-nutrition': 'MyFitnessPal nutrition' };
 
 /** The More tab: the screens that aren't tabs on top, then backup, account, sync and help. */
-export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPaste, onShowWalkthrough, onOpenCharacters, onOpenGym, onOpenProgram, onOpenPhotos }: {
+export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPaste, onShowWalkthrough, onOpenCharacters, onOpenGym, onOpenProgram, onOpenPhotos, onOpenPriorities }: {
   store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; cloud: CloudStore; people: PeopleStore;
-  onOpenPaste: () => void; onShowWalkthrough: () => void; onOpenCharacters: () => void; onOpenGym: () => void; onOpenProgram: () => void; onOpenPhotos: () => void;
+  onOpenPaste: () => void; onShowWalkthrough: () => void; onOpenCharacters: () => void; onOpenGym: () => void; onOpenProgram: () => void; onOpenPhotos: () => void; /** Priorities and the training goal (settings). */ onOpenPriorities?: () => void;
 }) {
   const db = useDb();
   const profileId = useProfileId();
@@ -124,8 +125,8 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
     <>
       <h1>More</h1>
       <ul className="card more-list" aria-label="More screens">
-        {([['Characters', onOpenCharacters, null], ['Gym', onOpenGym, null], ['Program', onOpenProgram, null], ['Photos', onOpenPhotos, null]] as const).map(([name, go, note]) => (
-          <li key={name}><button className="more-row" onClick={go}><span>{name}</span>{note && <span className="more-note">{note}</span>}<Icon name="chev-right" size={20} sw={2} className="more-chev" /></button></li>
+        {([['Priorities and goal', onOpenPriorities, goalLabel(profile.profile)], ['Characters', onOpenCharacters, null], ['Gym', onOpenGym, null], ['Program', onOpenProgram, null], ['Photos', onOpenPhotos, null]] as const).filter(([, go]) => go).map(([name, go, note]) => (
+          <li key={name}><button className="more-row" onClick={go!}><span>{name}</span>{note && <span className="more-note">{note}</span>}<Icon name="chev-right" size={20} sw={2} className="more-chev" /></button></li>
         ))}
       </ul>
       <h2>Backup</h2>

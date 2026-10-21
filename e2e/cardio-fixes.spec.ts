@@ -69,7 +69,7 @@ test('pasted cardio reads like History; the chart shows tenths of a mile with di
   await expect(page.getByText('Log this on two days to see a trend.')).toBeVisible();
 
   // No cardio priority set: minutes alone, no range to fall short of.
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
   await expect(page.getByLabel('Cardio this week')).toHaveText('This week: 25 min');
   await page.getByLabel('Cardio this week').scrollIntoViewIfNeeded();
   await page.screenshot({ path: 'screenshots/cardio-stats.png' });
@@ -82,7 +82,7 @@ test('the cardio exercise screen aims at the planned minutes', async ({ page }) 
   await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
   await page.getByRole('combobox', { name: 'Cardio' }).selectOption('2');
   await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();

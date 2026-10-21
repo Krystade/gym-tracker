@@ -98,12 +98,12 @@ test('Program shows the gym above the days, outside the folded rebuild', async (
   await page.screenshot({ path: 'screenshots/87-program-gym-line.png' });
 });
 
-test('More lists Characters, Gym, Program and Photos; each opens with ‹ More back', async ({ page }) => {
+test('More lists Priorities and goal, Characters, Gym, Program and Photos; each opens with ‹ More back', async ({ page }) => {
   await page.goto('/');
   await goto(page, 'More');
   await expect(page.getByRole('heading', { name: 'More', level: 1 })).toBeVisible();
   const rows = page.getByRole('list', { name: 'More screens' }).getByRole('button');
-  await expect(rows).toHaveText([/^Characters/, /^Gym/, /^Program/, /^Photos/]);
+  await expect(rows).toHaveText([/^Priorities and goal/, /^Characters/, /^Gym/, /^Program/, /^Photos/]);
   await page.screenshot({ path: 'screenshots/88-more.png' });
   for (const [row, heading] of [['Characters', 'Characters'], ['Gym', 'Gyms'], ['Program', 'Program'], ['Photos', 'Progress photos']]) {
     await rows.filter({ hasText: new RegExp(`^${row}`) }).click();

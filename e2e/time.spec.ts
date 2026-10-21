@@ -64,9 +64,11 @@ test('the builder builds to minutes, and program days show their length', async 
   await page.getByRole('button', { name: 'Minutes', exact: true }).click();
   await page.getByRole('textbox', { name: 'Minutes per session' }).fill('30');
   await page.getByRole('button', { name: 'Build program' }).click();
-  await expect(page.getByRole('heading', { name: /^Day A · \d+ sets · ≈ \d+ min$/ })).toBeVisible();
-  const heads = await page.getByRole('heading', { name: /^Day [A-Z] · \d+ sets · ≈ \d+ min$/ }).allInnerTexts();
+  await expect(page.getByRole('heading', { name: /^Day A · \d+ sets · ≈ \d+ min/ })).toBeVisible();
+  const heads = await page.getByRole('heading', { name: /^Day [A-Z] · \d+ sets · ≈ \d+ min/ }).allInnerTexts();
   expect(heads.length).toBeGreaterThan(0);
+  // Nothing timed yet: sized at the timer's rests, and it says so (owner, 2026-10-20).
+  for (const h of heads) expect(h).toContain('at the timer’s rests · your pace sizes it after 2 timed days');
   for (const h of heads) expect(Number(/≈ (\d+) min/.exec(h)![1])).toBeLessThanOrEqual(30);
   await page.screenshot({ path: 'screenshots/23-program-minutes.png', fullPage: true });
 });
@@ -84,14 +86,14 @@ test('a minutes budget too small to meet says so', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Minutes per session' }).fill('20');
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('heading', { name: /^Day A · / })).toBeVisible();
-  const heads = await page.getByRole('heading', { name: /^Day [A-Z] · \d+ sets · ≈ \d+ min$/ }).allInnerTexts();
+  const heads = await page.getByRole('heading', { name: /^Day [A-Z] · \d+ sets · ≈ \d+ min/ }).allInnerTexts();
   expect(Math.max(...heads.map((h) => Number(/≈ (\d+) min/.exec(h)![1])))).toBeGreaterThan(20); // premise: 20 can't be met
   const note = page.getByRole('status').filter({ hasText: 'over your 20' });
   await expect(note).toBeVisible();
   await expect(note).toContainText(/^Day [A-Z] ≈ \d+ min(, Day [A-Z] ≈ \d+ min)*: over your 20\. Train fewer days a week or allow more minutes, then rebuild\.$/);
   // Each day named carries its own length, as its heading shows it.
   for (const [, day, min] of (await note.innerText()).matchAll(/(Day [A-Z]) ≈ (\d+) min/g))
-    await expect(page.getByRole('heading', { name: new RegExp(`^${day} · \\d+ sets · ≈ ${min} min$`) })).toBeVisible();
+    await expect(page.getByRole('heading', { name: new RegExp(`^${day} · \\d+ sets · ≈ ${min} min`) })).toBeVisible();
   await page.screenshot({ path: 'screenshots/40-budget-note.png', fullPage: true });
   await openBuilder(page);
   await page.getByRole('textbox', { name: 'Minutes per session' }).fill('150');

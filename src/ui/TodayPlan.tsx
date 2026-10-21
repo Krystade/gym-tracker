@@ -5,8 +5,8 @@ import { nextDay, type DayPlan, type Program, type Slot } from '../domain/progra
 import { sameExercise } from '../domain/stats';
 import { isHoldLift } from '../domain/care';
 import type { ProgramStore } from '../state/useProgram';
-import { hhmm, planSeconds, stepsOf, usualMinutes } from '../domain/timing';
-import { paceBefore, sessionLengths, type Forecast } from '../domain/learn/session';
+import { hhmm, usualMinutes } from '../domain/timing';
+import { paceBefore, sessionLengths, sizing, type Forecast, type Lengths, type Sizing } from '../domain/learn/session';
 import { DELTA, kneePlan, restDelta } from '../domain/learn/rest';
 import { warmupCount } from '../domain/suggest';
 import { fmtLoad } from './SuggestionCard';
@@ -17,6 +17,17 @@ import { Input } from './Field';
 const toMin = (s: number) => Math.round(s / 60);
 /** His pace for a plan, as shown beside its length: the forecast and its middle 80 %. */
 export const atPace = (f: Forecast) => `at your recent pace ≈ ${toMin(f.seconds)} min (${toMin(f.lo)}–${toMin(f.hi)})`;
+/**
+ * The length of a plan built to minutes, saying which number sized it (owner, 2026-10-20): his pace once 2 days are timed (with
+ * the timer's rests beside it when over 10 min away), else the timer's rests and that his pace isn't known yet.
+ */
+export const sizedLength = (L: Lengths, by: Sizing['by']): string => `≈ ${toMin(sizedSeconds(L, by))} min ${sizedHow(L, by)}`;
+/** The seconds that sized it: his pace's forecast, else the plan's. */
+export const sizedSeconds = (L: Lengths, by: Sizing['by']): number => (by === 'pace' && L.pace ? L.pace.seconds : L.plan);
+/** Which number that is, said after it. */
+export const sizedHow = (L: Lengths, by: Sizing['by']): string => by === 'pace' && L.pace
+  ? `at your pace (${toMin(L.pace.lo)}–${toMin(L.pace.hi)})${L.both ? ` · ${toMin(L.plan)} at the timer’s rests` : ''}`
+  : 'at the timer’s rests · your pace sizes it after 2 timed days';
 
 /** Done for the plan: a working set, or a cardio bout. */
 const doneEntry = (e: SetEntry) => isWorking(e) || !!e.cardio;
@@ -88,16 +99,18 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
       return cache.get(k)!;
     };
   }, [entries, plan.date]);
-  // Quick: as many pairs of sets as fit the minutes at the plan's length (the timer's rests, warm-ups, his switch overhead).
-  const overhead = useMemo(() => paceBefore(entries, plan.date)?.overhead ?? 0, [entries, plan.date]);
-  // His knees where in use (item 17): a Quick day is sized for them at the plain δ, never squeezed to fit.
-  const knee = useMemo(() => kneePlan(entries, plan.date), [entries, plan.date]);
+  // Quick: as many pairs of sets as fit the minutes at his own pace (learn/session sizing); under 2 timed days, at the timer's
+  // rests (his knees where in use, at the plain δ).
+  const size = useMemo(() => sizing(entries, plan.date, { warmups: warm, kept: keptRest, knee: kneePlan(entries, plan.date) ?? undefined }), [entries, plan.date, warm, keptRest]);
   const pickQuick = (mins: number) => onChange({ ...plan, quick: mins, skips: [], swaps: {},
-    slots: buildQuick((slots) => planSeconds(stepsOf(slots, warm), { kept: keptRest, overhead, knee: knee ?? undefined }) <= mins * 60) });
+    slots: buildQuick((slots) => size.seconds(slots) <= mins * 60) });
+  // Built to minutes: a Quick day, or a program day built by minutes.
+  const byMinutes = quick || program.minutes != null;
   // A swapped-in lift's own range (a hold swapped for a lift counts seconds), as its card will show.
   const range = (slot: Slot, target: string) => {
     const hold = isHoldLift(target, entries);
-    const r = target === slot.exercise ? slot : rangeFor?.(target, hold) ?? defaultSettings(target, hold);
+    // The lift's range as its card will use it (its own, else the training goal's default); a slot's is what it was built with.
+    const r = rangeFor?.(target, hold) ?? (target === slot.exercise ? slot : defaultSettings(target, hold));
     return `${r.repMin}–${r.repMax}${hold ? ' s hold' : ' reps'}`;
   };
   const live = day.slots.filter((s) => !plan.skips.includes(s.exercise));
@@ -112,7 +125,9 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
     const L = sessionLengths(entries, plan.date, todoOf(program, plan), { warmups: warm, kept: keptRest, delta });
     const when = L.started != null && `started ${hhmm(new Date(L.started))} · ends ≈ ${hhmm(new Date(L.endsAt!))}`;
     // With his pace beside the length, when it started and ends goes on a line of its own.
-    return <span className="muted small" aria-label="Plan length">≈ {toMin(L.plan)} min{L.both && ` · ${atPace(L.pace!)}`}{when && (L.both ? <><br />{when}</> : ` · ${when}`)}</span>;
+    const head = byMinutes ? sizedLength(L, size.by) : `≈ ${toMin(L.plan)} min${L.both ? ` · ${atPace(L.pace!)}` : ''}`;
+    const long = byMinutes || L.both;
+    return <span className="muted small" aria-label="Plan length">{head}{when && (long ? <><br />{when}</> : ` · ${when}`)}</span>;
   };
   return (
     <section className="card plan" aria-label={title}>

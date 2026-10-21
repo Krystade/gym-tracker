@@ -156,7 +156,9 @@ test('a select still focused after its picker closes lets the chrome follow a st
   await notched(page);
   await fakeViewport(page);
   await page.goto('/');
-  await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Stats', exact: true }).click();
+  // The priority selects live under More → Priorities and goal (owner, 2026-10-20).
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: /^Priorities and goal/ }).click();
   const biceps = page.getByRole('combobox', { name: 'Biceps' });
   const H = 812;
   // The picker up: the screen shrinks and the bar stays put.

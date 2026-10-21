@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
 import { CATALOG, PROGRAM_LIFTS } from './catalog';
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
-import { defaultProfile, type Profile, type Tier } from './profile';
-import { PREFERENCE, addSlot, adherence, buildProgram, candidates, cardioSlot, DEFAULT_PICK, nextDay, primaryExercise, programVolume, type DayPlan, type Program } from './program';
+import { defaultProfile, LEGACY_TARGETS, type Profile, type Tier } from './profile';
+import { PREFERENCE, addSlot, adherence, buildProgram, programBlock, rebuildLike, volumeDiffers, candidates, cardioSlot, DEFAULT_PICK, nextDay, primaryExercise, programVolume, type DayPlan, type Program } from './program';
 
 let seq = 0;
 const s = (date: string, exercise: string, reps = 10, over: Partial<SetEntry> = {}): SetEntry => ({
@@ -198,7 +198,9 @@ describe('Phase 10: gym and priority share', () => {
 describe('Phase 10 review fixes', () => {
   const placed = (p: Program) => p.days.reduce((a, d) => a + d.slots.reduce((b, sl) => b + sl.sets, 0), 0);
   it('fills the week: the cap only holds low priorities back while priorities can still use the sets', () => {
-    const profiles = [withTiers({ Forearms: 1 }, 3), withTiers({ Biceps: 1, Triceps: 1, Abs: 1, 'Side Delts': 2, 'Rear Delts': 2, Chest: 3, Lats: 3 }, 4), withTiers({ Biceps: 2, Triceps: 2 }, 3)];
+    // Ranges pinned (priority 4 still 2–5 here): an excluded priority 4 leaves the week short by design (below).
+    const profiles = [withTiers({ Forearms: 1 }, 3), withTiers({ Biceps: 1, Triceps: 1, Abs: 1, 'Side Delts': 2, 'Rear Delts': 2, Chest: 3, Lats: 3 }, 4), withTiers({ Biceps: 2, Triceps: 2 }, 3)]
+      .map((p) => ({ ...p, targets: { ...LEGACY_TARGETS } }));
     for (const prof of profiles) for (let days = 1; days <= 6; days++) for (let per = 8; per <= 20; per++) {
       const p = buildProgram(prof, [], { days, perSession: per }, NOW);
       expect(placed(p), `${days}×${per}`).toBeGreaterThanOrEqual(days * Math.floor(per / 2) * 2 * 0.9);
@@ -323,5 +325,50 @@ describe('round 15: a larger catalog, the same program pool', () => {
   it('traps get a shrug (owner, Q4); Face Pull stays after them', () => {
     expect(DEFAULT_PICK.Traps).toBe('DB Shrug');
     expect(candidates('Traps', [], '2026-09-30').slice(0, 3)).toEqual(['DB Shrug', 'Barbell Shrug', 'Face Pull']);
+  });
+});
+
+describe('owner decisions 2026-10-20: plan at the aim, P4 excluded, blocks', () => {
+  const sets = (p: Program, m: Muscle) => programVolume(p)[m];
+  it('plans a muscle at its aim, not its range: an aim below the range gets about the aim', () => {
+    const prof = withTiers({ Chest: 1, Lats: 1, Biceps: 2 }, 3);
+    const band = buildProgram(prof, [], { days: 3, perSession: 16 }, NOW);
+    const aimed = buildProgram(prof, [], { days: 3, perSession: 16, aims: { Chest: [7, 7], Lats: [7, 7], Biceps: [4, 4] } }, NOW);
+    expect(sets(band, 'Chest')).toBeGreaterThanOrEqual(12);
+    expect(sets(aimed, 'Chest')).toBeGreaterThanOrEqual(7);
+    expect(sets(aimed, 'Chest')).toBeLessThan(10);
+    expect(sets(aimed, 'Biceps')).toBeLessThan(sets(band, 'Biceps'));
+    expect(aimed.aims).toMatchObject({ Chest: 7, Lats: 7, Biceps: 4 });
+    expect(aimed.block).toBe(NOW.toISOString().slice(0, 10));
+    expect(band.aims).toBeUndefined();
+  });
+  it('gives an excluded priority 4 ([0, 0]) no sets of its own', () => {
+    const prof = withTiers({ Chest: 1, Biceps: 2, Quads: 4, Hamstrings: 4, Calves: 4, Glutes: 4 }, 3);
+    expect(prof.targets[4]).toEqual([0, 0]);
+    const p = buildProgram(prof, [], { days: 3, perSession: 20 }, NOW);
+    const direct = p.days.flatMap((d) => d.slots).filter((s) => ['Quads', 'Hamstrings', 'Calves', 'Glutes'].some((m) => muscleVector(s.exercise)?.[m as Muscle] === 1));
+    expect(direct).toEqual([]);
+  });
+  it('counts 3-week blocks from when its aims were read', () => {
+    const p = buildProgram(withTiers({}, 3), [], { days: 2, perSession: 12, aims: {} }, NOW);
+    const day = (n: number) => new Date(NOW.getTime() + n * 864e5).toISOString().slice(0, 10);
+    expect(programBlock(p, day(0))).toBe(0);
+    expect(programBlock(p, day(20))).toBe(0);
+    expect(programBlock(p, day(21))).toBe(1);
+    expect(programBlock(p, day(43))).toBe(2);
+    const old = { ...p, block: undefined }; // built before aims: from its build day
+    expect(programBlock(old, day(21))).toBe(1);
+  });
+  it('rebuilds like the program it replaces, and tells a real change from none', () => {
+    const prof = withTiers({ Chest: 1, Lats: 1 }, 3);
+    const a = buildProgram(prof, [], { days: 3, perSession: 14 }, NOW);
+    const same = rebuildLike({ days: 3, perSession: 14 }, prof, [], NOW, {}, undefined, () => 0);
+    expect(same.days.length).toBe(3);
+    expect(volumeDiffers(a, same)).toBe(false);
+    const lower = rebuildLike({ days: 3, perSession: 14 }, prof, [], NOW, {}, { Chest: [6, 6], Lats: [6, 6] }, () => 0);
+    expect(volumeDiffers(a, lower)).toBe(true);
+    const timed = rebuildLike({ days: 2, perSession: 14, minutes: 40 }, prof, [], NOW, {}, undefined, (d) => d.slots.reduce((n, s) => n + s.sets, 0) * 4);
+    expect(timed.minutes).toBe(40);
+    expect(Math.max(...timed.days.map((d) => d.slots.reduce((n, s) => n + s.sets, 0)))).toBeLessThanOrEqual(10); // 4 min a set
   });
 });

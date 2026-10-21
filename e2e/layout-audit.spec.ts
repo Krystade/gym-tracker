@@ -202,12 +202,17 @@ test('Today, History, Lifts, a lift, Stats and More with ten weeks of heavy trai
   await goto(page, 'Stats');
   await expect(page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
   await check(page, info, found, 'stats');
-  for (const screen of ['Characters', 'Gym', 'Program', 'Photos']) {
+  for (const screen of ['Priorities and goal', 'Characters', 'Gym', 'Program', 'Photos']) {
     await goto(page, 'More');
     await page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: new RegExp(`^${screen}`) }).click();
     if (screen === 'Characters') await expect(page.getByRole('heading', { name: 'Credits' })).toBeVisible(); // loaded, credits and all
-    await check(page, info, found, `more-${screen.toLowerCase()}`);
+    await check(page, info, found, `more-${screen.split(' ')[0].toLowerCase()}`);
   }
+  // The training goal set to Strength: its note, and a barbell lift's range on its page.
+  await goto(page, 'Priorities');
+  await page.getByRole('group', { name: 'Goal' }).getByRole('button', { name: /^Strength/ }).click();
+  await expect(page.getByRole('group', { name: 'Training goal' })).toContainText('5–8 reps');
+  await check(page, info, found, 'priorities-strength');
   await goto(page, 'More');
   await page.getByRole('button', { name: 'Paste from notes' }).click();
   await check(page, info, found, 'more-paste');
@@ -266,6 +271,11 @@ test('Today mid-session: big numbers, Details, a superset, the rest bar and its 
   const head = page.getByRole('button', { name: /^Today’s plan/ });
   if ((await head.getAttribute('aria-expanded')) === 'false') await head.click();
   await check(page, info, found, 'today-plan');
+  // Quick: sized at his pace, and its header says so.
+  await page.getByRole('group', { name: 'Program day' }).getByRole('button', { name: 'Quick' }).click();
+  await expect(page.getByLabel('Plan length')).toContainText('at your pace');
+  await check(page, info, found, 'today-quick');
+  await page.getByRole('group', { name: 'Program day' }).getByRole('button', { name: 'Day A' }).click();
   await page.getByRole('region', { name: 'Today’s plan' }).getByRole('button', { name: 'Swap' }).first().click();
   await expect(page.getByRole('list', { name: 'Suggested swaps' })).toBeVisible();
   await check(page, info, found, 'today-swap');
@@ -398,16 +408,49 @@ test('Prompts: the light week offered and started, the volume steps on Stats', a
   await offer.getByRole('button', { name: 'Start light week' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Light week' })).toContainText('half the sets');
   await check(page, info, found, 'prompt-light-week');
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
   await page.getByRole('combobox', { name: 'Chest' }).selectOption({ index: 0 });
   const one = page.getByRole('group', { name: 'Weekly sets' }).getByRole('listitem').filter({ hasText: /^1 ·/ });
   await one.getByRole('button', { name: 'Edit' }).click();
-  await check(page, info, found, 'stats-priority-edit');
+  await check(page, info, found, 'priorities-edit');
   await one.getByRole('textbox', { name: 'Min' }).fill('12');
-  await one.getByRole('textbox', { name: 'Max' }).fill('16');
+  await one.getByRole('textbox', { name: 'Max' }).fill('20');
   await one.getByRole('button', { name: 'Save' }).click();
+  await expect(one).toContainText('12–20 sets · yours');
+  await goto(page, 'Stats');
   await expect(page.getByRole('group', { name: 'Next 3 weeks' })).toBeVisible();
   await check(page, info, found, 'prompt-volume');
+  clean(found);
+});
+
+test('Prompts: a program planned at the step, and its update three weeks on', async ({ page }, info) => {
+  test.setTimeout(180_000);
+  const WEEKS = 8, TODAY = simDay(WEEKS * 7);
+  const sets = deloadLog(1, SIM_LIFTS, { weeks: WEEKS }).map((e) => `${e.date},${e.exercise},,${e.setNo},${e.weight},${e.reps},,,,sample`);
+  await notched(page);
+  // Built 22 days ago, mid-training: today a block has ended over weeks he trained.
+  await page.clock.install({ time: new Date(`${simDay(WEEKS * 7 - 22)}T18:00:00`) });
+  await page.goto('/');
+  await importLog(page, ['date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source', ...sets].join('\n'), null);
+  const found: string[] = [];
+  await goto(page, 'Today');
+  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await expect(page.getByRole('group', { name: 'Short of the range' })).toContainText('/wk');
+  await check(page, info, found, 'program-aims');
+  // Then he raises Chest to priority 1 at 12–20: three weeks on, the program can step toward it.
+  await page.clock.setSystemTime(new Date(`${TODAY}T18:00:00`));
+  await page.reload();
+  await goto(page, 'Priorities');
+  await page.getByRole('combobox', { name: 'Chest' }).selectOption('1');
+  const one = page.getByRole('group', { name: 'Weekly sets' }).getByRole('listitem').filter({ hasText: /^1 ·/ });
+  await one.getByRole('button', { name: 'Edit' }).click();
+  await one.getByRole('textbox', { name: 'Min' }).fill('12');
+  await one.getByRole('textbox', { name: 'Max' }).fill('20');
+  await one.getByRole('button', { name: 'Save' }).click();
+  await goto(page, 'Today');
+  await expect(page.getByRole('group', { name: 'Program update' })).toBeVisible();
+  await check(page, info, found, 'prompt-program-update');
   clean(found);
 });
 

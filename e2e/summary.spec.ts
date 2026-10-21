@@ -91,7 +91,7 @@ test('the priority picker says what each priority asks for', async ({ page }) =>
   await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // Stats shows Priorities once there's a log
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
   await expect(page.getByRole('group', { name: 'Weekly sets' })).toContainText('1 gets the most, 4 the least.');
   // The picker offers the same fitted range the Weekly sets list shows for priority 1.
   const range = (await page.locator('.tier-target').first().innerText()).match(/^1 · ([\d.]+–[\d.]+) sets/)![1];

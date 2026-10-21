@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { useSets } from '../state/useSets';
 import { useSettings } from '../state/useSettings';
 import { useProfile } from '../state/useProfile';
+import { goalOf } from '../domain/profile';
 import { useProgram } from '../state/useProgram';
 import { useBody } from '../state/useBody';
 import { usePhotos } from '../state/usePhotos';
@@ -39,6 +40,7 @@ import { HistoryScreen } from './HistoryScreen';
 import { LiftsScreen } from './LiftsScreen';
 import { ExerciseScreen } from './ExerciseScreen';
 import { DataScreen } from './DataScreen';
+import { PrioritiesScreen } from './PrioritiesScreen';
 import { StatsScreen } from './StatsScreen';
 import { Walkthrough, walkthroughPending } from './Walkthrough';
 import { FriendsScreen } from './FriendsScreen';
@@ -79,6 +81,8 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const [programOpen, setProgramOpen] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
   const [charsOpen, setCharsOpen] = useState(false);
+  // Priorities and the training goal (owner, 2026-10-20: settings, not Stats).
+  const [prioOpen, setPrioOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [gymOpen, setGymOpen] = useState(false);
   const [tour, setTour] = useState(walkthroughPending);
@@ -125,7 +129,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const [recapAt, setRecapAt] = useState(0);
   // A notification tap: its screen, with nothing on top.
   useOpenRoute((r) => {
-    setViewing(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false);
+    setViewing(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); setPrioOpen(false);
     setTab(tabOf(r)); window.scrollTo(0, 0);
     // The recap opens today's Today at the week's digest.
     if (r === 'recap') { setChosen(null); setRecapAt(Date.now()); }
@@ -147,14 +151,14 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const open = (name: string) => { setExercise(name); window.scrollTo(0, 0); };
   // The tab you're on. A screen opened over a tab (Program, Photos, Paste, Characters, Gym) keeps More lit when More opened it,
   // since its Back goes there; from Today or Stats it lights nothing. An exercise lights nothing.
-  const overlay = programOpen || photosOpen || pasteOpen || charsOpen || gymOpen;
+  const overlay = programOpen || photosOpen || pasteOpen || charsOpen || gymOpen || prioOpen;
   const current = (t: Tab) => !exercise && (overlay ? t === 'more' && tab === 'more' : tab === t);
-  const nav = { recapAt, tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, gymOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, setGymOpen, open,
+  const nav = { recapAt, tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, gymOpen, prioOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, setGymOpen, setPrioOpen, open,
     // The walkthrough points at Today, so it opens there.
     pending, waiting, news, newsRev, bumpNews, setMe, openThread: (f: ThreadWith) => setThread(f), clearPending: () => { launchInvite = null; setPending(null); },
-    viewing, view: (f: Friend) => { setViewing(f); setTab('friends'); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); window.scrollTo(0, 0); },
+    viewing, view: (f: Friend) => { setViewing(f); setTab('friends'); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); setPrioOpen(false); window.scrollTo(0, 0); },
     unview: () => { setViewing(null); window.scrollTo(0, 0); },
-    showTour: () => { setViewing(null); setTab('today'); setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); window.scrollTo(0, 0); setTour(true); } };
+    showTour: () => { setViewing(null); setTab('today'); setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); setPrioOpen(false); window.scrollTo(0, 0); setTour(true); } };
 
   return (
     <div className="app">
@@ -169,7 +173,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
       {tour && <Walkthrough onClose={() => setTour(false)} />}
       <nav className="tabs" aria-label="Sections">
         {TABS.map(([t, label]) => (
-          <button key={t} data-tour={t} aria-current={current(t) ? 'page' : undefined} onClick={() => { setTab(t); setViewing(null); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); }}>
+          <button key={t} data-tour={t} aria-current={current(t) ? 'page' : undefined} onClick={() => { setTab(t); setViewing(null); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); setPrioOpen(false); }}>
             <Icon name={TAB_ICON[t][current(t) ? 1 : 0]} size={26} />
             {label}{t === 'friends' && waiting > 0 && <span className="tab-dot" aria-hidden="true" />}
           </button>
@@ -180,8 +184,8 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
 }
 
 interface Nav {
-  recapAt: number; tab: Tab; exercise: string | null; date: string; logDay: string | null; setLogDay: (d: string | null) => void; programOpen: boolean; photosOpen: boolean; pasteOpen: boolean; charsOpen: boolean; gymOpen: boolean;
-  setTab: (t: Tab) => void; setExercise: (x: string | null) => void; setProgramOpen: (b: boolean) => void; setPhotosOpen: (b: boolean) => void; setPasteOpen: (b: boolean) => void; setCharsOpen: (b: boolean) => void; setGymOpen: (b: boolean) => void;
+  recapAt: number; tab: Tab; exercise: string | null; date: string; logDay: string | null; setLogDay: (d: string | null) => void; programOpen: boolean; photosOpen: boolean; pasteOpen: boolean; charsOpen: boolean; gymOpen: boolean; prioOpen: boolean;
+  setTab: (t: Tab) => void; setExercise: (x: string | null) => void; setProgramOpen: (b: boolean) => void; setPhotosOpen: (b: boolean) => void; setPasteOpen: (b: boolean) => void; setCharsOpen: (b: boolean) => void; setGymOpen: (b: boolean) => void; setPrioOpen: (b: boolean) => void;
   open: (name: string) => void; showTour: () => void;
   pending: Invite | null; clearPending: () => void; waiting: number; viewing: Friend | null; view: (f: Friend) => void; unview: () => void;
   news: FriendNews | null; newsRev: Box<number>; bumpNews: () => void; setMe: (uid: string | null) => void; openThread: (f: ThreadWith) => void;
@@ -189,8 +193,8 @@ interface Nav {
 
 function PersonScreens({ person, people, gyms, nav }: { person: Person; people: PeopleStore; gyms: GymsStore; nav: Nav }) {
   const store = useSets();
-  const settings = useSettings();
   const rawProfile = useProfile();
+  const settings = useSettings(goalOf(rawProfile.profile));
   const programs = useProgram();
   const body = useBody();
   const photos = usePhotos();
@@ -210,7 +214,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
     },
     rev: [rawProfile.profile, programs.program, programs.plans, settings.get, settings.tags, gyms.gyms, status.status],
   });
-  const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, gymOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, setGymOpen, open, showTour } = nav;
+  const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, gymOpen, prioOpen, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, setGymOpen, setPrioOpen, open, showTour } = nav;
   // A screen opened from More goes back to it by name; from anywhere else it's plain Back.
   const back = tab === 'more' ? '‹ More' : '‹ Back';
   const top = (fn: () => void) => () => { fn(); window.scrollTo(0, 0); };
@@ -243,11 +247,12 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
         <ProfileBar people={people} />
         {store.loading ? <p className="muted">Loading…</p>
           : pasteOpen ? <PasteScreen store={store} today={date} backLabel={back} onBack={() => setPasteOpen(false)} onDone={() => { setPasteOpen(false); setTab('history'); window.scrollTo(0, 0); }} />
+          : prioOpen ? <PrioritiesScreen profile={profile} entries={store.entries} today={date} backLabel={back} onBack={top(() => setPrioOpen(false))} />
           : charsOpen ? <CharactersScreen backLabel={back} onBack={() => setCharsOpen(false)} />
           : gymOpen ? <GymsScreen gyms={gyms} logged={exerciseNames(store.entries)} uid={uid} backLabel={back} onBack={top(() => setGymOpen(false))} />
           : photosOpen ? <PhotosScreen photos={photos} body={body} today={date} backLabel={back} onBack={() => setPhotosOpen(false)} />
-          : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} gyms={gyms} uid={uid} backLabel={back} keptRest={(ex) => settings.get(ex).rest} onBack={() => setProgramOpen(false)}
-            onOpenPriorities={() => { setProgramOpen(false); setTab('stats'); requestAnimationFrame(() => document.getElementById('priorities')?.scrollIntoView({ block: 'start' })); }} />
+          : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} body={body.days} gyms={gyms} uid={uid} backLabel={back} keptRest={(ex) => settings.get(ex).rest} onBack={() => setProgramOpen(false)}
+            onOpenPriorities={top(() => { setProgramOpen(false); setPrioOpen(true); })} />
           : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={day} bodyDays={body.days} onBack={() => setExercise(null)}
             onRenamed={(to) => { renameToday(person.id, day, exercise, to); setExercise(to); window.scrollTo(0, 0); }}
             onDay={(d) => { setHistoryAt(d); setExercise(null); setTab('history'); }}
@@ -263,9 +268,9 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : tab === 'friends' ? <FriendsScreen cloud={cloud} gyms={gyms} pending={nav.pending} entries={store.entries} status={status} today={date} onPendingDone={nav.clearPending} onView={nav.view}
             news={nav.news} newsRev={nav.newsRev} onChanged={nav.bumpNews} onMessage={nav.openThread}
             onSignIn={top(() => setTab('more'))} onOpenMine={top(() => setTab('history'))} myName={person.name} goal={profile.profile.weeklyGoal} />
-          : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} onOpenLift={open} />
+          : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} onOpenLift={open} onOpenPriorities={top(() => setPrioOpen(true))} />
           : <DataScreen store={store} profile={rawProfile} body={body} sync={sync} cloud={cloud} people={people} onOpenPaste={top(() => setPasteOpen(true))} onShowWalkthrough={showTour}
-            onOpenCharacters={top(() => setCharsOpen(true))} onOpenGym={top(() => setGymOpen(true))} onOpenProgram={top(() => setProgramOpen(true))} onOpenPhotos={top(() => setPhotosOpen(true))} />}
+            onOpenCharacters={top(() => setCharsOpen(true))} onOpenGym={top(() => setGymOpen(true))} onOpenProgram={top(() => setProgramOpen(true))} onOpenPhotos={top(() => setPhotosOpen(true))} onOpenPriorities={top(() => setPrioOpen(true))} />}
       </main>
     </>
   );

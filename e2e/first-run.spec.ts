@@ -3,15 +3,15 @@ import { goto } from './nav';
 
 test('a new user sets priorities before logging anything, from Stats or from Program’s note', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
   // An empty log still has the Priorities card, Cardio included.
-  await expect(page.getByRole('heading', { name: 'Priorities' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Muscle priorities' })).toBeVisible();
   await page.getByRole('combobox', { name: 'Biceps' }).selectOption('1');
   await page.getByRole('combobox', { name: 'Cardio' }).selectOption('2');
   await expect(page.getByLabel('Cardio this week')).toHaveText('This week: 0 of 40–60 min');
   await page.screenshot({ path: 'screenshots/r7-first-run-stats.png' });
   await page.reload();
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
   await expect(page.getByRole('combobox', { name: 'Biceps' })).toHaveValue('1'); // saved
   await expect(page.getByRole('combobox', { name: 'Cardio' })).toHaveValue('2');
 });
@@ -29,7 +29,7 @@ test('Program’s “Priorities aren’t set” note opens them', async ({ page 
   await expect(note).toBeVisible();
   await page.screenshot({ path: 'screenshots/r7-program-priorities-note.png' });
   await note.getByRole('button', { name: 'Set priorities' }).click();
-  await expect(page.getByRole('heading', { name: 'Priorities' })).toBeInViewport();
+  await expect(page.getByRole('heading', { name: 'Muscle priorities' })).toBeInViewport();
   await expect(page.getByRole('combobox', { name: 'Chest' })).toBeVisible();
   await page.screenshot({ path: 'screenshots/r7-first-run-priorities.png' });
 });

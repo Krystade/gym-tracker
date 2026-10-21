@@ -1,5 +1,5 @@
 import { muscleVector } from './muscles';
-import { DEFAULT_TARGETS, type Profile, type Tier } from './profile';
+import { DEFAULT_TARGETS, LEGACY_TARGETS, type Profile, type Tier } from './profile';
 import { isWorking } from './progression';
 import type { SetEntry } from './types';
 
@@ -34,10 +34,14 @@ export function setYield(entries: SetEntry[], today: string): number {
   return vs.reduce((a, v) => a + Object.values(v).reduce((x, y) => x + (y ?? 0), 0), 0) / vs.length;
 }
 
-/** Tiers whose ranges were set by hand. A profile saved before `custom` existed: the tiers that differ from the defaults. */
+/**
+ * Tiers whose ranges were set by hand. A profile saved before `custom` existed: the tiers that differ from the defaults of
+ * the time (LEGACY_TARGETS) and from today's, so new defaults never turn an old auto range into a hand-set one.
+ */
 export function customTiers(p: Profile): Tier[] {
   if (p.custom) return p.custom;
-  return TIERS.filter((t) => p.targets[t][0] !== DEFAULT_TARGETS[t][0] || p.targets[t][1] !== DEFAULT_TARGETS[t][1]);
+  const same = (t: Tier, d: Record<Tier, [number, number]>) => p.targets[t][0] === d[t][0] && p.targets[t][1] === d[t][1];
+  return TIERS.filter((t) => !same(t, LEGACY_TARGETS) && !same(t, DEFAULT_TARGETS));
 }
 
 const half = (n: number) => Math.round(n * 2) / 2;
@@ -58,6 +62,8 @@ export function fitTargets(p: Profile, budget: Budget, yieldPerSet: number): Fit
   const scale = want ? Math.min(1, Math.max(0, capacity - paid) / want) : 1;
   const targets = Object.fromEntries(TIERS.map((t) => {
     if (custom.includes(t)) return [t, p.targets[t]];
+    // An excluded priority ([0, 0]) stays excluded.
+    if (DEFAULT_TARGETS[t][1] === 0) return [t, [0, 0]];
     const lo = half(DEFAULT_TARGETS[t][0] * scale);
     return [t, [lo, Math.max(half(DEFAULT_TARGETS[t][1] * scale), lo, 1)]];
   })) as Record<Tier, [number, number]>;

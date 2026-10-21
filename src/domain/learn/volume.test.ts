@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { BodyDay } from '../body';
 import { MUSCLES, type Muscle } from '../muscles';
-import { defaultProfile, type Profile, type Tier } from '../profile';
+import { defaultProfile, LEGACY_TARGETS, type Profile, type Tier } from '../profile';
 import { stall } from '../rotation';
 import type { SetEntry } from '../types';
 import { deloadLog, SIM_LIFTS, simDay, type SimLift, type SimOptions } from './deloadSim.sample';
-import { BASE_WEEKS, countedWeeks, STEP, volumeAdvice, type MuscleVolume } from './volume';
+import { BASE_WEEKS, countedWeeks, planAims, STEP, volumeAdvice, type MuscleVolume } from './volume';
 
 // Item 07 on synthetic logs whose volume and shifts are known. deloadLog trains each lift twice a week, 3 sets a session, on days
 // 0 and 4 (bench, leg press, RDL) or 1 and 5 (pulldown, row): 4 sessions a week. Per week, from the lifts' muscle vectors:
@@ -16,10 +16,10 @@ import { BASE_WEEKS, countedWeeks, STEP, volumeAdvice, type MuscleVolume } from 
 const seeds = [1, 2, 3, 4, 5, 6, 7, 8];
 const WEEKS = 8, END = simDay(WEEKS * 7);
 const INCLINE: SimLift = { name: 'Incline Bench Press', E0: 200, step: 5 };
-/** Ranges: Chest priority 1 (12–16), Triceps 2 (8–12), the rest 3 (5–8) unless given. */
+/** Ranges (pinned, not today's defaults): Chest priority 1 (12–16), Triceps 2 (8–12), the rest 3 (5–8) unless given. */
 function profile(t: Partial<Record<Tier, [number, number]>> = {}, tiers: Partial<Record<Muscle, Tier>> = { Chest: 1, Triceps: 2 }): Profile {
   const p = defaultProfile();
-  return { ...p, targets: { ...p.targets, ...t }, tiers: { ...p.tiers, ...tiers } };
+  return { ...p, targets: { ...LEGACY_TARGETS, ...t }, tiers: { ...p.tiers, ...tiers } };
 }
 const at = (a: { muscles: MuscleVolume[] } | null, m: Muscle) => a!.muscles.find((x) => x.muscle === m)!;
 const log = (seed: number, o: Partial<SimOptions> = {}, lifts = SIM_LIFTS) => deloadLog(seed, lifts, { weeks: WEEKS, ...o });
@@ -210,5 +210,30 @@ describe('stalls are rotation’s: volume never reads one', () => {
     expect(src).not.toMatch(/rotation/);
     expect(src).not.toMatch(/\bstall\s*\(/);
     expect(src).not.toMatch(/flatness|trend'/);
+  });
+});
+
+describe('planAims: what a program plans each muscle at (owner, 2026-10-20)', () => {
+  it('a raise plans the aim, never the band, and says the gap still to go', () => {
+    const p = profile();
+    const a = volumeAdvice(log(1), [], p, END)!;
+    const x = planAims(a, p);
+    expect(x.Chest).toMatchObject({ plan: [7, 7], from: 'step', band: [12, 16], gap: 5 });
+    expect(x.Triceps).toMatchObject({ plan: [3.5, 3.5], from: 'step', gap: 4.5 });
+    expect(x.Quads).toMatchObject({ plan: [5, 8], from: 'band', gap: 0 }); // met: its range
+    expect(x.Lats).toMatchObject({ plan: [5, 9], from: 'own', gap: 0 }); // over: his own, no cut
+    expect(x.Calves).toMatchObject({ plan: [2, 2], from: 'start', gap: 3 }); // nothing lately: one pair
+  });
+  it('a held raise plans his own volume; an excluded priority plans nothing; no log plans the range', () => {
+    const p = profile({ 4: [0, 0] }, { Chest: 1, Triceps: 2, Calves: 4 });
+    const held = planAims(volumeAdvice(log(1), energy(2, 4), p, END), p);
+    expect(held.Chest).toMatchObject({ plan: [6, 6], from: 'held' });
+    expect(held.Calves).toMatchObject({ plan: [0, 0], gap: 0 });
+    expect(planAims(null, p).Chest).toMatchObject({ plan: [12, 16], from: 'band', gap: 0 });
+    // A step under half a set, far below the range: his own volume, not the range (pair: within half a set, the range).
+    const one = log(1).filter((e) => e.exercise !== 'Bench Press' || e.setNo === 1); // chest 2 a week; 2.4 → 2: no step
+    expect(planAims(volumeAdvice(one, [], profile(), END), profile()).Chest).toMatchObject({ plan: [2, 2], from: 'held', gap: 10 });
+    const near = profile({ 3: [6.4, 8] }, { Chest: 3 });
+    expect(planAims(volumeAdvice(log(1), [], near, END), near).Chest).toMatchObject({ plan: [6.4, 8], from: 'band' });
   });
 });

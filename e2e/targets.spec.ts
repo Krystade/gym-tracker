@@ -9,7 +9,7 @@ test('weekly targets fit the week, and a priority can be set by hand and handed 
   await goto(page, 'More');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // Stats shows Priorities once there's a log
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
   const box = page.getByRole('group', { name: 'Weekly sets' });
   await expect(box).toContainText(/fitted to 2 sessions × \d+ sets/);
   const one = box.getByRole('listitem').filter({ hasText: /^1 ·/ });
@@ -23,7 +23,7 @@ test('weekly targets fit the week, and a priority can be set by hand and handed 
   await one.getByRole('button', { name: 'Save' }).click();
   await expect(one).toContainText('1 · 8–10 sets · yours');
   await page.reload();
-  await goto(page, 'Stats');
+  await goto(page, 'Priorities');
   await expect(one).toContainText('1 · 8–10 sets · yours');
   await expect(page.getByRole('combobox', { name: 'Chest' }).locator('option').first()).toHaveText('1 · 8–10 sets');
   await one.getByRole('button', { name: 'Use auto' }).click();

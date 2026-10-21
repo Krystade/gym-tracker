@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { SetEntry } from '../domain/types';
 import type { ProfileStore } from '../state/useProfile';
 import type { ProgramStore } from '../state/useProgram';
-import { addSlot, buildProgram, cardioSlot, MAX_SETS_PER_DAY, programVolume, type Program } from '../domain/program';
+import { addSlot, cardioSlot, MAX_SETS_PER_DAY, programVolume, rebuildLike, type Program } from '../domain/program';
 import { isCardio } from '../domain/cardio';
 import { defaultSettings } from '../domain/progression';
 import { exerciseNames } from '../domain/stats';
@@ -12,17 +12,20 @@ import { BACK_BLOCK, isHoldLift } from '../domain/care';
 import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
 import { PROGRAM_LIFTS } from '../domain/catalog';
-import { DEFAULT_LOW_SHARE } from '../domain/profile';
+import { DEFAULT_LOW_SHARE, goalOf, type Profile } from '../domain/profile';
 import { GymsScreen } from './GymsScreen';
-import { perSessionForMinutes } from '../domain/timing';
-import { sessionLengths } from '../domain/learn/session';
-import { atPace } from './TodayPlan';
+import { sessionLengths, sizing } from '../domain/learn/session';
+import { atPace, sizedHow, sizedSeconds } from './TodayPlan';
+import { aimsOn, dayEstimate } from './ProgramUpdate';
+import type { BodyDay } from '../domain/body';
+import { activeProfileDb } from '../db/db';
+import { MUSCLES, type Muscle } from '../domain/muscles';
 import { warmupCount } from '../domain/suggest';
 import { localDate } from '../domain/ids';
 import type { ProgramDay } from '../domain/program';
 import { Input } from './Field';
 
-export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel = '‹ Back', keptRest, onBack, onOpenPriorities }: { programs: ProgramStore; profile: ProfileStore; entries: SetEntry[]; gyms: GymsStore; uid?: string | null; backLabel?: string; /** His rest setting for a lift, if any: the plan's rests. */ keptRest?: (exercise: string) => number | undefined; onBack: () => void; onOpenPriorities: () => void }) {
+export function ProgramScreen({ programs, profile, entries, body = [], gyms, uid, backLabel = '‹ Back', keptRest, onBack, onOpenPriorities }: { programs: ProgramStore; profile: ProfileStore; entries: SetEntry[]; /** His energy, for the volume steps' holds. */ body?: readonly BodyDay[]; gyms: GymsStore; uid?: string | null; backLabel?: string; /** His rest setting for a lift, if any: the plan's rests. */ keptRest?: (exercise: string) => number | undefined; onBack: () => void; onOpenPriorities: () => void }) {
   const p = programs.program;
   const [days, setDays] = useState(String(p?.days.length ?? profile.profile.weeklyGoal));
   const [per, setPer] = useState(String(p?.perSession ?? 14));
@@ -58,7 +61,13 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel
   }, [entries, today]);
   // A day's plan length (the timer's rests, warm-ups, his switch overhead), and his recent pace for it.
   const lengths = (day: ProgramDay) => sessionLengths(entries, today, day.slots, { warmups: warm, kept: keptRest, fresh: true });
-  const dayMinutes = (day: ProgramDay) => Math.round(lengths(day).plan / 60);
+  // Built by minutes, a day is sized at his own pace once 2 days are timed (owner, 2026-10-20), else at the timer's rests.
+  const est = useMemo(() => dayEstimate(entries, today, keptRest), [entries, today, keptRest]);
+  const sizedBy = useMemo(() => sizing(entries, today).by, [entries, today]);
+  const dayMinutes = (day: ProgramDay) => est(day);
+  // Each muscle planned at item 07's aim: a +20 % step from his last 3 weeks, never the band at once (owner, 2026-10-20).
+  const [owner] = useState(activeProfileDb);
+  const aims = useMemo(() => aimsOn(entries, body, profile.profile, today, owner), [entries, body, profile.profile, today, owner]);
 
   // What the program was built for, not the input: the minutes box can change without a rebuild. Only at the 8-set floor is it a miss the builder couldn't fix.
   const budget = p?.minutes;
@@ -70,7 +79,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel
 
   if (gymsOpen) return <GymsScreen gyms={gyms} logged={exerciseNames(entries)} fresh={!gym} uid={uid} onBack={() => { setGymsOpen(false); window.scrollTo(0, 0); }} />;
   if (addTo != null) return <ExercisePicker recent={exerciseNames(entries)} gym={gym} onCancel={() => setAddTo(null)} onPick={(name) => {
-    const st = defaultSettings(name);
+    const st = defaultSettings(name, undefined, goalOf(profile.profile));
     // A cardio machine goes in as a 15-minute slot, after the lifts; a lift goes before the day's cardio.
     edit((x) => { if (!x.days[addTo].slots.some((sl) => sl.exercise === name)) addSlot(x.days[addTo], isCardio(name) ? cardioSlot(name, 15) : { exercise: name, sets: 3, repMin: st.repMin, repMax: st.repMax }); });
     setAddTo(null);
@@ -97,7 +106,8 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel
   const builder = (
     <>
       <section className={frame}>
-        <p className="muted small">Built from your priorities: each set goes to the priority muscle furthest below its weekly target, using the lifts you actually do. Full-body days: every day trains your priority muscles, with a different lift for a muscle where you have one.</p>
+        <p className="muted small">Built from your priorities: each set goes to the priority muscle furthest below this block’s aim, using the lifts you actually do. Full-body days: every day trains your priority muscles, with a different lift for a muscle where you have one.</p>
+        {mode === 'minutes' && <p className="muted small" aria-label="How minutes are sized">{sizedBy === 'pace' ? 'Minutes are at your own pace: a day takes you about that long.' : 'Minutes are at the timer’s rests until 2 days are timed; then at your own pace.'}</p>}
         <div className="settings-grid two">
           <label>Days per week<Input aria-label="Days per week" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} /></label>
           {mode === 'sets'
@@ -117,11 +127,10 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel
         <p className="muted small">The most of each week spent on priority 3–4 muscles while priority 1–2 still need sets.</p>
         <button className="primary wide" disabled={!valid} onClick={() => {
           const ctx = gym ? { available: availableSet(gym, [...PROGRAM_LIFTS, ...exerciseNames(entries), ...gym.include]), include: gym.include } : {};
-          const build = (perSession: number) => buildProgram(profile.profile, entries, { days: d, perSession }, new Date(), ctx);
           setRemoved(null); // an undo for the old program must not land in the new one
           setPrev(p); // no confirm: the old program, edits and all, is one tap away
-          // By minutes: the most sets per session whose every day fits, estimated from your own pace.
-          void programs.save(mode === 'minutes' ? { ...build(perSessionForMinutes(m, build, dayMinutes)), minutes: m } : build(s));
+          // By minutes: the most sets per session whose every day fits, at your own pace.
+          void programs.save(rebuildLike({ days: d, perSession: s, minutes: mode === 'minutes' ? m : undefined }, profile.profile, entries, new Date(), ctx, aims.ranges, dayMinutes));
         }}>{p ? 'Rebuild program' : 'Build program'}</button>
         {prev && <p className="undo-note" role="status">Program rebuilt. <button className="mini" onClick={() => { void programs.save(prev); setPrev(null); }}>Undo</button></p>}
       </section>
@@ -134,7 +143,7 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel
       <h1>Program</h1>
       {unset && (
         <section className="card note-card">
-          <p><b>Priorities aren’t set.</b> Every muscle is priority 3, so the plan spreads sets evenly over all of them. Set priorities on Stats, or import your profile file under More, then build.</p>
+          <p><b>Priorities aren’t set.</b> Every muscle is priority 3, so the plan spreads sets evenly over all of them. Set them under More → Priorities and goal, or import your profile file there, then build.</p>
           <button className="mini" onClick={onOpenPriorities}>Set priorities</button>
         </section>
       )}
@@ -146,7 +155,9 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel
       {p?.cardioUnavailable && <p className="warn small">Cardio has a weekly goal, but no cardio machine is ticked at this gym.</p>}
       {p && p.days.map((day, di) => { const L = lengths(day); return (
         <section className="card" key={day.name}>
-          <h2>{day.name} · {day.slots.reduce((a, x) => a + (x.minutes == null ? x.sets : 0), 0)} sets · ≈ {Math.round(L.plan / 60)} min{L.both && <span className="muted small day-pace">{atPace(L.pace!)}</span>}</h2>
+          <h2>{day.name} · {day.slots.reduce((a, x) => a + (x.minutes == null ? x.sets : 0), 0)} sets{p.minutes != null
+            ? <> · ≈ {Math.round(sizedSeconds(L, sizedBy) / 60)} min<span className="muted small day-pace">{sizedHow(L, sizedBy)}</span></>
+            : <> · ≈ {Math.round(L.plan / 60)} min{L.both && <span className="muted small day-pace">{atPace(L.pace!)}</span>}</>}</h2>
           <ol className="prog-slots" aria-label={`${day.name} exercises`}>
             {day.slots.map((slot, si) => slot.minutes != null ? (
               <li key={slot.exercise}>
@@ -185,9 +196,35 @@ export function ProgramScreen({ programs, profile, entries, gyms, uid, backLabel
           <h2>Weekly volume</h2>
           <p className="muted small">Fractional sets per week if you run every day once, against your priority targets.</p>
           <MuscleBars sets={programVolume(p)} profile={profile.profile} />
+          <AimGaps p={p} profile={profile.profile} />
         </section>
       )}
       {p && <details className="card builder"><summary>Rebuild program</summary>{builder}</details>}
     </>
+  );
+}
+
+const fmtN = (n: number) => (Math.abs(n - Math.round(n)) < 0.05 ? String(Math.round(n)) : n.toFixed(1));
+/**
+ * The muscles planned at a step short of their range (owner, 2026-10-20): this block's aim and the sets still to go. Each 3-week
+ * block steps up to 20 % on his own volume (a: Scarpelli 2022; more added nothing, Barsuhn 2025).
+ */
+function AimGaps({ p, profile }: { p: Program; profile: Profile }) {
+  if (!p.aims) return null;
+  // What the days plan, which can run a little past the aim (whole pairs of sets).
+  const vol = programVolume(p), planned = (m: Muscle) => Math.max(p.aims![m]!, vol[m]);
+  const rows = MUSCLES.filter((m) => p.aims![m] != null && profile.targets[profile.tiers[m]][0] - planned(m) >= 0.5)
+    .sort((a, b) => profile.tiers[a] - profile.tiers[b]);
+  if (!rows.length) return null;
+  return (
+    <div className="aim-gaps" role="group" aria-label="Short of the range">
+      <p className="small"><b>Planned at this block’s step</b> · up to 20 % more each 3 weeks, toward each range. An update is offered on Today when a block ends.</p>
+      <ul className="target-suggest-changes">
+        {rows.map((m) => { const [lo, hi] = profile.targets[profile.tiers[m]]; const aim = planned(m); return (
+          <li key={m} aria-label={`${m}: ${fmtN(aim)} a week planned, ${fmtN(lo - aim)} short of ${fmtN(lo)}–${fmtN(hi)}`}>
+            <span>{m}</span><span>{fmtN(aim)}/wk</span><span><b>{fmtN(lo - aim)}</b> to {fmtN(lo)}–{fmtN(hi)}</span>
+          </li>); })}
+      </ul>
+    </div>
   );
 }

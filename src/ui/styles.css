@@ -1099,3 +1099,9 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 .fix-set input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); }
 .fix-weight { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; border-top: 1px solid var(--hairline); padding-top: 10px; }
 .fix-weight .field { margin: 0; }
+/* A program's muscles short of their range (owner, 2026-10-20): the gap column takes its own width. */
+.aim-gaps { margin-top: 12px; }
+.aim-gaps p { margin: 0 0 6px; }
+.aim-gaps .target-suggest-changes li { grid-template-columns: minmax(0, 1fr) auto auto; }
+.program-update li small { grid-column: 1 / -1; margin-top: -6px; color: var(--muted); font-size: var(--fs-xs); }
+.program-update li span:nth-child(3) { text-align: right; white-space: nowrap; }

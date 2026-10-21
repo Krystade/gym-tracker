@@ -74,16 +74,19 @@ test('a plan shows its length and, over 10 min away, his recent pace; once start
   await page.screenshot({ path: `${SHOTS}/3-started.png` });
 });
 
-test('no program: the suggested day shows his recent pace when it’s over 10 min from the plan’s length', async ({ page }) => {
+// Owner, 2026-10-20: a minutes plan is sized at his own pace; the timer's rests are beside it when over 10 min away.
+const SIZED = /^≈ (\d+) min at your pace \((\d+)–(\d+)\) · (\d+) at the timer’s rests$/;
+test('no program: the suggested day is sized at his pace, the timer’s rests beside it', async ({ page }) => {
   await seed(page);
   const card = page.getByRole('region', { name: 'Suggested today' });
   const usual = Number(await card.getByRole('textbox', { name: 'Minutes' }).inputValue());
   expect(usual).toBeGreaterThan(50); // his sessions measured: 8 gaps of about 7 min
   const line = card.getByLabel('Plan length');
-  await expect(line).toHaveText(BOTH);
-  const [, p, f] = BOTH.exec(await line.innerText())!.map(Number);
-  expect(p).toBeLessThanOrEqual(usual);
-  expect(f - p).toBeGreaterThan(10);
+  await expect(line).toHaveText(SIZED);
+  const [, f, , , p] = SIZED.exec(await line.innerText())!.map(Number);
+  expect(f).toBeLessThanOrEqual(usual); // what it takes him fits the minutes he has
+  expect(f).toBeGreaterThan(usual - 20); // and fills them
+  expect(f - p).toBeGreaterThan(10); // at the timer's rests it would look far shorter
   await fits(page);
   await card.evaluate((el) => el.scrollIntoView({ block: 'start' }));
   await page.screenshot({ path: `${SHOTS}/4-suggested.png` });

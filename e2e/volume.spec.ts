@@ -54,7 +54,8 @@ async function setUp(page: Page, body?: string, sets = SETS, range = ['12', '16'
     ...(body ? [{ name: 'body.csv', mimeType: 'text/csv', buffer: Buffer.from(body) }] : []),
   ]);
   await expect(page.getByText(`✓ Imported ${sets.length} new sets`)).toBeVisible();
-  await goto(page, 'Stats');
+  // Priorities live under More (owner, 2026-10-20).
+  await goto(page, 'Priorities');
   // Chest to priority 1, and priority 1's range set by hand to 12–16.
   await page.getByRole('combobox', { name: 'Chest' }).selectOption({ index: 0 });
   const one = page.getByRole('group', { name: 'Weekly sets' }).getByRole('listitem').filter({ hasText: /^1 ·/ });
@@ -63,6 +64,7 @@ async function setUp(page: Page, body?: string, sets = SETS, range = ['12', '16'
   await one.getByRole('textbox', { name: 'Max' }).fill(range[1]);
   await one.getByRole('button', { name: 'Save' }).click();
   await expect(one).toContainText(`1 · ${range[0]}–${range[1]} sets · yours`);
+  await goto(page, 'Stats');
 }
 const steps = (page: Page) => page.getByRole('group', { name: 'Next 3 weeks' });
 

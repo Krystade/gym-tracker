@@ -166,3 +166,36 @@ export function volumeAdvice(entries: readonly SetEntry[], body: readonly BodyDa
   });
   return { weeks, sessions, verdict: s.verdict, energy, muscles };
 }
+
+/**
+ * What a program plans a muscle at (owner, 2026-10-20: plan at 07's aim, not the band's full range): `plan` [lower, upper] weekly
+ * sets for the builder (program.buildProgram aims), where it came from, and `gap` the sets still between it and the band's low end.
+ * - 'step' (a): a raise's aim, +20 % of his last 3 weeks (the header's evidence), never the band at once.
+ * - 'held' (a): a held raise stays at his own volume (the header's reasons), as does a step too small to count (under half a set).
+ * - 'band': in its range, or within half a set of it, or no log to step from (c: a new user gets the range).
+ * - 'own': above its range: his own volume, no cut (a: as 'over').
+ * - 'start' (c): a muscle he hasn't trained in the 3 weeks: one pair of sets (the builder's unit) to step from, never the band.
+ * An excluded priority ([0, 0]) plans nothing.
+ */
+export interface PlanAim { muscle: Muscle; band: [number, number]; base: number | null; plan: [number, number]; from: 'step' | 'held' | 'band' | 'own' | 'start'; gap: number }
+/** (c) The first step for a muscle with no recent volume: one pair (program.ts UNIT). */
+export const START_SETS = 2;
+
+export function planAims(a: VolumeAdvice | null, profile: Profile): Record<Muscle, PlanAim> {
+  const out = {} as Record<Muscle, PlanAim>;
+  for (const m of MUSCLES) {
+    const band = targetFor(profile, m), x = a?.muscles.find((v) => v.muscle === m);
+    const base = x?.base ?? null;
+    const at = (plan: [number, number], from: PlanAim['from']): PlanAim => ({ muscle: m, band, base, plan, from, gap: Math.max(0, band[0] - plan[0]) });
+    if (band[1] <= 0) out[m] = at([0, 0], 'band');
+    else if (!a || !x) out[m] = at(band, 'band');
+    else if (x.kind === 'raise') out[m] = at([x.aim!, x.aim!], 'step');
+    else if (x.kind === 'hold') out[m] = at([x.base!, x.base!], 'held');
+    else if (x.kind === 'over') out[m] = at([band[0], x.base!], 'own');
+    else if (x.kind === 'none' && !(base != null && base > 0)) { const s = Math.min(START_SETS, band[0]); out[m] = at([s, s], 'start'); }
+    // A step under half a set: within half a set of the range, the range; else his own volume (never the range at once).
+    else if (x.kind === 'none' && base! < band[0] - HALF) out[m] = at([base!, base!], 'held');
+    else out[m] = at(band, 'band');
+  }
+  return out;
+}
