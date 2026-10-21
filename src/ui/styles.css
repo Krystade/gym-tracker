@@ -1088,3 +1088,14 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 .works .works-like { margin-left: 4px; vertical-align: baseline; }
 .works-pick { display: grid; gap: 10px; justify-items: start; }
 .works-pick input { width: 100%; }
+
+/* History → a day → Fix sets */
+.fix-done { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; overflow-wrap: anywhere; }
+.fix-day { display: grid; gap: 4px; }
+.fix-lift { border-top: 1px solid var(--hairline); padding: 6px 0; }
+.fix-head .mini { white-space: nowrap; flex: none; }
+.fix-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; }
+.fix-set { display: flex; align-items: center; gap: 10px; min-height: 44px; font-variant-numeric: tabular-nums; }
+.fix-set input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); }
+.fix-weight { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; border-top: 1px solid var(--hairline); padding-top: 10px; }
+.fix-weight .field { margin: 0; }

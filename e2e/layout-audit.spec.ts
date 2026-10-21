@@ -348,6 +348,35 @@ test('More: an import held back, and Duplicate imports with its days, the copies
   clean(found);
 });
 
+test('History: Fix sets with its lifts to tick, the weight field, the lift picker and the Undo line', async ({ page }, info) => {
+  test.setTimeout(120_000);
+  await phone(page);
+  const found: string[] = [];
+  const D = add(DAY0, -1);
+  const rows = ['date,exercise,set,weight_lb,reps,flags,source',
+    `${D},Incline Bench Press With A Very Long Name,1,0,15,bodyweight;warmup,notes`, `${D},Incline Bench Press With A Very Long Name,2,0,12,bodyweight,notes`,
+    `${D},Cable Pushdown,1,1180,11,unsure,notes`, `${D},Cable Pushdown,2,1185.5,10,,notes`];
+  await goto(page, 'More');
+  await page.getByLabel('Import CSV').setInputFiles({ name: 'log.csv', mimeType: 'text/csv', buffer: Buffer.from(rows.join('\n')) });
+  await expect(page.getByText(/✓ Imported \d+ new sets/)).toBeVisible();
+  await goto(page, 'History');
+  const day = page.locator(`details.day[data-date="${D}"]`);
+  await day.getByRole('button', { name: 'Fix sets' }).click();
+  const bench = day.getByRole('group', { name: 'Incline Bench Press With A Very Long Name' });
+  await bench.getByRole('checkbox').nth(0).check();
+  await bench.getByRole('checkbox').nth(1).check();
+  await day.getByLabel(/^Weight for 2 ticked sets/).fill('45');
+  await day.scrollIntoViewIfNeeded();
+  await check(page, info, found, 'history-fix-sets');
+  await day.getByRole('button', { name: 'Set weight' }).click();
+  await expect(day.getByRole('status')).toContainText('Changed 2 sets');
+  await check(page, info, found, 'history-fix-sets-undo');
+  await day.getByRole('group', { name: 'Cable Pushdown' }).getByRole('button', { name: 'Change lift' }).click();
+  await expect(page.getByRole('heading', { name: /^Change Cable Pushdown on/ })).toBeVisible();
+  await check(page, info, found, 'history-fix-sets-picker');
+  clean(found);
+});
+
 // ---- The prompts: a light week, pain, a variation, the volume steps, a test. ----
 
 test('Prompts: the light week offered and started, the volume steps on Stats', async ({ page }, info) => {

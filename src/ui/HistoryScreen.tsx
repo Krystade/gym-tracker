@@ -1,10 +1,10 @@
 // src/ui/HistoryScreen.tsx
 import type { SetsStore } from '../state/useSets';
-import { byOrderDone, sessionsByDate, sameExercise, type Session } from '../domain/stats';
+import { byOrderDone, exerciseNames, sessionsByDate, sameExercise, type Session } from '../domain/stats';
 import { fmtDay, fmtSet, plural } from '../domain/format';
 import { localDate } from '../domain/ids';
 import type { SetEntry } from '../domain/types';
-import { Fragment, memo, useEffect, useMemo, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { sessionMinutes } from '../domain/timing';
 import { gapModel } from '../domain/learn/switch';
 import { prIds } from '../domain/records';
@@ -12,6 +12,12 @@ import { andList, supersets, type GapModel } from '../domain/superset';
 import { allNotSupersets, notSupersets } from '../state/notSuperset';
 import { activeProfileDb } from '../db/db';
 import { Icon } from './icons';
+import { ExercisePicker } from './ExercisePicker';
+import { Input } from './Field';
+import { changeLift, setWeight } from '../domain/dayEdit';
+
+/** The last fix made from History, for its Undo: the sets as they were before it. */
+interface Fixed { date: string; text: string; before: SetEntry[] }
 
 function byExercise(sets: SetEntry[]): [string, SetEntry[]][] {
   const out: [string, SetEntry[]][] = [];
@@ -73,7 +79,31 @@ export function HistoryScreen({ who, store, onOpen, onAddTo, focus = null, onFoc
     }
     return out;
   }, [sessions]);
+  // Fix sets (own log only): the day being fixed, the lift whose name is being changed, and the last fix for Undo.
+  const [fixing, setFixing] = useState<string | null>(null);
+  const [picking, setPicking] = useState<{ date: string; name: string } | null>(null);
+  const [fixed, setFixed] = useState<Fixed | null>(null);
+  const { updateMany } = store;
+  const apply = useCallback(async (date: string, changed: SetEntry[], text: string) => {
+    if (!changed.length) return;
+    const was = new Map(store.entries.map((e) => [e.id, e]));
+    const before = changed.map((e) => was.get(e.id)!).filter(Boolean);
+    if (await updateMany(changed)) setFixed({ date, text, before });
+  }, [store.entries, updateMany]);
+  const undo = useCallback(async () => {
+    if (fixed && (await updateMany(fixed.before))) setFixed(null);
+  }, [fixed, updateMany]);
+  const onChangeLift = useCallback((date: string, name: string) => setPicking({ date, name }), []);
+  // Back from the picker: the day being fixed in view again.
+  useEffect(() => {
+    if (!picking && fixing) document.querySelector(`details.day[data-date="${fixing}"]`)?.scrollIntoView({ block: 'start' });
+  }, [picking]);
   const title = who ? `@${who}’s history` : 'History';
+  if (picking) {
+    const day = store.entries.filter((e) => e.date === picking.date);
+    return <ExercisePicker recent={exerciseNames(store.entries)} title={`Change ${picking.name} on ${fmtDay(picking.date, today)} to`} onCancel={() => setPicking(null)}
+      onPick={(to) => { const n = changeLift(day, picking.name, to); setPicking(null); void apply(picking.date, n, `${plural(n.length, 'set')}: ${picking.name} → ${to}`); }} />;
+  }
   if (!sessions.length) return (<><h1 className={who ? 'who-title' : undefined}>{title}</h1><p className="muted">{who ? `No sessions from @${who} yet.` : 'No history yet — import it under More.'}</p></>);
   const [ty, tm] = today.split('-').map(Number);
   const lastMonth = tm === 1 ? `${ty - 1}-12` : `${ty}-${String(tm - 1).padStart(2, '0')}`;
@@ -87,7 +117,8 @@ export function HistoryScreen({ who, store, onOpen, onAddTo, focus = null, onFoc
           <details className="month" key={mo.key} open={open} onToggle={rendered ? undefined : (e) => { if (e.currentTarget.open) show(mo.key); }}>
             <summary onClick={rendered ? undefined : () => show(mo.key)}><span>{monthName(mo.key)} · {plural(mo.days.length, 'session')}</span></summary>
             {rendered && mo.days.map((s) => (
-              <Day key={s.date} s={s} open={s === sessions[0] || s.date === at} today={today} prs={prs} supersetsOn={supersetsOn} onOpen={onOpen} onAddTo={onAddTo} />
+              <Day key={s.date} s={s} open={s === sessions[0] || s.date === at || s.date === fixing} today={today} prs={prs} supersetsOn={supersetsOn} onOpen={onOpen} onAddTo={onAddTo}
+                fix={own ? { on: fixing === s.date, set: setFixing, changeLift: onChangeLift, apply, fixed: fixed?.date === s.date ? fixed : null, undo } : undefined} />
             ))}
           </details>
         );
@@ -97,9 +128,14 @@ export function HistoryScreen({ who, store, onOpen, onAddTo, focus = null, onFoc
 }
 
 /** A day: what it was in a line, and each lift's sets under it. Rendered again only when something it shows changes. */
-const Day = memo(function Day({ s, open, today, prs, supersetsOn, onOpen, onAddTo }: {
+interface FixProps {
+  on: boolean; set: (date: string | null) => void; changeLift: (date: string, name: string) => void;
+  apply: (date: string, changed: SetEntry[], text: string) => Promise<void>; fixed: Fixed | null; undo: () => Promise<void>;
+}
+
+const Day = memo(function Day({ s, open, today, prs, supersetsOn, onOpen, onAddTo, fix }: {
   s: Session; open: boolean; today: string; prs: Set<string>; supersetsOn: (date: string) => Map<string, string[]>;
-  onOpen: (name: string) => void; onAddTo?: (date: string) => void;
+  onOpen: (name: string) => void; onAddTo?: (date: string) => void; fix?: FixProps;
 }) {
   const groups = byExercise(s.sets);
   // The day's own sets are all of its date's: no need to read the whole log for each day.
@@ -115,7 +151,13 @@ const Day = memo(function Day({ s, open, today, prs, supersetsOn, onOpen, onAddT
         <span className="muted small">{plural(groups.length, 'exercise')}{(lifts > 0 || !bouts.length) && ` · ${plural(lifts, 'set')}`}{bouts.length > 0 && ` · ${cardio} min cardio`}{mins != null && ` · ${mins} min`}{s.sets.some((x) => prs.has(x.id)) && <>{' '}<span className="tag pr-tag">PR</span></>}</span>
       </summary>
       <div className="day-body">
-        {groups.map(([name, sets]) => {
+        {fix?.fixed && (
+          <div role="status" className="fix-done">
+            <span className="ok">✓ Changed {fix.fixed.text}</span>
+            <button className="mini" onClick={() => void fix.undo()}>Undo</button>
+          </div>
+        )}
+        {fix?.on ? <FixDay s={s} groups={groups} fix={fix} /> : groups.map(([name, sets]) => {
           // Warm-ups would bury the working weights: count them, don't list them.
           const working = sets.filter((x) => !x.flags.includes('warmup'));
           const warm = sets.length - working.length;
@@ -132,8 +174,48 @@ const Day = memo(function Day({ s, open, today, prs, supersetsOn, onOpen, onAddT
           </button>
           );
         })}
-        {onAddTo && <button className="wide" onClick={() => onAddTo(s.date)}>Add to this day</button>}
+        {onAddTo && !fix?.on && <button className="wide" onClick={() => onAddTo(s.date)}>Add to this day</button>}
+        {fix && !fix.on && <button className="wide" onClick={() => fix.set(s.date)}>Fix sets</button>}
       </div>
     </details>
   );
 });
+
+/**
+ * History → a day → Fix sets: each lift's sets to tick, Change lift (that day's sets of it to another lift, from the
+ * picker), and one weight for the ticked sets (an empty bar logged as 0 or BW). Saved as edits (domain/dayEdit), Undo above.
+ */
+function FixDay({ s, groups, fix }: { s: Session; groups: [string, SetEntry[]][]; fix: FixProps }) {
+  const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set());
+  const [weight, setWeightText] = useState('');
+  const w = weight.trim() === '' ? NaN : Number(weight);
+  const ok = picked.size > 0 && Number.isFinite(w) && w >= 0 && w < 2000;
+  const toggle = (id: string) => setPicked((xs) => { const n = new Set(xs); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  async function save() {
+    const changed = setWeight(s.sets, [...picked], w);
+    await fix.apply(s.date, changed, `${plural(changed.length, 'set')} to ${w === 0 ? 'BW' : `${w} lb`}`);
+    setPicked(new Set()); setWeightText('');
+  }
+  return (
+    <div className="fix-day">
+      {groups.map(([name, sets]) => (
+        <div key={name} className="fix-lift" role="group" aria-label={name}>
+          <div className="fix-head"><b>{name}</b><button className="mini" onClick={() => fix.changeLift(s.date, name)}>Change lift</button></div>
+          {sets.filter((x) => !x.cardio).map((x) => (
+            <label key={x.id} className="fix-set">
+              <input type="checkbox" checked={picked.has(x.id)} onChange={() => toggle(x.id)} />
+              <span>#{x.setNo} · {fmtSet(x)}{x.flags.includes('warmup') && <span className="muted small"> warm-up</span>}</span>
+            </label>
+          ))}
+        </div>
+      ))}
+      <div className="fix-weight">
+        <label className="field">Weight for {plural(picked.size, 'ticked set')} (lb)
+          <Input inputMode="decimal" value={weight} onChange={(e) => setWeightText(e.target.value)} />
+        </label>
+        <button className="primary" disabled={!ok} onClick={() => void save()}>Set weight</button>
+      </div>
+      <button className="wide" onClick={() => fix.set(null)}>Done</button>
+    </div>
+  );
+}

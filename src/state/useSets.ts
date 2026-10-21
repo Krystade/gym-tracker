@@ -62,6 +62,17 @@ export function useSets() {
     return true;
   }, []);
 
+  /** Many sets changed at once (History → Fix sets, and its Undo), each stamped like update, in one transaction. */
+  const updateMany = useCallback(async (changed: SetEntry[]): Promise<boolean> => {
+    const now = Date.now(), es = changed.map((e) => ({ ...e, editedAt: now }));
+    try { await db.putMany(es); } catch (err) { fail('Saving the change', err); return false; }
+    const by = new Map(es.map((e) => [e.id, e]));
+    ref.current = ref.current.map((x) => by.get(x.id) ?? x);
+    setEntries(ref.current);
+    announce();
+    return true;
+  }, []);
+
   const remove = useCallback(async (id: string): Promise<boolean> => {
     try { await db.deleteSetWithTombstone(id); } catch (err) { fail('Deleting', err); return false; }
     setEntries((xs) => xs.filter((x) => x.id !== id));
@@ -136,6 +147,6 @@ export function useSets() {
     return { ...d, overlap: importOverlap(all, d.fresh) };
   }, [db]);
 
-  return { entries, loading, error, add, update, remove, removeMany, synced, restore, restoreMany, reapply, rename, importEntries, diff };
+  return { entries, loading, error, add, update, updateMany, remove, removeMany, synced, restore, restoreMany, reapply, rename, importEntries, diff };
 }
 export type SetsStore = ReturnType<typeof useSets>;
