@@ -229,16 +229,22 @@ describe('topLifts: the lifts Stats follows', () => {
 });
 
 describe('behindMuscles: what the rest of the week can no longer make up, each with a lift of yours for it', () => {
-  it('lists nothing while the sessions left can still reach every target, then the muscles short once the week is done', () => {
+  it('a session left counts at what yours give each muscle: a muscle 6 weeks never saw is behind once one session is left', () => {
     const p = defaultProfile(); // goal 2; every muscle priority 3, 4–6 sets
     const week = [
       ...s('Bench Press', 3, {}, '2026-10-12'), // Monday: Chest 3 of 4
-      ...s('DB Lateral Raise', 3, {}, '2026-09-30'), // done before, not this week
+      ...s('DB Lateral Raise', 3, {}, '2026-09-30'), // the weeks before: Side Delts 3 a session, so 4.5 now
       ...s('Seated Leg Curl', 3, {}, '2026-09-29'),
     ];
-    // Monday, Thursday: one session of two done, and one left can add any muscle's 4–6 sets: none behind.
-    expect(behindMuscles(week, p, '2026-10-12', 20)).toEqual([]);
-    expect(behindMuscles(week, p, TODAY, 20)).toEqual([]);
+    // Monday, trained: one of two done, one left. Chest needs 1, Side Delts 4 of its 4.5: on pace. Biceps, never trained, gets
+    // the floor of 3 and needs 4: behind. S2 let that one session add 11 to anything, so nothing was ever behind.
+    const mon = behindMuscles(week, p, '2026-10-12', 20).map((b) => b.muscle);
+    expect(mon).toContain('Biceps');
+    expect(mon).not.toContain('Chest');
+    expect(mon).not.toContain('Side Delts');
+    expect(mon).not.toContain('Hamstrings');
+    // Thursday, the same.
+    expect(behindMuscles(week, p, TODAY, 20).map((b) => b.muscle)).toEqual(mon);
     // Sunday, trained: the week is done. Chest made its 4; Side Delts never got a set.
     const done = [...week, ...s('Bench Press', 1, {}, '2026-10-18')];
     const got = behindMuscles(done, p, '2026-10-18', 3);
@@ -249,6 +255,30 @@ describe('behindMuscles: what the rest of the week can no longer make up, each w
     expect(all.find((b) => b.muscle === 'Chest')).toBeUndefined();
     // Furthest behind first.
     expect(all.map((b) => b.sets / b.range[0])).toEqual([...all.map((b) => b.sets / b.range[0])].sort((x, y) => x - y));
+  });
+
+  it('flags mid-week a muscle that clearly trails, and not one his sessions can still carry', () => {
+    // Chest priority 1 (12–20), Lats priority 1, the rest off. Six weeks of two sessions a week: 5 chest sets a session, 7 of lats.
+    const p = { ...defaultProfile(), tiers: { ...defaultProfile().tiers }, weeklyGoal: 2 };
+    for (const m of Object.keys(p.tiers) as (keyof typeof p.tiers)[]) p.tiers[m] = 4;
+    p.tiers.Chest = 1; p.tiers.Lats = 1;
+    const before: SetEntry[] = [];
+    for (let w = 1; w <= 6; w++) for (const d of [0, 3]) {
+      const date = new Date(Date.UTC(2026, 9, 12 - 7 * w + d)).toISOString().slice(0, 10);
+      before.push(...s('Low-to-High Cable Fly', 5, {}, date), ...s('Straight-Arm Pulldown', 7, {}, date));
+    }
+    // This week, Monday: 2 chest sets, 5 lats. Wednesday morning, one session left.
+    const log = [...before, ...s('Low-to-High Cable Fly', 2, {}, '2026-10-12'), ...s('Straight-Arm Pulldown', 5, {}, '2026-10-12')];
+    const wed = behindMuscles(log, p, '2026-10-14', 20);
+    // Chest: 10 to go, and his session gives it 5 (7.5 with the margin): behind on Wednesday. Lats: 7 to go of his 10.5: on pace.
+    expect(wed.map((b) => b.muscle)).toEqual(['Chest']);
+    expect(wed[0]).toMatchObject({ sets: 2, range: [12, 20], fix: 'Low-to-High Cable Fly' });
+    // A program with an 8-set chest day: one session can carry 11 (the cap), so the 10 are still on pace.
+    expect(behindMuscles(log, p, '2026-10-14', 20, { days: [{ slots: [{ exercise: 'Low-to-High Cable Fly', sets: 8 }] }] })).toEqual([]);
+    // Every day: Monday morning two sessions (15) can carry 12; from the first session on, one can't carry 10. S2 said Sunday only.
+    const days = ['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18'];
+    const first = [...before, ...s('Low-to-High Cable Fly', 2, {}, '2026-10-12'), ...s('Straight-Arm Pulldown', 5, {}, '2026-10-12')];
+    expect(days.map((d) => behindMuscles(d === '2026-10-12' ? before : first, p, d, 20).map((b) => b.muscle).join())).toEqual(['', 'Chest', 'Chest', 'Chest', 'Chest', 'Chest', 'Chest']);
   });
 });
 

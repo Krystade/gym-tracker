@@ -15,10 +15,11 @@ import { Screens, type FriendTab } from './FriendView';
 import { Icon, initials } from './icons';
 import { FriendName, FriendTagEditor } from './FriendName';
 import { kindColour, Ring } from './Ring';
+import { FriendStats } from './StatsScreen';
 
 // A friend's page inside Friends (round 18): who they are this week, what they're doing now, how you've each come on against your
-// own start, and their last 8 weeks as a board. All of it from the line Friends already keeps (state/friendCache): opening it
-// reads nothing more. Their whole log is read only for History, Lifts or Stats, when asked for.
+// own start, their Stats as tiles (owner, 2026-10-20), and their last 8 weeks as a board. All of it from the line Friends already
+// keeps (state/friendCache): opening it reads nothing more. Their whole log is read only for History, Lifts or Stats, when asked for.
 
 const REACTIONS: PresetKey[] = ['strong', 'fire', 'clap', 'eyes'];
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -67,10 +68,12 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep 
     });
   }, [uid, friend, from, today]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Their sets in the 8 weeks and their PR ids: new only when their line is read again, so their Stats tiles work out once a read.
+  const line = useMemo(() => (w ? { sets: w.win.sets.filter((e) => e.date >= from && e.date <= today), prs: friendPrs(w.win), goal: w.win.goal ?? 2 } : null), [w, from, today]);
   const v = useMemo(() => {
-    if (!w) return null;
+    if (!line) return null;
     const now = Date.now();
-    const sets = w.win.sets.filter((e) => e.date >= from && e.date <= today), prs = friendPrs(w.win), goal = w.win.goal ?? 2;
+    const { sets, prs, goal } = line;
     const day = sets.filter((e) => e.date === today);
     const last = latestSession(sets);
     const rows = board(sets, today, prs, now);
@@ -81,7 +84,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep 
       recent: recentPrs(sets, prs, 3), shared: progressRows(entries, sets, addDays(today, -55), today),
       ring: ringSets(day), usual: usualSession(sets, today),
     };
-  }, [w, from, today, entries, minute]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [line, today, entries, minute]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const r = useReactions(uid);
   const [picked, setPicked] = useState<string | null>(null);
@@ -120,6 +123,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep 
       {error ? <p role="alert" className="warn">{error}</p> : !v ? <p className="muted">Loading…</p> : (<>
         {v.card && <SessionBox c={v.card} today={today} now={now} />}
         <Shared name={friend.name} rows={v.shared} />
+        <FriendStats who={friend.name} entries={line!.sets} goal={line!.goal} prs={line!.prs} today={today} />
         <section className="card fp-board-card" aria-label="Last 8 weeks">
           <h2>Last 8 weeks <span>{v.sessions} session{v.sessions === 1 ? '' : 's'}</span></h2>
           <Board rows={v.rows} picked={picked} onPick={(d) => setPicked(picked === d ? null : d)} />

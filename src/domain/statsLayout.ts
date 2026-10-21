@@ -5,21 +5,37 @@ import { addDays } from './analytics';
 // what it kept (pins, hidden tiles, the day's order) and stores what comes back.
 
 /** One range for every tile below the week (owner, 2026-10-20): 4 weeks, 12 (the default) or a year. */
-export type Range = '4w' | '12w' | '1y';
+export type Range = '4w' | '12w' | '1y' | typeof WINDOW_RANGE;
 export const RANGES: readonly { id: Range; label: string; weeks: number }[] = [
   { id: '4w', label: '4 wk', weeks: 4 },
   { id: '12w', label: '12 wk', weeks: 12 },
   { id: '1y', label: '1 yr', weeks: 52 },
 ];
+/** A friend's page: the 8 weeks Friends keeps of them (state/friendCache CREW_SPAN), its only range; never offered on your own. */
+export const WINDOW_RANGE = '8w';
+const ALL: readonly { id: Range; label: string; weeks: number }[] = [...RANGES, { id: WINDOW_RANGE, label: '8 wk', weeks: 8 }];
 export const DEFAULT_RANGE: Range = '12w';
 export const isRange = (x: unknown): x is Range => RANGES.some((r) => r.id === x);
-export const rangeWeeks = (r: Range): number => RANGES.find((x) => x.id === r)!.weeks;
+export const rangeWeeks = (r: Range): number => ALL.find((x) => x.id === r)!.weeks;
+export const rangeLabel = (r: Range): string => ALL.find((x) => x.id === r)!.label;
 /** The range in days, today included. */
 export const rangeDays = (r: Range): number => rangeWeeks(r) * 7;
 /** The range's first day. */
 export const rangeFrom = (r: Range, today: string): string => addDays(today, -(rangeDays(r) - 1));
 /** "12 weeks", "4 weeks", "a year": a range said in words. */
 export const rangeWords = (r: Range): string => (r === '1y' ? 'a year' : `${rangeWeeks(r)} weeks`);
+
+/** Tiles only the owner ever sees: energy comes from his own body log, which no friend reads. */
+export const OWNER_ONLY: readonly string[] = ['energy'];
+/**
+ * Tiles a friend's 8-week line (their sets, goal and PR ids, as Friends keeps it) can't fill without reading more: Muscles needs
+ * their priorities, Rest between sets their timers, Lifts in rotation what they did before the 8 weeks (new and dropped).
+ */
+export const NOT_FROM_WINDOW: readonly string[] = ['muscles', 'rest', 'lifts'];
+/** The tiles a viewer gets: anyone but the owner, none of OWNER_ONLY; on a friend's page (`window`), none of NOT_FROM_WINDOW. */
+export function forViewer<T extends { id: string }>(tiles: readonly T[], v: { owner: boolean; window?: boolean }): T[] {
+  return tiles.filter((t) => (v.owner || !OWNER_ONLY.includes(t.id)) && !(v.window && NOT_FROM_WINDOW.includes(t.id)));
+}
 
 /** A tile as far as placing it goes. A wide tile takes a row of its own. */
 export interface Placed { id: string; wide?: boolean }

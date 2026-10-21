@@ -18,7 +18,9 @@ import { addDays, weekStart } from '../domain/analytics';
 import { fmtDate, plural } from '../domain/format';
 import { liftKey } from '../domain/ids';
 import { thisWeekCardio } from '../domain/cardio';
-import { arrange, dayOrder, DEFAULT_RANGE, isRange, layoutOf, NO_LAYOUT, RANGES, rows, toggleHide, togglePin, type LayoutPrefs, type Range } from '../domain/statsLayout';
+import { arrange, dayOrder, DEFAULT_RANGE, isRange, layoutOf, NO_LAYOUT, RANGES, rows, toggleHide, togglePin, WINDOW_RANGE, type LayoutPrefs, type Range } from '../domain/statsLayout';
+import { defaultProfile } from '../domain/profile';
+import type { SetEntry } from '../domain/types';
 import { activeProfileDb } from '../db/db';
 import { getPref, setPref } from '../state/prefs';
 import { Icon } from './icons';
@@ -79,7 +81,7 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
       return r && !rotationDismissed(owner, r) ? r : null;
     };
   }, [owner, readOnly, gyms?.active, entries, today, programs.program, body.days]);
-  const tiles = useTiles({ entries, profile: p, today, range, who, owner: owner ?? undefined, alsoLifts, body: body.days, timer, rotationOf, onOpenLift, onOpenPriorities });
+  const tiles = useTiles({ entries, profile: p, today, range, who, owner: owner ?? undefined, alsoLifts, body: body.days, timer, rotationOf, onOpenLift, onOpenPriorities, program: programs.program });
 
   // News to the front of its section, worked out once a day on the first open (owner, 2026-10-20).
   const [front] = useState(() => {
@@ -153,5 +155,39 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
       )}
       {opened && <StatsSheet title={opened.title ?? opened.label} link={opened.link} onClose={() => setOpen(null)}>{opened.sheet()}</StatsSheet>}
     </>
+  );
+}
+
+/**
+ * A friend's Stats on their page, shown without a tap (owner, 2026-10-20: "their whole stats page"): the same tiles and sheets as
+ * yours, read-only and named for them, from the line Friends already keeps of them (8 weeks of sets, their goal, the PR ids their
+ * phone wrote), so it reads nothing. One range, those 8 weeks. Their week is the page's own head (ring, streak, sessions, PRs),
+ * so there's no week tile; tiles that line can't fill, and the owner's own (energy), are left out (statsLayout forViewer).
+ */
+export function FriendStats({ who, entries, goal, prs, today }: { who: string; entries: SetEntry[]; goal: number; prs: ReadonlySet<string>; today: string }) {
+  const profile = useMemo(() => ({ ...defaultProfile(), weeklyGoal: goal }), [goal]);
+  const win = useMemo(() => ({ prs }), [prs]);
+  const tiles = useTiles({ entries, profile, today, range: WINDOW_RANGE, who, window: win });
+  // News to the front of its section, as on yours: fixed while the page is open.
+  const [front] = useState(() => tiles.filter((t) => t.news).map((t) => t.id));
+  const [open, setOpen] = useState<string | null>(null);
+  if (!tiles.length) return null;
+  const a = arrange(SECTIONS.map((s) => ({ id: s.id, tiles: tiles.filter((t) => t.section === s.id) })), NO_LAYOUT, front);
+  const opened = open ? tiles.find((t) => t.id === open) : undefined;
+  return (
+    <section className="fp-stats" aria-label={`@${who}’s stats`}>
+      <h2>Stats <span>last 8 weeks</span></h2>
+      {SECTIONS.map((s, i) => {
+        const shown = a.sections[i].shown;
+        if (!shown.length) return null;
+        return (
+          <section key={s.id} className="st-sec" aria-label={s.title}>
+            <h3>{s.title}</h3>
+            {rows(shown).map((r) => <div key={r[0].id} className="st-row">{r.map((t) => <StatsTile key={t.id} t={t} onOpen={() => setOpen(t.id)} extra={t.extra} />)}</div>)}
+          </section>
+        );
+      })}
+      {opened && <StatsSheet title={opened.title ?? opened.label} link={opened.link} onClose={() => setOpen(null)}>{opened.sheet()}</StatsSheet>}
+    </section>
   );
 }

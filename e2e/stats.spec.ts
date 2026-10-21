@@ -96,7 +96,7 @@ async function seed(page: Pg, weeks = 12) {
   await goto(page, 'Stats');
 }
 
-test('stats: early in the week nothing is behind; Sunday, trained, what the week missed is', async ({ page }) => {
+test('stats: early in the week nothing is behind; mid-week, a muscle one session can’t carry is; Sunday, trained, what the week missed is', async ({ page }) => {
   // Monday: two Bench sets. Chest (priority 3) fits one 15-set session × 2 a week to 2.5–4. Wednesday: behind the target, ahead of the week.
   await page.clock.install({ time: new Date('2026-09-28T18:00:00') });
   await page.goto('/');
@@ -118,6 +118,20 @@ test('stats: early in the week nothing is behind; Sunday, trained, what the week
   await expect(page.getByRole('region', { name: 'Behind this week' })).toHaveCount(0);
   await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
   await expect(page.locator('[data-tile="muscles"] .st-t-val')).toHaveText(/^0\s*behind$/);
+
+  // Calves made priority 1: its target fits the week at about 7 sets, and the one session left gives a muscle he has never
+  // trained what it realistically would (3 sets, the floor), not 11: behind already on Wednesday (owner, 2026-10-21).
+  await page.getByRole('button', { name: /^Priorities and goal/ }).click();
+  await page.getByRole('combobox', { name: 'Calves' }).selectOption('1');
+  await goto(page, 'Stats');
+  await expect(page.locator('[data-tile="muscles"] .st-t-val')).toHaveText(/^1\s*behind$/);
+  const wed = await sheet(page, 'muscles');
+  await expect(wed.getByRole('region', { name: 'Behind this week' })).toContainText('Calves');
+  await expect(wed).toContainText('Wednesday: 1 session left this week');
+  await expect(wed).toContainText('half again (3 to 11 sets)');
+  await wed.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: /^Priorities and goal/ }).click();
+  await page.getByRole('combobox', { name: 'Calves' }).selectOption('3');
 
   // Sunday, a Bench set: the week has no session left, so what's short of its target is behind.
   await page.clock.setFixedTime(new Date('2026-10-04T10:00:00'));

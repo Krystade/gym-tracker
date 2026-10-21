@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { addDays, calendarDays, SESSION_CAP, sessionsLeft, streak, weekStart, weekStatus, weeklyMuscleSets, weeklySummary } from './analytics';
+import { addDays, calendarDays, planPerSession, REACH, REACH_WEEKS, SESSION_CAP, sessionReach, sessionsLeft, streak, usualPerSession, weekStart, weekStatus, weeklyMuscleSets, weeklySummary } from './analytics';
+import { MUSCLES, type Muscle } from './muscles';
 
 let seq = 0;
 const s = (date: string, exercise: string, weight: number, reps: number | null, over: Partial<SetEntry> = {}): SetEntry => ({
@@ -138,5 +139,96 @@ describe('weekStatus: behind means the rest of the week can’t make it up, not 
     expect(weekStatus(4, tier3)).toBe('on');
     expect(weekStatus(6, tier3)).toBe('on');
     expect(weekStatus(6.5, tier3)).toBe('over');
+  });
+});
+
+// ---- The pace at a realistic session (owner, 2026-10-21): S2 let every session left add 11 sets to any muscle, so nothing
+// was ever behind before a trained Sunday. A session left now adds what his own sessions give that muscle, half again. ----
+
+const only = (m: Partial<Record<Muscle, number>>): Record<Muscle, number> => Object.fromEntries(MUSCLES.map((x) => [x, m[x] ?? 0])) as Record<Muscle, number>;
+
+describe('sessionReach: what one session left can realistically add to a muscle', () => {
+  it('his usual sets a session for it, half again; the plan’s when larger; at least 3, at most 11', () => {
+    const r = sessionReach(only({ Calves: 4, Quads: 1, Chest: 9, Lats: 2 }), only({ Lats: 5, Quads: 0 }));
+    expect(r.Calves).toBe(6); // 4 × 1.5
+    expect(r.Quads).toBe(3); // 1.5 lifted to the floor
+    expect(r.Chest).toBe(11); // 13.5 held to the cap
+    expect(r.Lats).toBe(7.5); // the plan's 5 beats his 2
+    expect(r.Biceps).toBe(3); // never trained, not planned: the floor
+    expect(REACH).toEqual({ factor: 1.5, floor: 3 });
+    expect(sessionReach(only({ Calves: 4 })).Calves).toBe(6); // no plan
+  });
+});
+
+describe('usualPerSession: his sets a session for each muscle over the 6 whole weeks before this one', () => {
+  const sets = (date: string, exercise: string, k: number, over: Partial<SetEntry> = {}) => Array.from({ length: k }, () => s(date, exercise, 50, 10, over));
+  // This week starts Mon 12 Oct; the six weeks before it run from Mon 31 Aug to Sun 11 Oct.
+  it('the median over the days that trained it; this week, anything older, warm-ups and cardio left out', () => {
+    expect(REACH_WEEKS).toBe(6);
+    const e = [
+      ...sets('2026-08-30', 'Standing Calf Raise', 9), // a Sunday: the week before the six, left out
+      ...sets('2026-08-31', 'Standing Calf Raise', 2), // the six weeks' first day
+      ...sets('2026-09-14', 'Standing Calf Raise', 3), ...sets('2026-09-14', 'Standing Calf Raise', 4, { flags: ['warmup'] }),
+      ...sets('2026-09-21', 'Leg Extension', 3), // a day with no calves: not a zero in their median
+      ...sets('2026-10-11', 'Standing Calf Raise', 5), // the six weeks' last day
+      ...sets('2026-10-12', 'Standing Calf Raise', 10), // this week: left out
+    ];
+    const u = usualPerSession(e, '2026-10-14');
+    expect(u.Calves).toBe(3); // median of 2, 3, 5
+    expect(u.Quads).toBe(3);
+    expect(u.Chest).toBe(0);
+    // The same all week: Monday to Sunday read the same six weeks.
+    for (const d of ['2026-10-12', '2026-10-18']) expect(usualPerSession(e, d)).toEqual(u);
+    // An even count: the middle two averaged.
+    expect(usualPerSession([...e, ...sets('2026-10-05', 'Standing Calf Raise', 4)], '2026-10-14').Calves).toBe(3.5);
+    // A day counts at most SESSION_CAP for a muscle, as the week's sets do.
+    expect(usualPerSession(sets('2026-10-05', 'Standing Calf Raise', 14), '2026-10-14').Calves).toBe(SESSION_CAP);
+  });
+});
+
+describe('planPerSession: the most any one program day gives a muscle', () => {
+  it('per day, direct and indirect, the largest day kept, capped', () => {
+    const plan = [
+      { slots: [{ exercise: 'Bench Press', sets: 4 }, { exercise: 'Standing Calf Raise', sets: 2 }] },
+      { slots: [{ exercise: 'Bench Press', sets: 2 }, { exercise: 'Low-to-High Cable Fly', sets: 3 }] },
+      { slots: [{ exercise: 'Standing Calf Raise', sets: 14 }] },
+    ];
+    const p = planPerSession(plan);
+    expect(p.Chest).toBe(5); // day 2: 2 + 3
+    expect(p['Front Delts']).toBe(2.5); // day 2: 1 + 1.5
+    expect(p.Triceps).toBe(2); // day 1: 4 × 0.5
+    expect(p.Calves).toBe(SESSION_CAP);
+    expect(planPerSession(null)).toEqual(only({}));
+  });
+});
+
+describe('weekStatus at his reach, every weekday: today counts until he trains', () => {
+  const tier3: [number, number] = [4, 6], tier1: [number, number] = [12, 20];
+  const week = (value: number, range: [number, number], goal: number, done: number, reach: number, trainedToday = false) =>
+    Object.fromEntries(WEEK.map((d, i) => [DAYS[i], weekStatus(value, range, sessionsLeft(d, goal, done, trainedToday), reach)]));
+  it('a muscle at the floor (3 a session): two sessions left reach 4 sets, one left does not', () => {
+    expect(week(0, tier3, 2, 0, 3)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'pace', Sun: 'under' });
+    // One session done that skipped it: one left all week, and 3 sets can't make 4. S2's 11 called this on pace all week.
+    expect(week(0, tier3, 2, 1, 3)).toEqual({ Mon: 'under', Tue: 'under', Wed: 'under', Thu: 'under', Fri: 'under', Sat: 'under', Sun: 'under' });
+    expect(week(0, tier3, 2, 1, SESSION_CAP)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'pace', Sun: 'pace' });
+  });
+  it('a muscle he gives 3 a session (4.5 with the margin) still makes 4 from one session; 2 done makes it with the floor', () => {
+    expect(week(0, tier3, 2, 1, 4.5)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'pace', Sun: 'pace' });
+    expect(week(2, tier3, 2, 1, 3)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'pace', Sun: 'pace' });
+  });
+  it('trained today: today is spent; trained on Sunday, the week is done and anything short is behind', () => {
+    // Goal 3, one done (today's): two left until Saturday, where only Sunday is left.
+    expect(week(4, tier1, 3, 1, 4.5, true)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'under', Sun: 'under' });
+    // Not trained today: Saturday still has today and Sunday.
+    expect(week(4, tier1, 3, 1, 4.5)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'pace', Sun: 'under' });
+    expect(week(3.5, tier3, 2, 2, 11, true)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'pace', Sun: 'under' });
+  });
+  it('on target and over whatever the day and reach', () => {
+    expect(week(5, tier3, 2, 1, 3)).toEqual({ Mon: 'on', Tue: 'on', Wed: 'on', Thu: 'on', Fri: 'on', Sat: 'on', Sun: 'on' });
+    expect(week(7, tier3, 2, 1, 3)).toEqual({ Mon: 'over', Tue: 'over', Wed: 'over', Thu: 'over', Fri: 'over', Sat: 'over', Sun: 'over' });
+  });
+  it('the edge: exactly what the sessions left can add is on pace, a little more is behind', () => {
+    expect(weekStatus(12 - 2 * 4.5, tier1, 2, 4.5)).toBe('pace');
+    expect(weekStatus(12 - 2 * 4.5 - 0.5, tier1, 2, 4.5)).toBe('under');
   });
 });

@@ -1,4 +1,4 @@
-import { addDays, sessionsLeft, streak, weekStart, weekStatus, weeklyMuscleSets, weeklySummary } from './analytics';
+import { addDays, planPerSession, sessionReach, sessionsLeft, streak, usualPerSession, weekStart, weekStatus, weeklyMuscleSets, weeklySummary } from './analytics';
 import { isCardio, isCardioEntry } from './cardio';
 import { monthOf } from './cloud';
 import { dayKinds, isWorking, KINDS, sessionOn, type Kind, type LiftDone } from './crew';
@@ -240,15 +240,26 @@ export function topLifts(entries: readonly SetEntry[], today: string, n = 4, spa
 
 /** A muscle behind where the week should be: its sets so far, its target range, and a lift of yours that works it most. */
 export interface Behind { muscle: Muscle; sets: number; range: [number, number]; fix: string | null }
+/** A program's days, as far as the pace reads them. */
+type PlanDays = { days: readonly { slots: readonly { exercise: string; sets: number }[] }[] } | null | undefined;
 /**
- * Muscles behind what the rest of the week can still make up (analytics weekStatus, with the sessions his goal has left), the
- * furthest behind first, `max` of them.
+ * This week's pace: the sessions his goal has left (analytics sessionsLeft; today counts until he trains), and what each of them
+ * can realistically add to each muscle (analytics sessionReach: his usual sets a session for it, or the program's, half again).
  */
-export function behindMuscles(entries: SetEntry[], profile: Profile, today: string, max = 4): Behind[] {
-  const { sets } = weeklyMuscleSets(entries, weekStart(today));
+export function weekPace(entries: SetEntry[], profile: Profile, today: string, program?: PlanDays): { left: number; reach: Record<Muscle, number> } {
   const left = sessionsLeft(today, profile.weeklyGoal, goalWeek(entries, today, profile.weeklyGoal).sessions, entries.some((e) => e.date === today && isWorking(e)));
+  return { left, reach: sessionReach(usualPerSession(entries, today), program ? planPerSession(program.days) : undefined) };
+}
+
+/**
+ * Muscles behind what the rest of the week can still make up (analytics weekStatus, at weekPace), the furthest behind first,
+ * `max` of them.
+ */
+export function behindMuscles(entries: SetEntry[], profile: Profile, today: string, max = 4, program?: PlanDays): Behind[] {
+  const { sets } = weeklyMuscleSets(entries, weekStart(today));
+  const { left, reach } = weekPace(entries, profile, today, program);
   return MUSCLES.map((m) => ({ muscle: m, sets: sets[m], range: targetFor(profile, m) }))
-    .filter((b) => b.range[0] > 0 && weekStatus(b.sets, b.range, left) === 'under')
+    .filter((b) => b.range[0] > 0 && weekStatus(b.sets, b.range, left, reach[b.muscle]) === 'under')
     .sort((a, b) => a.sets / a.range[0] - b.sets / b.range[0] || MUSCLES.indexOf(a.muscle) - MUSCLES.indexOf(b.muscle))
     .slice(0, max)
     .map((b) => ({ ...b, fix: quickFix(entries, b.muscle, today) }));

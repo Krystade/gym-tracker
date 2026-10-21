@@ -80,7 +80,16 @@ test('Friends: the feed, a friend’s page and its 8-week board, a thread', asyn
   const vs = fp.getByRole('region', { name: `You and @${medal.name}` });
   await expect(vs.locator('.fp-vs').last()).toContainText('Single Leg Seated Leg Curl Machine');
   await expect(vs.getByRole('img', { name: 'You no change yet' })).toBeVisible();
-  await check(page, info, found, 'friend-page');
+  // Their Stats tiles, built to the stat-tile contract, under the render check's stricter rules too (renderCheck over .fp-stats).
+  await check(page, info, found, 'friend-page', [], '.fp-stats');
+  // Their Stats tiles in view, and a tile's sheet over the page (the check then reads the sheet).
+  await fp.locator('.fp-stats').scrollIntoViewIfNeeded();
+  await check(page, info, found, 'friend-page-stats', [], '.fp-stats');
+  await fp.locator('.fp-stats [data-tile="prs"]').click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await check(page, info, found, 'friend-page-stats-sheet', [], '.fp-stats');
+  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   // The owner's screenshot, put back: the board's old rings and medal outside the tile. The audit has to see both.
   const old = await page.addStyleTag({ content: `.fp .fp-tile.today { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text-2) }
     .fp .fp-star { top: -4px; right: -4px; width: 16px; height: 16px; box-shadow: 0 0 0 2px var(--surface) }` });

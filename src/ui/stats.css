@@ -35,7 +35,10 @@
 
 /* Sections and rows. */
 .st-sec { margin: 0 0 18px; }
-.st-sec > h2 { margin: 0 0 8px; font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-2); }
+.st-sec > h2, .st-sec > h3 { margin: 0 0 8px; font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-2); }
+/* A friend's Stats on their page (FriendStats): its head as the page's cards have theirs, its sections under it. */
+.fp-stats { margin: 4px 0 6px; }
+.fp-stats > h2 { margin: 0 0 14px; }
 .st-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
 .st-row > .wide { grid-column: 1 / -1; }
 

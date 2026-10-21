@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { arrange, dayOrder, layoutOf, NO_LAYOUT, rangeDays, rangeFrom, rows, toggleHide, togglePin, type Placed } from './statsLayout';
+import { arrange, dayOrder, forViewer, isRange, layoutOf, NO_LAYOUT, OWNER_ONLY, rangeDays, rangeFrom, rangeLabel, RANGES, rangeWeeks, rows, toggleHide, togglePin, WINDOW_RANGE, type Placed } from './statsLayout';
 
 const t = (id: string, wide = false): Placed => ({ id, ...(wide && { wide }) });
 const ids = (xs: Placed[]) => xs.map((x) => x.id);
@@ -100,5 +100,29 @@ describe('dayOrder: the news order, at most once a day', () => {
   it('works it out again on the next day’s first open', () => {
     expect(dayOrder({ day: '2026-10-20', front: ['prs'] }, '2026-10-21', () => ['muscles'])).toEqual({ day: '2026-10-21', front: ['muscles'] });
     expect(dayOrder({ day: '2026-10-21' }, '2026-10-21', () => ['muscles']).front).toEqual(['muscles']);
+  });
+});
+
+describe('a friend’s page: their 8 weeks, and only the tiles a friend may see and their line can fill', () => {
+  // Every tile Stats v2 S1 and S2 can show (StatsTiles useTiles), and whether a friend gets it on their page, from what Friends
+  // keeps of them (8 weeks of sets, their goal, their PR ids) or from their whole log (their Stats link).
+  const ALL = ['lift:bench press', 'rate', 'prs', 'plateaus', 'milestones', 'hitrate', 'muscles', 'effort', 'rest', 'pullpush', 'tonnage', 'lifts',
+    'calendar', 'sessions', 'days', 'start', 'pain', 'energy'];
+  const tiles = ALL.map((id) => t(id));
+  it('the owner sees every tile', () => expect(ids(forViewer(tiles, { owner: true }))).toEqual(ALL));
+  it('a friend never sees energy: it comes from the owner’s own body log', () => {
+    expect(OWNER_ONLY).toEqual(['energy']);
+    expect(ids(forViewer(tiles, { owner: false }))).toEqual(ALL.filter((id) => id !== 'energy'));
+  });
+  it('their page leaves out what 8 weeks of sets can’t say: muscles (priorities), rest (timers), lifts in rotation (new, dropped)', () => {
+    expect(ids(forViewer(tiles, { owner: false, window: true }))).toEqual(
+      ['lift:bench press', 'rate', 'prs', 'plateaus', 'milestones', 'hitrate', 'effort', 'pullpush', 'tonnage', 'calendar', 'sessions', 'days', 'start', 'pain']);
+  });
+  it('its one range is the 8 weeks Friends keeps, never one your own Stats offers or keeps', () => {
+    expect(rangeWeeks(WINDOW_RANGE)).toBe(8);
+    expect(rangeLabel(WINDOW_RANGE)).toBe('8 wk');
+    expect(rangeFrom(WINDOW_RANGE, '2026-10-21')).toBe('2026-08-27'); // state/friendCache crewRange: 56 days, today included
+    expect(RANGES.map((r) => r.id)).not.toContain(WINDOW_RANGE);
+    expect(isRange(WINDOW_RANGE)).toBe(false);
   });
 });

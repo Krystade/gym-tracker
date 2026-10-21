@@ -34,31 +34,76 @@ export function sessionsLeft(today: string, goal: number, done: number, trainedT
 
 /**
  * A muscle's sets this week against its target range: under, on, over; and short of it but still within reach ('pace') while
- * the sessions left (`left`, sessionsLeft) can make up the rest, a session adding at most SESSION_CAP sets to a muscle (a split
- * gives a muscle its whole week in one). 'under' means behind what the rest of the week can still do, never just that the
- * week has days to go: Monday's and Tuesday's muscles are on pace. Without `left` (a program, which has no "so far"), the plain
- * status.
+ * the sessions left (`left`, sessionsLeft) can make up the rest, each adding `reach` sets to the muscle (sessionReach: what a
+ * session of his realistically gives it; SESSION_CAP when not given). 'under' means behind what the rest of the week can still
+ * do, never just that the week has days to go: Monday's muscles are on pace. Without `left` (a program, which has no "so far"),
+ * the plain status.
  */
-export function weekStatus(value: number, [lo, hi]: [number, number], left?: number): 'under' | 'pace' | 'on' | 'over' {
+export function weekStatus(value: number, [lo, hi]: [number, number], left?: number, reach: number = SESSION_CAP): 'under' | 'pace' | 'on' | 'over' {
   if (value > hi) return 'over';
   if (value >= lo) return 'on';
-  return left != null && lo - value <= left * SESSION_CAP + 1e-9 ? 'pace' : 'under';
+  return left != null && lo - value <= left * reach + 1e-9 ? 'pace' : 'under';
 }
 
-export function weeklyMuscleSets(entries: SetEntry[], week: string): { sets: Record<Muscle, number>; unmapped: string[] } {
-  const end = addDays(week, 7);
-  const sets = zero();
-  const unmapped = new Set<string>();
+/** Whole weeks before this one that a muscle's usual sets per session are read over. */
+export const REACH_WEEKS = 6;
+/** A session left this week is counted at his usual dose for a muscle and half again, at least `floor`, at most SESSION_CAP. */
+export const REACH = { factor: 1.5, floor: 3 } as const;
+
+/** Fractional sets per muscle on each day from `from` up to (not including) `to`, as weeklyMuscleSets counts them, each day capped. */
+function muscleDays(entries: readonly SetEntry[], from: string, to: string, unmapped?: Set<string>): Map<string, Record<Muscle, number>> {
   const byDay = new Map<string, Record<Muscle, number>>();
   for (const e of entries) {
     // Cardio counts as minutes (domain/cardio), not muscle sets, and isn't unknown either.
-    if (e.date < week || e.date >= end || e.flags.includes('warmup') || e.cardio) continue;
+    if (e.date < from || e.date >= to || e.flags.includes('warmup') || e.cardio) continue;
     const v = muscleVector(e.exercise);
-    if (!v) { unmapped.add(e.exercise); continue; }
+    if (!v) { unmapped?.add(e.exercise); continue; }
     const day = byDay.get(e.date) ?? byDay.set(e.date, zero()).get(e.date)!;
     for (const [m, f] of Object.entries(v) as [Muscle, number][]) day[m] += f;
   }
-  for (const day of byDay.values()) for (const m of MUSCLES) sets[m] += Math.min(day[m], SESSION_CAP);
+  for (const day of byDay.values()) for (const m of MUSCLES) day[m] = Math.min(day[m], SESSION_CAP);
+  return byDay;
+}
+
+const median = (xs: number[]): number => {
+  if (!xs.length) return 0;
+  const s = [...xs].sort((a, b) => a - b), h = s.length >> 1;
+  return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2;
+};
+
+/**
+ * Each muscle's usual sets in a session that trains it: the median over the days of the REACH_WEEKS whole weeks before `today`'s
+ * week that gave it any (0: none did). Whole weeks, so it holds still all week.
+ */
+export function usualPerSession(entries: readonly SetEntry[], today: string): Record<Muscle, number> {
+  const to = weekStart(today);
+  const days = [...muscleDays(entries, addDays(to, -7 * REACH_WEEKS), to).values()];
+  return Object.fromEntries(MUSCLES.map((m) => [m, median(days.flatMap((d) => (d[m] > 0 ? [d[m]] : [])))])) as Record<Muscle, number>;
+}
+
+/** The most sets any one day of a program gives each muscle: what a planned session left this week can bring it. */
+export function planPerSession(days: readonly { slots: readonly { exercise: string; sets: number }[] }[] | null | undefined): Record<Muscle, number> {
+  const out = zero();
+  for (const d of days ?? []) {
+    const day = zero();
+    for (const s of d.slots) for (const [m, f] of Object.entries(muscleVector(s.exercise) ?? {}) as [Muscle, number][]) day[m] += f * s.sets;
+    for (const m of MUSCLES) out[m] = Math.max(out[m], Math.min(day[m], SESSION_CAP));
+  }
+  return out;
+}
+
+/**
+ * What one session left this week can realistically add to each muscle (owner, 2026-10-21): the larger of his usual sets per
+ * session for it (usualPerSession) and the plan's (planPerSession), times REACH.factor, at least REACH.floor, at most SESSION_CAP.
+ */
+export function sessionReach(usual: Record<Muscle, number>, plan?: Record<Muscle, number>): Record<Muscle, number> {
+  return Object.fromEntries(MUSCLES.map((m) => [m, Math.min(SESSION_CAP, Math.max(REACH.floor, REACH.factor * Math.max(usual[m], plan?.[m] ?? 0)))])) as Record<Muscle, number>;
+}
+
+export function weeklyMuscleSets(entries: SetEntry[], week: string): { sets: Record<Muscle, number>; unmapped: string[] } {
+  const sets = zero();
+  const unmapped = new Set<string>();
+  for (const day of muscleDays(entries, week, addDays(week, 7), unmapped).values()) for (const m of MUSCLES) sets[m] += day[m];
   return { sets, unmapped: [...unmapped].sort() };
 }
 

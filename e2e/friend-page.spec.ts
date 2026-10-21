@@ -44,7 +44,8 @@ async function pair(request: APIRequestContext) {
   const month = iso(T).slice(0, 7);
   await Promise.all([
     log(request, me, mine),
-    log(request, fr, theirs, { goal: 2, status: 'Deload week', prs: { [month]: [`app|${iso(T)}|bench press|2`] } }),
+    // Each month written by a current app, carrying its PR ids (none before this month): their phone's word, not 8 weeks' guess.
+    log(request, fr, theirs, { goal: 2, status: 'Deload week', prs: Object.fromEntries([...new Set(theirs.map((x) => x.date.slice(0, 7)))].map((m) => [m, m === month ? [`app|${iso(T)}|bench press|2`] : []])) }),
   ]);
   await befriend(request, me, fr);
   return { me, fr };
@@ -90,6 +91,43 @@ test('a friend’s page opens inside Friends from what the phone keeps, compares
   await expect(shared.getByRole('img', { name: 'You +11%' })).toBeVisible();
   await expect(shared.getByRole('img', { name: `@${fr.name} +21%` })).toBeVisible();
   await expect(shared).not.toContainText(/\b(95|115|185|205|lb)\b/);
+
+  // Their Stats, on the page without a tap (owner: "their whole stats page"): your Stats' tiles, from the same line, 8 weeks.
+  const st = fp.getByRole('region', { name: `@${fr.name}’s stats` });
+  await expect(st.getByRole('heading', { level: 2 })).toHaveText('Stats last 8 weeks');
+  for (const id of ['prs', 'calendar', 'sessions', 'tonnage', 'rate']) await expect(st.locator(`[data-tile="${id}"]`)).toBeVisible();
+  await expect(st.locator('[data-tile^="lift:"]')).not.toHaveCount(0);
+  // The comparison stays on top: their Stats come after it.
+  expect((await st.boundingBox())!.y).toBeGreaterThan((await shared.boundingBox())!.y);
+  // Left out: what only its owner sees (energy), what their line can't fill (muscles need their priorities, rest their timers,
+  // lifts in rotation the log before the 8 weeks); no week tile (the page's head is their week), no range to pick.
+  for (const id of ['energy', 'muscles', 'rest', 'lifts']) await expect(st.locator(`[data-tile="${id}"]`)).toHaveCount(0);
+  await expect(st.locator('.st-week')).toHaveCount(0);
+  await expect(st.getByRole('group', { name: 'Range' })).toHaveCount(0);
+  await expect(st.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+  // PRs are the one their phone wrote (bench 80 × 6 today), not every first set that 8 weeks of sets would call a PR.
+  await expect(st.locator('[data-tile="prs"] .st-t-val')).toHaveText(/^1\s*in 8 wk$/);
+  await expect(st.locator('[data-tile="calendar"] .st-t-val')).toHaveText(/^5\s*days trained$/);
+  await expect(st.locator('[data-tile="sessions"]')).toContainText('goal 2');
+  await expect(st).not.toContainText(/\byours?\b/i);
+  await page.waitForTimeout(800);
+  await st.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${SHOTS}/friend-stats-inline-375.png` });
+  let d = await statsSheet(page, 'prs');
+  await expect(d.getByRole('list', { name: 'PRs' }).getByRole('listitem')).toHaveCount(1);
+  await expect(d.getByRole('list', { name: 'PRs' })).toContainText('Bench Press 80 × 6');
+  // Which record it broke isn't in their line: no kinds, and no newest-PR card worked out from 8 weeks.
+  await expect(d.getByRole('region', { name: 'PRs by kind' })).toHaveCount(0);
+  await expect(d.getByRole('region', { name: 'New PR' })).toHaveCount(0);
+  await expect(d).not.toContainText(/\byours?\b/i);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${SHOTS}/friend-stats-sheet-375.png` });
+  // A lift's sheet: no rep maxes (records are all-time; 8 weeks would pass a best-in-8-weeks off as one).
+  d = await statsSheet(page, (await st.locator('[data-tile^="lift:"]').first().getAttribute('data-tile'))!);
+  await expect(d.locator('.st-cells3')).toContainText('Best set');
+  await expect(d).not.toContainText('Rep maxes');
+  await d.getByRole('button', { name: 'Done' }).click();
+  await expect(d).toHaveCount(0);
 
   // The board: 8 weeks, today's tile with its count and its PR; a tap opens that day's session.
   const boardCard = fp.getByRole('region', { name: 'Last 8 weeks' });
@@ -137,6 +175,28 @@ test('a friend’s page opens inside Friends from what the phone keeps, compares
   await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Today' }).click();
   await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Friends' }).click();
   await expect(crew(page)).toBeVisible();
+});
+
+test('a friend with one session: their Stats show what one session can say, and nothing else', async ({ browser, request }) => {
+  const [me, fr] = await Promise.all([account(request, `me${Math.random().toString(36).slice(2, 8)}`), account(request, `fr${Math.random().toString(36).slice(2, 8)}`)]);
+  await Promise.all([
+    log(request, me, session(at(3, 17), [['Barbell Squat', [[185, 5]]]])),
+    log(request, fr, session(at(2, 9), [['Goblet Squat', [[40, 10], [40, 10]]]]), { goal: 3 }),
+  ]);
+  await befriend(request, me, fr);
+  const page = await open(browser, me);
+  const card = crew(page).getByTestId(`crew-${fr.name}`);
+  await expect(card).toContainText('2 sets', { timeout: 15_000 });
+  await card.getByRole('button', { name: `@${fr.name}`, exact: true }).click();
+  const st = page.getByRole('region', { name: `@${fr.name}’s stats` });
+  await expect(st.locator('[data-tile="calendar"] .st-t-val')).toHaveText(/^1\s*day trained$/);
+  await expect(st.locator('[data-tile="sessions"]')).toContainText('goal 3');
+  // No PR, no trend, no rate from one session: those tiles aren't there rather than zeros.
+  for (const id of ['prs', 'rate', 'plateaus', 'energy', 'muscles']) await expect(st.locator(`[data-tile="${id}"]`)).toHaveCount(0);
+  expect(await noSideScroll(page)).toBe(true);
+  await page.waitForTimeout(800);
+  await st.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${SHOTS}/friend-sparse-375.png` });
 });
 
 test('a friend’s page at 320 wide: nothing spills sideways', async ({ browser, request }) => {
