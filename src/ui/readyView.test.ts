@@ -61,10 +61,13 @@ describe('the READY tile, the week strip and the Why sheet, rendered', () => {
   cases.push(['new user', input({ entries: [], plans: [] })]);
   cases.push(['new user, no program', input({ entries: [], plans: [], program: null, quick: [slot('Bench Press')] })]);
 
+  // Rendered once for the tests below (147 weeks planned: seconds on a slow CI runner).
+  let all: (ReturnType<typeof render> & { name: string })[] | null = null;
+  const rendered = () => (all ??= cases.map(([name, i]) => ({ name, ...render(i) })));
+
   it('no clock time in any string, and a number that is never 0', () => {
     const kinds = new Set<string>();
-    for (const [name, i] of cases) {
-      const { t, html, text: tx } = render(i);
+    for (const { name, t, html, text: tx } of rendered()) {
       kinds.add(t.kind + (t.verdict.startsWith('Goal met') ? ' goal-met' : ''));
       expect(tx.match(CLOCK), `${name}: ${tx}`).toBeNull();
       if (t.number != null) expect(t.number, name).toMatch(/^(<1|[1-9]\d*)$/);
@@ -72,7 +75,7 @@ describe('the READY tile, the week strip and the Why sheet, rendered', () => {
     }
     // The grid reaches every verdict, so the checks above read each one's strings.
     expect([...kinds].sort()).toEqual(['go', 'go goal-met', 'light', 'light goal-met', 'rest', 'tight']);
-  });
+  }, 60_000);
 
   it('a new user: the calm line, no number; with a log, a number and its sets (pair)', () => {
     for (const i of [input({ entries: [], plans: [] }), input({ entries: [], plans: [], program: null, quick: [slot('Bench Press')] })]) {
@@ -104,8 +107,8 @@ describe('the READY tile, the week strip and the Why sheet, rendered', () => {
   });
 
   it('the goal met: the strip marks today optional, never rest', () => {
-    const goalMet = cases.map(([, i]) => render(i)).filter((x) => x.t.verdict.startsWith('Goal met'));
+    const goalMet = rendered().filter((x) => x.t.verdict.startsWith('Goal met'));
     expect(goalMet.length).toBeGreaterThan(0);
     for (const x of goalMet) expect(x.s!.days[0].mark).toBe('optional');
-  });
+  }, 60_000);
 });
