@@ -32,14 +32,13 @@ test('the error banner text is readable (4.5:1)', async ({ page }) => {
 });
 
 test('the "under" status icon in Stats is readable (4.5:1) on its card', async ({ page }) => {
-  await page.clock.install({ time: new Date('2026-09-28T18:00:00') });
+  // Sunday, trained: no session left this week, so a muscle short of its target is behind ("under").
+  await page.clock.install({ time: new Date('2026-10-04T18:00:00') });
   await page.goto('/');
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
   await page.getByRole('button', { name: 'Bench Press', exact: true }).click();
   await logBench(page, '135', '10');
-  await page.clock.setFixedTime(new Date('2026-09-30T09:00:00'));
-  await page.reload();
   await goto(page, 'Stats');
   await statsSheet(page, 'muscles');
   const icon = page.locator('.mrow[aria-label^="Calves:"] .mstat.under b');
