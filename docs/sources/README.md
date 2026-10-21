@@ -248,12 +248,15 @@ Built 2026-10-20. Access status comes from OpenAlex, Europe PMC and Crossref as 
 
 ## Weekly volume per muscle
 
-- **Pelland 2026.** Pelland JC, Remmert JF, Robinson ZP, et al. (2026). The Resistance Training Dose Response: Meta-Regressions Exploring the Effects of Weekly Volume and Frequency on Muscle Hypertrophy and Strength Gains. *Sports Medicine* 56(2):481–505. doi:[10.1007/s40279-025-02344-w](https://doi.org/10.1007/s40279-025-02344-w). **Access:** paywalled; free preprint: [SportRxiv 460](https://sportrxiv.org/index.php/server/preprint/view/460). **Local PDF:** no.
+- **Pelland 2026.** Pelland JC, Remmert JF, Robinson ZP, et al. (2026). The Resistance Training Dose Response: Meta-Regressions Exploring the Effects of Weekly Volume and Frequency on Muscle Hypertrophy and Strength Gains. *Sports Medicine* 56(2):481–505. doi:[10.1007/s40279-025-02344-w](https://doi.org/10.1007/s40279-025-02344-w). **Access:** paywalled; free preprint: [SportRxiv 460](https://sportrxiv.org/index.php/server/preprint/view/460) (v2, 2024-10-04, the latest posted). **Local PDF:** yes: `pelland-2026-srxiv460-v2/` (the preprint).
   - *Finding:* Bayesian meta-regression of 67 studies: more weekly sets grow more with diminishing returns; fractional set counting fit best.
-  - *Used by:* `learn/volume.ts`, `analytics.ts`, `lifts.ts` (fractional sets, indirect ½); items 07, 13; ACSM 2026 ref 187
-- **Remmert 2025.** Remmert JF, Pelland JC, Robinson ZP, et al. (2025). Is There Too Much of a Good Thing?.. doi:[10.51224/srxiv.537](https://doi.org/10.51224/srxiv.537). **Access:** open access (OA journal) ([copy](https://sportrxiv.org/index.php/server/preprint/download/537/1148/1071)); preprint (SportRxiv 537). **Local PDF:** no.
+  - *Used by:* `learn/volume.ts`, `analytics.ts`, `lifts.ts` (fractional sets, indirect ½); items 07, 13; ACSM 2026 ref 187; readiness (planned): weekly planner √-volume objective
+- **Remmert 2025.** Remmert JF, Pelland JC, Robinson ZP, et al. (2025). Is There Too Much of a Good Thing?.. doi:[10.51224/srxiv.537](https://doi.org/10.51224/srxiv.537). **Access:** open access (OA journal) ([copy](https://sportrxiv.org/index.php/server/preprint/download/537/1148/1071)); preprint (SportRxiv 537). **Local PDF:** yes: `remmert-2025-srxiv537/`.
   - *Finding:* Preprint: past about 11 fractional sets for a muscle in one session, extra sets showed no detectable added growth.
-  - *Used by:* `analytics.ts` `SESSION_CAP = 11`; item 07
+  - *Used by:* `analytics.ts` `SESSION_CAP = 11`; item 07; readiness (planned): planner session cap
+- **Boutagy & McKean 2026.** Boutagy AG, McKean MR (2026). Weekly training volume, but not its division into sessions, is associated with resistance-training hypertrophy. Preprint. doi:[10.51224/sportrxiv.1100](https://doi.org/10.51224/sportrxiv.1100). **Access:** open access (preprint, SportRxiv 1100; not peer reviewed; abstract read). **Local PDF:** no.
+  - *Finding:* Re-analysis of the Pelland 2026 dataset: with weekly sets fixed, splitting them over more sessions made no detectable difference to growth, so a per-session curve adds nothing beyond weekly volume; for strength, more sessions may help (not confirmed by the randomised contrasts alone).
+  - *Used by:* readiness (planned): why the planner's session cap is a soft spreading rule, not a growth limit
 - **Scarpelli 2022.** Scarpelli MC, Nóbrega SR, Santanielo N, et al. (2022). Muscle Hypertrophy Response Is Affected by Previous Resistance Training Volume in Trained Individuals. *The Journal of Strength and Conditioning Research* 36(4):1153–1157. doi:[10.1519/jsc.0000000000003558](https://doi.org/10.1519/jsc.0000000000003558). **Access:** paywalled. **Local PDF:** no.
   - *Finding:* Within-person trial: a leg trained at 1.2× the lifter's own usual weekly sets grew more than one on a fixed standard volume.
   - *Used by:* `learn/volume.ts` `STEP = 0.2`
@@ -290,6 +293,30 @@ Built 2026-10-20. Access status comes from OpenAlex, Europe PMC and Crossref as 
 - **Schoenfeld & Contreras 2013.** Schoenfeld BJ, Contreras BM (2013). Is Postexercise Muscle Soreness a Valid Indicator of Muscular Adaptations? *Strength and conditioning journal* 35(5):16–21. doi:[10.1519/ssc.0b013e3182a61820](https://doi.org/10.1519/ssc.0b013e3182a61820). **Access:** paywalled. **Local PDF:** no.
   - *Finding:* Soreness is a poor guide to whether training is building muscle.
   - *Used by:* Item 07 (why the app ignores soreness)
+
+## Recovery between sessions
+
+- **Raastad & Hallén 2000.** Raastad T, Hallén J (2000). Recovery of skeletal muscle contractility after high- and moderate-intensity strength exercise. *European Journal of Applied Physiology* 82(3):206–214. doi:[10.1007/s004210050673](https://doi.org/10.1007/s004210050673). **Access:** paywalled (abstract read). **Local PDF:** no.
+  - *Finding:* Ten strength athletes: heavy 3–6RM leg work cut knee-extension strength about twice as much as the same session at 70% of the load; the light session was back to baseline within 3 h, the heavy one only by 33 h.
+  - *Used by:* readiness (planned): recovery time-constant prior
+- **Morán-Navarro 2017.** Morán-Navarro R, Pérez CE, Mora-Rodríguez R, et al. (2017). Time course of recovery following resistance training leading or not to failure. *European Journal of Applied Physiology* 117(12):2387–2399. doi:[10.1007/s00421-017-3725-7](https://doi.org/10.1007/s00421-017-3725-7). **Access:** free copy in a repository ([copy](https://academica-e.unavarra.es/bitstreams/ed5c13b9-6af5-410c-bb6b-7318935de039/download); accepted manuscript, figures not included). **Local PDF:** yes: `moran-navarro-2017/`.
+  - *Finding:* Same reps at 75% 1RM in bench press and squat: sets to failure kept jump height and bar speed down for 48 h or more, while the volume-matched non-failure sessions were back within 6 h.
+  - *Used by:* readiness (planned): recovery time-constant prior and the failure multiplier
+- **Bartolomei 2017.** Bartolomei S, Sadres E, Church DD, et al. (2017). Comparison of the recovery response from high-intensity and high-volume resistance exercise in trained men. *European Journal of Applied Physiology* 117(7):1287–1298. doi:[10.1007/s00421-017-3598-9](https://doi.org/10.1007/s00421-017-3598-9). **Access:** paywalled (repository records at UCF and Bologna hold no file; abstract read). **Local PDF:** no.
+  - *Finding:* Twelve trained men: after 8×10 isometric leg strength was still down at 72 h; after heavy 8×3 it was not.
+  - *Used by:* readiness (planned): recovery time-constant prior
+- **Vieira 2022.** Vieira JG, Sardeli AV, Dias MR, et al. (2022). Effects of Resistance Training to Muscle Failure on Acute Fatigue: A Systematic Review and Meta-Analysis. *Sports Medicine* 52(5):1103–1125. doi:[10.1007/s40279-021-01602-x](https://doi.org/10.1007/s40279-021-01602-x). **Access:** free copy in a repository ([record](https://research.birmingham.ac.uk/en/publications/e4ef6f78-1b3a-4467-a056-acb27d23f355); behind a bot check, not read; abstract read). **Local PDF:** no.
+  - *Finding:* Meta-analysis of 12 crossover studies: sets to failure cost more acute performance and more muscle damage at 48 h than non-failure sets.
+  - *Used by:* readiness (planned): direction of the failure multiplier
+- **MacDougall 1995.** MacDougall JD, Gibala MJ, Tarnopolsky MA, et al. (1995). The time course for elevated muscle protein synthesis following heavy resistance exercise. *Canadian Journal of Applied Physiology* 20(4):480–486. doi:[10.1139/h95-038](https://doi.org/10.1139/h95-038). **Access:** paywalled (abstract read). **Local PDF:** no.
+  - *Finding:* Six young men: muscle protein synthesis was about double at 24 h after heavy arm training and nearly back to baseline by about 36 h.
+  - *Used by:* readiness (planned): background only, not a model input
+- **Nosaka 2002.** Nosaka K, Newton MJ, Sacco P (2002). Delayed-onset muscle soreness does not reflect the magnitude of eccentric exercise-induced muscle damage. *Scandinavian Journal of Medicine & Science in Sports* 12(6):337–346. doi:[10.1034/j.1600-0838.2002.10178.x](https://doi.org/10.1034/j.1600-0838.2002.10178.x). **Access:** paywalled (the Edith Cowan repository record holds no file; abstract read). **Local PDF:** no.
+  - *Finding:* 110 people doing three doses of eccentric elbow work: how sore they got was barely related to strength loss or other damage markers.
+  - *Used by:* readiness (planned): why soreness is not an input
+- **Cheung 2003.** Cheung K, Hume P, Maxwell L (2003). Delayed onset muscle soreness: treatment strategies and performance factors. *Sports Medicine* 33(2):145–164. doi:[10.2165/00007256-200333020-00005](https://doi.org/10.2165/00007256-200333020-00005). **Access:** paywalled (abstract read). **Local PDF:** no.
+  - *Finding:* Review of soreness: its causes are unsettled, most treatments do little, and it advises easing off the sorest muscles for a day or two.
+  - *Used by:* readiness (planned): background only
 
 ## Deloads, overreaching and fatigue
 
