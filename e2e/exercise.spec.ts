@@ -93,7 +93,7 @@ test('the tiles say lb, and the best set is dated like the rest of the app', asy
   const tiles = page.locator('.screen'); // the tiles come in two rows: the estimates, then best set and sessions
   await expect(tiles.locator('.tile', { hasText: /\d{4}-\d{2}-\d{2}/ })).toHaveCount(0);
   await expect(tiles.locator('.tile', { hasText: 'Best set' })).toContainText(/Best set · .*Sep 30/);
-  await expect(tiles.locator('.tile', { hasText: 'Est. 1RM' })).toHaveText(/Est\. 1RM\s*\d+ lb$/);
+  await expect(tiles.locator('.tile', { hasText: 'Est. 1RM' })).toHaveText(/Est\. 1RM\s*\d+ lb\s*Now, fatigue-adjusted$/);
   await expect(tiles.locator('.tile', { hasText: 'Est. 6RM' })).toHaveText(/Est\. 6RM\s*\d+ lb$/);
   await expect(tiles.locator('.tile', { hasText: 'Sessions' })).toHaveText(/Sessions\s*15$/);
 });
@@ -115,4 +115,26 @@ test('"Not now" quiets the test banner for this lift, and it stays quiet after a
   await page.reload();
   await openLift(page, 'Bench Press');
   await expect(banner).toBeVisible();
+});
+
+// IA A8 (owner, 2026-10-21): setup is one fold at the foot, closed until asked for; the two e1RMs say which is which.
+test('a lift’s settings are folded into Lift settings at the foot, and its two e1RMs say which is which', async ({ page }) => {
+  await open(page);
+  await seed(page, 'Bench Press', 15);
+  await openLift(page, 'Bench Press');
+  const fold = page.locator('details.lift-settings');
+  await expect(fold).toHaveCount(1);
+  await expect(fold).not.toHaveAttribute('open');
+  await expect(page.getByRole('group', { name: 'Progression settings' })).toBeHidden();
+  await expect(page.getByRole('group', { name: 'Rename or merge' })).toBeHidden();
+  // Last on the page: nothing below the fold but the page's end.
+  expect(await fold.evaluate((el) => el.nextElementSibling)).toBeNull();
+  await expect(page.locator('.tile', { hasText: 'Est. 1RM' }).locator('.tile-sub')).toHaveText('Now, fatigue-adjusted');
+  await expect(page.getByRole('button', { name: /^Best set e1RM/ })).toBeVisible();
+  await expect(page.getByText(/^Best e1RM$/)).toHaveCount(0);
+  await fold.locator('summary').click();
+  await expect(fold).toHaveAttribute('open', '');
+  await expect(fold.getByRole('group', { name: 'Progression settings' })).toBeVisible();
+  await expect(fold.getByRole('group', { name: 'Rename or merge' })).toBeVisible();
+  await expect(fold.getByRole('heading', { level: 3 })).toHaveText(['Progression', 'Rename or merge']);
 });

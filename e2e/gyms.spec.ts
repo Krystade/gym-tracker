@@ -107,3 +107,42 @@ test('a gym copied as text is added back from text with the same gear', async ({
   await expect(page.getByRole('checkbox', { name: 'leg press', exact: true })).toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'dumbbells', exact: true })).not.toBeChecked();
 });
+
+// "Add from text" closes as the gym it added appears (owner's bug, 2026-10-21: it left an empty paste form open). The gym shows at
+// once and its save to the phone lands a moment later; the form waited for the save, so it stayed open over the new gym in the
+// meantime, and with no gym before it came back empty (a new form where the gym's page puts it). A watcher on the page records
+// any moment the new gym and the form are on screen together, so the check can't miss a form that's gone again a frame later.
+for (const first of [false, true]) {
+  test(`Add from text closes as it adds a gym${first ? ', beside one already there' : ', the first gym'}`, async ({ page }) => {
+    await page.goto('/');
+    await goto(page, 'Gym');
+    if (first) {
+      await page.getByRole('button', { name: 'Add gym', exact: true }).click();
+      await page.getByLabel('Gym name').fill('Home');
+      await expect(page.getByRole('group', { name: 'Active gym' }).getByRole('button', { name: 'Home' })).toBeVisible();
+      await page.getByRole('button', { name: '+ From text' }).click();
+    } else {
+      await page.getByRole('button', { name: 'Add from text' }).click();
+    }
+    const add = page.getByRole('region', { name: 'Add from text' });
+    await add.getByLabel('Paste a copied gym').fill('Gym Tracker gym: Garage\nEquipment: dumbbells, barbell, flat bench');
+    await expect(add.getByRole('status')).toHaveText('Garage · 3 pieces of gear');
+    await page.evaluate(() => {
+      const w = window as unknown as { seen: string[] };
+      w.seen = [];
+      const look = () => {
+        const name = [...document.querySelectorAll('label')].find((l) => l.textContent?.startsWith('Gym name'))?.querySelector('input')?.value;
+        const form = document.querySelector('section[aria-label="Add from text"] textarea') as HTMLTextAreaElement | null;
+        if (name === 'Garage' && form) w.seen.push(form.value === '' ? 'empty form' : 'form');
+      };
+      new MutationObserver(look).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+    });
+    await add.getByRole('button', { name: 'Add gym' }).click();
+    await expect(page.getByLabel('Gym name')).toHaveValue('Garage');
+    await expect(page.getByRole('group', { name: 'Active gym' }).getByRole('button', { name: 'Garage' })).toHaveAttribute('aria-pressed', 'true');
+    // Held past the save: nothing comes back either.
+    await page.waitForTimeout(1000);
+    await expect(page.getByRole('region', { name: 'Add from text' })).toHaveCount(0);
+    expect(await page.evaluate(() => (window as unknown as { seen: string[] }).seen)).toEqual([]);
+  });
+}

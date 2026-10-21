@@ -74,10 +74,10 @@ test('Friends: the feed, a friend’s page and its 8-week board, a thread', asyn
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--sat').trim())).toBe(`${TOP}px`);
   await check(page, info, found, 'friends-feed');
 
-  // Medal's page: yesterday's PR tile next to today's ringed tile.
+  // Medal's page (no board since IA A7, owner 2026-10-21; the whole log is three buttons).
   await crew(page).getByTestId(`crew-${medal.name}`).getByRole('button', { name: `@${medal.name}`, exact: true }).click();
   const fp = page.getByRole('region', { name: `@${medal.name}`, exact: true });
-  await expect(fp.getByRole('region', { name: 'Last 8 weeks' })).toBeVisible();
+  await expect(fp.getByRole('group', { name: 'Whole log' })).toBeVisible();
   // The comparison is there without a tap: the lifts both do, then Medal's own with a dash for you.
   const vs = fp.getByRole('region', { name: `You and @${medal.name}` });
   await expect(vs.locator('.fp-vs').last()).toContainText('Single Leg Seated Leg Curl Machine');
@@ -92,15 +92,9 @@ test('Friends: the feed, a friend’s page and its 8-week board, a thread', asyn
   await check(page, info, found, 'friend-page-stats-sheet', [], '.fp-stats');
   await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  // The owner's screenshot, put back: the board's old rings and medal outside the tile. The audit has to see both.
-  const old = await page.addStyleTag({ content: `.fp .fp-tile.today { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text-2) }
-    .fp .fp-star { top: -4px; right: -4px; width: 16px; height: 16px; box-shadow: 0 0 0 2px var(--surface) }` });
-  const was = (await audit(page)).filter((f) => f.kind === 'overlap').map((f) => `${f.a} ⨯ ${f.b}`).join('\n');
-  expect(was).toMatch(/fp-tile\.empty\.today/);
-  expect(was).toMatch(/fp-star/);
-  await old.evaluate((el) => (el as Element).remove());
-  await fp.getByRole('region', { name: 'Last 8 weeks' }).getByRole('button', { name: /PR$/ }).first().click();
-  await check(page, info, found, 'friend-page-picked');
+  // The page's foot: Whole log and its three buttons, under the render check's rules.
+  await fp.getByRole('group', { name: 'Whole log' }).scrollIntoViewIfNeeded();
+  await check(page, info, found, 'friend-page-foot', [], '.fp-links');
 
   // The thread over it.
   await fp.getByRole('button', { name: /^Message @/ }).click();
@@ -754,7 +748,7 @@ test('Stats v2: the tiles, the lift, calendar, muscles and week sheets, every ra
   await sheet('[data-tile="pain"]', 'stats-v2-pain');
   await sheet('.st-week', 'stats-v2-week');
   // S2: every new tile there, and its sheet.
-  for (const t of ['rate', 'plateaus', 'milestones', 'hitrate', 'effort', 'rest', 'pullpush', 'lifts', 'days', 'start', 'energy']) {
+  for (const t of ['rate', 'plateaus', 'milestones', 'hitrate', 'effort', 'rest', 'pullpush', 'lifts', 'days', 'start', 'energy', 'weight']) {
     await expect(page.locator(`[data-tile="${t}"]`)).toBeVisible();
     await page.locator(`[data-tile="${t}"]`).scrollIntoViewIfNeeded();
     await png(`tile-${t}`);
@@ -775,6 +769,79 @@ test('Stats v2: the tiles, the lift, calendar, muscles and week sheets, every ra
   await expect(page.getByRole('region', { name: 'Pinned' }).locator('[data-tile="tonnage"]')).toBeVisible();
   await check(page, info, found, 'stats-v2-pinned', [], 'main');
   await png('pinned');
+  clean(found);
+});
+
+// ---- IA A5 and A8 (owner, 2026-10-21): Stats › Body and its Weight sheet; a lift's Lift settings fold. ----
+
+test('Stats › Body: weigh-ins only, sets without weigh-ins, both and the Weight sheet; a lift’s Lift settings folded and open', async ({ page }, info) => {
+  test.setTimeout(180_000);
+  await phone(page);
+  const found: string[] = [];
+  // PNGs to look at, when asked for (IA_PNG=<dir>): the screen as the phone shows it.
+  const png = async (name: string) => { if (process.env.IA_PNG) await page.screenshot({ path: `${process.env.IA_PNG}/${info.project.name}-${name}.png` }); };
+  // Weigh-ins and no sets yet: Stats is the Body section alone.
+  await goto(page, 'Backup');
+  await page.getByLabel('Import CSV').setInputFiles({ name: 'body.csv', mimeType: 'text/csv', buffer: Buffer.from(BODY) });
+  await expect(page.locator('.import-result .ok').first()).toBeVisible();
+  await goto(page, 'Stats');
+  await expect(page.getByRole('region', { name: 'Body' }).locator('[data-tile="weight"]')).toBeVisible();
+  await check(page, info, found, 'stats-body-only', [], 'main');
+  await png('stats-body-only');
+  // The log too: Body is the last section, its one tile and its sheet.
+  await importLog(page, history(), null);
+  await goto(page, 'Stats');
+  const body = page.getByRole('region', { name: 'Body' });
+  await expect(body.locator('[data-tile="weight"]')).toBeVisible();
+  expect(await page.locator('.st-sec').last().getAttribute('aria-label')).toBe('Body');
+  await body.scrollIntoViewIfNeeded();
+  await check(page, info, found, 'stats-body', [], 'main');
+  await page.evaluate(() => scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
+  await png('stats-body');
+  await body.locator('[data-tile="weight"]').click();
+  const d = page.getByRole('dialog', { name: 'Body weight' });
+  await expect(d.getByRole('img', { name: /^Body weight, last/ })).toBeVisible();
+  await check(page, info, found, 'stats-weight-sheet', [], 'main');
+  await png('stats-weight-sheet');
+  if (await d.locator('.st-sh-body').evaluate((b) => { const more = b.scrollHeight > b.clientHeight + 1; b.scrollTop = b.scrollHeight; return more; })) {
+    await check(page, info, found, 'stats-weight-sheet-end', [], 'main');
+    await png('stats-weight-sheet-end');
+  }
+  await d.getByRole('button', { name: 'Done' }).click();
+  await expect(d).toHaveCount(0);
+  // A lift's page: Lift settings folded at its foot, then open.
+  await goto(page, 'Lifts');
+  await page.getByRole('button', { name: /^Bench Press/ }).first().click();
+  const fold = page.locator('details.lift-settings');
+  await fold.scrollIntoViewIfNeeded();
+  await check(page, info, found, 'lift-settings-folded');
+  await page.evaluate(() => scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
+  await png('lift-settings-folded');
+  await fold.locator('summary').click();
+  await expect(fold.getByRole('group', { name: 'Rename or merge' })).toBeVisible();
+  await fold.scrollIntoViewIfNeeded();
+  await check(page, info, found, 'lift-settings-open');
+  await page.evaluate(() => scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
+  await png('lift-settings-open');
+  await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));
+  await png('lift-top');
+  clean(found);
+});
+
+test('Stats with sets and no weigh-ins: no Body section, nothing about photos or priorities', async ({ page }, info) => {
+  await phone(page);
+  const found: string[] = [];
+  await importLog(page, history(), null);
+  await goto(page, 'Stats');
+  await expect(page.locator('[data-tile^="lift:"]').first()).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Body' })).toHaveCount(0);
+  await expect(page.locator('main')).not.toContainText(/Progress photos|Priorities and goal/);
+  await check(page, info, found, 'stats-no-weigh-ins', [], 'main');
+  if (process.env.IA_PNG) {
+    await page.screenshot({ path: `${process.env.IA_PNG}/${info.project.name}-stats-no-weigh-ins.png` });
+    await page.evaluate(() => scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
+    await page.screenshot({ path: `${process.env.IA_PNG}/${info.project.name}-stats-no-weigh-ins-end.png` });
+  }
   clean(found);
 });
 

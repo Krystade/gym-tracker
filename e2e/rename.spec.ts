@@ -15,6 +15,7 @@ const rows = (page: Page) => page.locator('.row-button b');
 test('renaming a lift moves its whole history to the new name', async ({ page }) => {
   await seed(page);
   await page.getByRole('button', { name: /^Cable Curl/ }).click();
+  await page.locator('summary', { hasText: 'Lift settings' }).click(); // folded at the page's foot (IA A8)
   const box = page.getByRole('group', { name: 'Rename or merge' });
   await box.getByRole('combobox', { name: 'New name' }).fill('Cable Biceps Curl');
   await box.getByRole('button', { name: 'Rename' }).click();
@@ -29,6 +30,7 @@ test('renaming a lift moves its whole history to the new name', async ({ page })
 test('merging a lift into another keeps every set, numbered after the ones already there', async ({ page }) => {
   await seed(page);
   await page.getByRole('button', { name: /^Pull-up/ }).click();
+  await page.locator('summary', { hasText: 'Lift settings' }).click(); // folded at the page's foot (IA A8)
   const box = page.getByRole('group', { name: 'Rename or merge' });
   await box.getByRole('combobox', { name: 'New name' }).fill('cable curl');
   await box.getByRole('button', { name: 'Merge into Cable Curl' }).click();

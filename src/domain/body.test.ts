@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { detectCsv, diffBody, mergeBody, parseBodyFile, proteinCheck, rate, rateBand, stampDay, toBodyCsv, trend, type BodyDay } from './body';
+import { detectCsv, diffBody, mergeBody, parseBodyFile, proteinCheck, rate, rateBand, stampDay, toBodyCsv, trend, weightSummary, type BodyDay } from './body';
 import { CSV_HEADER } from './csv';
 
 const fx = (n: string) => readFileSync(path.join(import.meta.dirname, '..', '..', 'e2e', 'fixtures', n), 'utf8');
@@ -83,6 +83,30 @@ describe('trend and rate', () => {
     expect(rateBand(0.8)).toEqual({ label: 'Fast gain', tone: 'warn' });
     expect(rateBand(-0.7)).toEqual({ label: 'Cutting', tone: 'ok' });
     expect(rateBand(-1.4)).toEqual({ label: 'Fast cut', tone: 'warn' });
+  });
+});
+
+describe('weightSummary: Stats › Body’s weight tile', () => {
+  it('is null with no weigh-in up to today, so the Body section stays away', () => {
+    expect(weightSummary([], '2026-07-30', '2026-10-21')).toBeNull();
+    expect(weightSummary([{ date: '2026-10-21', energy: 3 }], '2026-07-30', '2026-10-21')).toBeNull();
+    expect(weightSummary([{ date: '2026-10-22', weight: 180 }], '2026-07-30', '2026-10-21')).toBeNull();
+  });
+  it('reads the trend, its 4-week rate and band, and the weigh-ins in range', () => {
+    const days = series('2026-07-01', 113, (i) => 190 - (0.7 * i) / 7);
+    const s = weightSummary(days, '2026-09-24', '2026-10-21')!;
+    expect(s.last.date).toBe('2026-10-21');
+    expect(s.count).toBe(113);
+    expect(s.points[0].date).toBe('2026-09-24');
+    expect(s.points).toHaveLength(28);
+    expect(s.rate!.lbPerWeek).toBeCloseTo(-0.7, 1);
+    expect(s.band).toEqual({ label: 'Cutting', tone: 'ok' });
+  });
+  it('has no rate or band under two weeks of weigh-ins', () => {
+    const s = weightSummary(series('2026-10-12', 10, () => 180), '2026-07-30', '2026-10-21')!;
+    expect(s.rate).toBeNull();
+    expect(s.band).toBeNull();
+    expect(s.last.trend).toBe(180);
   });
 });
 

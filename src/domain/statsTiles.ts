@@ -440,3 +440,18 @@ export function milestoneDate(points: readonly { date: string; v: number }[], ne
   if (late > MAX_DAYS) return null;
   return { date: addDays(today, d), early: addDays(today, early), late: addDays(today, late) };
 }
+
+// ---- Sessions a week (owner bug, 2026-10-21) ----
+
+/**
+ * Sessions a week over the range's weeks (oldest first, the last the week under way): averaged over the whole weeks from the week
+ * of the first logged set on, not the weeks of the range before he logged anything (6 weeks of a log in a 12-week range is 6
+ * weeks, not 12). The week under way counts only when it's the only one; `met` counts the same weeks against the goal.
+ */
+export function sessionsAWeek(weeks: readonly { week: string; sessions: number }[], first: string | null, goal: number): { avg: number; met: number; of: number; weeks: { week: string; sessions: number }[] } {
+  const since = first == null ? null : weekStart(first);
+  const live = since == null ? weeks.slice(-1) : weeks.filter((w) => w.week >= since);
+  const shown = live.length ? live : weeks.slice(-1);
+  const whole = shown.slice(0, -1), used = whole.length ? whole : shown;
+  return { avg: used.reduce((a, w) => a + w.sessions, 0) / Math.max(1, used.length), met: used.filter((w) => w.sessions >= goal).length, of: used.length, weeks: shown };
+}

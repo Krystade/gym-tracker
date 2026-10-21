@@ -366,7 +366,7 @@ test('Friends and a friend’s view fit each phone', async ({ browser }) => {
   await b.page.setViewportSize({ width: 375, height: 812 });
   await b.page.getByRole('region', { name: 'Crew' }).getByRole('button', { name: `@${a.name}`, exact: true }).click();
   const fp = b.page.getByRole('region', { name: `@${a.name}`, exact: true });
-  await expect(fp.getByRole('region', { name: 'Last 8 weeks' })).toBeVisible();
+  await expect(fp.getByRole('group', { name: 'Whole log' })).toBeVisible();
   await check(b.page, 'friend-page');
   await fp.getByRole('button', { name: 'Stats', exact: true }).click();
   await expect(b.page.getByRole('heading', { name: `@${a.name}’s stats`, level: 1 })).toBeVisible();

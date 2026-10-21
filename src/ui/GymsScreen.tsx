@@ -28,7 +28,10 @@ function AddFromText({ gyms, onDone }: { gyms: GymsStore; onDone: () => void }) 
         <button className="primary" disabled={!r || 'error' in r} onClick={() => {
           if (!r || 'error' in r) return;
           const n = copyGym(r.gym, gyms.gyms);
-          void gyms.save([...gyms.gyms, n], n.id).then(onDone);
+          // Closed with the same render that shows the gym (save shows it at once): waiting for the write left the form open over
+          // the new gym, and with no gym before it, a fresh empty form where the gym's page puts it.
+          onDone();
+          void gyms.save([...gyms.gyms, n], n.id);
         }}>Add gym</button>
       </div>
     </section>

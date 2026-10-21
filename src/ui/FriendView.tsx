@@ -31,7 +31,8 @@ export function Screens({ name, data, tab, exercise, today, gyms, onOpen, onExer
     const lifts = new Map(Object.entries(m).filter(([k]) => k.startsWith('settings:')).map(([, v]) => [(v as ExerciseSettings).key, v as ExerciseSettings]));
     return {
       store: { entries: data.sets, loading: false, error: null } as unknown as SetsStore,
-      body: { days: data.body, error: null } as unknown as BodyStore,
+      // Never their body log (owner, 2026-10-21: friends never see a friend's weight): readFriend doesn't bring it.
+      body: { days: [], error: null } as unknown as BodyStore,
       programs: { program: (m.program as Program | undefined) ?? null, plans, error: null, save: noop, savePlan: noop, reload: noop } as unknown as ProgramStore,
       settings: { get: (n: string, hold?: boolean) => lifts.get(settingsKey(n)) ?? defaultSettings(n, hold), save: noop, reload: noop, tags: (m.tags as TagPrefs | undefined) ?? defaultTags(), saveTags: noop } as unknown as SettingsStore,
       raw: { profile: { ...defaultProfile(), ...(m.profile as Profile | undefined) }, save: noop },

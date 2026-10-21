@@ -1,4 +1,3 @@
-import type { BodyDay } from '../domain/body';
 import type { Gym } from '../domain/equipment';
 import { monthOf, type CloudMonth, type MetaItems } from '../domain/cloud';
 import { itemShort, latestOf, messageOk, thread, toClear, unreadOf, type InboxDoc, type PresetKey, type ThreadItem } from '../domain/messages';
@@ -172,8 +171,12 @@ export async function removeFriend(c: Cloud, me: string, them: string): Promise<
   await clearInboxFrom(c, me, them).catch(() => {});
 }
 
-/** A friend's whole log and settings, read-only: every month in their index, and their settings document (day plans: the recent ones, cloud/sync PLAN_DAYS). */
-export interface FriendData { sets: SetEntry[]; body: BodyDay[]; meta: MetaItems }
+/**
+ * A friend's whole log and settings, read-only: every month in their index, and their settings document (day plans: the recent
+ * ones, cloud/sync PLAN_DAYS). Their sets only: the body days their months carry (weight, energy) are dropped as read, since
+ * friends never see a friend's body weight (owner, 2026-10-21).
+ */
+export interface FriendData { sets: SetEntry[]; meta: MetaItems }
 export async function readFriend({ F, db }: Cloud, uid: string): Promise<FriendData> {
   const index = ((await F.getDoc(F.doc(db, `users/${uid}/meta/index`))).data()?.months ?? {}) as Record<string, number>;
   const [months, metaDoc] = await Promise.all([
@@ -183,7 +186,6 @@ export async function readFriend({ F, db }: Cloud, uid: string): Promise<FriendD
   const items = (metaDoc.data()?.items ?? {}) as Record<string, string>;
   return {
     sets: months.flatMap((m) => m?.sets ?? []),
-    body: months.flatMap((m) => m?.body ?? []),
     meta: Object.fromEntries(Object.entries(items).map(([k, v]) => [k, JSON.parse(v) as unknown])),
   };
 }

@@ -15,13 +15,20 @@ test('stats: empty state, then charts after import, and priorities edit', async 
   await goto(page, 'Stats');
   await expect(page.getByRole('region', { name: 'This week', exact: true })).toBeVisible();
   for (const t of ['muscles', 'sessions', 'calendar']) await expect(page.locator(`[data-tile="${t}"]`)).toBeVisible();
-  // Priorities live in settings (owner, 2026-10-20): Stats links there.
+  // Priorities live in settings (owner, 2026-10-20); Stats has no row for them, nor for photos (IA A5, owner 2026-10-21): the
+  // Muscles sheet's "Priorities ›" is the way there from Stats.
   await expect(page.getByRole('heading', { name: 'Muscle priorities' })).toHaveCount(0);
-  await page.getByRole('button', { name: /^Priorities and goal/ }).click();
+  await expect(page.getByRole('button', { name: /^Priorities and goal/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Progress photos/ })).toHaveCount(0);
+  await expect(page.locator('main')).not.toContainText('Progress photos');
+  // No weigh-ins: no Body section.
+  await expect(page.getByRole('region', { name: 'Body' })).toHaveCount(0);
+  await page.locator('[data-tile="muscles"]').click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Priorities' }).click();
   await expect(page.getByRole('heading', { name: 'Priorities and goal', level: 1 })).toBeVisible();
   await page.getByRole('combobox', { name: 'Biceps' }).selectOption('1');
   await goto(page, 'Stats');
-  await expect(page.getByRole('button', { name: /^Priorities and goal/ })).toBeVisible();
+  await expect(page.locator('[data-tile="muscles"]')).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
@@ -121,7 +128,7 @@ test('stats: early in the week nothing is behind; mid-week, a muscle one session
 
   // Calves made priority 1: its target fits the week at about 7 sets, and the one session left gives a muscle he has never
   // trained what it realistically would (3 sets, the floor), not 11: behind already on Wednesday (owner, 2026-10-21).
-  await page.getByRole('button', { name: /^Priorities and goal/ }).click();
+  await goto(page, 'Priorities');
   await page.getByRole('combobox', { name: 'Calves' }).selectOption('1');
   await goto(page, 'Stats');
   await expect(page.locator('[data-tile="muscles"] .st-t-val')).toHaveText(/^1\s*behind$/);
@@ -130,7 +137,7 @@ test('stats: early in the week nothing is behind; mid-week, a muscle one session
   await expect(wed).toContainText('Wednesday: 1 session left this week');
   await expect(wed).toContainText('half again (3 to 11 sets)');
   await wed.getByRole('button', { name: 'Done' }).click();
-  await page.getByRole('button', { name: /^Priorities and goal/ }).click();
+  await goto(page, 'Priorities');
   await page.getByRole('combobox', { name: 'Calves' }).selectOption('3');
 
   // Sunday, a Bench set: the week has no session left, so what's short of its target is behind.
@@ -201,6 +208,18 @@ test('stats: tiles say each thing once, hide the program tile without a program,
   const merged = d.locator('.st-program');
   await expect(merged).toContainText('Program, 4 weeks');
   await expect(merged.locator('b')).toHaveText(/^\d+% · \d+ \/ \d+ sets$/);
+});
+
+test('stats: sessions a week averages the weeks since the first logged set, not the whole 12-week range (owner bug, 2026-10-21)', async ({ page }) => {
+  // 6 weeks of Mon/Wed/Fri up to Friday 2 Oct: 5 whole weeks of 3 and this one under way. Over the range's 11 whole weeks it
+  // read 1.4 and "met 5 of 11".
+  await seed(page, 6);
+  const tile = page.locator('[data-tile="sessions"]');
+  await expect(tile.locator('.st-t-val')).toHaveText(/^3\.0\s*avg$/);
+  await expect(tile.locator('.st-t-ctx')).toHaveText('goal 2 · met 5 of 5');
+  const s = await sheet(page, 'sessions');
+  await expect(s.locator('tbody tr')).toHaveCount(6);
+  await expect(s).toContainText('The average is over the 5 whole weeks since the first logged set');
 });
 
 test('stats: the goal label stays inside the sessions chart when the goal is its top', async ({ page }) => {

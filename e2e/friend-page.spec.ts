@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test';
-import { account, befriend, iso, log, session, signedIn, type Seeded } from './seed';
+import { account, befriend, iso, log, put, session, signedIn, type Seeded } from './seed';
 import { FIRESTORE } from './emu';
 import { statsSheet } from './nav';
 
@@ -55,7 +55,7 @@ const open = (browser: Browser, who: Seeded, width = 375) => signedIn(browser, w
   await notched(page);
 });
 
-test('a friend’s page opens inside Friends from what the phone keeps, compares only each one’s own change, and its board opens a day', async ({ browser, request }, info) => {
+test('a friend’s page opens inside Friends from what the phone keeps, compares only each one’s own change, and its whole log is a tap away', async ({ browser, request }, info) => {
   const { me, fr } = await pair(request);
   const page = await open(browser, me);
   const card = crew(page).getByTestId(`crew-${fr.name}`);
@@ -129,19 +129,11 @@ test('a friend’s page opens inside Friends from what the phone keeps, compares
   await d.getByRole('button', { name: 'Done' }).click();
   await expect(d).toHaveCount(0);
 
-  // The board: 8 weeks, today's tile with its count and its PR; a tap opens that day's session.
-  const boardCard = fp.getByRole('region', { name: 'Last 8 weeks' });
-  await expect(boardCard.locator('.fp-week')).toHaveCount(8);
-  const todayTile = boardCard.getByRole('button', { name: /Push, 4 sets, PR, training now$/ });
-  await expect(todayTile).toHaveText('4');
-  const tile = (await todayTile.evaluate((el) => { const s = getComputedStyle(el); return { size: parseFloat(s.fontSize), weight: Number(s.fontWeight), color: s.color }; }));
-  expect(tile).toEqual({ size: 19, weight: 700, color: 'rgb(255, 255, 255)' });
-  expect(await todayTile.evaluate((el) => (el as HTMLElement).offsetWidth)).toBeGreaterThanOrEqual(44); // laid out, not mid stamp-in
-  const yesterday = boardCard.locator('.fp-week').last().getByRole('button', { name: /Legs.*, 3 sets$/ }); // this week's row
-  await yesterday.click();
-  await expect(yesterday).toHaveAttribute('aria-pressed', 'true');
-  await expect(boardCard.locator('.fp-picked')).toContainText('115 × 5');
-  await expect(fp.getByRole('region', { name: 'Recent PRs' })).toContainText('Bench Press80 × 6Today');
+  // No board and no Recent PRs (owner, 2026-10-21): the page is this week, the comparison and their sessions; the whole log is a tap.
+  await expect(fp.getByRole('region', { name: 'Last 8 weeks' })).toHaveCount(0);
+  await expect(fp.getByRole('region', { name: 'Recent PRs' })).toHaveCount(0);
+  const whole = fp.getByRole('group', { name: 'Whole log' });
+  await expect(whole.getByRole('button')).toHaveText(['History', 'Lifts', 'Stats']);
   // Nothing of their log or settings is read to open it (what the app reads anyway for lists and news isn't the page's).
   expect(reads.filter((r) => r.includes(`users/${fr.uid}/`)), 'their log read on opening the page').toEqual([]);
   expect(await noSideScroll(page)).toBe(true);
@@ -205,8 +197,39 @@ test('a friend’s page at 320 wide: nothing spills sideways', async ({ browser,
   const card = crew(page).getByTestId(`crew-${fr.name}`);
   await expect(card).toContainText('Cable Fly', { timeout: 15_000 });
   await card.getByRole('button', { name: `@${fr.name}`, exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Last 8 weeks' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Whole log' })).toBeVisible();
   expect(await noSideScroll(page)).toBe(true);
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${SHOTS}/friend-320-full.png`, fullPage: true });
+});
+
+// Friends never see a friend's body weight (owner, 2026-10-21). The friend's month documents carry their weigh-ins (as a phone
+// writes them); nothing of them reaches their page or their whole Stats: no Body section, no Weight tile, none of the numbers.
+test('a friend’s weigh-ins never show: no Body on their Stats, none of their weights anywhere', async ({ browser, request }) => {
+  const [me, fr] = await Promise.all([account(request, `me${Math.random().toString(36).slice(2, 8)}`), account(request, `fr${Math.random().toString(36).slice(2, 8)}`)]);
+  const theirs = [...session(at(9, 9), [['Barbell Squat', [[135, 5], [135, 5]]]]), ...session(at(2, 9), [['Barbell Squat', [[140, 5], [140, 5]]]])];
+  await Promise.all([log(request, me, session(at(3, 17), [['Barbell Squat', [[185, 5]]]])), log(request, fr, theirs, { goal: 2 })]);
+  // Their weigh-ins, in the month documents beside their sets: three weeks of them, enough for a trend and a rate.
+  const body = [20, 13, 9, 6, 2, 0].map((d, i) => ({ date: iso(new Date(T.getTime() - d * 864e5)), weight: [171.3, 171.9, 172.6, 172.8, 173.7, 174.1][i] }));
+  const months = [...new Set([...theirs, ...body].map((x) => x.date.slice(0, 7)))];
+  for (const m of months) {
+    await put(request, `users/${fr.uid}/months/${m}`, { sets: theirs.filter((x) => x.date.startsWith(m)), body: body.filter((x) => x.date.startsWith(m)), deleted: {}, updatedAt: Date.now() });
+  }
+  await put(request, `users/${fr.uid}/meta/index`, { months: Object.fromEntries(months.map((m) => [m, Date.now()])) });
+  await befriend(request, me, fr);
+  const page = await open(browser, me);
+  const card = crew(page).getByTestId(`crew-${fr.name}`);
+  await expect(card).toContainText('2 sets', { timeout: 15_000 });
+  await card.getByRole('button', { name: `@${fr.name}`, exact: true }).click();
+  const fp = page.getByRole('region', { name: `@${fr.name}`, exact: true });
+  const st = page.getByRole('region', { name: `@${fr.name}’s stats` });
+  await expect(st.locator('[data-tile="sessions"]')).toBeVisible();
+  await expect(st.locator('[data-tile="weight"]')).toHaveCount(0);
+  await fp.getByRole('group', { name: 'Whole log' }).getByRole('button', { name: 'Stats' }).click();
+  await expect(page.getByRole('heading', { name: `@${fr.name}’s stats`, level: 1 })).toBeVisible();
+  // Their log is loaded (their squat tile is there) and still no Body.
+  await expect(page.locator('[data-tile^="lift:"]').first()).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Body' })).toHaveCount(0);
+  await expect(page.locator('[data-tile="weight"]')).toHaveCount(0);
+  await expect(page.locator('main')).not.toContainText(/17[1-4]\.\d|Body weight|lb trend|weigh-in/i);
 });

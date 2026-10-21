@@ -25,8 +25,11 @@ export const rangeFrom = (r: Range, today: string): string => addDays(today, -(r
 /** "12 weeks", "4 weeks", "a year": a range said in words. */
 export const rangeWords = (r: Range): string => (r === '1y' ? 'a year' : `${rangeWeeks(r)} weeks`);
 
-/** Tiles only the owner ever sees: energy comes from his own body log, which no friend reads. */
-export const OWNER_ONLY: readonly string[] = ['energy'];
+/**
+ * Tiles only the owner ever sees: energy and weight come from his own body log, which no friend reads (owner, 2026-10-21: friends
+ * never see a friend's body weight).
+ */
+export const OWNER_ONLY: readonly string[] = ['energy', 'weight'];
 /**
  * Tiles a friend's 8-week line (their sets, goal and PR ids, as Friends keeps it) can't fill without reading more: Muscles needs
  * their priorities, Rest between sets their timers, Lifts in rotation what they did before the 8 weeks (new and dropped).

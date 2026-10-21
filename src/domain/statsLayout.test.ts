@@ -107,12 +107,14 @@ describe('a friend’s page: their 8 weeks, and only the tiles a friend may see 
   // Every tile Stats v2 S1 and S2 can show (StatsTiles useTiles), and whether a friend gets it on their page, from what Friends
   // keeps of them (8 weeks of sets, their goal, their PR ids) or from their whole log (their Stats link).
   const ALL = ['lift:bench press', 'rate', 'prs', 'plateaus', 'milestones', 'hitrate', 'muscles', 'effort', 'rest', 'pullpush', 'tonnage', 'lifts',
-    'calendar', 'sessions', 'days', 'start', 'pain', 'energy'];
+    'calendar', 'sessions', 'days', 'start', 'pain', 'energy', 'weight'];
   const tiles = ALL.map((id) => t(id));
   it('the owner sees every tile', () => expect(ids(forViewer(tiles, { owner: true }))).toEqual(ALL));
-  it('a friend never sees energy: it comes from the owner’s own body log', () => {
-    expect(OWNER_ONLY).toEqual(['energy']);
-    expect(ids(forViewer(tiles, { owner: false }))).toEqual(ALL.filter((id) => id !== 'energy'));
+  it('a friend never sees energy or body weight: both come from the owner’s own body log (owner, 2026-10-21)', () => {
+    expect(OWNER_ONLY).toEqual(['energy', 'weight']);
+    expect(ids(forViewer(tiles, { owner: false }))).toEqual(['lift:bench press', 'rate', 'prs', 'plateaus', 'milestones', 'hitrate', 'muscles', 'effort',
+      'rest', 'pullpush', 'tonnage', 'lifts', 'calendar', 'sessions', 'days', 'start', 'pain']);
+    expect(ids(forViewer(tiles, { owner: false, window: true }))).not.toContain('weight');
   });
   it('their page leaves out what 8 weeks of sets can’t say: muscles (priorities), rest (timers), lifts in rotation (new, dropped)', () => {
     expect(ids(forViewer(tiles, { owner: false, window: true }))).toEqual(

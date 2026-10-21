@@ -98,6 +98,7 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   await fp.getByRole('button', { name: 'Lifts', exact: true }).click();
   await b.page.getByRole('button', { name: /Bench Press/ }).click();
   await expect(b.page.getByRole('heading', { name: 'Bench Press', level: 1 })).toBeVisible();
+  await expect(b.page.locator('summary', { hasText: 'Lift settings' })).toHaveCount(0);
   await expect(b.page.getByRole('button', { name: 'Save settings' })).toHaveCount(0);
   await expect(b.page.getByRole('button', { name: 'Rename' })).toHaveCount(0);
   await b.page.locator('.fp-back').click(); // back from the lift

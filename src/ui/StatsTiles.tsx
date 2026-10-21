@@ -16,10 +16,10 @@ import { e1rm, liftSets } from '../domain/stats';
 import { forViewer, rangeDays, rangeFrom, rangeLabel, rangeWeeks, rangeWords, type Range } from '../domain/statsLayout';
 import type { Program } from '../domain/program';
 import {
-  balance, effort, energyVsLifts, hitRate, liftsInRotation, milestoneDate, MILESTONE_MIN_SESSIONS, plateaus, prTimeline, rateOfGain, rests, strengthIndex, whenTrained, type LiftState,
+  balance, effort, energyVsLifts, hitRate, liftsInRotation, milestoneDate, MILESTONE_MIN_SESSIONS, plateaus, prTimeline, rateOfGain, rests, sessionsAWeek, strengthIndex, whenTrained, type LiftState,
 } from '../domain/statsTiles';
 import { restSeconds } from '../domain/timing';
-import type { BodyDay } from '../domain/body';
+import { weightSummary, type BodyDay } from '../domain/body';
 import type { SetEntry } from '../domain/types';
 import { streak } from '../domain/analytics';
 import { getPref, setPref } from '../state/prefs';
@@ -37,22 +37,24 @@ import {
   PullPush, RateSheet, RestSheet, shortDate, signed, spread, SparkRef, StartSheet,
 } from './StatsSheets';
 import { VolumeSteps } from './VolumeSteps';
+import { WeightSheet } from './WeightSheet';
 import { LastWeek } from './WeekDigest';
 
 // What each Stats v2 tile says and what its sheet holds (plan §2), from the props alone: the same tiles can show a friend's log
 // (their entries, their profile, `who`) without reading anything of the person holding the phone. Each tile is its old card
 // ported: Getting stronger → a tile per lift; Next milestones; New PR → PRs; Behind this week and Muscle volume → Muscles;
 // Sessions per week; Weekly tonnage; Calendar; Joint & back care → Pain flags; This week and Last week → the hero and its sheet.
-// Body is hidden for now (owner, 2026-10-20: MyFitnessPal's export needs a paid account).
+// Body (IA A5, owner 2026-10-21): a Weight tile, only on your own Stats and only once you've weighed in; no photos on Stats.
 // A friend's page shows the same tiles from the line Friends keeps of them (`window`: 8 weeks of sets, their goal, the PR ids
 // their phone wrote), reading nothing more; tiles that line can't fill, and those only the owner sees, are left out (forViewer).
 
-export type SectionId = 'progress' | 'load' | 'consistency' | 'recovery';
+export type SectionId = 'progress' | 'load' | 'consistency' | 'recovery' | 'body';
 export const SECTIONS: { id: SectionId; title: string }[] = [
   { id: 'progress', title: 'Progress' },
   { id: 'load', title: 'Training load' },
   { id: 'consistency', title: 'Consistency' },
   { id: 'recovery', title: 'Recovery and health' },
+  { id: 'body', title: 'Body' },
 ];
 
 /** A tile, where it goes, and its sheet. */
@@ -110,7 +112,21 @@ export function useTiles(input: StatsInput): TileModel[] {
   const data = useMemo(() => work(entries, profile, today, range, alsoLifts ?? [], program, win?.prs), [entries, profile, today, range, alsoLifts, program, win?.prs]);
   // Your energy is yours: a friend's Stats leaves it out, as it does their body data.
   const more = useMemo(() => s2(entries, today, range, timer ?? DEFAULT_TIMER, owner ? body ?? [] : []), [entries, today, range, timer, owner, body]);
-  if (!entries.length) return [];
+  // Body weight is yours alone too (owner, 2026-10-21: friends never see a friend's weight); forViewer leaves its tile out as well.
+  const bw = useMemo(() => (owner ? weightSummary(body ?? [], rangeFrom(range, today), today) : null), [owner, body, range, today]);
+  // ---- Body: weight, once there's a weigh-in (IA A5, owner 2026-10-21), with or without a set logged ----
+  const weight: TileModel | null = bw && (() => {
+    const r = bw.rate, band = bw.band, old = days(bw.last.date, today) > 14;
+    return {
+      id: 'weight', section: 'body', label: 'Weight', title: 'Body weight', value: bw.last.trend.toFixed(1), unit: 'lb trend',
+      ctx: old ? <>last weighed {shortDate(bw.last.date)}</>
+        : r && band ? <>{Math.abs(r.lbPerWeek) < 0.05 ? '—' : r.lbPerWeek > 0 ? '↑' : '↓'} {fmt1(Math.round(Math.abs(r.lbPerWeek) * 10) / 10)} lb/wk · <span className={band.tone === 'warn' ? 'warn' : undefined}>{band.label}</span></>
+        : <>{plural(bw.count, 'weigh-in')} · rate after 2 wk</>,
+      viz: (w) => <Spark values={bw.points.map((p) => p.trend)} w={w} />,
+      sheet: () => <WeightSheet s={bw} body={body ?? []} today={today} range={range} />,
+    };
+  })();
+  if (!entries.length) return forViewer(weight ? [weight] : [], { owner: !!owner, window: !!win });
   const whose = whoseOf(who), W = rangeWeeks(range), rl = rangeLabel(range);
   const out: TileModel[] = [];
 
@@ -243,16 +259,16 @@ export function useTiles(input: StatsInput): TileModel[] {
     sheet: () => <Calendar days={data.days} today={today} label={`Training calendar, last ${plural(W, 'week')}`} />,
   });
   {
-    const goal = profile.weeklyGoal, whole = done.length ? done : data.weeks;
-    const avg = whole.reduce((a, w) => a + w.sessions, 0) / whole.length, met = whole.filter((w) => w.sessions >= goal).length;
+    // Over the weeks since the first logged set, not the range's weeks before it (owner bug, 2026-10-21).
+    const goal = profile.weeklyGoal, sw = sessionsAWeek(data.weeks, data.first, goal), n = sw.weeks.length;
     out.push({
-      id: 'sessions', section: 'consistency', label: 'Sessions a week', value: avg.toFixed(1), unit: 'avg',
-      ctx: <>goal {goal} · met {met} of {whole.length}</>,
-      viz: (w) => <Cols values={data.weeks.map((x) => x.sessions)} w={w} goal={goal} />,
+      id: 'sessions', section: 'consistency', label: 'Sessions a week', value: sw.avg.toFixed(1), unit: 'avg',
+      ctx: <>goal {goal} · met {sw.met} of {sw.of}</>,
+      viz: (w) => <Cols values={sw.weeks.map((x) => x.sessions)} w={w} goal={goal} />,
       sheet: () => (<>
-        <BarChart label={`Sessions per week, last ${plural(W, 'week')}`} points={data.weeks.map((x) => ({ x: x.week, y: x.sessions }))} format={(n) => plural(n, 'session')} goal={goal} />
-        <p className="muted small">The line: {whose} goal of {plural(goal, 'session')}. A day counts once it has a lifted set; cardio-only days don’t count toward it.</p>
-        <ChartTable caption="Sessions per week" head={['Week of', 'Sessions']} rows={data.weeks.map((x) => [x.week, String(x.sessions)])} />
+        <BarChart label={`Sessions per week, last ${plural(n, 'week')}`} points={sw.weeks.map((x) => ({ x: x.week, y: x.sessions }))} format={(k) => plural(k, 'session')} goal={goal} />
+        <p className="muted small">The line: {whose} goal of {plural(goal, 'session')}. A day counts once it has a lifted set; cardio-only days don’t count toward it. The average is over {sw.of === 1 ? 'this week' : `the ${sw.of} whole weeks`}{n < W ? ' since the first logged set' : ''}{sw.of > 1 ? ', this one left out until it’s done' : ''}.</p>
+        <ChartTable caption="Sessions per week" head={['Week of', 'Sessions']} rows={sw.weeks.map((x) => [x.week, String(x.sessions)])} />
       </>),
     });
   }
@@ -298,6 +314,8 @@ export function useTiles(input: StatsInput): TileModel[] {
       sheet: () => <EnergySheet e={e} range={range} today={today} />,
     });
   }
+
+  if (weight) out.push(weight);
   return forViewer(out, { owner: !!owner, window: !!win });
 }
 
@@ -372,7 +390,11 @@ function work(entries: SetEntry[], profile: Profile, today: string, range: Range
   const long = lingering(entries, today);
   const pain = { total: report.reduce((a, r) => a + r.total, 0), top: report[0]?.region ?? 'other', regions: report.length, rising: report.some((r) => r.rising), lingering: long.length > 0, weekly };
 
-  return { kinds, prs, prNews, lifts, miles, muscles, left, weeks, days: calDays, heat, trained, pain };
+  // The first logged set (any kind): Sessions a week averages from its week on.
+  let first: string | null = null;
+  for (const e of entries) if (first == null || e.date < first) first = e.date;
+
+  return { kinds, prs, prNews, lifts, miles, muscles, left, weeks, first, days: calDays, heat, trained, pain };
 }
 
 // ---- The hero: this week against the goal ----

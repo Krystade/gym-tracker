@@ -22,8 +22,7 @@ import { defaultProfile } from '../domain/profile';
 import type { SetEntry } from '../domain/types';
 import { activeProfileDb } from '../db/db';
 import { getPref, setPref } from '../state/prefs';
-import { Icon } from './icons';
-import { goalLabel, Priorities } from './PrioritiesScreen';
+import { Priorities } from './PrioritiesScreen';
 import { rotationDismissed } from './RotationSuggestion';
 import { StatsSheet } from './StatsSheet';
 import { StatsTile } from './StatsTile';
@@ -39,7 +38,7 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
   /** A friend's username: named wherever your own Stats says "your". */ who?: string;
   store: SetsStore; profile: FittedProfileStore; programs: ProgramStore; body: BodyStore; today: string; readOnly?: boolean;
   /** A lift named in a sheet: its screen. */ onOpenLift?: (name: string) => void;
-  /** Priorities and the training goal live in settings (owner, 2026-10-20): a row here opens them. */ onOpenPriorities?: () => void;
+  /** Priorities and the training goal live in settings (owner, 2026-10-20): the Muscles sheet's link opens them. */ onOpenPriorities?: () => void;
   /** Each lift's kept rest, for the rest tile's timer. */ settings?: SettingsStore;
   /** Your gyms: a flat lift's next variation is one this gym can do, as on the lift's page. */ gyms?: GymsStore;
 }) {
@@ -91,21 +90,23 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
   });
   const adh = useMemo(() => (programs.program ? adherence(programs.program, programs.plans, entries, addDays(today, -27), today) : null), [programs.program, programs.plans, entries, today]);
 
-  const prioLink = !readOnly && onOpenPriorities && (
-    <ul className="card more-list" aria-label="Settings">
-      <li><button className="more-row" onClick={onOpenPriorities}><span>Priorities and goal</span><span className="more-note">{goalLabel(p)}</span><Icon name="chev-right" size={20} sw={2} className="more-chev" /></button></li>
-    </ul>
-  );
-  // Progress photos live on More only (owner, 2026-10-21).
+  // No rows at the foot (IA A5, owner 2026-10-21): progress photos live on More only, and Priorities is setup (More, and the
+  // Muscles sheet's "Priorities ›"). Body weight is a tile in the Body section.
   // A friend's priorities stay on their Stats, read-only; your own are under More (owner, 2026-10-20).
   const friendPrio = readOnly && <Priorities profile={profile} readOnly who={who} cardioMinutes={entries.length ? thisWeekCardio(entries, today) : 0} entries={entries} today={today} />;
   const title = who ? `@${who}’s stats` : 'Stats';
 
-  if (!entries.length) return (<>
-    <h1 className={who ? 'who-title' : undefined}>{title}</h1>
-    <p className="muted">{who ? `No sessions from @${who} yet.` : 'No sessions yet — log a workout or import your history under More.'}</p>
-    {prioLink}{friendPrio}
-  </>);
+  // No sets yet: only Body can have anything to say (weigh-ins come first for some).
+  if (!entries.length) {
+    const sheetOf = open ? tiles.find((t) => t.id === open) : undefined;
+    return (<>
+      <h1 className={who ? 'who-title' : undefined}>{title}</h1>
+      <p className="muted">{who ? `No sessions from @${who} yet.` : 'No sessions yet — log a workout or import your history under More.'}</p>
+      {tiles.length > 0 && <section className="st-sec" aria-label="Body"><h2>Body</h2>{rows(tiles).map((r) => <div key={r[0].id} className="st-row">{r.map((t) => <StatsTile key={t.id} t={t} onOpen={() => setOpen(t.id)} />)}</div>)}</section>}
+      {friendPrio}
+      {sheetOf && <StatsSheet title={sheetOf.title ?? sheetOf.label} link={sheetOf.link} onClose={() => setOpen(null)}>{sheetOf.sheet()}</StatsSheet>}
+    </>);
+  }
 
   const bySection = SECTIONS.map((s) => ({ id: s.id, tiles: tiles.filter((t) => t.section === s.id) }));
   const a = arrange(bySection, layout, front);
@@ -141,7 +142,7 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
         <p className="st-hidden-row">{plural(hiddenAll.length, 'tile')} hidden<button type="button" onClick={() => setShowHidden(!showHidden)}>{showHidden ? 'Tuck away' : 'Show'}</button></p>
       )}
       {editing && (layout.pins.length > 0 || layout.hidden.length > 0) && <button type="button" className="st-reset" onClick={() => setLayout(NO_LAYOUT)}>Reset to default</button>}
-      {prioLink}{friendPrio}
+      {friendPrio}
       {open === SHEET_WEEK && (
         <StatsSheet title="This week" onClose={() => setOpen(null)}>
           <p className="st-sub">Week of <b>{new Date(`${weekStart(today)}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</b></p>

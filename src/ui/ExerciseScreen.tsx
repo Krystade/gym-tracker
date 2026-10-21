@@ -82,6 +82,8 @@ function CardioScreen({ name, store, programs, date, onLog, onBack, onDay, readO
 }
 
 const lb = (n: number) => `${fmtWeight(Math.round(n))} lb`;
+/** Records' e1RM on a lift's page: the best set's, beside the estimate of now (IA A8). */
+const BEST_SET = { e1rm: 'Best set e1RM' } as const;
 const HISTORY_CAP = 10;
 
 // Oldest first, like e1rmSeries; the value is seconds, so it reuses the chart's `e1rm` field.
@@ -117,7 +119,8 @@ function SettingsEditor({ name, settings, hold, entries }: { name: string; setti
     : null;
   const valid = !problem;
   return (
-    <section className="card" role="group" aria-label="Progression settings">
+    <section className="lift-set" role="group" aria-label="Progression settings">
+      <h3>Progression</h3>
       <p className="muted small">{hold
         ? 'Add 5 s each time until every hold reaches max seconds, then add weight or move to a harder variation.'
         : 'Double progression: stay at a weight until every working set reaches max reps, then add the increment.'}</p>
@@ -164,8 +167,8 @@ function RenameLift({ name, store, settings, gyms, programs, onRenamed }: {
     setBusy(false);
   };
   return (
-    <section className="card" role="group" aria-label="Rename or merge">
-      <h2>Rename or merge</h2>
+    <section className="lift-set" role="group" aria-label="Rename or merge">
+      <h3>Rename or merge</h3>
       <p className="muted small">Type a new name, or the name of a lift you already log to merge this one into it. Its sets, plan and settings move over.</p>
       <Input aria-label="New name" list="rename-names" value={to} onChange={(e) => { setTo(e.target.value); setArmed(false); }} placeholder={name} />
       <datalist id="rename-names">{logged.filter((n) => n !== name).map((n) => <option key={n} value={n} />)}</datalist>
@@ -278,7 +281,8 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
       </>}
       {!hold && !body && <>
       <div className="tiles tiles-est">
-        <div className="tile"><span>Est. 1RM</span><b>{st ? lb(st.e1rm) : '—'}</b></div>
+        {/* Two e1RMs on one page, each said for what it is (IA A8, owner 2026-10-21): this one now, fatigue-adjusted; Records' is the best set's. */}
+        <div className="tile"><span>Est. 1RM</span><b>{st ? lb(st.e1rm) : '—'}</b><span className="tile-sub">Now, fatigue-adjusted</span></div>
         <div className="tile"><span>Est. {n}RM</span><b>{st ? lb(weightFor(st, n)) : '—'}</b></div>
       </div>
       <div className="chips" role="group" aria-label="Rep max">
@@ -297,7 +301,7 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
           : body ? { label: 'Max reps at bodyweight over time', unit: 'reps', noun: '', column: 'Max reps at BW', what: 'it at bodyweight' } : {})} />
         {series.length > 1 && <p className="muted small">{hold ? 'Longest hold per session · records filled' : body ? 'Fresh reps to failure at bodyweight, fatigue-adjusted, at each session' : levels ? 'Fatigue-adjusted e1RM at each session' : 'Best estimated 1RM per session · records filled'}</p>}
       </section>
-      <Records entries={store.entries} name={name} today={today} onDay={onDay} />
+      <Records entries={store.entries} name={name} today={today} onDay={onDay} labels={BEST_SET} />
       {due && !(snoozed && today < snoozed) && (
         <p className="card note-card test-due">
           <span>Time for a test: {due.body ? <><b>bodyweight</b> for as many good reps as you can (about {due.reps})</>
@@ -323,8 +327,12 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
       {!all && sessions.length > HISTORY_CAP && <button className="wide" onClick={() => setAll(true)}>Show all {sessions.length} sessions</button>}
       {!readOnly && <>
       <SwapSuggestions items={swapSuggestions(name, store.entries, today, 5, available)} />
-      <SettingsEditor key={name} name={name} settings={settings} hold={hold} entries={store.entries} />
-      <RenameLift key={`rename-${name}`} name={name} store={store} settings={settings} gyms={gyms} programs={programs} onRenamed={onRenamed} />
+      {/* Setup, folded at the foot of a page that's for reading (IA A8, owner 2026-10-21). */}
+      <details className="card builder lift-settings">
+        <summary>Lift settings</summary>
+        <SettingsEditor key={name} name={name} settings={settings} hold={hold} entries={store.entries} />
+        <RenameLift key={`rename-${name}`} name={name} store={store} settings={settings} gyms={gyms} programs={programs} onRenamed={onRenamed} />
+      </details>
       </>}
     </>
   );

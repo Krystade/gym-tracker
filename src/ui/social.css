@@ -123,7 +123,6 @@
 .fp-session-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .fp-session-head .fd-meta { white-space: normal; }
 .fp-lastset { color: var(--live); }
-.fp-picked { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hairline); }
 
 /* You and them: each one's change in %, bars from zero; never a load. */
 .fp-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 8px; font-size: var(--fs-sm); color: var(--text-2); }
@@ -141,26 +140,8 @@
 .fp-bar span { font-size: var(--fs-sm); font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); }
 .fp-bar.me span { color: var(--text); }
 
-/* The board's card runs closer to its edge, so each tile is a 44px target at 375. */
-.fp .fp-board-card { padding: 14px 8px; }
-.fp-board-card > h2 { padding: 0 6px; }
-.fp-board-card .fp-picked { padding-left: 6px; padding-right: 6px; }
-/* C's board: 7 tiles a row, white numerals (bold, 19px: large text, 3:1 on the lightest kind). */
-.fp-board { display: grid; gap: 2px; margin-top: 10px; }
-.fp-wd, .fp-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
-.fp-wd span { text-align: center; font-size: 11px; color: var(--text-3); line-height: 16px; }
-.fp-tile { position: relative; aspect-ratio: 1; min-height: 0; width: 100%; padding: 0; border-radius: 9px; display: grid; place-items: center;
-  color: var(--kind-ink); font-size: 19px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
-.fp-tile.empty { background: var(--fill); }
-.fp-tile.future { background: none; box-shadow: inset 0 0 0 1px var(--hairline); }
-/* Today's, live and picked rings and the PR medal sit inside the tile: with 2px between tiles (the most that keeps each a 44px
-   target at 375), anything outside it lands on the next day (the owner's screenshot, 2026-10-20: today's ring over yesterday
-   and its medal). A ring on a coloured tile keeps a dark band inside it, so it reads on every kind's colour. */
-.fp-tile.today { box-shadow: inset 0 0 0 2px var(--text-2); }
-.fp-tile.live { box-shadow: inset 0 0 0 3px var(--live), inset 0 0 0 5px var(--surface); }
-.fp-tile.sel { box-shadow: inset 0 0 0 3px var(--text), inset 0 0 0 5px var(--surface); }
-.fp-star { position: absolute; top: 3px; right: 3px; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 1.5px var(--surface); display: grid; place-items: center; }
 .fp-links { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
+.fp-links-k { grid-column: 1 / -1; font-size: var(--fs-sm); color: var(--text-2); }
 .fp-links button { border-radius: var(--r-pill); }
 .fp-tag { margin-top: 16px; }
 .fp-tag .ftag-line .mini { border-radius: var(--r-pill); }
@@ -187,17 +168,8 @@
   /* Stats: the week's ring draws, a PR's confetti falls once. */
   .st-ringwrap .ring.draw .seg { animation: fd-draw 800ms var(--out) both; animation-delay: calc(var(--d, 0) * 4ms); }
   .st-confetti i { animation: st-confetti 1100ms cubic-bezier(0.2, 0.7, 0.3, 1) both; animation-delay: calc(var(--i) * 18ms); }
-  /* A friend's page: the ring draws, the board's tiles stamp in week by week. */
+  /* A friend's page: the ring draws. */
   .fp-ring .ring.draw .seg { animation: fd-draw 700ms var(--out) both; animation-delay: calc(var(--d, 0) * 1ms); }
-  .fp-week { animation: fd-fade 320ms var(--out) both; }
-  .fp-week:nth-child(2) { animation-delay: 0ms; }
-  .fp-week:nth-child(3) { animation-delay: 35ms; }
-  .fp-week:nth-child(4) { animation-delay: 70ms; }
-  .fp-week:nth-child(5) { animation-delay: 105ms; }
-  .fp-week:nth-child(6) { animation-delay: 140ms; }
-  .fp-week:nth-child(7) { animation-delay: 175ms; }
-  .fp-week:nth-child(8) { animation-delay: 210ms; }
-  .fp-week:nth-child(9) { animation-delay: 245ms; }
 }
 @media (prefers-reduced-motion: reduce) {
   .fd-particles { display: none; }

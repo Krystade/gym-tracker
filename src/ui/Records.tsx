@@ -24,7 +24,8 @@ function shortDay(iso: string, today: string): string {
  * A lift's records, worked out from the log on every render, so an edit or a delete corrects them. Each shows its value
  * and the day it was set; with `onDay`, tapping one opens that day in History.
  */
-export function Records({ entries, name, today, onDay }: { entries: SetEntry[]; name: string; today: string; onDay?: (date: string) => void }) {
+export function Records({ entries, name, today, onDay, labels }: { entries: SetEntry[]; name: string; today: string; onDay?: (date: string) => void;
+  /** A record's name here, where the page needs it said otherwise (a lift's page: "Best set e1RM"). */ labels?: Partial<Record<RecordKind, string>> }) {
   const held = useMemo(() => records(entries, name), [entries, name]);
   if (!held.size) return null;
   const rows = LIST.flatMap((k) => held.get(k) ?? []);
@@ -40,7 +41,7 @@ export function Records({ entries, name, today, onDay }: { entries: SetEntry[]; 
           {rows.map((h) => (
             <li key={h.kind}>
               {tap(h, 'rec', <>
-                <span className="rec-name">{recordLabel(h.kind)}</span>
+                <span className="rec-name">{labels?.[h.kind] ?? recordLabel(h.kind)}</span>
                 <b className="rec-val">{fmtRecord(h.kind, h.value)}</b>
                 <span className="rec-meta">{[what(h), fmtDay(h.date, today)].filter(Boolean).join(' · ')}</span>
               </>)}

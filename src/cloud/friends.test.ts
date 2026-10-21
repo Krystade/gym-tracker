@@ -1,9 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { friendNews, readFriendWindow } from './friends';
+import { friendNews, readFriend, readFriendWindow } from './friends';
 import { fakeFirestore, ts } from './fakeFirestore';
 import type { InboxDoc } from '../domain/messages';
 
 const set = (date: string) => ({ id: `app|${date}|squat|1`, date, seq: 1, exercise: 'Barbell Squat', setNo: 1, weight: 100, reps: 5, flags: [], source: 'app' });
+
+describe('readFriend: a friend’s whole log, never their body weight (owner, 2026-10-21)', () => {
+  it('keeps their sets and settings and drops the body days their months carry', async () => {
+    const w = fakeFirestore({
+      'users/b/meta/index': { months: { '2026-09': 1, '2026-10': 1 }, meta: 1 },
+      'users/b/months/2026-09': { sets: [set('2026-09-10')], body: [{ date: '2026-09-10', weight: 181.4, energy: 4 }] },
+      'users/b/months/2026-10': { sets: [set('2026-10-16')], body: [{ date: '2026-10-16', weight: 180.2 }] },
+      'users/b/meta/profile': { items: { status: JSON.stringify('legs') } },
+    });
+    const r = await readFriend(w.cloud, 'b');
+    expect(r.sets.map((e) => e.date)).toEqual(['2026-09-10', '2026-10-16']);
+    expect(r.meta).toEqual({ status: 'legs' });
+    expect(Object.keys(r).sort()).toEqual(['meta', 'sets']);
+    expect(JSON.stringify(r)).not.toMatch(/181\.4|180\.2|energy/);
+  });
+});
 
 describe('readFriendWindow', () => {
   const world = () => fakeFirestore({

@@ -372,11 +372,11 @@ Built 2026-10-20. Access status comes from OpenAlex, Europe PMC and Crossref as 
   - *Finding:* Narrative review: pre-exhausting a muscle doesn't add growth and costs reps on the compound.
   - *Used by:* Item 10 (pre-exhaustion)
 - **Gentil 2007.** Gentil P, Oliveira E, de Araújo Rocha Júnior V, et al. (2007). Effects of Exercise Order on Upper-Body Muscle Activation and Exercise Performance. *The Journal of Strength and Conditioning Research* 21(4):1082. doi:[10.1519/r-21216.1](https://doi.org/10.1519/r-21216.1). **Access:** paywalled (not open access per Europe PMC). **Local PDF:** no.
-  - *Finding:* A chest isolation set before the bench (or the reverse order) changed which muscles worked and cut the reps of the second lift.
+  - *Finding:* A pec-deck set before the chest press did not raise chest activity in the press, raised triceps activity, and left total reps and work unchanged.
   - *Used by:* Item 10
 - **Brennecke 2009.** Brennecke A, Guimarães TM, Leone R, et al. (2009). Neuromuscular Activity During Bench Press Exercise Performed With and Without the Preexhaustion Method. *Journal of Strength and Conditioning Research* 23(7):1933–1940. doi:[10.1519/jsc.0b013e3181b73b8f](https://doi.org/10.1519/jsc.0b013e3181b73b8f). **Access:** paywalled (not open access per Europe PMC). **Local PDF:** no.
   - *Finding:* EMG study: a pec-deck set before the bench raised triceps activity and cut bench reps, without more chest activity.
-  - *Used by:* Item 10 (the PDF linked there as "Gentil 2007" is this paper)
+  - *Used by:* Item 10
 - **Soncin 2014.** Soncin R, Pennone J, Guimarães TM, et al. (2014). Influence of Exercise Order on Electromyographic Activity During Upper Body Resistance Training. *Journal of Human Kinetics* 44(1):203–210. doi:[10.2478/hukin-2014-0127](https://doi.org/10.2478/hukin-2014-0127). **Access:** open access (free OA journal) ([copy](https://sciendo.com/pdf/10.2478/hukin-2014-0127)). **Local PDF:** no.
   - *Finding:* Small EMG study of how exercise order shifts muscle activity at fixed volume.
   - *Used by:* Item 10
@@ -385,7 +385,7 @@ Built 2026-10-20. Access status comes from OpenAlex, Europe PMC and Crossref as 
   - *Used by:* Items 10, 11, 15 (supersets save time and cost some volume load)
 - **Kassiano 2022.** Kassiano W, Nunes JP, Costa BDV, et al. (2022). Does Varying Resistance Exercises Promote Superior Muscle Hypertrophy and Strength Gains? A Systematic Review. *The Journal of Strength and Conditioning Research* 36(6):1753–1762. doi:[10.1519/jsc.0000000000004258](https://doi.org/10.1519/jsc.0000000000004258). **Access:** paywalled. **Local PDF:** no.
   - *Finding:* Systematic review: some variation can help regional growth, but excessive rotation hurts gains.
-  - *Used by:* `learn/trend.ts`, `rotation.ts` (rotate on a stall, not on a schedule); 00-core §7 (cited there as a "Kassiano 2023 review"; this 2022 review is the closest match found); also in ACSM 2026
+  - *Used by:* `learn/trend.ts`, `rotation.ts` (rotate on a stall, not on a schedule); 00-core §7 (varied exercises and regional hypertrophy); also in ACSM 2026
 - **Kassiano 2024.** Kassiano W, Costa BDV, Kunevaliki G, et al. (2024). Muscle Hypertrophy and Strength Adaptations to Systematically Varying Resistance Exercises. *Research Quarterly for Exercise and Sport* 96(2):371–381. doi:[10.1080/02701367.2024.2409961](https://doi.org/10.1080/02701367.2024.2409961). **Access:** paywalled; repository record: [ECU 4912](https://ro.ecu.edu.au/ecuworks2022-2026/4912). **Local PDF:** no.
   - *Finding:* Trial of planned exercise rotation: growth and strength similar to fixed exercises.
   - *Used by:* `learn/trend.ts`; item 12
@@ -494,8 +494,8 @@ Built 2026-10-20. Access status comes from OpenAlex, Europe PMC and Crossref as 
 - **Silbernagel 2019.** Gravare Silbernagel K, Vicenzino BT, Rathleff MS, et al. (2019). Isometric exercise for acute pain relief: is it relevant in tendinopathy management? *British Journal of Sports Medicine* 53(21):1330–1331. doi:[10.1136/bjsports-2019-100591](https://doi.org/10.1136/bjsports-2019-100591). **Access:** paywalled (not open access per Europe PMC). **Local PDF:** no.
   - *Finding:* Editorial: the evidence for isometrics as instant pain relief in tendon pain is weak.
   - *Used by:* Item 08
-- **Clarsen 2014.** Clarsen B, Rønsen O, Myklebust G, et al. (2014). The Oslo Sports Trauma Research Center questionnaire on health problems: a new approach to prospective monitoring of illness and injury in elite athletes. *British Journal of Sports Medicine* 48(9):754–760. doi:[10.1136/bjsports-2012-092087](https://doi.org/10.1136/bjsports-2012-092087). **Access:** paywalled (not open access per Europe PMC). **Local PDF:** no.
-  - *Finding:* The OSTRC health questionnaire: many problems show as reduced training or performance, not as time lost.
+- **Clarsen 2013.** Clarsen B, Myklebust G, Bahr R (2013). Development and validation of a new method for the registration of overuse injuries in sports injury epidemiology: the Oslo Sports Trauma Research Centre (OSTRC) Overuse Injury Questionnaire. *British Journal of Sports Medicine* 47(8):495–502. doi:[10.1136/bjsports-2012-091524](https://doi.org/10.1136/bjsports-2012-091524). **Access:** paywalled (not open access per Europe PMC). **Local PDF:** no.
+  - *Finding:* The OSTRC overuse questionnaire: most overuse problems show as reduced training or performance, not as time lost, so time-loss registration misses most of them.
   - *Used by:* Item 08 (pain shows up as reduced training)
 - **Lowdon 2024.** Lowdon H, Chong HH, Dhingra M, et al. (2024). Comparison of Interventions for Lateral Elbow Tendinopathy: A Systematic Review and Network Meta-Analysis for Patient-Rated Tennis Elbow Evaluation Pain Outcome. *The Journal of Hand Surgery* 49(7):639–648. doi:[10.1016/j.jhsa.2024.03.007](https://doi.org/10.1016/j.jhsa.2024.03.007). **Access:** paywalled (not open access per Europe PMC). **Local PDF:** no.
   - *Finding:* Network meta-analysis of tennis-elbow treatments; none gave fast relief.

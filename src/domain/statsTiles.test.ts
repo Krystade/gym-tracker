@@ -3,9 +3,9 @@ import type { SetEntry } from './types';
 import type { BodyDay } from './body';
 import {
   balance, effort, energyVsLifts, familyOf, familyRates, fitTrend, hitRate, liftsInRotation, milestoneDate, pipOf, plateaus, prGroup, prTimeline,
-  rateOfGain, rests, strengthIndex, weekdayOf, whenTrained, type LiftState,
+  rateOfGain, rests, sessionsAWeek, strengthIndex, weekdayOf, whenTrained, type LiftState,
 } from './statsTiles';
-import { addDays } from './analytics';
+import { addDays, weeklySummary } from './analytics';
 import { SET_WORK } from './timing';
 import { tagsOf } from './learn/tags';
 
@@ -353,5 +353,39 @@ describe('milestoneDate: when the trend reaches the next round number, with its 
     expect(milestoneDate(pts('2026-09-09', 7, [200, 220, 195, 225, 190, 230]), 250, TODAY)).toBeNull();
     // A pound a month: over a year to go.
     expect(milestoneDate(line(6, 0.25), 250, TODAY)).toBeNull();
+  });
+});
+
+describe('sessionsAWeek: the average over the weeks he has logged, not the whole range (owner bug, 2026-10-21)', () => {
+  // Mon/Wed/Fri for the 6 weeks before this one (Mon 7 Sep to Fri 16 Oct), and Monday of this week: 3 a week from the first.
+  const mwf = Array.from({ length: 6 }, (_, w) => [0, 2, 4].map((d) => set('Bench Press', addDays('2026-09-07', 7 * w + d)))).flat();
+  const log = [...mwf, set('Bench Press', '2026-10-19')];
+  const weeks = weeklySummary(log, 12, TODAY);
+  it('6 weeks of 3 sessions in a 12-week range average 3.0, not 1.5, and meet a goal of 3 in 6 of 6', () => {
+    expect(weeks).toHaveLength(12);
+    const r = sessionsAWeek(weeks, '2026-09-07', 3);
+    expect(r.avg).toBe(3);
+    expect([r.met, r.of]).toEqual([6, 6]);
+    // The weeks drawn: from the first logged week to this one, which is under way (1 so far).
+    expect(r.weeks.map((w) => w.sessions)).toEqual([3, 3, 3, 3, 3, 3, 1]);
+  });
+  it('counts a missed week after the first logged one: that week happened', () => {
+    const gap = log.filter((e) => e.date < '2026-09-21' || e.date > '2026-09-27');
+    const r = sessionsAWeek(weeklySummary(gap, 12, TODAY), '2026-09-07', 3);
+    expect(r.of).toBe(6);
+    expect(r.avg).toBe(2.5);
+    expect(r.met).toBe(5);
+  });
+  it('a first set mid-week starts the count that week', () => {
+    expect(sessionsAWeek(weeks, '2026-09-11', 3).of).toBe(6);
+  });
+  it('a log older than the range averages the whole range', () => {
+    const r = sessionsAWeek(weeks, '2026-01-05', 3);
+    expect(r.of).toBe(11);
+    expect(r.avg).toBeCloseTo(18 / 11, 10);
+  });
+  it('a log that starts this week reads this week alone', () => {
+    const r = sessionsAWeek(weeklySummary([set('Bench Press', '2026-10-19')], 12, TODAY), '2026-10-19', 3);
+    expect([r.avg, r.met, r.of]).toEqual([1, 0, 1]);
   });
 });

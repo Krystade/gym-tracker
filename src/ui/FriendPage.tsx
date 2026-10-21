@@ -3,8 +3,7 @@ import { cloudError, loadCloud } from '../cloud/firebase';
 import { readFriend, type Friend, type FriendData, type FriendNews } from '../cloud/friends';
 import { addDays, weekStart } from '../domain/analytics';
 import { latestSession, sessionLabel } from '../domain/crew';
-import { board, friendPrs, goalWeek, KIND_SHORT, liveSince, recentPrs, ringSets, progressRows, sessionCard, usualSession, weekStreak, type Card, type Tile } from '../domain/feed';
-import { fmtAdded } from '../domain/format';
+import { friendPrs, goalWeek, liveSince, ringSets, progressRows, sessionCard, usualSession, weekStreak, type Card } from '../domain/feed';
 import type { PresetKey } from '../domain/messages';
 import type { SetEntry } from '../domain/types';
 import { useMinute } from '../state/clock';
@@ -18,12 +17,11 @@ import { kindColour, Ring } from './Ring';
 import { FriendStats } from './StatsScreen';
 
 // A friend's page inside Friends (round 18): who they are this week, what they're doing now, how you've each come on against your
-// own start, their Stats as tiles (owner, 2026-10-20), and their last 8 weeks as a board. All of it from the line Friends already
-// keeps (state/friendCache): opening it reads nothing more. Their whole log is read only for History, Lifts or Stats, when asked for.
+// own start, and their Stats as tiles (owner, 2026-10-20). All of it from the line Friends already keeps (state/friendCache):
+// opening it reads nothing more. Their whole log is read only for History, Lifts or Stats, when asked for. The 8-week board and
+// Recent PRs went (IA A7, owner 2026-10-21): their Calendar and PRs tiles say both.
 
 const REACTIONS: PresetKey[] = ['strong', 'fire', 'clap', 'eyes'];
-const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-const dayName = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
 export function FriendPage({ uid, friend, entries, today, gyms, news, onBack, onMessage, backLabel = 'Friends' }: {
   uid: string; friend: Friend; /** Yours, for "You and @them". */ entries: SetEntry[]; today: string; gyms: GymsStore; news: FriendNews | null;
@@ -76,18 +74,15 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep,
     const { sets, prs, goal } = line;
     const day = sets.filter((e) => e.date === today);
     const last = latestSession(sets);
-    const rows = board(sets, today, prs, now);
     return {
       sets, prs, day, live: liveSince(day, now), week: goalWeek(sets, today, goal), streak: weekStreak(sets, today, goal, 8),
       prsWeek: sets.filter((e) => prs.has(e.id) && e.date >= weekStart(today)).length,
-      card: last ? sessionCard(sets, last.date, prs, now) : null, rows, sessions: rows.flat().filter((t) => t.sets > 0).length,
-      recent: recentPrs(sets, prs, 3), shared: progressRows(entries, sets, addDays(today, -55), today),
+      card: last ? sessionCard(sets, last.date, prs, now) : null, shared: progressRows(entries, sets, addDays(today, -55), today),
       ring: ringSets(day), usual: usualSession(sets, today),
     };
   }, [line, today, entries, minute]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const r = useReactions(uid);
-  const [picked, setPicked] = useState<string | null>(null);
   const unread = news?.unread[friend.uid] ?? 0;
   const now = Date.now();
   const status = w?.win.status ?? '';
@@ -124,27 +119,10 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep,
         {v.card && <SessionBox c={v.card} today={today} now={now} />}
         <Shared name={friend.name} rows={v.shared} />
         <FriendStats who={friend.name} entries={line!.sets} goal={line!.goal} prs={line!.prs} today={today} />
-        <section className="card fp-board-card" aria-label="Last 8 weeks">
-          <h2>Last 8 weeks <span>{v.sessions} session{v.sessions === 1 ? '' : 's'}</span></h2>
-          <Board rows={v.rows} picked={picked} onPick={(d) => setPicked(picked === d ? null : d)} />
-          {picked && (() => {
-            const c = sessionCard(v.sets, picked, v.prs, now);
-            return c ? <SessionBox c={c} today={today} now={now} inBoard /> : null;
-          })()}
-        </section>
-        {v.recent.length > 0 && (
-          <section className="card fp-prs" aria-label="Recent PRs">
-            <h2>Recent PRs</h2>
-            <ul className="fd-lifts">
-              {v.recent.map((e) => (
-                <li key={e.id}><span className="fd-ln"><span className="fd-lname">{e.exercise}</span></span>
-                  <span className="fd-top">{fmtAdded(e.weight)} × {e.reps ?? '?'}<span className="fd-n">{sessionLabel(e.date, today)}</span></span></li>
-              ))}
-            </ul>
-          </section>
-        )}
       </>)}
-      <div className="fp-links">
+      {/* Their whole log, where the tiles above are 8 weeks: said so, or "Stats" reads as the tiles again (IA A7). */}
+      <div className="fp-links" role="group" aria-labelledby="fp-whole">
+        <span id="fp-whole" className="fp-links-k">Whole log</span>
         {(['history', 'lifts', 'stats'] as const).map((t) => <button key={t} onClick={() => onDeep(t)}>{t[0].toUpperCase() + t.slice(1)}</button>)}
       </div>
       <div className="fp-tag"><FriendTagEditor me={uid} friend={friend} /></div>
@@ -152,14 +130,14 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep,
   );
 }
 
-/** Their session today (live: "Now"), else their last one in the 8 weeks; or a day picked on the board. */
-function SessionBox({ c, today, now, inBoard }: { c: Card; today: string; now: number; inBoard?: boolean }) {
+/** Their session today (live: "Now"), else their last one in the 8 weeks. */
+function SessionBox({ c, today, now }: { c: Card; today: string; now: number }) {
   const timed = !Number.isNaN(c.start);
-  const when = c.live ? 'Now' : inBoard ? dayName(c.date) : c.date === today ? 'Today' : `Last session · ${sessionLabel(c.date, today)}`;
+  const when = c.live ? 'Now' : c.date === today ? 'Today' : `Last session · ${sessionLabel(c.date, today)}`;
   const meta = [timed ? (c.live ? `since ${clock(c.start)}` : clock(c.start)) : '', c.minutes ? `${c.minutes} min` : '', `${c.sets} set${c.sets === 1 ? '' : 's'}`].filter(Boolean).join(' · ');
   const mins = c.live && !Number.isNaN(c.end) ? Math.max(0, Math.round((now - c.end) / 60_000)) : null;
   return (
-    <article className={`${inBoard ? 'fp-picked' : 'fd-card fp-session'}${c.live ? ' live' : ''}`} aria-label={`${when}, ${kindsFromCard(c)}`}>
+    <article className={`fd-card fp-session${c.live ? ' live' : ''}`} aria-label={`${when}, ${kindsFromCard(c)}`}>
       <div className="fp-session-head">
         <div>
           <h2>{when} · {kindsFromCard(c)}</h2>
@@ -204,27 +182,5 @@ function Shared({ name, rows }: { name: string; rows: { lift: string; me: number
         </div>
       ))}
     </section>
-  );
-}
-
-/** C's board: a row a week, Monday first; each day its kind's colour with its set count, a star on a PR, a ring while live. */
-function Board({ rows, picked, onPick }: { rows: Tile[][]; picked: string | null; onPick: (date: string) => void }) {
-  return (
-    <div className="fp-board">
-      <div className="fp-wd" aria-hidden="true">{WEEKDAYS.map((d, i) => <span key={i}>{d}</span>)}</div>
-      {rows.map((row) => (
-        <div className="fp-week" key={row[0].date}>
-          {row.map((t) => t.sets > 0 ? (
-            <button key={t.date} className={`fp-tile${t.live ? ' live' : ''}${t.today ? ' today' : ''}${picked === t.date ? ' sel' : ''}`} aria-pressed={picked === t.date}
-              aria-label={`${dayName(t.date)}: ${t.kinds.map((k) => KIND_SHORT[k]).join(' + ') || 'Training'}, ${t.sets} set${t.sets === 1 ? '' : 's'}${t.pr ? ', PR' : ''}${t.live ? ', training now' : ''}`}
-              style={{ background: t.kinds.length > 1 ? `linear-gradient(135deg, ${kindColour(t.kinds[0])} 0 50%, ${kindColour(t.kinds[1])} 50% 100%)` : kindColour(t.kinds[0] ?? null) }}
-              onClick={() => onPick(t.date)}>
-              {t.sets}
-              {t.pr && <span className="fp-star" aria-hidden="true"><Icon name="trophy" size={10} sw={2.6} /></span>}
-            </button>
-          ) : <span key={t.date} className={`fp-tile empty${t.today ? ' today' : ''}${t.future ? ' future' : ''}`} aria-hidden="true" />)}
-        </div>
-      ))}
-    </div>
   );
 }

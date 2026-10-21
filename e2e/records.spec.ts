@@ -70,7 +70,7 @@ test('Records: worked out from the log, a tap opens the day, and a new best show
 
   let rec = await openBench(page);
   const row = (name: RegExp) => rec.getByRole('button', { name });
-  await expect(row(/^Best e1RM/)).toHaveText(/^Best e1RM\s*187 lb\s*170 × 3 · .*Sep 15/);
+  await expect(row(/^Best set e1RM/)).toHaveText(/^Best set e1RM\s*187 lb\s*170 × 3 · .*Sep 15/);
   await expect(row(/^Heaviest/)).toHaveText(/^Heaviest\s*185 lb\s*185 × \? · .*Sep 15/); // the partial set counts
   await expect(row(/^Best set volume/)).toHaveText(/1,140 lb\s*95 × 12 · .*Jul 7/); // the warm-up
   await expect(row(/^Best session volume/)).toHaveText(/3,300 lb\s*3 sets · .*Jul 7/); // the warm-up counts
@@ -115,7 +115,7 @@ test('Records: worked out from the log, a tap opens the day, and a new best show
   await expect(today.getByRole('button', { name: /^Bench Press/ })).toContainText('190 × 3 PR');
 
   rec = await openBench(page);
-  await expect(row(/^Best e1RM/)).toHaveText(/209 lb\s*190 × 3 · .*Oct 2/);
+  await expect(row(/^Best set e1RM/)).toHaveText(/209 lb\s*190 × 3 · .*Oct 2/);
   await expect(row(/^Heaviest/)).toHaveText(/190 lb\s*190 × 3 · .*Oct 2/);
   await expect(maxes.nth(0)).toHaveText(/^1 rep\s*190 lb\s*× 3\s*Oct 2$/);
   await expect(maxes.nth(2)).toHaveText(/^5 reps\s*155 lb/);
@@ -129,7 +129,7 @@ test('Records: worked out from the log, a tap opens the day, and a new best show
   await card.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(sets).toHaveCount(0);
   rec = await openBench(page);
-  await expect(row(/^Best e1RM/)).toHaveText(/187 lb\s*170 × 3 · .*Sep 15/);
+  await expect(row(/^Best set e1RM/)).toHaveText(/187 lb\s*170 × 3 · .*Sep 15/);
   await expect(row(/^Heaviest/)).toHaveText(/185 lb\s*185 × \? · .*Sep 15/);
   await expect(maxes.nth(0)).toHaveText(/^1 rep\s*170 lb\s*× 3\s*Sep 15$/);
 

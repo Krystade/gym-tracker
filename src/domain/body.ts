@@ -150,6 +150,21 @@ export function rateBand(pct: number): { label: string; tone: 'ok' | 'warn' } {
   return { label: 'Maintaining', tone: 'ok' };
 }
 
+/**
+ * Stats › Body's weight (IA A5, owner 2026-10-21): the smoothed trend's latest, its 4-week rate and band, and the weigh-ins in the
+ * range (`from` to `to`, both included) with their trend. Null with no weigh-in up to `to`: the section shows only with weigh-ins.
+ */
+export function weightSummary(days: readonly BodyDay[], from: string, to: string): {
+  last: { date: string; weight: number; trend: number }; count: number;
+  rate: { lbPerWeek: number; pctPerWeek: number } | null; band: { label: string; tone: 'ok' | 'warn' } | null;
+  points: { date: string; weight: number; trend: number }[];
+} | null {
+  const t = trend(days.filter((d) => d.date <= to));
+  if (!t.length) return null;
+  const r = rate(t);
+  return { last: t.at(-1)!, count: t.length, rate: r, band: r ? rateBand(r.pctPerWeek) : null, points: t.filter((p) => p.date >= from) };
+}
+
 /** Average protein over the last 7 days that have it, against 1.6 g/kg (Morton 2018). */
 export function proteinCheck(days: BodyDay[], trendWeight: number, today: string): { avg: number; target: number; days: number } | null {
   const since = addDays(today, -6);

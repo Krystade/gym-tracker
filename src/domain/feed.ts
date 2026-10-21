@@ -1,7 +1,7 @@
 import { addDays, planPerSession, sessionReach, sessionsLeft, streak, usualPerSession, weekStart, weekStatus, weeklyMuscleSets, weeklySummary } from './analytics';
 import { isCardio, isCardioEntry } from './cardio';
 import { monthOf } from './cloud';
-import { dayKinds, isWorking, KINDS, sessionOn, type Kind, type LiftDone } from './crew';
+import { isWorking, KINDS, sessionOn, type Kind, type LiftDone } from './crew';
 import { liftKey, normalizeName } from './ids';
 import { resolveLift } from './lifts';
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
@@ -324,36 +324,6 @@ export function prCard(entries: SetEntry[], today: string, whose = 'your'): PrCa
     return { set, kinds: k, detail: prior > 0 ? `e1RM ${Math.round(v)} lb, up ${Math.round(v - prior)} lb on ${whose} best` : `e1RM ${Math.round(v)} lb` };
   }
   return { set, kinds: k, detail: prToast(entries, set)?.replace(/^PR! /, '') ?? 'A new record' };
-}
-
-/** A day on a friend's board: its kinds (one, or two close), its working sets (cardio: one per 3 min), and marks. */
-export interface Tile { date: string; kinds: Kind[]; sets: number; pr: boolean; live: boolean; today: boolean; future: boolean }
-/**
- * The last `weeks` weeks as rows, oldest first, each Monday to Sunday: this week's row runs past today (those tiles `future`).
- * `prs`: the PR set ids to star (a friend's, as their phone wrote them).
- */
-export function board(sets: readonly SetEntry[], today: string, prs: ReadonlySet<string>, now: number, weeks = 8): Tile[][] {
-  const start = addDays(weekStart(today), -7 * (weeks - 1));
-  const byDay = new Map<string, SetEntry[]>();
-  for (const e of sets) if (e.date >= start && e.date <= today) byDay.set(e.date, [...(byDay.get(e.date) ?? []), e]);
-  return Array.from({ length: weeks }, (_, w) => Array.from({ length: 7 }, (_, d) => {
-    const date = addDays(start, w * 7 + d), day = byDay.get(date) ?? [];
-    return {
-      date, kinds: dayKinds(day).kinds, sets: ringSets(day).length, pr: day.some((e) => prs.has(e.id)),
-      live: date === today && liveSince(day, now) != null, today: date === today, future: date > today,
-    };
-  }));
-}
-
-/** The newest PR set of each lift among `prs`, newest first, at most `n`. */
-export function recentPrs(sets: readonly SetEntry[], prs: ReadonlySet<string>, n = 3): SetEntry[] {
-  const best = new Map<string, SetEntry>();
-  for (const e of sets) {
-    if (!prs.has(e.id)) continue;
-    const k = liftKey(e.exercise), was = best.get(k);
-    if (!was || e.date > was.date || (e.date === was.date && byOrderDone(e, was) > 0)) best.set(k, e);
-  }
-  return [...best.values()].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : byOrderDone(b, a))).slice(0, n);
 }
 
 /**

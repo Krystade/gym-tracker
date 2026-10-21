@@ -134,6 +134,7 @@ test('a lift renamed on one phone: the other drops its old settings, and they st
   const [a, b] = await Promise.all([phone(browser), phone(browser)]);
   await logBench(a, '135', '8');
   await a.getByRole('button', { name: 'Bench Press', exact: true }).click();
+  await a.locator('summary', { hasText: 'Lift settings' }).click(); // folded at the page's foot (IA A8)
   await a.getByRole('textbox', { name: 'Min reps' }).fill('6');
   await a.getByRole('textbox', { name: 'Max reps' }).fill('8');
   await a.getByRole('button', { name: 'Save settings' }).click();
@@ -144,6 +145,7 @@ test('a lift renamed on one phone: the other drops its old settings, and they st
 
   await goto(a, 'Lifts');
   await a.getByRole('button', { name: /^Bench Press/ }).click();
+  await a.locator('summary', { hasText: 'Lift settings' }).click(); // folded at the page's foot (IA A8)
   const box = a.getByRole('group', { name: 'Rename or merge' });
   await box.getByRole('combobox', { name: 'New name' }).fill('Flat Bench');
   await box.getByRole('button', { name: 'Rename' }).click();

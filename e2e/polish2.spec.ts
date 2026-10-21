@@ -73,6 +73,7 @@ test('progression settings say why they can’t be saved', async ({ page }) => {
   await seed(page);
   await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Bench Press/ }).click();
+  await page.locator('summary', { hasText: 'Lift settings' }).click(); // folded at the page's foot (IA A8)
   const card = page.getByRole('group', { name: 'Progression settings' });
   await card.getByRole('textbox', { name: 'Max reps' }).fill('6');
   await expect(card.getByRole('button', { name: 'Save settings' })).toBeDisabled();
@@ -85,6 +86,7 @@ test('a hold’s progression settings are in seconds, and go past 50', async ({ 
   await seed(page, ['2026-10-01,Plank,,1,0,40,,hold,,sample', '2026-10-01,Plank,,2,0,40,,hold,,sample']);
   await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Plank/ }).click();
+  await page.locator('summary', { hasText: 'Lift settings' }).click(); // folded at the page's foot (IA A8)
   const card = page.getByRole('group', { name: 'Progression settings' });
   await expect(card.getByRole('textbox', { name: /reps/i })).toHaveCount(0);
   await card.getByRole('textbox', { name: 'Max seconds' }).fill('90');
