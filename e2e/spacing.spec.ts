@@ -85,11 +85,13 @@ test('Stats: the program line sits in the week’s card, inside it, under the ri
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(1);
   await goto(page, 'Stats');
-  const week = page.getByRole('region', { name: 'This week', exact: true });
+  // Stats v2: the program line is in the week's sheet, under the week's lines.
+  await page.locator('.st-week').click();
+  const week = page.getByRole('dialog', { name: 'This week' });
   const line = week.locator('.st-program');
   await expect(line).toContainText('Program, 4 weeks');
-  const [l, ring, card] = [(await line.boundingBox())!, (await week.locator('.st-week-top').boundingBox())!, (await week.boundingBox())!];
-  expect(Math.round(l.y - (ring.y + ring.height))).toBe(12);
+  const [l, lines, card] = [(await line.boundingBox())!, (await week.locator('.st-lines').boundingBox())!, (await week.boundingBox())!];
+  expect(l.y).toBeGreaterThanOrEqual(lines.y + lines.height);
   expect(l.x).toBeGreaterThanOrEqual(card.x);
   expect(l.x + l.width).toBeLessThanOrEqual(card.x + card.width);
 });

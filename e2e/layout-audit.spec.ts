@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Browser, type Locator, type Page } from '@playwright/test';
 import { goto } from './nav';
-import { audit, check, clean, notched, TOP } from './layout';
+import { audit, check, clean, notched, renderCheck, TOP } from './layout';
 import { deloadLog, SIM_LIFTS, simDay } from '../src/domain/learn/deloadSim.sample';
 import { account, befriend, iso, log, ping, put, rand, session, signedIn, Ts, type Seeded } from './seed';
 import { convertedRows, pasteRows, toCsv as dupesCsv, TWINS } from './fixtures/dupes';
@@ -201,7 +201,7 @@ test('Today, History, Lifts, a lift, Stats and More with ten weeks of heavy trai
   }
   await goto(page, 'Stats');
   await expect(page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
-  await check(page, info, found, 'stats');
+  await check(page, info, found, 'stats', [], 'main');
   for (const screen of ['Priorities and goal', 'Characters', 'Gym', 'Program', 'Photos']) {
     await goto(page, 'More');
     await page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: new RegExp(`^${screen}`) }).click();
@@ -387,6 +387,66 @@ test('History: Fix sets with its lifts to tick, the weight field, the lift picke
   clean(found);
 });
 
+// ---- Stats v2: the tiles, each sheet, edit mode, a new user, under the render check's stricter rules too. ----
+
+test('Stats v2: the tiles, the lift, calendar, muscles and week sheets, every range, edit mode, and a new user', async ({ page }, info) => {
+  test.setTimeout(180_000);
+  await phone(page);
+  const found: string[] = [];
+  // PNGs to look at, when asked for (STATS_PNG=<dir>): the screen as the phone shows it, not the full page.
+  const png = async (name: string) => { if (process.env.STATS_PNG) await page.screenshot({ path: `${process.env.STATS_PNG}/${info.project.name}-${name}.png` }); };
+  await goto(page, 'Stats');
+  await check(page, info, found, 'stats-v2-new-user', [], 'main');
+  await png('new-user');
+  await importLog(page);
+  await goto(page, 'Stats');
+  await expect(page.locator('[data-tile^="lift:"]')).toHaveCount(4);
+  await check(page, info, found, 'stats-v2', [], 'main');
+  await png('top');
+  await page.evaluate(() => scrollTo({ top: 640, behavior: 'instant' }));
+  await png('scrolled');
+  await page.evaluate(() => scrollTo({ top: 1280, behavior: 'instant' }));
+  await png('scrolled-2');
+  const sheet = async (tile: string, state: string) => {
+    await page.locator(tile).first().click();
+    const d = page.getByRole('dialog');
+    await expect(d).toBeVisible();
+    // The page under the sheet can't scroll; the sheet sits on the screen's foot.
+    await expect(page.locator('html')).toHaveClass(/sheet-lock/);
+    await check(page, info, found, state, [], 'main');
+    await png(state);
+    // Its body scrolled to the end: what was below the fold, checked in view.
+    if (await d.locator('.st-sh-body').evaluate((b) => { const more = b.scrollHeight > b.clientHeight + 1; b.scrollTop = b.scrollHeight; return more; })) {
+      await check(page, info, found, `${state}-end`, [], 'main');
+      await png(`${state}-end`);
+    }
+    await d.getByRole('button', { name: 'Done' }).click();
+    await expect(d).toHaveCount(0);
+  };
+  await sheet('[data-tile^="lift:"]', 'stats-v2-lift');
+  await sheet('[data-tile="calendar"]', 'stats-v2-calendar');
+  await sheet('[data-tile="muscles"]', 'stats-v2-muscles');
+  await sheet('[data-tile="prs"]', 'stats-v2-prs');
+  await sheet('[data-tile="pain"]', 'stats-v2-pain');
+  await sheet('.st-week', 'stats-v2-week');
+  for (const r of ['4 wk', '1 yr']) {
+    await page.getByRole('group', { name: 'Range' }).getByRole('button', { name: r }).click();
+    await check(page, info, found, `stats-v2-${r.replace(' ', '')}`, [], 'main');
+  }
+  await sheet('[data-tile="calendar"]', 'stats-v2-calendar-1yr');
+  await page.getByRole('group', { name: 'Range' }).getByRole('button', { name: '12 wk' }).click();
+  await page.getByRole('button', { name: 'Edit' }).click();
+  await page.getByRole('button', { name: 'Pin Tonnage' }).click();
+  await page.getByRole('button', { name: 'Hide Calendar' }).click();
+  await check(page, info, found, 'stats-v2-edit', [], 'main');
+  await png('edit');
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('region', { name: 'Pinned' }).locator('[data-tile="tonnage"]')).toBeVisible();
+  await check(page, info, found, 'stats-v2-pinned', [], 'main');
+  await png('pinned');
+  clean(found);
+});
+
 // ---- The prompts: a light week, pain, a variation, the volume steps, a test. ----
 
 test('Prompts: the light week offered and started, the volume steps on Stats', async ({ page }, info) => {
@@ -418,8 +478,9 @@ test('Prompts: the light week offered and started, the volume steps on Stats', a
   await one.getByRole('button', { name: 'Save' }).click();
   await expect(one).toContainText('12–20 sets · yours');
   await goto(page, 'Stats');
+  await page.locator('[data-tile="muscles"]').click();
   await expect(page.getByRole('group', { name: 'Next 3 weeks' })).toBeVisible();
-  await check(page, info, found, 'prompt-volume');
+  await check(page, info, found, 'prompt-volume', [], 'main');
   clean(found);
 });
 
@@ -566,6 +627,17 @@ test('the audit finds each kind of fault on a page built with them, and none on 
   expect(await kinds('<div style="position:sticky;top:0;background:#222;padding:12px 0 8px">Search</div><div style="height:2000px"></div>')).toEqual(['notch']);
   expect(await kinds('<div style="position:sticky;top:0;background:#222;padding:59px 0 8px;margin-top:-59px">Search</div><div style="height:2000px"></div>')).toEqual([]);
   // A sheet over a backdrop, its button down in the home indicator's strip; and the same sheet padded clear of it.
+  // The render check: text over text, text over a chart, text out of its tile, an ellipsis, a 36px button.
+  const strict = async (body: string) => {
+    await page.setContent(shell(body));
+    return [...new Set((await renderCheck(page, 'main')).map((f) => f.kind))].sort();
+  };
+  expect(await strict('<button style="display:block;width:160px;height:60px">Fits</button><svg width=100 height=24></svg><p>Clear of it.</p>')).toEqual([]);
+  expect(await strict('<p style="margin:0;line-height:20px">One</p><p style="margin:-14px 0 0;line-height:20px">Two</p>')).toEqual(['text-text']);
+  expect(await strict('<svg width=200 height=40 style="display:block"></svg><p style="margin:-30px 0 0">Over the chart</p>')).toEqual(['text-chart']);
+  expect(await strict('<button style="display:block;width:44px;height:44px;white-space:nowrap;padding:0">A long label</button>')).toEqual(['escape']);
+  expect(await strict('<div style="width:40px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">Bench Press</div>')).toEqual(['clip']);
+  expect(await strict('<button style="width:60px;height:36px">Go</button>')).toEqual(['tap']);
   const sheet = (pad: string) => `<div style="position:fixed;inset:0;z-index:7;background:rgb(0 0 0 / .6)"></div><div role=dialog style="position:fixed;left:0;right:0;bottom:0;z-index:8;background:#333;padding:8px 8px ${pad}"><button style="width:100%;height:44px">Save</button></div>`;
   expect(await kinds(sheet('8px'))).toEqual(['home']);
   expect(await kinds(sheet('42px'))).toEqual([]);

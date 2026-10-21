@@ -218,15 +218,18 @@ export function milestone(v: number): { prev: number; next: number; progress: nu
   return { prev, next: prev + step, progress: (v - prev) / step };
 }
 
-/** The weighted lifts Stats follows: done in the last 4 weeks, the most sessions over 12 first, then the most recent. */
-export function topLifts(entries: readonly SetEntry[], today: string, n = 4): string[] {
-  const recent = addDays(today, -27), span = addDays(today, -83);
+/**
+ * The weighted lifts Stats follows: done in the last 4 weeks, the most sessions over the range first (`span` days to today, 12
+ * weeks unless Stats' range says otherwise), then the most recent.
+ */
+export function topLifts(entries: readonly SetEntry[], today: string, n = 4, span = 84): string[] {
+  const recent = addDays(today, -27), from = addDays(today, -(Math.max(span, 28) - 1));
   const rows: { name: string; count: number; last: string }[] = [];
   for (const sets of liftIndex(entries).values()) {
     const dates = new Set<string>();
     let last = '', name = '';
     for (const s of sets) {
-      if (s.date < span || s.date > today || e1rm(s) == null) continue;
+      if (s.date < from || s.date > today || e1rm(s) == null) continue;
       dates.add(s.date);
       if (s.date >= last) { last = s.date; name = s.exercise; }
     }
@@ -344,13 +347,13 @@ export function recentPrs(sets: readonly SetEntry[], prs: ReadonlySet<string>, n
 }
 
 /**
- * A lift on Stats over 12 weeks: its strength at each session, oldest first (item 04: the learning core's fatigue-adjusted level,
- * learn/strength; each session's best e1RM for a lift the core has no level for), its latest top set, the change from the first
- * session to the last (two weeks apart or more), a stall.
+ * A lift on Stats over its range (`span` days to today: 12 weeks unless Stats' range says otherwise): its strength at each
+ * session, oldest first (item 04: the learning core's fatigue-adjusted level, learn/strength; each session's best e1RM for a lift
+ * the core has no level for), its latest top set, the change from the first session to the last (two weeks apart or more), a stall.
  */
 export interface Trend { name: string; points: { date: string; v: number }[]; top: SetEntry; delta: number | null; stall: Stall | null }
-export function liftTrend(entries: SetEntry[], name: string, today: string): Trend | null {
-  const from = addDays(today, -83);
+export function liftTrend(entries: SetEntry[], name: string, today: string, span = 84): Trend | null {
+  const from = addDays(today, -(span - 1));
   const ss = sessionsFor(entries, name).filter((x) => x.date >= from && x.date <= today).reverse();
   let points: { date: string; v: number }[] = [];
   let top: SetEntry | null = null;

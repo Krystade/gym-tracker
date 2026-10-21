@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { goto } from './nav';
+import { goto, statsSheet } from './nav';
 
 // Suggested goal and priorities on Stats: nothing changes by itself; a tap takes one, Dismiss hides it until it changes.
 // At the 13 mini's 375×812 with its notch (insets faked as in e2e/records).
@@ -84,7 +84,8 @@ test('the weekly goal: suggested from the last 8 weeks, dismissed until it chang
   await expect(goal).toHaveValue('5');
   await expect(sug).toHaveCount(0);
   await goto(page, 'Stats');
-  await expect(page.getByText('Dashed line: your goal of 5 sessions.')).toBeVisible();
+  await statsSheet(page, 'sessions');
+  await expect(page.getByText('The line: your goal of 5 sessions.', { exact: false })).toBeVisible();
   await page.reload();
   await goto(page, 'Priorities');
   await expect(goal).toHaveValue('5');

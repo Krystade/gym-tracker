@@ -21,18 +21,17 @@ async function sundayNight(page: Page) {
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...ROWS].join('\n')) });
   await expect(page.getByText(`✓ Imported ${ROWS.length} new sets`)).toBeVisible();
   await goto(page, 'Stats');
-  await expect(thisWeek(page)).toContainText(/Sessions\s*2 of 2/);
+  await expect(thisWeek(page).locator('.st-rc')).toContainText('2/2');
   await expect(thisWeek(page)).toContainText(/Sets\s*6/);
   // From here no timer runs unless the test says so: the phone is asleep.
   await page.clock.pauseAt(new Date('2026-10-11T23:30:00'));
 }
-const thisWeek = (page: Page) => page.locator('section.card').filter({ has: page.getByRole('heading', { name: 'This week', exact: true }) });
+const thisWeek = (page: Page) => page.getByRole('region', { name: 'This week', exact: true }).filter({ has: page.locator('.st-week') });
 
 /** Monday's Stats and Today: a new week with nothing in it, and the week just gone as last week. */
 async function monday(page: Page) {
-  await expect(thisWeek(page)).toContainText(/Sessions\s*0 of 2/);
+  await expect(thisWeek(page).locator('.st-rc')).toContainText('0/2');
   await expect(thisWeek(page)).toContainText(/Sets\s*0/);
-  await expect(page.getByRole('region', { name: 'Last week' }).getByRole('heading', { level: 2 })).toHaveText(/Last week\s*· Oct 5–11/);
   await goto(page, 'Today');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Mon, Oct 12');
   const last = page.getByRole('region', { name: 'Last week' });

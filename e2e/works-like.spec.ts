@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, statsSheet } from './nav';
 
 // Round 15, stage 4: "Works like…" on a custom lift's page makes it count as a catalog lift, in Stats too, and the choice
 // syncs to the other phone. Local Auth and Firestore emulators; synthetic users only.
@@ -8,6 +8,8 @@ const PASSWORD = 'synthetic-pass-1';
 const email = () => `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}@test.local`;
 const account = (page: Page) => page.getByRole('region', { name: 'Account' });
 const quads = (page: Page) => page.locator('.mrow[aria-label^="Quads:"] .mval');
+/** Stats, its Muscles sheet open. */
+const stats = async (page: Page) => { await goto(page, 'Stats'); await statsSheet(page, 'muscles'); };
 
 async function phone(browser: Browser) {
   const ctx = await browser.newContext({ storageState: { cookies: [], origins: [{ origin: `http://127.0.0.1:${process.env.E2E_PORT ?? 4173}`, localStorage: [{ name: 'gym-tracker:walkthrough', value: 'done' }] }] } });
@@ -35,7 +37,7 @@ test('Works like… makes a custom lift count as the catalog lift, in Stats, and
     await a.getByRole('button', { name: 'Add set' }).first().click();
   }
   await expect(a.getByRole('list', { name: 'Sets for Zercher Wobble' }).getByRole('listitem')).toHaveCount(2);
-  await goto(a, 'Stats');
+  await stats(a);
   await expect(quads(a)).toHaveText(/^0 /);
 
   await goto(a, 'Lifts');
@@ -47,14 +49,14 @@ test('Works like… makes a custom lift count as the catalog lift, in Stats, and
   await a.getByRole('group', { name: 'Lifts it works like' }).getByRole('button', { name: 'Front Squat', exact: true }).click();
   await expect(a.getByText(/^Works like Front Squat: quads · glutes ½ · hamstrings ½ · squat/)).toBeVisible();
   await a.screenshot({ path: 'screenshots/r15-works-like-set.png' });
-  await goto(a, 'Stats');
+  await stats(a);
   await expect(quads(a)).toHaveText(/^2 /);
 
   const mail = email();
   await enter(a, mail, 'Create account');
   const b = await phone(browser);
   await enter(b, mail, 'Sign in');
-  await goto(b, 'Stats');
+  await stats(b);
   await expect(quads(b)).toHaveText(/^2 /);
 
   // Automatic gives it back to its name: unknown again.

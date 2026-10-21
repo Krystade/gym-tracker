@@ -11,18 +11,17 @@ const WarnIcon = () => (
   </svg>
 );
 
-/** Pain-flagged sets per region over 8 weeks. Records and surfaces; never diagnoses. */
-export function CareCard({ entries, today, who }: { entries: SetEntry[]; today: string; /** A friend's username. */ who?: string }) {
-  const report = painReport(entries, today, 8);
+/** Pain-flagged sets per region over Stats' range (`weeks`), in the Pain flags tile's sheet. Records and surfaces; never diagnoses. */
+export function CareBody({ entries, today, who, weeks = 8 }: { entries: SetEntry[]; today: string; /** A friend's username. */ who?: string; weeks?: number }) {
+  const report = painReport(entries, today, weeks);
   // Pain on and off for 2 weeks or more (NHS: see a GP after 2 weeks of self-care; item 08). A pattern, never a diagnosis.
   const long = lingering(entries, today);
   return (
-    <section className="card" aria-labelledby="care-h">
-      <h2 id="care-h">Joint &amp; back care</h2>
+    <section className="st-care" aria-label="Joint & back care">
       {long.map((l) => (
         <p key={l.region} className="warn small care-physio"><WarnIcon /> {l.region === 'other' ? 'Pain' : `Pain in ${who ? `@${who}’s` : 'your'} ${l.region}`} has come and gone for {plural(l.weeks, 'week')}. Worth getting it looked at by a physio or GP.</p>
       ))}
-      {report.length === 0 && <p className="muted">No pain logged in the last 8 weeks.</p>}
+      {report.length === 0 && <p className="muted">No pain logged in the last {plural(weeks, 'week')}.</p>}
       {report.map((r) => {
         const max = Math.max(1, ...r.weekly);
         return (
@@ -32,7 +31,7 @@ export function CareCard({ entries, today, who }: { entries: SetEntry[]; today: 
             <div className="care-bars" role="img" aria-label={`Pain sets per week, oldest first: ${r.weekly.join(', ')}`}>
               {r.weekly.map((n, i) => <span key={i} style={{ height: `${n ? 4 + (20 * n) / max : 2}px` }} className={n ? '' : 'zero'} />)}
             </div>
-            <p className="muted small care-axis"><span>8 weeks ago</span><span>this week</span></p>
+            <p className="muted small care-axis"><span>{plural(weeks, 'week')} ago</span><span>this week</span></p>
             <ul className="care-ex">
               {r.byExercise.slice(0, 3).map((x) => (
                 <li key={x.exercise}><b>{x.exercise}</b><span className="muted small">{plural(x.sets, 'set')} · avg {fmtWeight(x.avgWeight)} lb{x.maxSeverity ? ` · worst ${SEV[x.maxSeverity]}` : ''}</span></li>

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { goto } from './nav';
+import { goto, statsSheet } from './nav';
 import { deloadLog, SIM_LIFTS, simDay } from '../src/domain/learn/deloadSim.sample';
 
 // Item 07 on Stats: eight weeks of synthetic training, chest 6 sets a week (bench 3 × 2). Chest set to priority 1 with a range of
@@ -65,6 +65,7 @@ async function setUp(page: Page, body?: string, sets = SETS, range = ['12', '16'
   await one.getByRole('button', { name: 'Save' }).click();
   await expect(one).toContainText(`1 · ${range[0]}–${range[1]} sets · yours`);
   await goto(page, 'Stats');
+  await statsSheet(page, 'muscles');
 }
 const steps = (page: Page) => page.getByRole('group', { name: 'Next 3 weeks' });
 

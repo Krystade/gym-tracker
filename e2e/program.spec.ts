@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { goto } from './nav';
+import { goto, statsSheet } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
@@ -61,5 +61,6 @@ test('logging without touching the plan still records the session for adherence'
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem')).toHaveCount(1);
   await goto(page, 'Stats');
+  await statsSheet(page, 'week');
   await expect(page.locator('.st-program', { hasText: 'Program, 4 weeks' })).toContainText(/\d+% · \d+ \/ \d+ sets/);
 });

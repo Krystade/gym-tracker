@@ -28,7 +28,7 @@ test('photos stay on the device: add, compare, delete, never exported', async ({
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
 
   await goto(page, 'Stats');
-  await page.getByRole('region', { name: 'Progress photos' }).getByRole('button', { name: 'Open photos' }).click();
+  await page.getByRole('button', { name: /^Progress photos/ }).click();
   await addPhoto(page, '2026-08-01', '#446');
   await addPhoto(page, '2026-09-20', '#664');
 
@@ -67,7 +67,7 @@ test('Save to Photos shares the file, and says so when sharing fails', async ({ 
   });
   await page.goto('/');
   await goto(page, 'Stats');
-  await page.getByRole('region', { name: 'Progress photos' }).getByRole('button', { name: 'Open photos' }).click();
+  await page.getByRole('button', { name: /^Progress photos/ }).click();
   await addPhoto(page, '2026-08-01', '#446');
   await page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: 'Front, 2026-08-01' }).click();
   await page.getByRole('button', { name: 'Save to Photos' }).click();

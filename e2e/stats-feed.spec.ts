@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, statsSheet } from './nav';
 
 // Stats as answers (round 18): the week's ring, a new PR (confetti once), Getting stronger with a flat lift flagged, Next
 // milestones, and Behind this week with a lift for each. Synthetic numbers only. Today: Thu 15 Oct 2026, 18:00.
@@ -52,54 +52,61 @@ test.use({ serviceWorkers: 'block' });
 test('Stats answers: the week’s ring, the new PR, who’s getting stronger and what’s flat, the next milestones, what’s behind', async ({ page }) => {
   await seed(page);
   const week = page.getByRole('region', { name: 'This week', exact: true });
-  await expect(week).toContainText(/Sessions\s*1 of 3/);
-  await expect(week.locator('.st-ring-c')).toHaveText('1/3sessions');
+  await expect(week.locator('.st-rc')).toHaveText('1/3 sessions');
   await expect(week).toContainText(/Sets\s*3/);
-  await expect(week).toContainText(/PRs\s*\d new/);
-  await expect(week.locator('.st-nudge')).toContainText('2 more sessions');
+  await expect(week).toContainText(/PRs\s*\d\s*new/);
+  await expect(week.locator('.st-wk-nudge')).toContainText('2 more sessions');
 
-  const pr = page.getByRole('region', { name: 'New PR' });
-  await expect(pr).toContainText('New PR · today');
-  await expect(pr).toContainText('Barbell Squat 210 × 5');
-  await expect(pr).toContainText(/e1RM 245 lb, up \d+ lb on your best/);
-  await expect(pr.locator('.st-confetti i')).toHaveCount(16);
-
-  const strong = page.getByRole('region', { name: 'Getting stronger' });
-  await expect(strong.getByRole('button', { name: /^Barbell Squat: up \d+ lb e1RM$/ })).toBeVisible();
-  await expect(strong.getByRole('button', { name: 'Bench Press: flat' })).toBeVisible();
-  await expect(strong.getByRole('button', { name: 'Bench Press: flat' })).toContainText(/weeks, no change/);
-  const miles = page.getByRole('region', { name: 'Next milestones' });
-  // Milestones read the fatigue-adjusted level (item 04), a little under today's 245 lb top set.
-  await expect(miles.getByRole('img', { name: /^2[34]\d of 250 lb$/ })).toBeVisible();
-
-  const behind = page.getByRole('region', { name: 'Behind this week' });
-  await expect(behind.locator('li').first()).toBeVisible();
+  // The PRs tile: news, confetti the first time.
+  const prs = page.locator('[data-tile="prs"]');
+  await expect(prs).toContainText('newest today');
+  await expect(prs).toHaveAccessibleName(/· new/);
+  await expect(prs.locator('.st-confetti i')).toHaveCount(16);
+  const squat = page.locator('[data-tile^="lift:"]', { hasText: 'Barbell Squat' });
+  const bench = page.locator('[data-tile^="lift:"]', { hasText: 'Bench Press' });
+  await expect(squat).toContainText(/↑ \d/);
+  await expect(bench).toContainText(/— flat \d+ wk/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect((await page.getByRole('heading', { name: 'Stats', level: 1 }).boundingBox())!.y).toBeGreaterThanOrEqual(TOP);
   await page.waitForTimeout(1300);
   await page.screenshot({ path: `${SHOTS}/stats-375.png` });
   await page.screenshot({ path: `${SHOTS}/stats-375-full.png`, fullPage: true });
 
-  // The confetti is once per PR: back on Stats, the card stays and nothing falls.
+  let d = await statsSheet(page, 'prs');
+  const pr = d.getByRole('region', { name: 'New PR' });
+  await expect(pr).toContainText('New PR · today');
+  await expect(pr).toContainText('Barbell Squat 210 × 5');
+  await expect(pr).toContainText(/e1RM 245 lb, up \d+ lb on your best/);
+  d = await statsSheet(page, 'milestones');
+  // Milestones read the fatigue-adjusted level (item 04), a little under today's 245 lb top set.
+  await expect(d.getByRole('img', { name: /^2[34]\d of 250 lb$/ })).toBeVisible();
+  d = await statsSheet(page, 'muscles');
+  await expect(d.getByRole('region', { name: 'Behind this week' }).locator('li').first()).toBeVisible();
+  await d.getByRole('button', { name: 'Done' }).click();
+
+  // The confetti is once per PR: back on Stats, the tile stays and nothing falls.
   await goto(page, 'Today');
   await goto(page, 'Stats');
-  await expect(pr).toBeVisible();
-  await expect(pr.locator('.st-confetti')).toHaveCount(0);
+  await expect(prs).toBeVisible();
+  await expect(prs.locator('.st-confetti')).toHaveCount(0);
 
-  // A lift on Getting stronger opens its screen.
-  await strong.getByRole('button', { name: 'Bench Press: flat' }).click();
+  // A lift's sheet opens its screen.
+  await bench.click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Open lift' }).click();
   await expect(page.getByRole('heading', { name: 'Bench Press', level: 1 })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('html')).not.toHaveClass(/sheet-lock/);
 });
 
 test('Stats under reduced motion: no draw, no confetti, nothing moving', async ({ page }) => {
   await seed(page, true);
-  await expect(page.getByRole('region', { name: 'New PR' })).toBeVisible();
+  await expect(page.locator('[data-tile="prs"]')).toBeVisible();
   expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
 });
 
 test('Stats at 320 wide: nothing spills sideways', async ({ page }) => {
   await seed(page, false, 320);
-  await expect(page.getByRole('region', { name: 'Getting stronger' })).toBeVisible();
+  await expect(page.locator('[data-tile^="lift:"]').first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.waitForTimeout(1300);
   await page.screenshot({ path: `${SHOTS}/stats-320-full.png`, fullPage: true });

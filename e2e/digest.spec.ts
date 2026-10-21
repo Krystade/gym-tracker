@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { goto } from './nav';
+import { goto, statsSheet } from './nav';
 
 // The weekly digest on Today and Stats, at the 13 mini's 375×812 with its notch (insets faked as in e2e/records).
 const TOP = 47, BOTTOM = 34;
@@ -144,13 +144,13 @@ test('Today: a set logged today leaves last week as it was; a set gone from last
 test('Stats: last week next to this week, always open', async ({ page }) => {
   await seed(page, '2026-10-14T18:00:00');
   await goto(page, 'Stats');
-  const card = page.getByRole('region', { name: 'Last week' });
-  await expect(card.getByRole('heading', { level: 2 })).toHaveText(/Last week\s*· Oct 5–11/);
+  await statsSheet(page, 'week');
+  const card = page.getByRole('dialog').getByRole('region', { name: 'Last week' });
+  await expect(card.getByRole('heading', { level: 3 }).first()).toHaveText(/Last week\s*· Oct 5–11/);
   await expect(line(card, 'Sessions')).toHaveText(/2 of 2 \+ 1 cardio day\s*↑1/);
   await expect(line(card, 'PRs')).toHaveText(/PRs\s*1/);
   await expect(card.getByRole('button')).toHaveCount(0); // nothing to fold or hide
   await card.scrollIntoViewIfNeeded();
-  await fits(page);
   await page.screenshot({ path: `${SHOTS}/3-stats.png` });
 });
 

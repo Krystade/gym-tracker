@@ -37,7 +37,13 @@ export type Kind =
   | 'target' // (c) a tap target under 44 px either way, with no hit area round it making up the difference
   | 'notch' // (d) text or a control under the status bar with the page at the top
   | 'under-bar' // (d) text or a control the page can't scroll out from under the tab bar (and the rest bar on it)
-  | 'home'; // (d) a control on a sheet or bar inside the home indicator's strip
+  | 'home' // (d) a control on a sheet or bar inside the home indicator's strip
+  // The render check (renderCheck, below): stricter rules for a screen built to the stat-tile contract (Stats v2's tiles and sheets).
+  | 'text-text' // two lines of text cross (SVG <text> included), by more than 1×3 px
+  | 'text-chart' // text crosses a chart, an icon, a bar, a meter or a dot it isn't part of, by more than 1×2 px
+  | 'escape' // text sits partly outside its nearest container (a tile, a sheet, a button, a chip)
+  | 'clip' // text cut by a box that hides its overflow, or any ellipsis
+  | 'tap'; // a button or link under 44×44, whatever hit area it has
 
 /** An intended finding: kind, the element (a CSS selector it matches), for an overlap the other one, and why it's meant. */
 export interface Allow { kind: Kind; a: string; b?: string; why: string }
@@ -50,9 +56,8 @@ export const ALLOW: Allow[] = [
   { kind: 'overlap', a: '.tab-dot', b: '.tabs svg', why: 'the tab bar’s news dot sits on its tab’s icon corner, inside the tab (a badge)' },
   { kind: 'overlap', a: '.unread-dot, .unread-dot *', b: 'button > svg', why: 'an unread count is a badge on its own button’s icon, inside the button' },
   { kind: 'overlap', a: '.fd-corner, .fd-corner *', b: '.fd-ringwrap > .ring, .fd-ringwrap > .ring *, .fd-ringwrap > .avatar, .fd-ringwrap > .avatar *', why: 'a feed avatar’s done/live corner badge sits on its own ring, inside the ring’s box' },
-  { kind: 'overlap', a: '.st-ring > .ring, .st-ring > .ring *', b: '.st-ring-c, .st-ring-c *', why: 'the week’s count is centred in the hole of its 128px ring (a 1-or-2-digit count and “sessions” fit inside it)' },
+  { kind: 'overlap', a: '.st-ringwrap > .ring, .st-ringwrap > .ring *', b: '.st-rc, .st-rc *', why: 'the week’s count is centred in the hole of its 76px ring (a 1-or-2-digit count out of the goal fits inside it)' },
   { kind: 'overlap', a: '.mband', b: '.mbar, .mtrack', why: 'the muscle-volume band brackets the bar it marks (3px above and below it, by design)' },
-  { kind: 'overlap', a: '.st-bh-bar em', b: '.st-bh-bar i', why: 'the usual-length tick is drawn across the bar it marks' },
 ];
 
 /** Every finding on the screen as it is now; `extra` adds allowances for this screen only. */
@@ -377,6 +382,117 @@ export async function audit(page: Page, extra: Allow[] = []): Promise<Finding[]>
   }, { allow: [...ALLOW, ...extra], sat: TOP, sab: BOTTOM, size: page.viewportSize() ?? { width: 375, height: 812 } }) as Promise<Finding[]>;
 }
 
+/**
+ * The render check from the Stats v2 mockups (.superpowers/redesign/stats-v2/render.mjs), over what `scope` matches: text against
+ * text (SVG labels too) and against charts and icons, text leaving its container, any clipped or ellipsised text, and every
+ * button and link at 44×44 or more on its own (no hit-area allowance).
+ */
+export async function renderCheck(page: Page, scope: string): Promise<Finding[]> {
+  await page.evaluate(() => {
+    for (const a of document.getAnimations()) {
+      const t = a.effect?.getComputedTiming();
+      if (t && t.iterations !== Infinity) try { a.finish(); } catch { /* not finishable */ }
+    }
+  });
+  return page.evaluate((scope) => {
+    const out: { kind: string; a: string; b?: string; detail: string }[] = [];
+    type B = { left: number; right: number; top: number; bottom: number; width: number; height: number };
+    const inter = (a: B, b: B) => ({ w: Math.min(a.right, b.right) - Math.max(a.left, b.left), h: Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) });
+    const name = (el: Element) => {
+      const c = el instanceof SVGElement ? el.className.baseVal : typeof el.className === 'string' ? el.className : '';
+      return `${el.tagName.toLowerCase()}${c.trim() ? `.${c.trim().split(/\s+/).join('.')}` : ''}`;
+    };
+    const f1 = (n: number) => n.toFixed(1);
+    const shown = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      if (r.width < 0.5 || r.height < 0.5) return false;
+      // Inside a closed <details>, among other things: laid out, never painted.
+      const e = el as Element & { checkVisibility?: (o: object) => boolean };
+      if (e.checkVisibility && !e.checkVisibility({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true })) return false;
+      for (let p: Element | null = el; p; p = p.parentElement) {
+        const s = getComputedStyle(p);
+        if (s.visibility === 'hidden' || s.display === 'none' || s.opacity === '0' || s.clipPath === 'inset(50%)') return false;
+      }
+      return true;
+    };
+    const sr = (el: Element) => el.closest('.sr-only') != null;
+    const inView = (el: Element, r: B) => {
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        if (!/auto|scroll/.test(getComputedStyle(p).overflowY)) continue;
+        const v = p.getBoundingClientRect();
+        if (r.top < v.top - 0.5 || r.bottom > v.bottom + 0.5) return false;
+      }
+      return true;
+    };
+    const seen = new Set<string>();
+    const add = (kind: string, a: string, detail: string, b?: string) => {
+      const k = `${kind}|${a}|${b ?? ''}`;
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push({ kind, a, ...(b && { b }), detail });
+    };
+    for (const root of document.querySelectorAll(scope)) {
+      // Clip: text in a box that hides its overflow and has more than it shows (a sheet's scrolling body excepted), or an ellipsis.
+      for (const el of [root, ...root.querySelectorAll('*')]) {
+        if (el instanceof SVGElement || !shown(el) || sr(el)) continue;
+        const cs = getComputedStyle(el), txt = (el.textContent ?? '').trim();
+        if (/hidden|clip/.test(cs.overflowX + cs.overflowY) && txt && (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)) add('clip', name(el), `"${txt.slice(0, 30)}" ${el.scrollWidth}×${el.scrollHeight} in ${el.clientWidth}×${el.clientHeight}`);
+        if (cs.textOverflow === 'ellipsis' && el.scrollWidth > el.clientWidth + 1) add('clip', name(el), `ellipsis on "${txt.slice(0, 30)}"`);
+      }
+      // Text boxes: each line of each text node (its line box, as the audit measures it), and SVG <text>.
+      const texts: { el: Element; node: Node; r: B; t: string }[] = [];
+      const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      while (tw.nextNode()) {
+        const n = tw.currentNode, el = n.parentElement!;
+        if (!n.textContent?.trim() || el.closest('svg') || sr(el) || !shown(el)) continue;
+        const rg = document.createRange();
+        rg.selectNodeContents(n);
+        const lh = parseFloat(getComputedStyle(el).lineHeight);
+        for (const rc of rg.getClientRects()) {
+          if (rc.width <= 0.5 || rc.height <= 0.5) continue;
+          const r = { left: rc.left, right: rc.right, top: rc.top, bottom: rc.bottom, width: rc.width, height: rc.height };
+          if (lh > 0 && lh < rc.height) { const m = (rc.top + rc.bottom) / 2; r.top = m - lh / 2; r.bottom = m + lh / 2; r.height = lh; }
+          // Scrolled out of a scroller's view (a sheet's body): not on screen now; it's checked where it scrolls into view.
+          if (!inView(el, r)) continue;
+          texts.push({ el, node: n, r, t: n.textContent.trim().slice(0, 28) });
+        }
+      }
+      for (const t of root.querySelectorAll('svg text')) if (shown(t) && inView(t, t.getBoundingClientRect())) texts.push({ el: t, node: t, r: t.getBoundingClientRect(), t: (t.textContent ?? '').trim() });
+      // Graphics: icons, charts, bars, meters and dots (a ring is drawn round its centre count on purpose).
+      const gfx = [...root.querySelectorAll('svg')].filter((g) => !g.classList.contains('ring') && !g.parentElement?.closest('svg') && shown(g) && inView(g, g.getBoundingClientRect())).map((g) => ({ el: g as Element, r: g.getBoundingClientRect() as B }))
+        .concat([...root.querySelectorAll('.st-t-new, .st-meter, .st-status-ic, .mbar, .mtrack, .cal-legend i, .avatar')].filter((e) => shown(e) && inView(e, e.getBoundingClientRect())).map((e) => ({ el: e, r: e.getBoundingClientRect() })));
+      for (let i = 0; i < texts.length; i++) {
+        const a = texts[i];
+        for (let j = i + 1; j < texts.length; j++) {
+          const b = texts[j];
+          if (a.node === b.node) continue;
+          const o = inter(a.r, b.r);
+          if (o.w > 1 && o.h > 3) add('text-text', `"${a.t}" in ${name(a.el)}`, `${f1(o.w)}×${f1(o.h)}px`, `"${b.t}" in ${name(b.el)}`);
+        }
+        for (const g of gfx) {
+          if (g.el.contains(a.el) || a.el.contains(g.el)) continue;
+          const o = inter(a.r, g.r);
+          if (o.w > 1 && o.h > 2) add('text-chart', `"${a.t}" in ${name(a.el)}`, `${f1(o.w)}×${f1(o.h)}px`, name(g.el));
+        }
+        // Escape: a text box must sit inside its nearest container.
+        if (a.el.closest('svg')) continue;
+        const box = a.el.closest('.st-tile, .st-week, .st-sheet, .st-chip, .st-cells3 > div, .st-pr, .st-behind, .more-row, button, a, .chip');
+        if (box) {
+          const b = box.getBoundingClientRect(), r = a.r;
+          if (r.left < b.left - 0.5 || r.right > b.right + 0.5 || r.top < b.top - 0.5 || r.bottom > b.bottom + 0.5) add('escape', `"${a.t}" in ${name(a.el)}`, `[${f1(r.left)},${f1(r.top)} ${f1(r.width)}×${f1(r.height)}] out of [${f1(b.left)},${f1(b.top)} ${f1(b.width)}×${f1(b.height)}]`, name(box));
+        }
+      }
+      // Taps: 44×44 on their own.
+      for (const t of root.querySelectorAll('button, a[href], [role=button]')) {
+        if (!shown(t) || sr(t) || (t as HTMLButtonElement).disabled) continue;
+        const r = t.getBoundingClientRect();
+        if (r.width < 43.5 || r.height < 43.5) add('tap', name(t), `"${(t.getAttribute('aria-label') ?? t.textContent ?? '').trim().slice(0, 24)}" ${f1(r.width)}×${f1(r.height)}`);
+      }
+    }
+    return out;
+  }, scope) as Promise<Finding[]>;
+}
+
 /** Findings as lines a failure message can show. */
 export const lines = (fs: Finding[]) => fs.map((f) => `${f.kind}: ${f.a}${f.b ? ` ⨯ ${f.b}` : ''} — ${f.detail}`);
 
@@ -384,9 +500,11 @@ export const lines = (fs: Finding[]) => fs.map((f) => `${f.kind}: ${f.a}${f.b ? 
  * Audits `state`, keeps its full-page PNG under screenshots/layout/<project>/, and adds its findings to `found` (the spec
  * asserts it empty at the end, so one run lists every finding rather than the first).
  */
-export async function check(page: Page, info: TestInfo, found: string[], state: string, extra: Allow[] = []) {
+export async function check(page: Page, info: TestInfo, found: string[], state: string, extra: Allow[] = [], strict?: string) {
   const t0 = Date.now();
   const fs = await audit(page, extra);
+  // A screen built to the stat-tile contract: the render check's stricter rules too, over `strict` (or the open dialog).
+  if (strict) fs.push(...await renderCheck(page, await page.locator('[role=dialog]').count() ? '[role=dialog]' : strict));
   if (process.env.LAYOUT_LOG) console.log(`${state}: ${fs.length} findings in ${Date.now() - t0} ms`);
   const dir = path.join('screenshots', 'layout', info.project.name || 'default');
   mkdirSync(dir, { recursive: true });

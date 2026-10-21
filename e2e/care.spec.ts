@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { goto } from './nav';
+import { goto, statsSheet } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
@@ -21,6 +21,7 @@ test('pain region and severity, care card, back block, swap suggestions', async 
   await expect(page.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem').first()).toContainText('pain · elbow');
 
   await goto(page, 'Stats');
+  await statsSheet(page, 'pain');
   const care = page.getByRole('region', { name: 'Joint & back care' });
   await expect(care).toContainText('Elbow');
   await expect(care).toContainText('Cable Curl');

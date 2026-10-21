@@ -436,7 +436,7 @@ h2 { font-size: 17px; margin: 0 0 8px; }
 h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 .chart .bar { fill: var(--accent); }
 .chart .bar.sel { fill: var(--accent-hi); }
-.chart .goal { stroke: var(--muted); stroke-dasharray: 4 4; stroke-width: 1; }
+.chart .goal { stroke: var(--text); stroke-width: 1; }
 .chart .cell { cursor: pointer; }
 .chart .cell.sel { stroke: var(--text); stroke-width: 1.5; }
 .readout { font-size: var(--fs-sm); color: var(--muted); min-height: 1.4em; }

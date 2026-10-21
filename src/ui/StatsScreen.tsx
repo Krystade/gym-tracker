@@ -1,90 +1,126 @@
+import { useMemo, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { FittedProfileStore } from '../state/useFittedProfile';
 import type { ProgramStore } from '../state/useProgram';
-import { adherence } from '../domain/program';
-import { addDays, calendarDays, weekStart, weeklyMuscleSets, weeklySummary } from '../domain/analytics';
-import { MUSCLES } from '../domain/muscles';
-import { fmtWeight, plural } from '../domain/format';
-import { BarChart } from './charts/BarChart';
-import { MuscleBars, weekPace } from './charts/MuscleBars';
-import { Calendar } from './charts/Calendar';
-import { ChartTable } from './charts/ChartTable';
-import { CareCard } from './CareCard';
-import { BodyCard } from './BodyCard';
 import type { BodyStore } from '../state/useBody';
 import type { PhotosStore } from '../state/usePhotos';
-import { PhotosCard } from './PhotosScreen';
-import { LastWeekCard } from './WeekDigest';
-import { VolumeSteps } from './VolumeSteps';
+import { adherence } from '../domain/program';
+import { addDays, weekStart } from '../domain/analytics';
+import { fmtDate, plural } from '../domain/format';
+import { liftKey } from '../domain/ids';
+import { thisWeekCardio } from '../domain/cardio';
+import { arrange, dayOrder, DEFAULT_RANGE, isRange, layoutOf, NO_LAYOUT, RANGES, rows, toggleHide, togglePin, type LayoutPrefs, type Range } from '../domain/statsLayout';
+import { activeProfileDb } from '../db/db';
+import { getPref, setPref } from '../state/prefs';
 import { Icon } from './icons';
 import { goalLabel, Priorities } from './PrioritiesScreen';
-import { thisWeekCardio } from '../domain/cardio';
-import { BehindCard, PrCardView, Stronger, WeekRing } from './StatsCards';
+import { StatsSheet } from './StatsSheet';
+import { StatsTile } from './StatsTile';
+import { SECTIONS, useTiles, WeekHero, WeekSheet, type TileModel } from './StatsTiles';
+import './stats.css';
 
-const tons = (n: number) => (n >= 1000 ? `${fmtWeight(Math.round(n / 100) / 10)}k` : fmtWeight(Math.round(n)));
-const fmt = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
+// Stats v2 (plan §6): the week up top, one range for every tile, then sections of tiles two to a row. A tile opens its sheet.
+// Your own Stats keeps what you pin and hide, and the day's news order, per profile; a friend's Stats shows theirs as it comes.
 
-/** A friend's Stats: no photos, and their priorities shown but not editable. */
+const SHEET_WEEK = '__week';
+
 export function StatsScreen({ store, profile, programs, body, photos, today, onOpenPhotos, readOnly, who, onOpenLift, onOpenPriorities }: {
   /** A friend's username: named wherever your own Stats says "your". */ who?: string;
   store: SetsStore; profile: FittedProfileStore; programs: ProgramStore; body: BodyStore; photos: PhotosStore | null; today: string; onOpenPhotos: () => void; readOnly?: boolean;
-  /** A lift named on a card (Getting stronger, a muscle's fix): its screen. */ onOpenLift?: (name: string) => void;
+  /** A lift named in a sheet: its screen. */ onOpenLift?: (name: string) => void;
   /** Priorities and the training goal live in settings (owner, 2026-10-20): a row here opens them. */ onOpenPriorities?: () => void;
 }) {
-  const p = profile.profile;
+  const p = profile.profile, entries = store.entries;
+  const [owner] = useState(() => (readOnly ? null : activeProfileDb()));
+  const [range, setRangeState] = useState<Range>(() => { const r = owner ? getPref<string>(owner, 'stats:range') : undefined; return isRange(r) ? r : DEFAULT_RANGE; });
+  const [layout, setLayoutState] = useState<LayoutPrefs>(() => (owner ? layoutOf({ pins: getPref(owner, 'stats:pins'), hidden: getPref(owner, 'stats:hidden') }) : NO_LAYOUT));
+  const [editing, setEditing] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
+  const setRange = (r: Range) => { setRangeState(r); if (owner) setPref(owner, 'stats:range', r); };
+  const setLayout = (l: LayoutPrefs) => { setLayoutState(l); if (owner) { setPref(owner, 'stats:pins', l.pins); setPref(owner, 'stats:hidden', l.hidden); } };
+
+  // Pinned lifts stay even when they fall out of the four followed.
+  const alsoLifts = useMemo(() => {
+    const keys = new Set(layout.pins.filter((id) => id.startsWith('lift:')).map((id) => id.slice(5)));
+    if (!keys.size) return [];
+    const names = new Map<string, string>();
+    for (const e of entries) { const k = liftKey(e.exercise); if (keys.has(k)) names.set(k, e.exercise); }
+    return [...names.values()];
+  }, [layout.pins, entries]);
+  const tiles = useTiles({ entries, profile: p, today, range, who, owner: owner ?? undefined, alsoLifts, body: body.days, onOpenLift, onOpenPriorities });
+
+  // News to the front of its section, worked out once a day on the first open (owner, 2026-10-20).
+  const [front] = useState(() => {
+    if (!owner) return tiles.filter((t) => t.news).map((t) => t.id);
+    const o = dayOrder(getPref(owner, 'stats:order'), today, () => tiles.filter((t) => t.news).map((t) => t.id));
+    setPref(owner, 'stats:order', o);
+    return o.front;
+  });
+  const adh = useMemo(() => (programs.program ? adherence(programs.program, programs.plans, entries, addDays(today, -27), today) : null), [programs.program, programs.plans, entries, today]);
+
   const prioLink = !readOnly && onOpenPriorities && (
     <ul className="card more-list" aria-label="Settings">
       <li><button className="more-row" onClick={onOpenPriorities}><span>Priorities and goal</span><span className="more-note">{goalLabel(p)}</span><Icon name="chev-right" size={20} sw={2} className="more-chev" /></button></li>
     </ul>
   );
+  const photosRow = photos && (
+    <ul className="card more-list" aria-label="Photos">
+      <li><button className="more-row" onClick={onOpenPhotos}><span>Progress photos</span><span className="more-note">{photos.metas.length ? `${plural(photos.metas.length, 'photo')} · ${fmtDate(photos.metas.reduce((a, m) => (m.date > a ? m.date : a), ''))}` : 'On this phone only'}</span><Icon name="chev-right" size={20} sw={2} className="more-chev" /></button></li>
+    </ul>
+  );
   // A friend's priorities stay on their Stats, read-only; your own are under More (owner, 2026-10-20).
-  const friendPrio = (cardioMinutes: number) => readOnly && <Priorities profile={profile} readOnly who={who} cardioMinutes={cardioMinutes} entries={store.entries} today={today} />;
-  // A new user sets priorities before the first workout, so they're here with an empty log too.
+  const friendPrio = readOnly && <Priorities profile={profile} readOnly who={who} cardioMinutes={entries.length ? thisWeekCardio(entries, today) : 0} entries={entries} today={today} />;
   const title = who ? `@${who}’s stats` : 'Stats';
-  if (!store.entries.length) return (<><h1 className={who ? 'who-title' : undefined}>{title}</h1><p className="muted">{who ? `No sessions from @${who} yet.` : 'No sessions yet — log a workout or import your history under More.'}</p><BodyCard body={body} today={today} who={who} />{photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}{prioLink}{friendPrio(0)}</>);
-  const weeks = weeklySummary(store.entries, 12, today);
-  const muscle = weeklyMuscleSets(store.entries, weekStart(today));
-  const lastWeek = weeklyMuscleSets(store.entries, weeks.at(-2)!.week);
-  // 12 whole Monday–Sunday columns, the last one running to today.
-  const days = calendarDays(store.entries, 11 * 7 + 1 + (Date.parse(today) - Date.parse(weekStart(today))) / 864e5, today);
-  const adh = programs.program ? adherence(programs.program, programs.plans, store.entries, addDays(today, -27), today) : null;
+
+  if (!entries.length) return (<>
+    <h1 className={who ? 'who-title' : undefined}>{title}</h1>
+    <p className="muted">{who ? `No sessions from @${who} yet.` : 'No sessions yet — log a workout or import your history under More.'}</p>
+    {photosRow}{prioLink}{friendPrio}
+  </>);
+
+  const bySection = SECTIONS.map((s) => ({ id: s.id, tiles: tiles.filter((t) => t.section === s.id) }));
+  const a = arrange(bySection, layout, front);
+  const hiddenAll = a.sections.flatMap((s) => s.hidden);
+  const opened = open && open !== SHEET_WEEK ? tiles.find((t) => t.id === open) : undefined;
+
+  const tile = (t: TileModel) => (
+    <StatsTile key={t.id} t={t} editing={editing} pinned={layout.pins.includes(t.id)} hidden={layout.hidden.includes(t.id)}
+      onOpen={() => setOpen(t.id)} onPin={() => setLayout(togglePin(layout, t.id))} onHide={() => setLayout(toggleHide(layout, t.id))} extra={t.extra} />
+  );
+  const grid = (ts: TileModel[]) => rows(ts).map((r) => <div key={r[0].id} className="st-row">{r.map(tile)}</div>);
+
   return (
     <>
-      <h1 className={who ? 'who-title' : undefined}>{title}</h1>
-      <p className="st-sub">Week of <b>{new Date(`${weekStart(today)}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</b> · {new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long' })}</p>
-      <WeekRing entries={store.entries} profile={p} today={today} program={adh} who={who} />
-      <PrCardView entries={store.entries} today={today} juice={!readOnly} who={who} />
-      <Stronger entries={store.entries} today={today} onOpen={onOpenLift} />
-      <BehindCard entries={store.entries} profile={p} today={today} onOpen={onOpenLift} who={who} />
-      <LastWeekCard entries={store.entries} profile={p} today={today} />
-      <section className="card">
-        <h2>Muscle volume</h2>
-        <p className="muted small">Fractional sets this week (direct 1, indirect ½; a chin-up’s biceps ¾), against each priority’s target range (outlined). “On pace” is short of the target but keeping up with the week so far.</p>
-        <MuscleBars sets={muscle.sets} profile={p} pace={weekPace(today)} />
-        {muscle.unmapped.length > 0 && <p className="muted small">Not counted (unknown muscles): {muscle.unmapped.join(', ')}</p>}
-        {!readOnly && <VolumeSteps entries={store.entries} body={body.days} profile={p} today={today} />}
-        <ChartTable caption="Fractional sets per muscle" head={['Muscle', 'This week / last week']}
-          rows={MUSCLES.map((m) => [m, `${fmt(muscle.sets[m])} / ${fmt(lastWeek.sets[m])}`])} />
-      </section>
-      <section className="card">
-        <h2>Sessions per week</h2>
-        <BarChart label="Sessions per week, last 12 weeks" points={weeks.map((w) => ({ x: w.week, y: w.sessions }))} format={(n) => plural(n, 'session')} goal={p.weeklyGoal} />
-        <p className="muted small">Dashed line: {who ? `@${who}’s` : 'your'} goal of {plural(p.weeklyGoal, 'session')}.</p>
-        <ChartTable caption="Sessions per week" head={['Week of', 'Sessions']} rows={weeks.map((w) => [w.week, String(w.sessions)])} />
-      </section>
-      <section className="card">
-        <h2>Weekly tonnage</h2>
-        <BarChart label="Weekly tonnage in pounds, last 12 weeks" points={weeks.map((w) => ({ x: w.week, y: w.tonnage }))} format={(n) => `${tons(n)} lb`} tick={tons} unit="lb" />
-        <ChartTable caption="Weekly tonnage (lb)" head={['Week of', 'Tonnage']} rows={weeks.map((w) => [w.week, String(Math.round(w.tonnage))])} />
-      </section>
-      <section className="card">
-        <h2>Calendar</h2>
-        <Calendar days={days} today={today} />
-      </section>
-      <BodyCard body={body} today={today} who={who} />
-      {photos && <PhotosCard photos={photos} onOpen={onOpenPhotos} />}
-      <CareCard entries={store.entries} today={today} who={who} />
-      {prioLink}{friendPrio(thisWeekCardio(store.entries, today))}
+      <div className="st-title">
+        <h1 className={who ? 'who-title' : undefined}>{title}</h1>
+        {owner && <button type="button" className="st-edit" aria-pressed={editing} onClick={() => { setEditing(!editing); setShowHidden(false); }}>{editing ? 'Done' : 'Edit'}</button>}
+      </div>
+      {editing ? <p className="st-edit-hint">Pin a tile to keep it at the top. Hide one to tuck it away.</p> : (<>
+        <WeekHero entries={entries} profile={p} today={today} who={who} onOpen={() => setOpen(SHEET_WEEK)} />
+        <div className="st-range" role="group" aria-label="Range">
+          {RANGES.map((r) => <button key={r.id} type="button" aria-pressed={range === r.id} onClick={() => setRange(r.id)}>{r.label}</button>)}
+        </div>
+      </>)}
+      {a.pinned.length > 0 && <section className="st-sec" aria-label="Pinned"><h2>Pinned</h2>{grid(a.pinned)}</section>}
+      {SECTIONS.map((s, i) => {
+        const sec = a.sections[i];
+        const shown = editing || showHidden ? [...sec.shown, ...sec.hidden] : sec.shown;
+        if (!shown.length) return null;
+        return <section key={s.id} className="st-sec" aria-label={s.title}><h2>{s.title}</h2>{grid(shown)}</section>;
+      })}
+      {!editing && hiddenAll.length > 0 && (
+        <p className="st-hidden-row">{plural(hiddenAll.length, 'tile')} hidden<button type="button" onClick={() => setShowHidden(!showHidden)}>{showHidden ? 'Tuck away' : 'Show'}</button></p>
+      )}
+      {editing && (layout.pins.length > 0 || layout.hidden.length > 0) && <button type="button" className="st-reset" onClick={() => setLayout(NO_LAYOUT)}>Reset to default</button>}
+      {photosRow}{prioLink}{friendPrio}
+      {open === SHEET_WEEK && (
+        <StatsSheet title="This week" onClose={() => setOpen(null)}>
+          <p className="st-sub">Week of <b>{new Date(`${weekStart(today)}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</b></p>
+          <WeekSheet entries={entries} profile={p} today={today} who={who} program={adh} />
+        </StatsSheet>
+      )}
+      {opened && <StatsSheet title={opened.title ?? opened.label} link={opened.link} onClose={() => setOpen(null)}>{opened.sheet()}</StatsSheet>}
     </>
   );
 }

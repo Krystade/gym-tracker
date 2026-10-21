@@ -22,11 +22,9 @@ test('weigh in, import MyFitnessPal, see the trend, export body CSV', async ({ p
   await expect(page.getByText('MyFitnessPal weight: 6 days')).toBeVisible();
   await expect(page.getByText('MyFitnessPal nutrition: 3 days')).toBeVisible();
 
+  // Body is hidden on Stats for now (owner, 2026-10-20; Stats v2 S4 brings it back): the import and the export stay.
   await goto(page, 'Stats');
-  const card = page.getByRole('region', { name: 'Body weight' });
-  await expect(card).toContainText('Trend');
-  await expect(card).toContainText(/lb\/week/);
-  await expect(card.getByRole('img', { name: /Body weight/ })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Body weight' })).toHaveCount(0);
 
   await goto(page, 'More');
   await page.getByRole('button', { name: 'Export body CSV' }).click();

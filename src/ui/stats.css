@@ -1,0 +1,155 @@
+/* ---- Stats v2 (plan §2): the hero, one range, sections of tiles two to a row, a sheet per tile ---- */
+:root { --col: #686b73; --spark: var(--text-3); }
+
+.st-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.st-title h1 { min-width: 0; }
+.st-edit { min-height: 44px; min-width: 64px; padding: 0 14px; border-radius: var(--r-pill); background: var(--fill); color: var(--accent-text); font-weight: 600; font-size: var(--fs-sub); }
+.st-edit[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
+.st-edit-hint { margin: -4px 0 12px; color: var(--text-2); font-size: var(--fs-sub); }
+.st-sub { margin: 0 0 10px; color: var(--text-2); font-size: var(--fs-sub); }
+.st-sub b { color: var(--text); font-weight: 600; }
+
+/* The hero: this week, one full-width tile. */
+.st-hero { margin: 0 0 12px; }
+.st-week { position: relative; display: grid; justify-items: stretch; grid-template-columns: 76px minmax(0, 1fr); grid-template-areas: "ring cells" "nudge nudge"; gap: 12px 14px; align-items: center; width: 100%; padding: 14px; border-radius: var(--r-group); background: var(--surface); color: var(--text); text-align: left; font-weight: 400; }
+.st-ringwrap { grid-area: ring; position: relative; width: 76px; height: 76px; display: grid; place-items: center; }
+.st-ringwrap > .ring { position: absolute; inset: 0; }
+.st-rc { display: inline-flex; align-items: baseline; line-height: 1; }
+.st-rc b { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.st-rc i { font-style: normal; font-size: 15px; color: var(--text-2); font-weight: 600; }
+.st-wk-cells { grid-area: cells; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.st-wk-cells div { min-width: 0; }
+.st-wk-cells dt { font-size: var(--fs-xs); color: var(--text-2); line-height: 16px; }
+.st-wk-cells dd { margin: 0; display: flex; align-items: center; gap: 3px; font-size: var(--fs-body); font-weight: 700; line-height: 22px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.st-wk-cells dd small { font-size: var(--fs-xs); font-weight: 600; color: var(--text-3); }
+.st-wk-cells dd small.up { color: var(--ok); }
+.st-flame { color: var(--flame); flex: none; }
+.st-wk-nudge { grid-area: nudge; display: flex; align-items: flex-start; gap: 8px; padding-top: 10px; border-top: 1px solid var(--hairline); font-size: var(--fs-sub); color: var(--text-2); line-height: 20px; }
+.st-wk-nudge .ic { flex: none; color: var(--text-3); margin-top: 1px; }
+.st-wk-nudge b { color: var(--text); font-weight: 600; }
+
+/* One range for every tile. */
+.st-range { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; margin: 0 0 16px; padding: 2px; border-radius: var(--r-md); background: var(--fill); }
+.st-range button { min-height: 44px; padding: 0; border-radius: 8px; background: none; color: var(--text-2); font-size: var(--fs-sub); font-weight: 600; }
+.st-range button[aria-pressed='true'] { background: var(--fill-2); color: var(--text); }
+
+/* Sections and rows. */
+.st-sec { margin: 0 0 18px; }
+.st-sec > h2 { margin: 0 0 8px; font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-2); }
+.st-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
+.st-row > .wide { grid-column: 1 / -1; }
+
+/* A tile. */
+.st-tile { position: relative; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px; min-width: 0; min-height: 124px; padding: 12px; border-radius: var(--r-group); background: var(--surface); color: var(--text); text-align: left; font-weight: 400; }
+.st-tile.wide { min-height: 0; }
+.st-t-label { display: block; padding-right: 14px; font-size: var(--fs-sm); color: var(--text-2); line-height: 18px; overflow-wrap: anywhere; }
+.st-t-new { position: absolute; top: 14px; right: 12px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.st-t-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; margin-top: auto; }
+.st-t-val { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 4px; font-size: 26px; font-weight: 700; line-height: 30px; font-variant-numeric: tabular-nums; }
+.st-t-val.word { font-size: var(--fs-body); line-height: 22px; }
+.st-t-val small { font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); }
+.st-t-ctx { display: block; font-size: var(--fs-xs); color: var(--text-2); line-height: 16px; overflow-wrap: anywhere; }
+.st-t-viz { display: block; width: 100%; margin-top: 6px; }
+.st-t-viz svg { display: block; }
+.up { color: var(--ok); }
+.down, .flat { color: var(--warn); }
+.st-t-ctx .danger, .danger { color: var(--danger); }
+.st-spark path { stroke: var(--spark); }
+.st-spark circle { fill: var(--accent); }
+
+/* Edit mode. */
+.st-tile.editing { padding-bottom: 60px; }
+.st-tile.is-hidden { opacity: 0.55; }
+.st-edit-acts { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; gap: 8px; }
+.st-edit-acts button { flex: 1; min-height: 44px; display: grid; place-items: center; border-radius: var(--r-md); background: var(--fill); color: var(--text-2); padding: 0; }
+.st-edit-acts button.on { background: var(--accent); color: var(--accent-ink); }
+.st-reset { width: 100%; min-height: 44px; margin: 0 0 16px; border-radius: var(--r-md); background: var(--fill); color: var(--danger); font-weight: 600; }
+.st-hidden-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 16px; font-size: var(--fs-sub); color: var(--text-2); }
+.st-hidden-row button { min-height: 44px; padding: 0 12px; background: none; color: var(--accent-text); font-weight: 600; }
+
+/* The confetti over the PRs tile. */
+.st-confetti { position: absolute; left: 40px; top: 40px; width: 0; height: 0; pointer-events: none; }
+.st-confetti i { position: absolute; width: 7px; height: 11px; border-radius: 2px; background: var(--c); opacity: 0; }
+
+/* The sheet: on the visible viewport, its body the only thing that scrolls, the page under it still. */
+html.sheet-lock { overflow: hidden; overscroll-behavior: none; }
+.st-backdrop { touch-action: none; }
+.st-sheet { translate: 0 calc(var(--drag, 0px) - var(--vv-bottom, 0px)); padding-top: 0; gap: 0; transition: translate 200ms var(--out); }
+.st-sheet.dragging { transition: none; }
+.st-sheet::before { display: none; }
+.st-sheet:focus { outline: none; }
+.st-sh-head { flex: none; touch-action: none; padding: 6px 0 8px; }
+.st-grab { display: block; width: 36px; height: 5px; margin: 0 auto 10px; border-radius: 3px; background: var(--fill-2); }
+.st-sh-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
+.st-sh-top h2 { margin: 0; min-width: 0; font-size: var(--fs-xl); line-height: 28px; font-weight: 700; overflow-wrap: anywhere; }
+.st-link { flex: none; display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 0 0 8px; background: none; color: var(--accent-text); font-weight: 600; font-size: var(--fs-sub); }
+.st-sh-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
+.st-sh-body .chart, .st-sh-body svg.chart { touch-action: pan-y; }
+.st-sh-body h3 { margin: 16px 0 8px; font-size: var(--fs-sub); font-weight: 600; }
+.st-sh-foot { flex: none; padding-top: 8px; border-top: 1px solid var(--hairline); }
+.st-done { width: 100%; min-height: 50px; border-radius: var(--r-md); background: var(--fill); color: var(--text); font-weight: 600; font-size: var(--fs-body); }
+
+/* Sheet contents. */
+.st-dr-hero { display: grid; gap: 2px; margin-bottom: 8px; }
+.st-dr-k { font-size: var(--fs-sm); color: var(--text-2); }
+.st-dr-v { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; font-size: var(--fs-sub); color: var(--text-2); }
+.st-dr-v b { font-size: 34px; line-height: 40px; color: var(--text); font-variant-numeric: tabular-nums; }
+.st-cells3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.st-cells3 div { min-width: 0; padding: 10px; border-radius: var(--r-md); background: var(--surface); }
+.st-cells3 dt { font-size: var(--fs-xs); color: var(--text-2); }
+.st-cells3 dd { margin: 2px 0 0; font-size: var(--fs-sub); font-weight: 600; overflow-wrap: anywhere; }
+.st-mile { margin: 12px 0; }
+.st-mile-top { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-sub); font-weight: 600; margin-bottom: 6px; }
+.st-mile-top span { font-weight: 400; color: var(--text-2); }
+span.st-meter, div.st-meter { display: block; height: 8px; border-radius: 4px; background: var(--fill); overflow: hidden; }
+span.st-meter i, div.st-meter i { display: block; height: 100%; width: var(--w); min-width: 8px; border-radius: 4px; background: var(--accent); }
+.st-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.st-chips-k { font-size: var(--fs-sm); color: var(--text-2); width: 100%; }
+.st-chip { display: inline-flex; gap: 6px; align-items: baseline; padding: 6px 10px; border-radius: var(--r-pill); background: var(--fill); font-size: var(--fs-sm); font-weight: 600; }
+.st-chip span { color: var(--text-2); font-weight: 400; }
+.st-lines { margin: 0 0 12px; display: grid; gap: 8px; }
+.st-lines div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.st-lines dt { color: var(--text-2); font-size: var(--fs-sub); }
+.st-lines dd { margin: 0; text-align: right; font-size: var(--fs-sub); color: var(--text-2); }
+.st-lines dd b { color: var(--text); }
+.st-program { margin: 0 0 12px; font-size: var(--fs-sm); color: var(--text-2); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.st-program b { color: var(--text); }
+
+.st-pr { position: relative; display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 12px; align-items: center; margin: 0 0 8px; padding: 12px 14px; border-radius: var(--r-group); background: var(--gold-deep); }
+.st-pr-cup { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); }
+.st-pr p { margin: 0; }
+.st-pr-k { font-size: var(--fs-sm); font-weight: 700; color: var(--accent-text); }
+.st-pr-t { font-size: var(--fs-body); font-weight: 700; line-height: 22px; }
+.st-pr-d { font-size: var(--fs-sm); color: var(--gold-ink-2); }
+.st-list { list-style: none; margin: 0; padding: 0; }
+.st-list li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 2px 10px; padding: 8px 0; border-top: 1px solid var(--hairline); font-size: var(--fs-sub); }
+.st-list li:first-child { border-top: 0; }
+.st-list-d { color: var(--text-2); font-size: var(--fs-sm); grid-row: span 2; }
+.st-list-m { overflow-wrap: anywhere; }
+.st-list-s { color: var(--text-3); font-size: var(--fs-sm); }
+
+.st-miles { list-style: none; margin: 0; padding: 0; }
+.st-miles li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; padding: 10px 0; border-top: 1px solid var(--hairline); }
+.st-miles li:first-child { border-top: 0; }
+.st-miles .st-meter { grid-column: 1 / -1; }
+.st-ml-n { font-size: var(--fs-sub); overflow-wrap: anywhere; }
+.st-ml-v { font-size: var(--fs-sm); color: var(--text-2); display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+.st-ml-v b { color: var(--text); font-size: var(--fs-body); }
+.st-ml-v small { margin-left: 6px; color: var(--text-3); font-size: var(--fs-sm); }
+
+.st-hint { margin: 0 0 12px; font-size: var(--fs-sm); color: var(--text-2); }
+.st-behind { margin: 0 0 12px; padding: 10px 12px; border-radius: var(--r-group); background: var(--surface); }
+.st-behind h3 { text-transform: none; letter-spacing: normal; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; font-size: var(--fs-sub); color: var(--warn); }
+.st-status-ic { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--warn); color: var(--accent-ink); font-size: 12px; font-weight: 800; }
+.st-behind ul { list-style: none; margin: 0; padding: 0; }
+.st-behind li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; align-items: center; padding: 4px 0; }
+.st-bh-m { font-size: var(--fs-sub); }
+.st-bh-n { font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.st-fix { grid-column: 1 / -1; justify-self: start; display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0; background: none; font-size: var(--fs-sm); font-weight: 600; color: var(--accent-text); }
+span.st-fix { min-height: 0; color: var(--text-2); }
+.st-care h3 { margin-top: 12px; }
+.st-digest { margin-top: 16px; }
+/* A lift's trend in a sheet: the line in grey, its PRs in the accent (plan §2: the accent marks what's new or current). */
+.st-sh-body .chart .line { stroke: var(--text-3); }
+.st-sh-body .chart .pt:not(.pr):not(.sel) { stroke: var(--text-3); fill: var(--surface-2); }
+.st-sh-body .chart .pt.pr { stroke: var(--accent); fill: var(--accent); }

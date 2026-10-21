@@ -13,16 +13,15 @@ test('stats: empty state, then charts after import, and priorities edit', async 
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Stats');
-  for (const h of ['This week', 'Muscle volume', 'Sessions per week', 'Weekly tonnage', 'Calendar']) {
-    await expect(page.getByRole('heading', { name: h, exact: true }).first()).toBeAttached();
-  }
+  await expect(page.getByRole('region', { name: 'This week', exact: true })).toBeVisible();
+  for (const t of ['muscles', 'sessions', 'calendar']) await expect(page.locator(`[data-tile="${t}"]`)).toBeVisible();
   // Priorities live in settings (owner, 2026-10-20): Stats links there.
   await expect(page.getByRole('heading', { name: 'Muscle priorities' })).toHaveCount(0);
   await page.getByRole('button', { name: /^Priorities and goal/ }).click();
   await expect(page.getByRole('heading', { name: 'Priorities and goal', level: 1 })).toBeVisible();
   await page.getByRole('combobox', { name: 'Biceps' }).selectOption('1');
   await goto(page, 'Stats');
-  await expect(page.getByRole('heading', { name: 'Priority 1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Priorities and goal/ })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
@@ -57,6 +56,13 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 const TODAY = '2026-10-02'; // a Friday
 
 const card = (page: Pg, h: string) => page.locator('section.card').filter({ has: page.getByRole('heading', { name: h, exact: true }) });
+/** A Stats tile's sheet, opened. */
+const sheet = async (page: Pg, tile: string) => {
+  await page.locator(`[data-tile="${tile}"]`).click();
+  const d = page.getByRole('dialog');
+  await expect(d).toBeVisible();
+  return d;
+};
 const logBench = async (page: Pg, weight: string, reps: string) => {
   const rows = page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem');
   const before = await rows.count();
@@ -78,20 +84,13 @@ function history(weeks = 12): string {
   }
   return rows.join('\n');
 }
-/** 30 daily weigh-ins ending TODAY (MyFitnessPal weight CSV). */
-function weighIns(): string {
-  const rows = ['Date,Body Fat %,Weight,Neck'];
-  for (let i = 0; i < 30; i++) rows.push(`${iso(new Date(Date.UTC(2026, 8, 3 + i)))},,${(180 + Math.sin(i / 3) + i * 0.05).toFixed(1)},`);
-  return rows.join('\n');
-}
 // Each imported set is an IndexedDB put, and Playwright's WebKit on Windows takes a timer tick (~15.6 ms) per put:
 // the full 12 weeks (216 sets) is ~3.4 s of the test, more under load. A test that needs less imports less.
-async function seed(page: Pg, body = true, weeks = 12) {
+async function seed(page: Pg, weeks = 12) {
   await page.clock.install({ time: new Date(`${TODAY}T09:00:00`) });
   await page.goto('/');
   await goto(page, 'More');
   const files = [{ name: 'history.csv', mimeType: 'text/csv', buffer: Buffer.from(history(weeks)) }];
-  if (body) files.push({ name: 'mfp-weight.csv', mimeType: 'text/csv', buffer: Buffer.from(weighIns()) });
   await page.getByLabel('Import CSV').setInputFiles(files);
   await expect(page.getByText(/Imported \d+ new/)).toBeVisible();
   await goto(page, 'Stats');
@@ -109,6 +108,7 @@ test('stats: early in the week, a muscle keeping up with the week reads on pace,
   await page.clock.setFixedTime(new Date('2026-09-30T09:00:00'));
   await page.reload();
   await goto(page, 'Stats');
+  await sheet(page, 'muscles');
   const chest = page.locator('.mrow[aria-label^="Chest:"]');
   await expect(chest.locator('.mval')).toHaveText('2 / 2.5–4');
   await expect(chest.locator('.mstat')).toHaveText(/on pace/);
@@ -119,7 +119,7 @@ test('stats: early in the week, a muscle keeping up with the week reads on pace,
 
 test('stats: the calendar shows 12 weeks with weekday and month labels and cells big enough to tap', async ({ page }) => {
   await seed(page);
-  const cal = card(page, 'Calendar');
+  const cal = await sheet(page, 'calendar');
   const cell = cal.locator('.cell').first();
   expect((await cell.boundingBox())!.width).toBeGreaterThanOrEqual(20);
   await expect(cal.getByRole('img')).toHaveAccessibleName('Training calendar, last 12 weeks');
@@ -130,38 +130,23 @@ test('stats: the calendar shows 12 weeks with weekday and month labels and cells
   await page.screenshot({ path: 'screenshots/46-stats-calendar.png' });
 });
 
-test('stats: a tap on the body-weight chart picks the nearest weigh-in, even beside its neighbour', async ({ page }) => {
-  await seed(page);
-  const card = page.getByRole('region', { name: 'Body weight' });
-  const svg = card.getByRole('img', { name: /Body weight/ });
-  const hits = svg.locator('rect[fill="transparent"]');
-  await expect(hits).toHaveCount(30);
-  await svg.scrollIntoViewIfNeeded();
-  const a = (await hits.nth(10).boundingBox())!, b = (await hits.nth(11).boundingBox())!;
-  const pitch = (b.x + b.width / 2) - (a.x + a.width / 2);
-  // 35 % of the way to the next point: nearer point 10, but inside the old overlap with point 11's 16 px target.
-  await page.mouse.click(a.x + a.width / 2 + 0.35 * pitch, a.y + a.height / 2);
-  const w = (i: number) => String(Number((180 + Math.sin(i / 3) + i * 0.05).toFixed(1))); // the app drops a trailing .0
-  await expect(card).toContainText(`weighed ${w(10)} lb`); // not point 11's (the later target used to paint on top)
-  await expect(card).not.toContainText(`weighed ${w(11)} lb`);
-  await expect(card.locator('.readout')).toContainText('Sun, Sep 13');
-  await page.screenshot({ path: 'screenshots/47-stats-body.png' });
-});
-
 test('stats: tiles say each thing once, hide the program tile without a program, and the charts carry axes', async ({ page }) => {
   await seed(page);
   const week = page.getByRole('region', { name: 'This week', exact: true });
-  // The ring card (round 18): sessions, sets, PRs, streak; no program line without a program.
-  await expect(week.locator('.st-rows > div')).toHaveCount(4);
-  await expect(week.locator('.st-program')).toHaveCount(0);
-  await expect(week).not.toContainText('—');
-  await expect(week).not.toContainText('Sets done / planned');
-  const rate = page.getByRole('region', { name: 'Body weight' }).locator('.tile').filter({ hasText: '4-week rate' });
-  await expect(rate.locator('b')).toHaveText(/^[+−]\d\.\d lb\/week$/);
-  await expect(rate).toContainText(/[+−]\d\.\d\d % of body weight/);
+  // The hero: sessions in the ring, then sets, PRs, streak and cardio; no program line without a program.
+  await expect(week.locator('.st-wk-cells > div')).toHaveCount(4);
+  await week.getByRole('button').click();
+  let d = page.getByRole('dialog', { name: 'This week' });
+  await expect(d.locator('.st-lines > div')).toHaveCount(5);
+  await expect(d.locator('.st-program')).toHaveCount(0);
+  await d.getByRole('button', { name: 'Done' }).click();
+  await expect(d).toHaveCount(0);
+  await sheet(page, 'tonnage');
   const tonnage = page.getByRole('img', { name: /Weekly tonnage/ });
   await expect(tonnage.locator('line.grid')).toHaveCount(3);
   await expect(tonnage.locator('text.lbl').first()).toContainText('lb');
+  await page.getByRole('button', { name: 'Done' }).click();
+  await sheet(page, 'sessions');
   const sessions = page.getByRole('img', { name: /Sessions per week/ });
   await expect(sessions.locator('text.lbl', { hasText: 'goal' })).toHaveCount(1);
   // A week that meets the goal has a bar behind the label: the label must paint over the bars, not under.
@@ -170,8 +155,7 @@ test('stats: tiles say each thing once, hide the program tile without a program,
     return [...svg.querySelectorAll('path.bar')].every((b) => b.compareDocumentPosition(goal) & Node.DOCUMENT_POSITION_FOLLOWING);
   })).toBe(true);
   await page.screenshot({ path: 'screenshots/44-stats-top.png' });
-  await card(page, 'Muscle volume').scrollIntoViewIfNeeded();
-  await page.screenshot({ path: 'screenshots/45-stats-volume.png' });
+  await page.getByRole('button', { name: 'Done' }).click();
 
   // With a program built, one merged tile.
   await goto(page, 'Today');
@@ -180,7 +164,9 @@ test('stats: tiles say each thing once, hide the program tile without a program,
   await expect(page.getByRole('heading', { name: 'Weekly volume' })).toBeVisible();
   await page.getByRole('button', { name: '‹ Back' }).click();
   await goto(page, 'Stats');
-  const merged = week.locator('.st-program');
+  await week.getByRole('button').click();
+  d = page.getByRole('dialog', { name: 'This week' });
+  const merged = d.locator('.st-program');
   await expect(merged).toContainText('Program, 4 weeks');
   await expect(merged.locator('b')).toHaveText(/^\d+% · \d+ \/ \d+ sets$/);
 });
@@ -194,6 +180,7 @@ test('stats: the goal label stays inside the sessions chart when the goal is its
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem')).toHaveCount(1);
   await goto(page, 'Stats');
+  await sheet(page, 'sessions');
   const sessions = page.getByRole('img', { name: /Sessions per week/ });
   const box = await sessions.evaluate((svg: SVGSVGElement) => {
     const goal = [...svg.querySelectorAll('text')].find((t) => t.textContent === 'goal')!.getBBox();
@@ -208,7 +195,7 @@ test('stats: the goal label stays inside the sessions chart when the goal is its
 });
 
 test('program: weekly volume shows the target beside each value and never "on pace"', async ({ page }) => {
-  await seed(page, false, 1); // this week's volume is all the program screen shows
+  await seed(page, 1); // this week's volume is all the program screen shows
   await goto(page, 'Today');
   await page.getByRole('button', { name: 'Program', exact: true }).click();
   await page.getByRole('button', { name: 'Build program' }).click();
@@ -232,10 +219,12 @@ test('stats: cardio-only days count toward neither the sessions goal nor the str
   await page.getByLabel('Import CSV').setInputFiles({ name: 'mixed.csv', mimeType: 'text/csv', buffer: Buffer.from(rows.join('\n')) });
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Stats');
-  const week = page.getByRole('region', { name: 'This week', exact: true });
-  const row = (name: string) => week.locator('.st-rows > div').filter({ has: page.getByText(name, { exact: true }) }).locator('dd');
-  await expect(row('Sessions')).toHaveText('1 of 2+ 2 cardio days');
-  await expect(row('Streak')).toHaveText('0 wkbest 0');
-  await week.screenshot({ path: 'screenshots/stats-cardio-days.png' });
-  await expect(card(page, 'Sessions per week').locator('tbody tr').last().locator('td')).toHaveText(['2026-09-28', '1']);
+  await page.getByRole('region', { name: 'This week', exact: true }).getByRole('button').click();
+  const week = page.getByRole('dialog', { name: 'This week' });
+  const row = (name: string) => week.locator('.st-lines > div').filter({ has: page.getByText(name, { exact: true }) }).locator('dd');
+  await expect(row('Sessions')).toHaveText('1 of 2 + 2 cardio days');
+  await expect(row('Streak')).toHaveText('0 weeks · best 0');
+  await week.getByRole('button', { name: 'Done' }).click();
+  const s = await sheet(page, 'sessions');
+  await expect(s.locator('tbody tr').last().locator('td')).toHaveText(['2026-09-28', '1']);
 });

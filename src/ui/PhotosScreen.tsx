@@ -160,14 +160,3 @@ export function PhotosScreen({ photos, body, today, backLabel = '‹ Back', onBa
     </>
   );
 }
-
-export function PhotosCard({ photos, onOpen }: { photos: PhotosStore; onOpen: () => void }) {
-  const latest = photos.metas.reduce((a, m) => (m.date > a ? m.date : a), '');
-  return (
-    <section className="card" aria-labelledby="ph-h">
-      <h2 id="ph-h">Progress photos</h2>
-      <p className="muted">{photos.metas.length ? `${photos.metas.length} photo${photos.metas.length === 1 ? '' : 's'} · latest ${fmtDate(latest)}` : 'Front, side and back photos, kept only on this phone.'}</p>
-      <button className="wide" onClick={onOpen}>Open photos</button>
-    </section>
-  );
-}

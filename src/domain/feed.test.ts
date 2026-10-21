@@ -217,6 +217,15 @@ describe('topLifts: the lifts Stats follows', () => {
     ];
     expect(topLifts(e, TODAY, 4)).toEqual(['Bench Press', 'Barbell Squat']);
   });
+  it('counts sessions over Stats’ range: over 4 weeks a lift done more lately leads, over a year one done for longer does', () => {
+    const e = [
+      ...['2026-04-01', '2026-04-08', '2026-04-15', '2026-04-22', '2026-05-01', '2026-10-13'].flatMap((d) => s('Deadlift', 1, {}, d)),
+      ...['2026-09-29', '2026-10-06', '2026-10-13'].flatMap((d) => s('Leg Press', 1, {}, d)),
+    ];
+    expect(topLifts(e, TODAY, 4, 28)).toEqual(['Leg Press', 'Deadlift']);
+    expect(topLifts(e, TODAY, 4, 84)).toEqual(['Leg Press', 'Deadlift']);
+    expect(topLifts(e, TODAY, 4, 364)).toEqual(['Deadlift', 'Leg Press']);
+  });
 });
 
 describe('behindMuscles: what’s behind where the week should be, each with a lift of yours for it', () => {
@@ -338,5 +347,13 @@ describe('liftTrend: a lift over 12 weeks, for Getting stronger', () => {
   });
   it('is null for a lift with no weighted sets in the 12 weeks', () => {
     expect(liftTrend(s('Plank', 1, { weight: 0, reps: 60 }), 'Plank', TODAY)).toBeNull();
+  });
+  it('reads Stats’ range: 4 weeks, 12 or a year of sessions', () => {
+    const dates = ['2026-01-20', '2026-05-20', '2026-08-20', '2026-09-30', '2026-10-14'];
+    const e = dates.flatMap((d, i) => s('Bench Press', 1, { weight: 140 + 5 * i, reps: 5 }, d));
+    expect(liftTrend(e, 'Bench Press', TODAY, 28)!.points.map((p) => p.date)).toEqual(['2026-09-30', '2026-10-14']);
+    expect(liftTrend(e, 'Bench Press', TODAY, 84)!.points.map((p) => p.date)).toEqual(['2026-08-20', '2026-09-30', '2026-10-14']);
+    expect(liftTrend(e, 'Bench Press', TODAY, 364)!.points.map((p) => p.date)).toEqual(dates);
+    expect(liftTrend(e, 'Bench Press', TODAY, 364)!.delta!).toBeGreaterThan(liftTrend(e, 'Bench Press', TODAY, 28)!.delta!);
   });
 });

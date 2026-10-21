@@ -82,13 +82,13 @@ function useWeekDigest(entries: SetEntry[], profile: Profile, week: string, on =
   return on ? keptDigest(kept, entries, profile, week) : null;
 }
 
-/** Stats: the week just gone, always open, next to This week. */
-export function LastWeekCard({ entries, profile, today }: { entries: SetEntry[]; profile: Profile; today: string }) {
+/** Stats: the week just gone, always open, in This week's sheet. */
+export function LastWeek({ entries, profile, today }: { entries: SetEntry[]; profile: Profile; today: string }) {
   const week = digestWeek(today);
   const { d } = useWeekDigest(entries, profile, week)!;
   return (
-    <section className="card digest" aria-label="Last week">
-      <h2>Last week <span className="muted small">· {weekRange(week)}</span></h2>
+    <section className="digest st-digest" aria-label="Last week">
+      <h3>Last week <span>· {weekRange(week)}</span></h3>
       <DigestBody d={d} />
     </section>
   );

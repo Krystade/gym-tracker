@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react';
+import { useRef, useState, type PointerEvent } from 'react';
 import type { SeriesPoint } from '../domain/stats';
 import { fmtDay, fmtWeight } from '../domain/format';
 import { ChartTable } from './charts/ChartTable';
@@ -27,6 +27,7 @@ export function LineChart({ points, today, label = 'Estimated 1RM over time', un
   points: SeriesPoint[]; today: string; label?: string; unit?: string; noun?: string; column?: string; what?: string; tenths?: boolean;
 }) {
   const [tap, setTap] = useState<number | null>(null);
+  const held = useRef<number | null>(null);
   if (points.length < 2) return <p className="muted">Log {what} on two days to see a trend.</p>;
   const xs = points.map((p) => t(p.date)), ys = points.map((p) => p.e1rm);
   const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
@@ -34,8 +35,9 @@ export function LineChart({ points, today, label = 'Estimated 1RM over time', un
   const X = (x: number) => L + ((x - x0) / (x1 - x0 || 1)) * (W - L - R);
   const Y = (y: number) => T + (1 - (y - y0) / (y1 - y0)) * (H - T - B);
   const mid = (y0 + y1) / 2;
-  // Dots are too close for a thumb, so a tap anywhere on the chart picks the point nearest in x.
-  const pick = (e: MouseEvent<SVGSVGElement>) => {
+  // Dots are too close for a thumb, so a tap anywhere on the chart picks the point nearest in x, and a drag across it scrubs
+  // (the chart is touch-action: pan-y, so a sideways drag is the chart's and an up-and-down one still scrolls).
+  const pick = (e: PointerEvent<SVGSVGElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     const vx = ((e.clientX - r.left) / r.width) * W;
     let best = 0;
@@ -50,7 +52,9 @@ export function LineChart({ points, today, label = 'Estimated 1RM over time', un
   return (
     <>
       <p className="readout" aria-live="polite">{fmtDay(sel.date, today)} · {val(sel.e1rm)}{noun ? ` ${noun}` : ''}{sel.pr ? ' · PR' : ''}</p>
-      <svg className="chart" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label} onClick={pick}>
+      <svg className="chart" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label}
+        onPointerDown={(e) => { held.current = e.pointerId; pick(e); }} onPointerMove={(e) => { if (held.current === e.pointerId) pick(e); }}
+        onPointerUp={() => { held.current = null; }} onPointerCancel={() => { held.current = null; }}>
         {[y0, mid, y1].map((y) => <line key={y} x1={L} x2={W - R} y1={Y(y)} y2={Y(y)} className="grid" />)}
         <line x1={L} x2={W - R} y1={H - B} y2={H - B} className="axis" />
         <text x={L - 8} y={T + 4} className="lbl" textAnchor="end">{val(y1)}</text>

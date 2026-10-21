@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test';
 import { account, befriend, iso, log, session, signedIn, type Seeded } from './seed';
 import { FIRESTORE } from './emu';
+import { statsSheet } from './nav';
 
 // A friend's page inside Friends (round 18) against the local emulators: synthetic accounts and numbers only (e2e/seed.ts).
 // Today at 18:00 (Sunday when today is a Monday, so yesterday is in the same week).
@@ -116,7 +117,9 @@ test('a friend’s page opens inside Friends from what the phone keeps, compares
   await fp.getByRole('button', { name: 'Stats', exact: true }).click();
   // Their Stats names them; nothing on it says “your”.
   await expect(page.getByRole('heading', { name: `@${fr.name}’s stats`, level: 1 })).toBeVisible();
-  await expect(page.getByText(`Dashed line: @${fr.name}’s goal of 2 sessions.`)).toBeVisible();
+  await statsSheet(page, 'sessions');
+  await expect(page.getByText(`The line: @${fr.name}’s goal of 2 sessions.`, { exact: false })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
   await expect(page.locator('main')).not.toContainText(/\byours?\b/i);
   await expect(page.getByRole('combobox', { name: 'Chest' })).toBeDisabled();
   expect(reads.some((u) => u.includes(fr.uid))).toBe(true);

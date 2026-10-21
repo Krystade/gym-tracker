@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { goto } from './nav';
+import { goto, statsSheet } from './nav';
 
 // Item 08, pain response: last time's moderate pain holds the lift; a lift that keeps hurting is offered a swap; sharp pain in
 // the session says stop; pain on and off for weeks points to a physio. Synthetic history only. At the 13 mini's 375×812 with its
@@ -106,6 +106,7 @@ test('sharp pain in the session says stop that lift for today', async ({ page })
 test('pain on and off for weeks: the care card suggests getting it looked at', async ({ page }) => {
   await setUp(page);
   await goto(page, 'Stats');
+  await statsSheet(page, 'pain');
   const care = page.getByRole('region', { name: 'Joint & back care' });
   await expect(care).toContainText('Pain in your elbow has come and gone for 5 weeks. Worth getting it looked at by a physio or GP.');
   await care.scrollIntoViewIfNeeded();
