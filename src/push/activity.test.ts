@@ -64,6 +64,6 @@ describe('activityOf', () => {
     expect(activityOf([hurt('2026-10-12', 'Cable Pushdown')], null, [], TODAY)).not.toHaveProperty('pain'); // two days ago
     expect(activityOf([hurt('2026-10-13', 'Cable Pushdown', { morning: 'settled' })], null, [], TODAY)).not.toHaveProperty('pain'); // answered
     expect(activityOf([hurt('2026-10-13', 'Cable Pushdown', { morning: 'skipped' })], null, [], TODAY)).not.toHaveProperty('pain'); // dismissed
-    expect(activityOf([hurt(TODAY, 'A Very Long Lift Name With Many Words In It Indeed')], null, [], TODAY).pain![0].lift).toHaveLength(40);
+    expect(activityOf([hurt(TODAY, 'A Very Long Lift Name With Many Words In It Indeed')], null, [], TODAY).pain![0].lift).toBe('A Very Long Lift Name With Many Words…'); // cut at a word, 40 at most
   });
 });

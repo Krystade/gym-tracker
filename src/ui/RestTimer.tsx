@@ -156,12 +156,13 @@ export function RestTimer() {
   // Room under the page for the bar, so nothing has to stay under it (taller with a line for the next lift).
   const { sub: then, row } = nextOf(r?.label, r?.card);
   const bar = useRef<HTMLDivElement>(null);
+  // Measured with the old room still there: taking it away first, even for a moment, let a page scrolled to its end clamp up.
   useLayoutEffect(() => {
     const el = bar.current, root = document.documentElement;
-    if (!el) return;
-    root.style.setProperty('--rest-h', `${el.offsetHeight + 8}px`);
-    return () => { root.style.removeProperty('--rest-h'); };
+    if (el) root.style.setProperty('--rest-h', `${el.offsetHeight + 8}px`);
+    else root.style.removeProperty('--rest-h');
   }, [gone, finishing, row]);
+  useLayoutEffect(() => () => { document.documentElement.style.removeProperty('--rest-h'); }, []);
   // A new rest: the form just used stays clear of the bar.
   useEffect(() => {
     if (!r) return;

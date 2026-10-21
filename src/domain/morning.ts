@@ -38,18 +38,25 @@ export function asksFor(entries: readonly SetEntry[], date: string): MorningAsk[
 /** What Today asks on `today`: about yesterday's pain only (the 24-hour rule: a morning later isn't the next morning). */
 export const morningAsks = (entries: readonly SetEntry[], today: string): MorningAsk[] => asksFor(entries, addDays(today, -1));
 
+/** The most region-and-lift pairs a day tells the Worker (push/payload MAX_HURTS). */
+export const PUSH_HURTS = 6;
+export interface PushAsk { date: string; region: Region; lift: string; hurts?: { region: Region; lift: string }[] }
 /**
  * What the Worker needs to ask by push (push/activity.ts): for yesterday and today, the worst unanswered region and the lift it
- * hurt worst on (the last such set), so the 11:00 push the day after can name them. No severity, notes or weights.
+ * hurt worst on (the last such set), so the 11:00 push the day after can name them; and with more than one region or lift,
+ * `hurts`: every unanswered region with each lift it hurt on, the worst region first, at most PUSH_HURTS (owner, 2026-10-20:
+ * "what if multiple exercises hurt multiple body parts?"). No severity, notes or weights.
  */
-export function pushAsks(entries: readonly SetEntry[], today: string): { date: string; region: Region; lift: string }[] {
-  const out: { date: string; region: Region; lift: string }[] = [];
+export function pushAsks(entries: readonly SetEntry[], today: string): PushAsk[] {
+  const out: PushAsk[] = [];
   for (const date of [addDays(today, -1), today]) {
-    const [ask] = asksFor(entries, date);
-    if (!ask) continue;
+    const asks = asksFor(entries, date);
+    if (!asks.length) continue;
+    const [ask] = asks;
     const sets = painByRegion(entries, date).get(ask.region)!;
     const worst = sets.filter((e) => (e.painSeverity ?? 2) === ask.zone).at(-1)!;
-    out.push({ date, region: ask.region, lift: worst.exercise });
+    const hurts = asks.flatMap((a) => a.lifts.map((lift) => ({ region: a.region, lift }))).slice(0, PUSH_HURTS);
+    out.push({ date, region: ask.region, lift: worst.exercise, ...(hurts.length > 1 && { hurts }) });
   }
   return out;
 }

@@ -123,15 +123,31 @@ export const PAIN_REGIONS = ['elbow', 'lower back', 'shoulder', 'wrist', 'knee',
 export type PainRegion = (typeof PAIN_REGIONS)[number];
 /** A lift's name in the pain push: what fits a lock-screen line. */
 export const MAX_LIFT = 40;
+/** What hurt on a pain day: a region, and the lift it hurt on worst. */
+export interface Hurt { region: PainRegion; lift: string }
+/** The most regions a pain day's push names (there are six). */
+export const MAX_HURTS = 6;
 /**
- * The next-morning question (item 08): the region and the lift that hurt yesterday, by name, nothing else (no severity, no
- * notes). A tap opens Today at the one-tap question.
+ * The next-morning question (item 08): every region that hurt yesterday and the lifts it hurt on, by name, nothing else (no
+ * severity, no notes), in one push (owner, 2026-10-20: "what if multiple exercises hurt multiple body parts?"). One region:
+ * "How’s your elbow this morning?"; two: "How’s your elbow and knee this morning?"; more: "How are the sore spots this
+ * morning?". A title that won't fit one line (MAX_TITLE: "lower back", "shoulder", most pairs) is "Morning pain check", and
+ * the regions lead the body. Lift names are cut at a word. A tap opens Today at the one-tap questions.
  */
-export const painNote = (region: PainRegion, lift: string) => ({
-  // A title of one line (MAX_TITLE: "How’s your lower back this morning?" was cut); the lift cut at a word.
-  title: region === 'other' ? 'How’s the pain today?' : `How’s your ${region} today?`,
-  body: `After ${clip(lift, MAX_LIFT) || 'yesterday’s lift'} yesterday · settled, still sore or worse?`,
-});
+export function painNote(hurts: readonly Hurt[]) {
+  const list = hurts.slice(0, MAX_HURTS);
+  const regions = [...new Set(list.map((h) => h.region))];
+  const lifts = [...new Set(list.map((h) => clip(h.lift, MAX_LIFT)).filter(Boolean))];
+  const named = regions.filter((r) => r !== 'other');
+  const asked = regions.length === 1 ? (named.length ? `How’s your ${named[0]} this morning?` : 'How’s the pain this morning?')
+    : regions.length === 2 && named.length === 2 ? `How’s your ${named[0]} and ${named[1]} this morning?` : 'How are the sore spots this morning?';
+  const fits = [...asked].length <= MAX_TITLE;
+  const where = regions.join(', ');
+  const after = fits ? 'After ' : `${where[0].toUpperCase()}${where.slice(1)}: after `;
+  const tail = lifts.length > 1 || regions.length > 1 ? ' yesterday · tap to answer' : ' yesterday · settled, still sore or worse?';
+  const what = clip(lifts.join(', '), MAX_BODY - [...after].length - [...tail].length) || 'yesterday’s lift';
+  return { title: fits ? asked : 'Morning pain check', body: `${after}${what}${tail}` };
+}
 
 // Friend activity. `name` is the sender's username, read by the Worker from their profile, never from the request.
 export const requestNote = (name: string) => ({ title: 'Friend request', body: `${name} wants to be friends` });

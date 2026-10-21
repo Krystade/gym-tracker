@@ -1,4 +1,4 @@
-import { MAX_LABEL, MAX_LIFT, PAIN_REGIONS, type PainRegion } from '../../src/push/payload';
+import { MAX_HURTS, MAX_LABEL, MAX_LIFT, PAIN_REGIONS, type PainRegion } from '../../src/push/payload';
 import type { PainDay } from './pain';
 import type { Claim } from './notify';
 import { validZone } from './schedule';
@@ -85,7 +85,10 @@ const learned = (v: unknown) => (v === null || v === 'off' ? v : hhmm(v, 'remind
 const region = (v: unknown) => (typeof v === 'string' && (PAIN_REGIONS as readonly string[]).includes(v) ? (v as PainRegion) : bad('region'));
 function painDays(v: unknown): PainDay[] {
   if (!Array.isArray(v) || v.length > 2) return bad('pain');
-  const out = v.map((x) => { const o = obj(x, 'pain'); const lift = text(o.lift, MAX_LIFT, 'lift').trim(); return { date: date(o.date, 'pain'), region: region(o.region), lift: lift || bad('lift') }; });
+  const hurt = (x: unknown) => { const o = obj(x, 'pain'); const lift = text(o.lift, MAX_LIFT, 'lift').trim(); return { region: region(o.region), lift: lift || bad('lift') }; };
+  // `hurts`: every region and lift of the day, at most MAX_HURTS; an app before them sends none.
+  const hurts = (h: unknown) => (Array.isArray(h) && h.length >= 1 && h.length <= MAX_HURTS ? h.map(hurt) : bad('hurts'));
+  const out = v.map((x) => { const o = obj(x, 'pain'); return { date: date(o.date, 'pain'), ...hurt(o), ...(o.hurts != null && { hurts: hurts(o.hurts) }) }; });
   if (new Set(out.map((p) => p.date)).size !== out.length) bad('pain');
   return out;
 }

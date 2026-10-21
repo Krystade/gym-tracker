@@ -5,6 +5,7 @@ import worker from '../src/index';
 import type { UserBox } from '../src/userbox';
 import { addDays, askTime, nextPainAt, painDue, PAIN_LATE_MS, type PainDay } from '../src/pain';
 import { localDate } from '../src/schedule';
+import { PAIN_REGIONS, type PainRegion } from '../../src/push/payload';
 import { fakeNet, signer, subscriber, type Sent } from './helpers';
 
 // The next-morning pain question (item 08, round 20): at 11:00 local the day after pain, once, at most one a day, never on a day
@@ -103,7 +104,7 @@ describe('the pain question, sent', () => {
     expect(Object.fromEntries(p.headers)).toMatchObject({ topic: 'pain', urgency: 'normal', ttl: String(8 * 3600) });
     const body = await phone.read(p.body);
     expect(body.notification).toMatchObject({
-      title: 'How’s your elbow today?', body: 'After Cable Pushdown yesterday · settled, still sore or worse?',
+      title: 'How’s your elbow this morning?', body: 'After Cable Pushdown yesterday · settled, still sore or worse?',
       navigate: 'https://krystade.github.io/gym-tracker/#open=pain', data: { kind: 'pain', route: 'pain' },
     });
     expect(JSON.stringify(body)).not.toMatch(/severity|note/i);
@@ -152,6 +153,14 @@ describe('the pain question, sent', () => {
     expect((await post([{ ...ELBOW('2027-03-01'), lift: 'x'.repeat(41) }])).status).toBe(400);
     expect((await post([{ ...ELBOW('01-03-2027') }])).status).toBe(400);
     expect((await post('elbow')).status).toBe(400);
+    // Every region and lift of the day (`hurts`): one to six of them, each a known region and a lift's name.
+    const all = (hurts: unknown) => post([{ ...ELBOW('2027-03-01'), hurts }]);
+    expect((await all([{ region: 'elbow', lift: 'Cable Pushdown' }, { region: 'knee', lift: 'Leg Press' }])).status).toBe(200);
+    expect((await all([])).status).toBe(400);
+    expect((await all(Array.from({ length: 7 }, () => ({ region: 'knee', lift: 'Leg Press' })))).status).toBe(400);
+    expect((await all([{ region: 'neck', lift: 'Leg Press' }])).status).toBe(400);
+    expect((await all([{ region: 'knee', lift: 'x'.repeat(41) }])).status).toBe(400);
+    expect((await all('knee')).status).toBe(400);
     expect((await post([ELBOW('2027-03-01')])).status).toBe(200);
     expect((await call(uid, 'PUT', '/prefs', { ...PREFS, kinds: { ...PREFS.kinds, pain: 'yes' } })).status).toBe(400);
   });
@@ -162,7 +171,7 @@ describe('property: the box never asks without pain the day before, and never tw
 
   it('random weeks of sessions, answers, phone posts and alarms, in several time zones', async () => {
     const zones = [NY, 'Pacific/Auckland', 'Asia/Kolkata', 'Europe/London'];
-    let total = 0;
+    let total = 0, multi = 0;
     for (let seed = 1; seed <= 16; seed++) {
       const r = rng(seed * 7919);
       const tz = zones[seed % zones.length];
@@ -171,7 +180,11 @@ describe('property: the box never asks without pain the day before, and never tw
       const { uid, net, phone } = await enrolled(clock, { ...PREFS, tz });
       /** The true log: days with pain (local dates), and the days he answered on the phone. */
       const painDays = new Set<string>(), answered = new Set<string>();
-      const sends: { at: number; date: string }[] = [];
+      const sends: { at: number; date: string; text: string }[] = [];
+      /** The regions each pain day hurt (local date): one to four of the six, on lifts of their own. */
+      const hurtOn = new Map<string, PainRegion[]>();
+      /** What the Worker was last told hurt each day (a phone not opened since leaves it stale). */
+      const told = new Map<string, PainRegion[]>();
       const runAlarms = async (until: number) => {
         for (let k = 0; k < 20; k++) {
           const a = await alarmOf(uid);
@@ -180,7 +193,7 @@ describe('property: the box never asks without pain the day before, and never tw
           await setClock(uid, at);
           const before = net.sent.length;
           await runDurableObjectAlarm(box(uid));
-          for (const p of net.sent.slice(before)) sends.push({ at, date: (await phone.read(p.body)).notification.title });
+          for (const p of net.sent.slice(before)) { const n = (await phone.read(p.body)).notification; sends.push({ at, date: n.title, text: `${n.title} ${n.body}` }); }
         }
       };
       for (let step = 0; step < 14; step++) {
@@ -189,24 +202,35 @@ describe('property: the box never asks without pain the day before, and never tw
         clock = to;
         await setClock(uid, clock);
         const today = localDate(tz, clock);
-        if (r() < 0.45) painDays.add(today); // a session that hurt
+        if (r() < 0.45) { // a session that hurt: one region or several
+          painDays.add(today);
+          const pick = PAIN_REGIONS.filter((x) => x !== 'other' && r() < 0.4);
+          hurtOn.set(today, [...new Set([...(hurtOn.get(today) ?? []), ...(pick.length ? pick : ['elbow' as const])])]);
+        }
         if (r() < 0.25) answered.add(addDays(today, -1)); // answered yesterday's on the phone
         // What the phone posts: yesterday's and today's pain not yet answered (domain/morning pushAsks).
-        const pain = [addDays(today, -1), today].filter((d) => painDays.has(d) && !answered.has(d)).map(ELBOW);
+        const pain = [addDays(today, -1), today].filter((d) => painDays.has(d) && !answered.has(d)).map((d) => {
+          const rs = hurtOn.get(d)!;
+          return { ...ELBOW(d), region: rs[0], ...(rs.length > 1 && { hurts: rs.map((region, i) => ({ region, lift: `Lift number ${i + 1}` })) }) };
+        });
         // Some days the app isn't opened: the Worker keeps the last list it was sent, stale days and all.
         if (r() < 0.4) continue;
         expect((await call(uid, 'POST', '/activity', { date: today, next: null, week: WEEK, ...(pain.length && { pain }) })).status).toBe(200);
+        for (const p of pain) told.set(p.date, p.hurts?.map((h) => h.region) ?? [p.region]); // what the Worker now holds
       }
       await runAlarms(clock + 3 * 864e5);
       // Every send: on a local day whose day before had pain, at most one per local day, at most one per pain day.
       const days = sends.map((x) => localDate(tz, x.at));
       for (const d of days) expect(painDays.has(addDays(d, -1)), `seed ${seed}: sent on ${d}`).toBe(true);
       expect(new Set(days).size, `seed ${seed}: twice on one day`).toBe(days.length);
-      for (const x of sends) expect(x.date).toBe('How’s your elbow today?');
+      // One push names every region the day before hurt, in its title or body.
+      for (const x of sends) for (const reg of told.get(addDays(localDate(tz, x.at), -1))!) expect(x.text.toLowerCase(), `seed ${seed}`).toContain(reg);
+      multi += sends.filter((x) => told.get(addDays(localDate(tz, x.at), -1))!.length > 1).length;
       total += sends.length;
     }
     // The property was exercised: questions did go out.
     expect(total).toBeGreaterThan(5);
+    expect(multi, 'pushes for days with several regions').toBeGreaterThan(2);
   }, 120_000);
 });
 

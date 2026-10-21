@@ -1,11 +1,14 @@
-import type { PainRegion } from '../../src/push/payload';
+import type { Hurt, PainRegion } from '../../src/push/payload';
 import { localDate, zonedTime } from './schedule';
 
 // The next-morning pain question (item 08, round 20; owner, 2026-10-20: "push notification the question for the next day at like
 // 11am"). The phone says which days had pain it hasn't asked about yet (src/push/activity.ts `pain`); the Worker asks once, at
 // 11:00 local the day after, never on a day with no pain the day before, and never more than one a day. Pure, so it's tested alone.
 
-export interface PainDay { date: string; region: PainRegion; lift: string }
+/** `hurts`: every region and lift that hurt that day (an app before them sends only the worst, as `region` and `lift`). */
+export interface PainDay { date: string; region: PainRegion; lift: string; hurts?: Hurt[] }
+/** What the day's one push names: all of it, or the worst alone from an older app. */
+export const hurtsOf = (p: PainDay): Hurt[] => (p.hurts?.length ? p.hurts : [{ region: p.region, lift: p.lift }]);
 
 /** The local time of the question. */
 export const PAIN_AT = '11:00';

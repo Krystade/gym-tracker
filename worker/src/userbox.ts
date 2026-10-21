@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { ACTIVITY_KINDS, buildPayload, DELIVERY, friendTopic, painNote, recapNote, remindNote, restNote, testNote, withMore, type ActivityKind, type Kind, type Route } from '../../src/push/payload';
 import type { Env } from './env';
 import type { FriendPush } from './notify';
-import { nextPainAt, painDue } from './pain';
+import { hurtsOf, nextPainAt, painDue } from './pain';
 import { sendOne } from './send';
 import { localDate, nextAt, nextRemind, weekStart } from './schedule';
 import { DEFAULT_PREFS, on, type Activity, type Prefs, type Subscription } from './validate';
@@ -200,7 +200,7 @@ export class UserBox extends DurableObject<Env> {
       // Only pain the day before, once per pain day, one a day: painDue says which, if any.
       const due = on(prefs.kinds.pain) ? painDue(prefs.tz, act?.pain, plan.painSent ?? [], plan.painOn, now) : null;
       if (due) {
-        await this.send('pain', painNote(due.region, due.lift));
+        await this.send('pain', painNote(hurtsOf(due)));
         plan.painSent = [...(plan.painSent ?? []), due.date].slice(-7);
         plan.painOn = today;
       }

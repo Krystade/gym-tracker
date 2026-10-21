@@ -2,6 +2,7 @@ import { addDays, weekStart, weeklySummary } from '../domain/analytics';
 import { fitReminder } from '../domain/learn/remind';
 import { nextDay, type DayPlan, type Program } from '../domain/program';
 import { pushAsks } from '../domain/morning';
+import { clip, MAX_LIFT } from './payload';
 import { prIds } from '../domain/records';
 import type { SetEntry } from '../domain/types';
 
@@ -19,7 +20,7 @@ export interface Activity {
    * Pain yesterday or today not yet asked about (domain/morning pushAsks): the day, the region and the lift, at most one a day.
    * The Worker asks the day after at about 11:00 (item 08). Answered on the phone first, it goes from here, and the push with it.
    */
-  pain?: { date: string; region: string; lift: string }[];
+  pain?: { date: string; region: string; lift: string; hurts?: { region: string; lift: string }[] }[];
 }
 /** This phone's time zone, the one the Worker plans in (client.ts sends it with the prefs). */
 export const zone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -39,7 +40,8 @@ export function activityOf(entries: SetEntry[], program: Program | null | undefi
   const a: Activity = { date, next: next?.slice(0, 40) ?? null, week: { start, sessions: Math.min(w.sessions, 7), sets: w.sets, prs, cardio: Math.min(w.cardioDays, 7) } };
   if (goal != null && Number.isInteger(goal) && goal >= 1 && goal <= 7) a.goal = goal;
   try { a.remind = fitReminder(entries, today, tz).schedule; } catch { /* a refinement: never a reason to fail the post */ }
-  const pain = pushAsks(entries, today).map((p) => ({ ...p, lift: p.lift.slice(0, 40) }));
+  // Lift names cut at a word (a cut mid-word here can't be mended on the Worker: "Dumbbe").
+  const pain = pushAsks(entries, today).map((p) => ({ ...p, lift: clip(p.lift, MAX_LIFT), ...(p.hurts && { hurts: p.hurts.map((h) => ({ ...h, lift: clip(h.lift, MAX_LIFT) })) }) }));
   if (pain.length) a.pain = pain;
   return a;
 }

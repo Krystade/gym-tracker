@@ -63,10 +63,20 @@ describe('pushAsks: what the Worker is told, for yesterday and today', () => {
   it('the worst unanswered region each day and the lift it hurt worst on; never a note or severity', () => {
     const e = [s('2026-10-19', 'Cable Pushdown', hurt(2, 'elbow', { note: 'private words' })), s('2026-10-19', 'Skullcrusher', hurt(2, 'elbow')),
       s('2026-10-20', 'Lunge', hurt(1, 'knee'))];
-    expect(pushAsks(e, '2026-10-20')).toEqual([{ date: '2026-10-19', region: 'elbow', lift: 'Skullcrusher' }, { date: '2026-10-20', region: 'knee', lift: 'Lunge' }]);
+    expect(pushAsks(e, '2026-10-20')).toEqual([{ date: '2026-10-19', region: 'elbow', lift: 'Skullcrusher',
+      hurts: [{ region: 'elbow', lift: 'Cable Pushdown' }, { region: 'elbow', lift: 'Skullcrusher' }] }, { date: '2026-10-20', region: 'knee', lift: 'Lunge' }]);
     expect(JSON.stringify(pushAsks(e, '2026-10-20'))).not.toMatch(/private|painSeverity|note/);
     expect(pushAsks(e, '2026-10-22')).toEqual([]);
     const done = e.map((x) => (x.date === '2026-10-19' ? { ...x, morning: 'settled' as const } : x));
     expect(pushAsks(done, '2026-10-20')).toEqual([{ date: '2026-10-20', region: 'knee', lift: 'Lunge' }]);
+  });
+  it('several regions and lifts in a day: every one, the worst region first, for the one push to name', () => {
+    const e = [s('2026-10-19', 'Cable Pushdown', hurt(1, 'elbow')), s('2026-10-19', 'Overhead Press', hurt(2, 'shoulder')),
+      s('2026-10-19', 'Skullcrusher', hurt(1, 'elbow')), s('2026-10-19', 'Leg Press', hurt(1, 'knee'))];
+    const [a] = pushAsks(e, '2026-10-20');
+    expect(a).toMatchObject({ date: '2026-10-19', region: 'shoulder', lift: 'Overhead Press' });
+    expect(a.hurts!.slice(0, 1)).toEqual([{ region: 'shoulder', lift: 'Overhead Press' }]);
+    expect(new Set(a.hurts!.map((h) => h.region))).toEqual(new Set(['shoulder', 'elbow', 'knee']));
+    expect(a.hurts!.map((h) => h.lift).sort()).toEqual(['Cable Pushdown', 'Leg Press', 'Overhead Press', 'Skullcrusher']);
   });
 });
