@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
@@ -191,7 +191,7 @@ test('stats: tiles say each thing once, hide the program tile without a program,
 
   // With a program built, one merged tile.
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('heading', { name: 'Weekly volume' })).toBeVisible();
   await page.getByRole('button', { name: '‹ Back' }).click();
@@ -229,7 +229,7 @@ test('stats: the goal label stays inside the sessions chart when the goal is its
 test('program: weekly volume shows the target beside each value and never "on pace"', async ({ page }) => {
   await seed(page, 1); // this week's volume is all the program screen shows
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   const vol = card(page, 'Weekly volume');
   await expect(vol.locator('.mrow').first().locator('.mtarget')).toContainText(/\/ \d+–\d+/);

@@ -18,11 +18,11 @@ import { getDraft, saveDraft } from '../state/drafts';
 const CARDS = '#cards';
 import { ExercisePicker } from './ExercisePicker';
 import { isHoldLift, swapSuggestions } from '../domain/care';
-import { dayRestDelta, inPlanOrder, leftToDo, plannedNames, TodayPlan, todayPlanFor } from './TodayPlan';
+import { dayRestDelta, inPlanOrder, leftToDo, plannedNames, planSlots, TodayPlan, todayPlanFor } from './TodayPlan';
 import { DELTA } from '../domain/learn/rest';
 import { WeighIn } from './WeighIn';
 import { closeTimers, currentRest, offerFinish, RestTimer, revertSwitch } from './RestTimer';
-import { FinishCard } from './FinishCard';
+import { FinishCard, LastWorkoutLine } from './FinishCard';
 import { sessionClose, showSummary } from '../domain/finish';
 import { quietAfter } from '../domain/learn/session';
 import { finishedOn, markFinished } from '../state/finish';
@@ -71,7 +71,7 @@ function useSameRefs<T>(xs: readonly T[]): readonly T[] {
   return last.current;
 }
 
-export function TodayScreen({ me, who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews }: {
+export function TodayScreen({ me, who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews, onOpenDay }: {
   /** Whose sets these are, named only when several people share the phone. */
   who?: string;
   /** The signed-in account, for your tag for whoever the news is from. */ me?: string | null;
@@ -81,6 +81,8 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   news?: { uid: string; name: string; text: string } | null; onOpenNews?: (f: ThreadWith) => void;
   /** When the weekly recap push was tapped: Today opens at the week's digest. */
   recap?: number;
+  /** A day in History, opened and scrolled to (the unseen past workout's line). */
+  onOpenDay?: (date: string) => void;
 }) {
   const [picking, setPicking] = useState(false);
   const [swapFor, setSwapFor] = useState<string | null>(null);
@@ -122,9 +124,12 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     return () => clearTimeout(t);
   }, [isToday0, morning, loggedToday, readyIn, today]);
   const plan = todayPlanFor(programs, store.entries, date, isToday0 ? suggested : null);
-  // The day's δ for his rest knees (item 17): the timer and the plan's length use the same. A plan not saved yet is a new object
-  // each render, so it's keyed by what it says.
+  // The lifts today's plan holds (its skips and swaps in), for Ready › Why's muscles (IA A9); with no program, the quick day.
+  // A plan not saved yet is a new object each render, so it's keyed by what it says.
   const planSig = plan && JSON.stringify(plan);
+  const todaySlots = useMemo(() => (programs.program && plan ? planSlots(programs.program, plan) : quickForReady ?? []),
+    [programs.program, planSig, quickForReady]);
+  // The day's δ for his rest knees (item 17): the timer and the plan's length use the same (keyed by planSig, above).
   const restDelta = useMemo(() => (programs.program && plan ? dayRestDelta(programs.program, plan, store.entries, (ex) => settings.get(ex).rest) : DELTA),
     [programs.program, planSig, store.entries, settings]);
   // Item 06: a light week on the day (started here, or read from the log's light sets), and, on today outside one, whether his
@@ -333,12 +338,11 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
           <h1>{fmtDay(date, today)}</h1>
           <button className="mini" aria-label="Next day" disabled={date >= today} onClick={() => onDay(addDays(date, 1))}><Icon name="chev-right" size={28} sw={2} /></button>
         </div>
-        <button className="quiet-btn program-btn" data-tour="program" onClick={onOpenProgram}>Program</button>
       </div>
       {/* Which gym only matters once there's a choice of them. */}
       {gyms.gyms.length > 1 && gyms.active && <button className="gym-line" onClick={onOpenGym}><span>at <b className="pname">{gyms.active.name}</b></span><Icon name="chev-right" size={16} sw={2} /></button>}
       {/* Owner Q5: the tile at the top of Today, about today only; the Energy chips in it. */}
-      {date === today && morning && <ReadyCard input={readyIn} morning={morning} body={body} worked={worked} sys={sys} />}
+      {date === today && morning && <ReadyCard input={readyIn} morning={morning} body={body} worked={worked} sys={sys} slots={todaySlots} onOpenLift={onOpen} />}
       {news && onOpenNews && (
         <button className="today-news" onClick={() => onOpenNews({ uid: news.uid, name: news.name })}>
           <Icon name="message" size={22} /><span><FriendName me={me} friend={news} bare /> {news.text}</span><span className="small reply">tap to reply</span>
@@ -346,33 +350,39 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       )}
       {date < today && <p className="card note-card past-day"><span>Logging to a past day</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={() => onDay(today)}>Back to today</button></p>}
       {carried && <p className="card note-card past-day"><span>{close.how ? `${fmtDay(today, today)}’s workout is done` : `Still logging ${fmtDay(today, today)}’s workout`}</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={onSplit}>Today</button></p>}
+      {/* The pain question sits at the top: its 11:00 push lands on Today's top (push/routes). */}
       {date === today && <MorningCheck store={store} today={today} />}
-      {date === today && <TodayDigest owner={owner} entries={store.entries} profile={profile} today={today} recap={recap} />}
-      <WeighIn body={body} date={date} />
-      {/* A past day: its energy and cycle phase here (today's are in the tile). */}
-      {date !== today && <><Energy body={body} date={date} /><CycleRow date={date} /></>}
-      {light && <LightWeekLine to={light.to} today={today} onEnd={() => { endLight(owner, store.entries, date); snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
-      {offerDeload && sys && <DeloadPrompt s={sys} onStart={() => { startLight(owner, today); setDeloadTaps((n) => n + 1); }} onLater={() => { snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
-      {date === today && update && programs.program && <ProgramUpdateCard owner={owner} program={programs.program} update={update}
-        onUpdate={(next) => { setReplaced(programs.program); void programs.save(next); }} onLater={() => setUpdateTaps((n) => n + 1)} />}
-      {replaced && <p className="undo-note" role="status">Program updated. <button className="mini" onClick={() => { void programs.save(replaced); setReplaced(null); }}>Undo</button></p>}
-      {lastUnseen && (
-        <FinishCard entries={store.entries} date={lastUnseen} today={today} profile={profile} program={programs.program} plans={programs.plans} how="auto" body={body.days} settings={settings} owner={owner}
-          onDismiss={() => { markFinished(owner, lastUnseen, { seen: true }); setFinishRev((n) => n + 1); }} />
-      )}
+      {/* A past day: its weigh-in, energy and cycle phase here (today's are in the tile). */}
+      {date !== today && <><WeighIn body={body} date={date} /><Energy body={body} date={date} /><CycleRow date={date} /></>}
+      {/* IA A1 (owner, 2026-10-21): the plan straight under Ready and the ping, so its first lift and target are on the first screen;
+          the summary takes its place once every planned set is done. The other cards come after it. */}
       {summary && (
         <FinishCard entries={store.entries} date={date} today={today} profile={profile} program={programs.program} plans={programs.plans} how={close.how} body={body.days} settings={settings} owner={owner}
           planName={programs.program && plan ? (plan.quick != null ? 'Quick' : (programs.program.days[plan.day] ?? programs.program.days[0])?.name) : undefined} onMore={addMore} />
       )}
       {programs.program && plan && hasPlan && !summary && (
-        <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today} open={open} onToggle={() => setPlanOpen(!open)}
+        <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today} open={open} onToggle={() => setPlanOpen(!open)} onEdit={onOpenProgram}
           buildQuick={(fits) => quickDay(profile, store.entries, date, fits, available ? { available, include: gyms.active!.include } : {})}
           onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} loadFor={loadFor} rangeFor={settings.get} keptRest={(ex) => settings.get(ex).rest} restDelta={restDelta} />
+      )}
+      {/* No program: where the plan goes, the way to build one (the header's Program button moved to the plan). */}
+      {!programs.program && date === today && (
+        <p className="card note-card no-program"><span>No program yet</span>
+          <button type="button" className="plan-edit" data-tour="program" onClick={onOpenProgram}>Program<Icon name="chev-right" size={18} sw={2} /></button></p>
       )}
       {/* No program: a quick session from what the week is behind on, once there's a history to go by. Never on a past day. */}
       {!programs.program && date === today && !summary && store.entries.some((e) => e.date < date) && (
         <SuggestedToday profile={profile} entries={store.entries} date={date} gym={gyms.active} loadFor={loadFor} onOpen={goTo} />
       )}
+      {date === today && <TodayDigest owner={owner} entries={store.entries} profile={profile} today={today} recap={recap} />}
+      {light && <LightWeekLine to={light.to} today={today} onEnd={() => { endLight(owner, store.entries, date); snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
+      {offerDeload && sys && <DeloadPrompt s={sys} onStart={() => { startLight(owner, today); setDeloadTaps((n) => n + 1); }} onLater={() => { snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
+      {date === today && update && programs.program && <ProgramUpdateCard owner={owner} program={programs.program} update={update}
+        onUpdate={(next) => { setReplaced(programs.program); void programs.save(next); }} onLater={() => setUpdateTaps((n) => n + 1)} />}
+      {replaced && <p className="undo-note" role="status">Program updated. <button className="mini" onClick={() => { void programs.save(replaced); setReplaced(null); }}>Undo</button></p>}
+      {/* A session that closed while the app was away: one line, into History at that day (seen once opened). */}
+      {lastUnseen && <LastWorkoutLine entries={store.entries} date={lastUnseen} today={today} profile={profile}
+        onOpen={() => { markFinished(owner, lastUnseen, { seen: true }); setFinishRev((n) => n + 1); onOpenDay?.(lastUnseen); }} />}
       {cards.length === 0 && <p className="muted">{date < today ? 'Nothing logged that day.' : 'Nothing logged yet today.'}</p>}
       {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} today={today} store={store} settings={settings} onOpen={onOpen}
         plannedSets={plannedSets(programs.program, plan, n)} plannedMinutes={plannedMinutes(programs.program, plan, n)} gym={gyms.active?.name} who={who} left={hasPlan ? left : []} onGo={goTo}

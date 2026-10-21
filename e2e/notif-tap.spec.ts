@@ -163,6 +163,7 @@ test('the recap push opens the week’s digest on Today: from another tab, hidde
 
   // Hidden for the week, then the tap with the app on Stats.
   await goto(page, 'Today');
+  await toggle.click(); // a new week starts collapsed (IA A1)
   await digest.getByRole('button', { name: 'Hide until next week' }).click();
   await expect(digest).toHaveCount(0);
   await goto(page, 'Stats');

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { goto, statsSheet } from './nav';
+import { goto, statsSheet, openProgram } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
@@ -17,7 +17,7 @@ test('build a program, then run today from it with skip and log', async ({ page 
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
 
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('2');
   await page.getByRole('textbox', { name: 'Sets per session' }).fill('14');
   await page.getByRole('button', { name: 'Build program' }).click();
@@ -52,7 +52,7 @@ test('build a program, then run today from it with skip and log', async ({ page 
 test('logging without touching the plan still records the session for adherence', async ({ page }) => {
   await page.goto('/');
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   await page.getByRole('button', { name: '‹ Back' }).click();
   await page.getByRole('button', { name: 'Add exercise' }).click();

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 
 test('a new user sets priorities before logging anything, from Stats or from Program’s note', async ({ page }) => {
   await page.goto('/');
@@ -24,7 +24,7 @@ test('Program’s “Priorities aren’t set” note opens them', async ({ page 
   await page.getByRole('textbox', { name: 'Weight' }).fill('50');
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(page.getByRole('list', { name: 'Sets for Cable Curl' }).getByRole('listitem')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   const note = page.locator('.note-card', { hasText: 'Priorities aren’t set' });
   await expect(note).toBeVisible();
   await page.screenshot({ path: 'screenshots/r7-program-priorities-note.png' });

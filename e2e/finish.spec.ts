@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 
 // Finishing a workout (owner, 2026-10-20): no rest after the plan's last set, Finish or Keep going in the bar's place, the
 // session closing by itself once it has gone quiet, and the plan turned into the day's summary. Synthetic data only.
@@ -31,7 +31,7 @@ async function start(page: Page) {
 }
 /** A two-day program with every lift but the first skipped today: that lift's name, card and planned sets. */
 async function planOfOne(page: Page): Promise<{ name: string; card: Locator; sets: number }> {
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('2');
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('heading', { name: /^Day A/ })).toBeVisible();
@@ -156,7 +156,7 @@ test('with no plan: no Finish bar; left alone the session closes once it has gon
   await expect(page.getByRole('timer', { name: 'Rest' })).toBeVisible();
 });
 
-test('a session that closed while the app was away: its summary waits for the next open, the next day too, until dismissed', async ({ page }) => {
+test('a session that closed while the app was away: the next day it is one line on Today, into History at that day, until opened', async ({ page }) => {
   await start(page);
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Cable Curl');
@@ -169,12 +169,15 @@ test('a session that closed while the app was away: its summary waits for the ne
   await page.goto('about:blank');
   await page.clock.setSystemTime(new Date('2026-10-21T09:00:00'));
   await page.goto('/');
+  // IA A1 (owner, 2026-10-21): one line, not the summary card.
   const last = page.getByRole('region', { name: 'Last workout' });
-  await expect(last.getByRole('heading', { level: 2 })).toHaveText(/^Last workout · Tue, Oct 20/);
-  await expect(last.locator('.finish-stats')).toContainText('Sets2');
-  await last.getByRole('button', { name: 'Dismiss last workout' }).click();
-  await expect(last).toHaveCount(0);
+  await expect(last.getByRole('button')).toHaveText(/^Yesterday’s workout · 2 sets(?: · \d+ min)?History$/);
+  await expect(last.locator('.finish-stats')).toHaveCount(0);
+  await last.getByRole('button').click();
+  await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'History' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('details.day[open]')).toContainText('Cable Curl');
   await page.reload();
-  await expect(page.getByRole('heading', { name: /^Tue|^Wed|Today/ }).first()).toBeVisible();
+  await goto(page, 'Today');
+  await expect(page.getByRole('button', { name: 'Add exercise' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Last workout' })).toHaveCount(0);
 });

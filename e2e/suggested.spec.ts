@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 
 // Suggested today: a profile with history and no program, at the 13 mini's 375×812 with its notch (insets faked as in e2e/records).
 const TOP = 47, BOTTOM = 34;
@@ -90,7 +90,7 @@ test('no program: Today suggests a session from what the week is behind on; a ta
   // With a program, the plan takes its place.
   await page.getByRole('button', { name: 'Back to today' }).click();
   await expect(card).toBeVisible();
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('2');
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('heading', { name: /^Day A/ })).toBeVisible();

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 import path from 'node:path';
 
 // Spacing rhythm: 12px between blocks, cards inset evenly, controls clear of the text beside them.
@@ -58,7 +58,7 @@ test('cards are inset evenly and sub-screens give their title room under Back', 
   bad.push(...(await unevenCards(page)).map((s) => `Exercise: ${s}`));
   expect(await gap(page, 'main button:text-is("‹ Back")', 'main h1')).toBeGreaterThanOrEqual(12);
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   bad.push(...(await unevenCards(page)).map((s) => `Program: ${s}`));
   expect(await gap(page, 'main button:text-is("‹ Back")', 'main h1')).toBeGreaterThanOrEqual(12);
   expect(bad).toEqual([]);
@@ -71,7 +71,7 @@ test('Stats: the program line sits in the week’s card, inside it, under the ri
   await page.getByLabel('Import CSV').setInputFiles(FX('history.sample.csv'));
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('2');
   await page.getByRole('textbox', { name: 'Sets per session' }).fill('14');
   await page.getByRole('button', { name: 'Build program' }).click();

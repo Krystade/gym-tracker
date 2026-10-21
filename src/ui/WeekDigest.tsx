@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { addDays } from '../domain/analytics';
 import { digestWeek, weekDigest, type Digest } from '../domain/digest';
 import { plural } from '../domain/format';
 import type { Profile } from '../domain/profile';
 import type { SetEntry } from '../domain/types';
 import { getPref, setPref } from '../state/prefs';
+import { Icon } from './icons';
 
 const MAX_LIFTS = 6;
 
@@ -94,22 +95,35 @@ export function LastWeek({ entries, profile, today }: { entries: SetEntry[]; pro
   );
 }
 
+/** The week whose digest is open on Today (IA A1, owner 2026-10-21): a new week starts collapsed. Per profile. */
+export const DIGEST_OPEN = 'digest:open';
+
 /**
- * Today, from Monday: last week's digest, folded or open as you last left it, and hidden for the rest of the week once
- * dismissed. The recap push (`recap`, when it was tapped) opens it whatever its state: on the Sunday it's sent, at the
- * week that day ends.
+ * Today, below the plan (IA A1, owner 2026-10-21): last week's digest as a collapsible card. It starts collapsed to one line, a tap
+ * opens it in place, and it stays as you left it for that week (a new week starts collapsed); "Hide until next week" takes it
+ * off Today for the rest of the week. The recap push (`recap`, when it was tapped) opens it whatever its state, and brings it on
+ * screen: on the Sunday it's sent, at the week that day ends.
  */
 export function TodayDigest({ owner, entries, profile, today, recap }: { owner: string; entries: SetEntry[]; profile: Profile; today: string; recap?: number }) {
   const fromRecap = !!recap && new Date(recap).toDateString() === new Date(`${today}T12:00:00`).toDateString();
   const week = digestWeek(today, fromRecap);
-  // A recap tap opens it once: unfolded and un-dismissed, then it behaves as ever.
+  // A recap tap opens it once: open and un-dismissed, then it behaves as ever.
   const [, bump] = useState(0);
+  const box = useRef<HTMLElement>(null);
+  const [scrollFor, setScrollFor] = useState<number | null>(null);
   if (recap && getPref<number>(owner, 'digest:recap') !== recap) {
     setPref(owner, 'digest:recap', recap);
-    setPref(owner, 'digest:folded', false);
+    setPref(owner, DIGEST_OPEN, week);
     if (getPref<string>(owner, 'digest:dismissed') === week) setPref(owner, 'digest:dismissed', undefined);
+    setScrollFor(recap);
   }
-  const folded = getPref<boolean>(owner, 'digest:folded') ?? false;
+  // It sits below the plan, so the tap that opened it brings it on screen too (once per tap).
+  useEffect(() => {
+    if (scrollFor == null) return;
+    box.current?.scrollIntoView({ block: 'start' });
+    setScrollFor(null);
+  }, [scrollFor]);
+  const open = getPref<string>(owner, DIGEST_OPEN) === week;
   const dismissed = getPref<string>(owner, 'digest:dismissed') === week;
   const w = useWeekDigest(entries, profile, week, !dismissed);
   // Nothing to look back on before the first week with anything logged.
@@ -118,12 +132,14 @@ export function TodayDigest({ owner, entries, profile, today, recap }: { owner: 
   const title = week === digestWeek(today) ? 'Last week' : 'This week';
   const set = (name: string, v: unknown) => { setPref(owner, name, v); bump((n) => n + 1); };
   return (
-    <section className="card digest" aria-label={title}>
-      <h2><button type="button" className="digest-toggle" aria-expanded={!folded} onClick={() => set('digest:folded', !folded)}>
-        <span>{title} <span className="muted small">· {weekRange(week)}</span></span>
-        {folded && <span className="muted small">{d.sessions} of {d.goal} sessions · {plural(d.sets, 'set')} · {plural(d.prs, 'PR')}</span>}
+    <section ref={box} className={`card digest${open ? '' : ' digest-folded'}`} aria-label={title}>
+      <h2><button type="button" className="digest-toggle" aria-expanded={open} onClick={() => set(DIGEST_OPEN, open ? undefined : week)}>
+        {open
+          ? <span>{title} <span className="muted small">· {weekRange(week)}</span></span>
+          : <span className="digest-line"><span>{title}</span><span className="muted">{[`${d.sessions} of ${d.goal} sessions`, plural(d.sets, 'set'), plural(d.prs, 'PR')].map((x) => <span key={x}> · <span className="nowrap">{x}</span></span>)}</span></span>}
+        <Icon name="chev-down" size={18} sw={2} className={open ? 'flip' : undefined} />
       </button></h2>
-      {!folded && <>
+      {open && <>
         <DigestBody d={d} />
         <button type="button" className="wide digest-hide" onClick={() => set('digest:dismissed', week)}>Hide until next week</button>
       </>}

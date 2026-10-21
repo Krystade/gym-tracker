@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 import path from 'node:path';
 import { dataSettled } from './settle';
 
@@ -14,7 +14,7 @@ const importFixture = async (page: Page) => {
 };
 const buildProgram = async (page: Page) => {
   await importFixture(page);
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('2');
   await page.getByRole('textbox', { name: 'Sets per session' }).fill('14');
   await page.getByRole('button', { name: 'Build program' }).click();

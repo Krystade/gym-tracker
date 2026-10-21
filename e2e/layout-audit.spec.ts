@@ -1,10 +1,11 @@
 import { expect, test, type APIRequestContext, type Browser, type Locator, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 import { audit, check, clean, notched, renderCheck, TOP } from './layout';
 import { deloadLog, SIM_LIFTS, simDay } from '../src/domain/learn/deloadSim.sample';
 import { account, befriend, iso, log, ping, put, rand, session, signedIn, Ts, type Seeded } from './seed';
 import { convertedRows, pasteRows, toCsv as dupesCsv, TWINS } from './fixtures/dupes';
 import { friendLog, publish, summaryOf } from './fixtures/compare';
+import { sixWeeks, WED } from './fixtures/today';
 
 // The layout audit (e2e/layout.ts) over every screen and state, at the 13 mini's 375×812 with its notch, in WebKit and Chromium.
 // Each test walks a part of the app with synthetic data (long names, big numbers) and fails listing every finding at once; the
@@ -362,7 +363,7 @@ test('Today mid-session: big numbers, Details, a superset, the rest bar and its 
   await logSet(page, push, '18:44:30');
   await check(page, info, found, 'session-superset-round');
 
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('heading', { name: 'Weekly volume' })).toBeVisible();
   await check(page, info, found, 'program');
@@ -387,7 +388,7 @@ test('Finishing: the Finish bar, the summary in the plan’s place, and a sessio
   const found: string[] = [];
   await importLog(page);
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('3');
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('heading', { name: /^Day A/ })).toBeVisible();
@@ -432,7 +433,7 @@ test('Finishing: the Finish bar, the summary in the plan’s place, and a sessio
 /** A clock time ("17:40", "7:05", "5pm"): owner Q2, by the day only, so none in the tile, the strip or the sheet (learn/readiness's detector). */
 const CLOCK = /\d{1,2}:\d{2}|\b\d{1,2}\s?(am|pm)\b/i;
 
-test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded after a set, the week strip, the Why sheet to its end', async ({ page }, info) => {
+test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded after a set, the Week row and its strip, the Why sheet to its end', async ({ page }, info) => {
   test.setTimeout(240_000);
   const found: string[] = [];
   // PNGs of the screen as the phone shows it, when asked for (READY_PNG=<dir>).
@@ -447,6 +448,12 @@ test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded
   const look = async (state: string) => { await noClock(); await check(page, info, found, state, [], '.ready-card, .week-strip'); await png(state); };
   const at = async (day: string) => { await page.clock.setSystemTime(new Date(`${day}T18:00:00`)); await page.reload(); await goto(page, 'Today'); };
   const goal = async (n: number) => { await goto(page, 'Priorities'); await page.getByRole('textbox', { name: 'Sessions per week goal' }).fill(String(n)); await goto(page, 'Today'); };
+  // IA A1: the week is a one-line row inside the tile; a tap opens the strip (its marks, sessions and rest reasons).
+  const openWeek = async () => {
+    const row = tile.getByRole('button', { name: /^Week/ });
+    if ((await row.getAttribute('aria-expanded')) === 'false') await row.click();
+    await expect(strip).toBeVisible();
+  };
 
   // A new user: a calm line, no number (never a 0), the Energy chips in the tile.
   await phone(page);
@@ -458,13 +465,16 @@ test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded
   // Ten weeks of Mon/Wed/Fri, a 3-day program built today (Tuesday), the goal 2: Go, the session, its sets, the week strip.
   await importLog(page);
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('3');
   await page.getByRole('button', { name: 'Build program' }).click();
   await page.getByRole('button', { name: '‹ Back' }).click();
   await expect(tile.locator('.ready-n')).toHaveText(/^(\d+|<1)$/);
   await expect(tile.locator('.ready-verdict')).toHaveText('Go today');
   await expect(tile).toContainText(/\d+ of \d+ sets at full strength/);
+  await expect(strip).toHaveCount(0); // folded to the Week row
+  await look('ready-go-week-row');
+  await openWeek();
   await expect(strip.getByRole('listitem').first()).toContainText('Today');
   await expect(strip.locator('.ws-days > li')).toHaveCount(6); // Tuesday to Sunday
   // Today's plan is the week plan's session for today (owner Q3), whichever day that is.
@@ -491,6 +501,8 @@ test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded
   // Goal 6 from Tuesday: 6 days for 6 sessions, no spare day.
   await goal(6);
   await expect(tile.locator('.ready-verdict')).toHaveText('Go today · tight week');
+  await openWeek();
+  await expect(strip.locator('.ws-days > li')).toHaveCount(6);
   await expect(strip.locator('.ws-days > li[data-mark=rest]')).toHaveCount(0);
   await look('ready-tight');
   await goal(2);
@@ -513,6 +525,7 @@ test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded
   await goal(1);
   await at(add(DAY0, 1));
   await expect(tile.locator('.ready-verdict')).toHaveText('Goal met · extra session optional');
+  await openWeek();
   await expect(strip.locator('.ws-days > li').first()).toHaveAttribute('data-mark', 'optional');
   await expect(strip.locator('.ws-why')).toContainText('Goal met');
   await look('ready-goal-met');
@@ -522,6 +535,99 @@ test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded
   await expect(tile.locator('.ready-verdict')).toHaveText('Go today');
   await expect(tile).toContainText('First session in 8 days');
   await look('ready-layoff');
+  clean(found);
+});
+
+// ---- IA A1 (owner, 2026-10-21): Today's order, Ready's Weight and Week rows, the digest card, the past-workout line, Why's muscles. ----
+
+test('Today (IA A1): before training on a digest week with a ping, the Week row open, Why’s muscles, the digest open, mid-session, a new user', async ({ page: fresh, browser, request }, info) => {
+  test.setTimeout(240_000);
+  const found: string[] = [];
+  // PNGs of the screen as the phone shows it, when asked for (IA_PNG=<dir>).
+  const png = async (p: Page, name: string) => { if (process.env.IA_PNG) await p.screenshot({ path: `${process.env.IA_PNG}/${info.project.name}-${name}.png` }); };
+  // The render check's rules over everything this stage built (the rest of Today is the plain audit's).
+  const STRICT = '.ready-card, .plan, .digest, .past-workout, .no-program';
+  // The PNG first: the audit's full-page shot scrolls the page back to the top.
+  const look = async (p: Page, state: string) => { await png(p, state); await check(p, info, found, state, [], STRICT); };
+
+  // A new user, signed out, nothing logged: the calm Ready line with Energy and Weight, and Program › where the plan goes.
+  await phone(fresh);
+  await expect(fresh.getByRole('region', { name: 'Ready' })).toContainText('Log a few sessions');
+  await expect(fresh.getByRole('region', { name: 'Ready' }).getByRole('group', { name: 'Weigh-in' })).toBeVisible();
+  await expect(fresh.getByRole('button', { name: 'Program', exact: true })).toBeVisible();
+  await look(fresh, 'ia-new-user');
+
+  // Six weeks of A/B/C, a friend's ping, Monday's session not yet seen on this phone, a 3-day program built from the line.
+  const [me, ana] = await Promise.all([account(request), account(request)]);
+  await log(request, me, sixWeeks());
+  await befriend(request, me, ana);
+  await ping(request, ana, me, 'fire', WED.getTime() - 20 * 60_000);
+  const page = await signedIn(browser, me, WED, notched);
+  await goto(page, 'Today');
+  await expect(page.getByRole('region', { name: 'Last workout' })).toBeVisible();
+  await look(page, 'ia-no-program');
+  await openProgram(page);
+  await page.getByRole('textbox', { name: 'Days per week' }).fill('3');
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  const tile = page.getByRole('region', { name: 'Ready' });
+  const plan = page.getByRole('region', { name: 'Today’s plan' });
+  const digest = page.getByRole('region', { name: 'Last week' });
+  await expect(plan.getByRole('button', { name: 'Edit plan' })).toBeVisible();
+  await expect(digest.getByRole('button', { name: /^Last week/ })).toHaveAttribute('aria-expanded', 'false');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await look(page, 'ia-before');
+
+  // The Week row, open: the strip inside the tile, each day's session and the rest days' reasons.
+  await tile.getByRole('button', { name: /^Week/ }).click();
+  const strip = page.getByRole('region', { name: 'Week plan' });
+  await expect(strip.locator('.ws-why li').first()).toBeVisible();
+  await look(page, 'ia-week-open');
+  await tile.getByRole('button', { name: /^Week/ }).click();
+  await expect(strip).toHaveCount(0);
+
+  // Why ›: the muscles today's plan touches, then All muscles › (the Stats Muscles sheet) in its place.
+  await tile.getByRole('button', { name: /^Why/ }).click();
+  const why = page.getByRole('dialog', { name: 'Why' });
+  const mine = why.getByRole('list', { name: 'Today’s muscles' }).getByRole('listitem');
+  await expect(mine.first()).toBeVisible();
+  expect(await mine.count()).toBeLessThan(18); // not every muscle: those are one tap on
+  await why.getByRole('button', { name: /^All muscles/ }).scrollIntoViewIfNeeded();
+  await look(page, 'ia-why-muscles');
+  await why.getByRole('button', { name: /^All muscles/ }).click();
+  const all = page.getByRole('dialog', { name: 'Sets per muscle' });
+  await expect(all).toContainText('Fractional sets this week');
+  await expect(why).toHaveCount(0);
+  await look(page, 'ia-all-muscles');
+  await all.getByRole('button', { name: 'Done' }).click();
+  await expect(all).toHaveCount(0);
+
+  // Last week, opened in place under the plan.
+  await digest.getByRole('button', { name: /^Last week/ }).click();
+  await expect(digest.getByRole('button', { name: 'Hide until next week' })).toBeVisible();
+  await digest.evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await look(page, 'ia-digest-open');
+  await digest.getByRole('button', { name: /^Last week/ }).click();
+
+  // Mid-session: two sets of the first planned lift, logged from its row; back at the top, as after a tab switch.
+  const first = plan.locator('.plan-name').first();
+  const name = (await first.getAttribute('data-exercise'))!;
+  await first.click();
+  const card = page.locator(`[data-card="${name.toLowerCase()}"]`);
+  for (const t of ['17:10:00', '17:13:00']) {
+    const w = card.getByRole('textbox', { name: 'Weight' });
+    if ((await w.inputValue()) === '') await w.fill('100');
+    const r = card.getByRole('textbox', { name: 'Reps' });
+    if ((await r.inputValue()) === '') await r.fill('10');
+    await page.clock.pauseAt(new Date(`${iso(WED)}T${t}`));
+    await card.getByRole('button', { name: /^Add set/ }).click();
+  }
+  await expect(plan.locator(`[data-exercise="${name}"] .plan-count`)).toHaveText(/^2\//);
+  await expect(plan.getByRole('button', { name: /^Today’s plan/ })).toHaveAttribute('aria-expanded', 'true');
+  await expect(tile.getByRole('group', { name: 'Energy' })).toHaveCount(0); // Ready folded, as before
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await look(page, 'ia-mid');
+  await page.context().close();
   clean(found);
 });
 
@@ -705,7 +811,7 @@ test('Prompts: a program planned at the step, and its update three weeks on', as
   await importLog(page, ['date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source', ...sets].join('\n'), null);
   const found: string[] = [];
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('group', { name: 'Short of the range' })).toContainText('/wk');
   await check(page, info, found, 'program-aims');
@@ -750,7 +856,7 @@ test('Prompts: pain that keeps coming back, sharp pain, a variation for a stalle
   await importLog(page, csv, null);
   const found: string[] = [];
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('1');
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('list', { name: 'Day A exercises' }).getByText('Bench Press', { exact: true })).toBeVisible();

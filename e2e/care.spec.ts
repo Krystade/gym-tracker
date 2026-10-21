@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { goto, statsSheet } from './nav';
+import { goto, statsSheet, openProgram } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
@@ -28,7 +28,7 @@ test('pain region and severity, care card, back block, swap suggestions', async 
   await expect(care).toContainText('Not medical advice');
 
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   await page.getByRole('button', { name: 'Add back-resilience block' }).click();
   await expect(page.getByRole('list', { name: 'Day A exercises' })).toContainText('Bird Dog');

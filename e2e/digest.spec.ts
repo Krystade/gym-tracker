@@ -62,10 +62,25 @@ async function seed(page: Page, at: string) {
 
 const line = (card: ReturnType<Page['getByRole']>, name: string) => card.locator('.digest-lines > div').filter({ has: card.page().getByRole('term').filter({ hasText: name }) });
 
-test('Today: last week from Monday; it folds and stays folded, hides until next week, and comes back the week after', async ({ page }) => {
+const toggleOf = (page: Page) => page.getByRole('region', { name: 'Last week' }).getByRole('button', { name: /^Last week/ });
+
+test('Today: last week from Monday, one line until tapped open; hides until next week, and comes back the week after', async ({ page }) => {
   await seed(page, '2026-10-12T18:00:00'); // a Monday
   await goto(page, 'Today');
   const card = page.getByRole('region', { name: 'Last week' });
+  // Collapsed (IA A1, owner 2026-10-21): one line under the plan, the week's numbers after its name.
+  const toggle = toggleOf(page);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle).toHaveText(/^Last week · 2 of 2 sessions · 8 sets · 1 PR$/);
+  await expect(card.locator('.digest-lines')).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Hide until next week' })).toHaveCount(0);
+  expect((await card.boundingBox())!.height).toBeLessThanOrEqual(60);
+  await fits(page);
+  await page.screenshot({ path: `${SHOTS}/2-today-folded.png` });
+
+  // A tap opens it in place.
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(card.getByRole('heading', { level: 2 })).toHaveText(/Last week\s*· Oct 5–11/);
   await expect(line(card, 'Sessions')).toHaveText(/Sessions\s*2 of 2 \+ 1 cardio day\s*↑1/);
   await expect(line(card, 'Streak')).toHaveText(/1 week/);
@@ -79,19 +94,6 @@ test('Today: last week from Monday; it folds and stays folded, hides until next 
   await fits(page);
   await page.screenshot({ path: `${SHOTS}/1-today.png`, fullPage: true });
 
-  // Folded: one line, and it stays folded after a reload.
-  const toggle = card.getByRole('button', { name: /^Last week/ });
-  await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-  await expect(toggle).toContainText('2 of 2 sessions · 8 sets · 1 PR');
-  await expect(card.locator('.digest-lines')).toHaveCount(0);
-  await fits(page);
-  await page.screenshot({ path: `${SHOTS}/2-today-folded.png` });
-  await page.reload();
-  await expect(page.getByRole('button', { name: /^Last week/ })).toHaveAttribute('aria-expanded', 'false');
-  await page.getByRole('button', { name: /^Last week/ }).click();
-  await expect(line(card, 'Sets')).toBeVisible();
-
   // Hidden until next week: gone after a reload, and gone all week.
   await card.getByRole('button', { name: 'Hide until next week' }).click();
   await expect(card).toHaveCount(0);
@@ -103,9 +105,12 @@ test('Today: last week from Monday; it folds and stays folded, hides until next 
   await expect(page.getByRole('button', { name: 'Add exercise' })).toBeVisible();
   await expect(card).toHaveCount(0);
 
-  // The next Monday: the week just gone, with nothing logged in it and no cardio line.
+  // The next Monday: the week just gone, collapsed again, with nothing logged in it and no cardio line.
   await page.clock.setSystemTime(new Date('2026-10-19T07:00:00'));
   await page.reload();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle).toHaveText(/^Last week · 0 of 2 sessions · 0 sets · 0 PRs$/);
+  await toggle.click();
   await expect(card.getByRole('heading', { level: 2 })).toHaveText(/Last week\s*· Oct 12–18/);
   await expect(line(card, 'Sessions')).toHaveText(/0 of 2\s*↓2/);
   await expect(line(card, 'Cardio')).toHaveCount(0);
@@ -115,10 +120,57 @@ test('Today: last week from Monday; it folds and stays folded, hides until next 
   await expect(card).toHaveCount(0);
 });
 
+test('Today: opened or closed, the digest stays as left for that week, per profile; a new week starts collapsed', async ({ page }) => {
+  await seed(page, '2026-10-12T18:00:00'); // a Monday: Me has last week
+  // Sam, a second profile on this phone, with the same weeks.
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
+  await page.getByRole('button', { name: 'Add Sam' }).click();
+  const bar = page.getByRole('group', { name: 'Who’s training' });
+  await expect(bar.getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...ROWS].join('\n')) });
+  await expect(page.getByText(`✓ Imported ${ROWS.length} new sets`)).toBeVisible();
+  await goto(page, 'Today');
+  const toggle = toggleOf(page);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await bar.getByRole('button', { name: /Me/ }).click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+  // Me opens it: open after a reload and after a day away, all that week.
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await page.reload();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await page.clock.setSystemTime(new Date('2026-10-14T18:00:00')); // Wednesday
+  await page.reload();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  // Sam's is Sam's own: still collapsed. Back to Me: still open.
+  await bar.getByRole('button', { name: /Sam/ }).click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await bar.getByRole('button', { name: /Me/ }).click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+  // Closed again: closed after a reload.
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await page.reload();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+  // Opened late in the week, then the next Monday: a new week, collapsed.
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await page.clock.setSystemTime(new Date('2026-10-19T07:00:00'));
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Last week' })).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  await expect(page.getByRole('region', { name: 'Last week' }).getByRole('heading', { level: 2 })).toHaveText(/Last week\s*· Oct 12–18/);
+});
+
 test('Today: a set logged today leaves last week as it was; a set gone from last week moves it', async ({ page }) => {
   await seed(page, '2026-10-12T18:00:00'); // a Monday
   await goto(page, 'Today');
   const card = page.getByRole('region', { name: 'Last week' });
+  await toggleOf(page).click();
   await expect(line(card, 'Sets')).toHaveText(/Sets\s*8\s*↑5/);
   // A heavier bench today: a PR of today's, not last week's.
   await page.getByRole('button', { name: 'Add exercise' }).click();
@@ -176,9 +228,12 @@ test('the Sunday recap opens Today at the week it ends; folded or hidden, a reca
   await page.clock.setSystemTime(new Date('2026-10-19T08:00:00'));
   await page.goto('/');
   const last = page.getByRole('region', { name: 'Last week' });
+  // The same week the recap opened last night: still open.
+  await expect(last.getByRole('button', { name: /^Last week/ })).toHaveAttribute('aria-expanded', 'true');
   await expect(last.getByRole('heading', { level: 2 })).toHaveText(/Last week\s*· Oct 12–18/);
   await last.getByRole('button', { name: 'Hide until next week' }).click();
   await expect(last).toHaveCount(0);
   await page.goto('/#open=recap');
   await expect(last.getByRole('button', { name: /^Last week/ })).toHaveAttribute('aria-expanded', 'true');
+  await expect(last.getByRole('heading', { level: 2 })).toBeInViewport();
 });

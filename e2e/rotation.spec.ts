@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 
 // A plateaued lift is offered the next variation of its movement pattern, on its card and on its screen. Nothing changes by
 // itself: one tap switches the program over (with an undo), Dismiss hides it for this plateau. Synthetic history only.
@@ -61,7 +61,7 @@ async function setUp(page: Page) {
   await page.getByLabel('Import CSV').setInputFiles({ name: 'plateau.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...HISTORY].join('\n')) });
   await expect(page.getByText(`✓ Imported ${HISTORY.length} new sets`)).toBeVisible();
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('1');
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('list', { name: 'Day A exercises' }).getByText('Bench Press', { exact: true })).toBeVisible();
@@ -70,7 +70,7 @@ async function setUp(page: Page) {
 }
 const card = (page: Page, lift: string) => page.locator(`[data-card="${lift.toLowerCase()}"]`);
 const programLifts = async (page: Page) => {
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   const names = await page.getByRole('list', { name: 'Day A exercises' }).locator('b').allInnerTexts();
   await page.getByRole('button', { name: '‹ Back' }).click();
   return names;

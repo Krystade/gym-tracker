@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 
 // Every screen and overlay at four phone sizes, with a notched phone's safe areas. Headless browsers report insets of 0,
 // so the shipped CSS and HTML are served with each env(safe-area-inset-*) replaced by the 13 mini's: 47px top, 34px bottom.
@@ -234,7 +234,7 @@ test('Gym and Program fit each phone', async ({ page }) => {
 test('Today with a plan, its forms and editors, History, Lifts and Stats fit each phone', async ({ page }) => {
   await start(page);
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('heading', { name: /^Day A/ })).toBeVisible();
   await goto(page, 'Today');

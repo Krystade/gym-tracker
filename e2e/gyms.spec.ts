@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
@@ -7,7 +7,7 @@ const slotNames = async (page: Page) => (await page.getByRole('list', { name: /e
 
 test('Set up your gym saves nothing until the user names it or ticks gear', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Set up your gym' }).click();
   await page.getByRole('button', { name: '‹ Back' }).click();
   // Still no gym: the prompt is back and no "Gym:" line appears.
@@ -24,7 +24,7 @@ test('Set up your gym saves nothing until the user names it or ticks gear', asyn
 test('a long gym name ellipsises and Delete stays on one line', async ({ page }) => {
   page.on('dialog', (d) => void d.accept());
   await page.goto('/');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Set up your gym' }).click();
   await page.getByLabel('Gym name').fill('The Extremely Long Named Garage Gym Downtown');
   const chip = page.getByRole('group', { name: 'Active gym' }).getByRole('button').first();
@@ -43,7 +43,7 @@ test('a gym without machines gets a plan it can do; exclusions and inclusions st
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
 
   await expect(page.getByText('Priorities aren’t set')).toBeVisible();
   await page.getByRole('button', { name: 'Set up your gym' }).click();
@@ -84,7 +84,7 @@ test('a gym copied as text is added back from text with the same gear', async ({
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (s: string) => { held = s; }, readText: async () => held } });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Set up your gym' }).click();
   await page.getByLabel('Gym name').fill('Garage');
   await page.getByRole('checkbox', { name: 'barbell', exact: true }).check();

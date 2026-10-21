@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
@@ -56,7 +56,7 @@ test('screens at iPhone 13 mini size', async ({ page }) => {
   await goto(page, 'Stats');
   await check(page, '6-stats');
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('heading', { name: 'Weekly volume' })).toBeVisible();
   await page.getByRole('button', { name: 'Add back-resilience block' }).click();

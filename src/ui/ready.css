@@ -16,10 +16,33 @@
 .ready-line { font-size: var(--fs-sub); line-height: 20px; color: var(--text-2); overflow-wrap: anywhere; }
 .ready-line b { color: var(--text); font-weight: 600; }
 .ready-note { margin: 8px 0 0; font-size: var(--fs-sm); line-height: 18px; color: var(--text-2); }
-/* The check-in under the number: Energy (and the cycle row), a hairline above. */
-.ready-checkin { margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--hairline); }
+/* The check-in under the number: Energy (and the cycle row), the weigh-in and the Week row (IA A1), each a hairline above. The
+   rows' labels share a column, so the chips, the field and the week's marks start at one x. */
+.ready-checkin { --rl: 76px; margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--hairline); }
 .ready-checkin .energy { margin: 0; }
 .ready-checkin .chips.energy + .chips.energy { margin-top: 4px; }
+.ready-checkin .chips.seg { grid-template-columns: var(--rl) repeat(5, minmax(44px, 1fr)); }
+/* Under 360 px (the SE's 320): Energy over its chips as everywhere else, and a narrower label column for the other rows. */
+@media (max-width: 359px) { .ready-checkin { --rl: 64px; } .ready-checkin .chips.seg { grid-template-columns: repeat(5, minmax(0, 1fr)); } .ready-checkin .chips.seg .chip-label { grid-column: 1 / -1; } }
+.ready-checkin .chip-label { margin: 0; font-size: var(--fs-body); color: var(--text-2); }
+.weigh-row, .rw-row { display: grid; grid-template-columns: var(--rl) minmax(0, 1fr); align-items: center; min-height: 48px; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--hairline); }
+.weigh-row form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.weigh-row form button { padding: 0 18px; }
+.weigh-row .weigh-val { font-size: var(--fs-body); font-variant-numeric: tabular-nums; }
+.weigh-row .weigh-val + .quiet-btn { justify-self: end; grid-column: 2; grid-row: 1; margin-right: -8px; }
+/* One line: Week, a mark a day from today with its name under it, "1 of 2" and the chevron. A tap opens the strip. */
+.rw-row { width: 100%; grid-template-columns: var(--rl) minmax(0, 1fr) auto; gap: 0 8px; padding: 4px 0 0; border-radius: 0; background: none; color: var(--text); text-align: left; font-weight: 400; }
+.rw-days { list-style: none; margin: 0; padding: 0; display: flex; justify-content: space-between; gap: 2px; min-width: 0; }
+.rw-days li { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.rw-days li span { font-size: 11px; line-height: 14px; color: var(--text-2); white-space: nowrap; }
+.rw-days li:first-child span { color: var(--text); font-weight: 600; }
+.rw-goal { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sub); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rw-goal .ic { color: var(--text-3); }
+.rw-goal .flip { rotate: 180deg; }
+.rw-goal-l { font-size: var(--fs-sub); color: var(--text-2); }
+/* Opened: the strip inside the tile, no card or heading of its own. */
+.week-strip.in-tile { margin: 0; padding: 2px 0 4px; background: none; border-radius: 0; }
+.week-strip.in-tile .ws-days { margin-top: 4px; }
 
 /* Folded after the day's first set: one line, a tap opens it. */
 .ready-card.folded { padding: 0; }
@@ -39,10 +62,10 @@
 .ws-day { font-size: var(--fs-xs); line-height: 16px; color: var(--text-2); }
 .ws-days li:first-child .ws-day { color: var(--text); font-weight: 600; }
 .ws-mark { display: block; width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box; }
-.ws-days li[data-mark='train'] .ws-mark { background: var(--accent); }
-.ws-days li[data-mark='light'] .ws-mark { background: color-mix(in oklab, var(--accent) 45%, var(--surface)); border: 2px solid var(--accent); }
-.ws-days li[data-mark='rest'] .ws-mark { border: 2px solid var(--fill-2); }
-.ws-days li[data-mark='optional'] .ws-mark { border: 2px dashed var(--accent); }
+li[data-mark='train'] > .ws-mark { background: var(--accent); }
+li[data-mark='light'] > .ws-mark { background: color-mix(in oklab, var(--accent) 45%, var(--surface)); border: 2px solid var(--accent); }
+li[data-mark='rest'] > .ws-mark { border: 2px solid var(--fill-2); }
+li[data-mark='optional'] > .ws-mark { border: 2px dashed var(--accent); }
 .ws-s { min-height: 14px; max-width: 100%; font-size: 11px; line-height: 14px; color: var(--text-2); text-align: center; overflow-wrap: anywhere; }
 .ws-why { list-style: none; margin: 10px 0 0; padding: 8px 0 0; border-top: 1px solid var(--hairline); display: grid; gap: 4px; }
 .ws-why li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; font-size: var(--fs-sm); line-height: 18px; }
@@ -75,6 +98,8 @@
 .why-vol li:first-child { border-top: 0; }
 .why-vol-m { font-size: var(--fs-sub); overflow-wrap: anywhere; }
 .why-vol-n { font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* All muscles ›: the Stats Muscles sheet (IA A9). */
+.why-all { gap: 2px; min-height: 44px; margin: 4px 0 0 -8px; padding: 0 8px; background: none; color: var(--accent-text); font-size: var(--fs-sub); font-weight: 600; }
 /* One bar: done (the bright accent), then planned (the accent), then the track; the range bracketed under it. Opaque colours only. */
 .why-bar { grid-column: 1 / -1; position: relative; display: block; height: 8px; border-radius: 4px;
   background: linear-gradient(to right, var(--accent-hi) 0 var(--done), var(--accent) var(--done) var(--plan), var(--fill) var(--plan) 100%); }

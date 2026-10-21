@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import path from 'node:path';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 
 // Owner, 2026-10-19: an open lift card could only be closed by finishing it; Save on an edited set seemed to do nothing.
 const card = (page: Page, name: string) => page.locator(`[data-card="${name.toLowerCase()}"]`);
@@ -98,7 +98,7 @@ const buildProgram = async (page: Page) => {
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('2');
   await page.getByRole('textbox', { name: 'Sets per session' }).fill('14');
   await page.getByRole('button', { name: 'Build program' }).click();

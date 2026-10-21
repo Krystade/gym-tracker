@@ -471,11 +471,10 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 .test-due span { align-self: stretch; }
 
 /* Program */
-/* Today's header: the day arrows and Program on a nav row, the date as the large title under them. Program sits on the
-   arrows' row (a grid cell over the day switch's empty corner), so the date always gets the whole width. */
+/* Today's header: the day arrows on a nav row, the date as the large title under them. Program left the header for the plan's
+   Edit › (IA A1, owner 2026-10-21: the top right is the hardest reach, and More has it too). */
 .today-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 44px auto; align-items: center; margin-bottom: 16px; }
 .today-head > .day-switch { grid-column: 1 / -1; grid-row: 1 / span 2; }
-.today-head > .program-btn { grid-column: 2; grid-row: 1; z-index: 1; padding: 0 0 0 12px; font-size: var(--fs-body); font-weight: 500; }
 /* "at Garage ›" under the day: quiet, a full-width 44px tap target pulled up into the head's gap. */
 .gym-line { width: 100%; justify-content: flex-start; margin: -12px 0 8px; padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--fs-sub); font-weight: 400; gap: 4px; }
 .gym-line > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -484,13 +483,29 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 .gym-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; margin: 0 0 16px; }
 .gym-head > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .gym-head .mini { flex: none; margin: 0; padding: 0 0 0 8px; background: none; color: var(--accent-text); }
-.plan h2:last-child { margin-bottom: 0; } /* folded: nothing under the title */
+.plan-head:last-child { margin-bottom: 0; } /* folded: nothing under the title */
+/* The plan's header (IA A1): "Day B · 14 sets · ≈ 41 min" as the toggle, Edit › beside it; what more the length says under it. */
+.plan-head { display: flex; align-items: flex-start; gap: 4px; margin: 0 0 6px; }
+.plan-head h2 { flex: 1; min-width: 0; margin: 0; }
 .plan-toggle { width: 100%; padding: 0; border: 0; background: none; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left; font-size: inherit; font-weight: inherit; }
 .plan-toggle .muted { font-weight: 400; }
+.plan-title { font-size: var(--fs-sub); line-height: 22px; font-weight: 400; color: var(--text-2); overflow-wrap: anywhere; }
+.plan-title > b { font-size: var(--fs-xl); line-height: 28px; font-weight: 700; color: var(--text); }
+.plan-meta { font-variant-numeric: tabular-nums; }
+.plan-more { display: block; font-size: var(--fs-sm); line-height: 18px; }
+.plan-more > span { display: block; }
+/* Edit › (and with no program, Program ›): a quiet accent link, a 44 px target reaching into the card's padding. */
+.plan-edit { flex: none; gap: 2px; min-height: 44px; margin: -8px -8px 0 0; padding: 0 8px; background: none; color: var(--accent-text); font-size: var(--fs-sub); font-weight: 600; }
+.no-program { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 4px; padding-bottom: 4px; }
+.no-program > span:first-child { color: var(--text-2); font-weight: 400; line-height: 44px; } /* as tall as Program ›, so the card's insets are even */
+.no-program .plan-edit { margin: 0 -8px 0 0; }
 /* A program day's heading: his recent pace for it on a line of its own, under the plan's length. */
 .day-pace { display: block; margin-top: 2px; font-weight: 400; }
 /* B's scoreboard line: sets done of planned, big and tabular, over a bar with a segment per set. */
-.sets-progress { margin: 8px 0 12px; }
+.sets-progress { margin: 2px 0 10px; }
+/* The day chips under the list; a lift's load never splits from its number. */
+.plan-days { margin-top: 12px; }
+.plan-load { white-space: nowrap; }
 .sets-num { margin: 0 0 6px; font-size: var(--fs-xl); line-height: 28px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .sets-num b { font-size: var(--fs-title); line-height: 34px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
 .sets-num span { font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -938,7 +953,7 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 }
 .card .unread-dot { box-shadow: 0 0 0 2px var(--surface); }
 .viewing-bar .bar-actions { display: flex; gap: 8px; flex: none; }
-.today-news { width: 100%; min-height: 52px; justify-content: flex-start; gap: 12px; text-align: left; margin: 0 0 16px; padding: 0 16px; background: var(--surface); border-radius: var(--r-group); font-weight: 500; }
+.today-news { width: 100%; min-height: 52px; justify-content: flex-start; gap: 12px; text-align: left; margin: 0 0 12px; padding: 0 16px; background: var(--surface); border-radius: var(--r-group); font-weight: 500; }
 .today-news .ic { color: var(--accent-text); }
 .today-news > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .today-news .reply { color: var(--accent-text); font-weight: 400; }
@@ -996,7 +1011,24 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 
 /* Weekly digest (Today and Stats): self-contained, for the coming redesign. */
-.digest .digest-toggle { width: 100%; padding: 0; border: 0; background: none; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left; font-size: inherit; }
+.digest .digest-toggle { width: 100%; padding: 0; border: 0; background: none; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; text-align: left; font-size: inherit; }
+.digest .digest-toggle > span:first-child { min-width: 0; }
+.digest .digest-toggle .ic { color: var(--text-3); }
+.digest .digest-toggle .flip { rotate: 180deg; }
+/* Collapsed (IA A1): one line under the plan, the week's numbers after its name; a tap opens it in place. */
+.digest.digest-folded { padding-top: 4px; padding-bottom: 4px; }
+.digest-line { font-size: var(--fs-sub); line-height: 20px; overflow-wrap: anywhere; }
+.digest-line > span:first-child { font-size: var(--fs-body); font-weight: 600; }
+.digest-line .muted { font-weight: 400; font-variant-numeric: tabular-nums; }
+.digest-line .nowrap { white-space: nowrap; } /* it wraps between the numbers, never inside one */
+/* Opened by the recap push, it scrolls up clear of the notch. */
+.digest { scroll-margin-top: calc(var(--sat) + 12px); }
+/* The unseen past workout (IA A1): one line, into History at that day. */
+.past-line { display: flex; width: 100%; min-height: 52px; padding: 4px 8px 4px 16px; justify-content: space-between; gap: 8px; text-align: left; font-weight: 400; color: var(--text); }
+.past-line-t { min-width: 0; font-size: var(--fs-sub); line-height: 20px; overflow-wrap: anywhere; }
+.past-line-t b { font-weight: 600; }
+.past-line-t > span { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.past-line-go { flex: none; display: inline-flex; align-items: center; gap: 2px; color: var(--accent-text); font-size: var(--fs-sub); font-weight: 600; }
 .digest h2:last-child { margin-bottom: 0; }
 .digest .digest-lines { margin: 0; display: grid; gap: 0; }
 .digest .digest-lines > div { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: baseline; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }

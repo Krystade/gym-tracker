@@ -1,9 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 
-const openProgram = async (page: Page) => {
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
-};
 const build = async (page: Page) => {
   await page.goto('/');
   await openProgram(page);

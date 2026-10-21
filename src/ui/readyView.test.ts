@@ -5,8 +5,8 @@ import { defaultProfile } from '../domain/profile';
 import type { DayPlan, Program, Slot } from '../domain/program';
 import type { SetEntry } from '../domain/types';
 import { simulateRecovery } from '../domain/learn/recoverySim.sample';
-import { ReadyTile, WeekStrip, WhyBody } from './ReadyTile';
-import { readyNow, shownNumber, stripView, suggestedDay, tileView, whyView, type ReadyInput } from './readyView';
+import { ReadyTile, WeekRow, WeekStrip, WhyBody } from './ReadyTile';
+import { readyNow, shownNumber, stripView, suggestedDay, tileView, todayMuscles, whyView, type ReadyInput } from './readyView';
 
 // Readiness S4: every string the READY tile, the week strip and the Why sheet render, over synthetic weeks (every weekday, every
 // goal, sore legs, a light week, a layoff, a new user). Owner Q2: a day, never a clock time; and never a 0 for a number.
@@ -104,6 +104,41 @@ describe('the READY tile, the week strip and the Why sheet, rendered', () => {
     else expect(suggestedDay(r)).toBe(r.best!.day);
     // No program: nothing to suggest.
     expect(suggestedDay(readyNow(input({ program: null, quick: [slot('Bench Press')] })))).toBeNull();
+  });
+
+  // IA A9 (owner, 2026-10-21): Why names the muscles today's plan touches, not every muscle; All muscles › has the rest.
+  it('Why: the muscles today’s plan touches, most sets first, with what it adds to the week', () => {
+    const i = input({ goal: 3 });
+    // Upper: bench 4 (chest 1, triceps ½, front delts ½), pulldown 4 (lats 1, mid-back, biceps, forearms ½), curl 3 (biceps 1);
+    // ties in the app's muscle order.
+    const upper = todayMuscles(UL.days[0].slots, i);
+    expect(upper.map((x) => [x.muscle, x.add])).toEqual([['Biceps', 5], ['Chest', 4], ['Lats', 4], ['Triceps', 2], ['Front Delts', 2], ['Mid-Back', 2], ['Forearms', 2]]);
+    // Legs: no upper-body muscle at all.
+    const legs = todayMuscles(UL.days[1].slots, i);
+    expect(legs[0]).toMatchObject({ muscle: 'Quads', add: 7 });
+    expect(legs.map((x) => x.muscle)).not.toContain('Chest');
+    // Each row: this week's sets before today plus the plan's, against the muscle's range.
+    for (const x of upper) expect(x.text).toBe(`${Math.round((x.done + x.add) * 10) / 10} of ${x.band[0]}–${x.band[1]}`);
+    const r = readyNow(i), w = whyView(r, i, null, UL.days[0].slots);
+    expect(w.today).toEqual(upper);
+    const html = renderToStaticMarkup(h(WhyBody, { w, t: tileView(r), onAllMuscles: () => {} }));
+    expect(html).toContain('Today’s muscles');
+    expect(html).toContain('All muscles');
+    expect(html).not.toContain('This week’s sets');
+    expect(html.match(/class="why-vol-m"/g)).toHaveLength(7);
+    // Nothing planned: a line, never an empty list.
+    expect(renderToStaticMarkup(h(WhyBody, { w: whyView(r, i, null, []), t: tileView(r) }))).toContain('No lifts planned today.');
+  });
+
+  it('the Week row: one line of marks and "done of goal", the full strip a tap away', () => {
+    const r = readyNow(input({ goal: 3 })), s = stripView(r)!;
+    expect(s.count).toBe(`${r.week.done} of ${r.week.goal}`);
+    const html = renderToStaticMarkup(h(WeekRow, { s }));
+    expect(html).toContain('aria-expanded="false"');
+    expect(html.match(/class="ws-mark"/g)).toHaveLength(s.days.length);
+    expect(html).toContain(`>${s.count}<`);
+    // Folded: no rest reasons yet (they're in the strip it opens to).
+    expect(html).not.toContain('ws-why');
   });
 
   it('the goal met: the strip marks today optional, never rest', () => {

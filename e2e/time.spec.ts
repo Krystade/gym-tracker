@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 
 const logBench = async (page: import('@playwright/test').Page, weight: string, reps: string) => {
   const rows = page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem');
@@ -60,7 +60,7 @@ test('a set entered a few minutes late today can take an earlier time', async ({
 
 test('the builder builds to minutes, and program days show their length', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Minutes', exact: true }).click();
   await page.getByRole('textbox', { name: 'Minutes per session' }).fill('30');
   await page.getByRole('button', { name: 'Build program' }).click();
@@ -81,7 +81,7 @@ const openBuilder = async (page: import('@playwright/test').Page) => {
 
 test('a minutes budget too small to meet says so', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Minutes', exact: true }).click();
   await page.getByRole('textbox', { name: 'Minutes per session' }).fill('20');
   await page.getByRole('button', { name: 'Build program' }).click();
@@ -107,7 +107,7 @@ test('a minutes budget too small to meet says so', async ({ page }) => {
 
 test('a program built by sets is not said to be over a minutes budget a rebuild could meet', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click(); // 14 sets, ≈ 44 min
   await expect(page.getByRole('heading', { name: /^Day A · 14 sets/ })).toBeVisible();
   await openBuilder(page);
@@ -182,7 +182,7 @@ test('looking at a past day does not move the program rotation, and "Log it toda
   await logBench(page, '135', '10');
   await page.clock.setFixedTime(new Date('2026-10-01T09:00:00'));
   await page.reload();
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('heading', { name: /^Day A/ })).toBeVisible();
   await page.getByRole('button', { name: '‹ Back' }).click();
@@ -334,7 +334,7 @@ test('a late set on the old day can be later than the clock after midnight', asy
 test("a past day's plan is not called today's", async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-01T09:00:00') });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   await expect(page.getByRole('heading', { name: /^Day A/ }).first()).toBeVisible();
   await page.getByRole('button', { name: '‹ Back' }).click();

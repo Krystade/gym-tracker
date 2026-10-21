@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 
 const HEADER = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source';
 
@@ -119,13 +119,13 @@ test('fold-away sections show an arrow that turns when open', async ({ page }) =
   await table.click();
   expect(await marker(table)).toEqual({ content: '"›"', turned: true });
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   expect((await marker(page.locator('details.builder > summary'))).content).toBe('"›"');
 });
 
 async function openGymSetup(page: Page) {
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   await page.locator('details.builder > summary').click();
   await page.getByRole('button', { name: 'Set up your gym' }).click();

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 
 const HEADER = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source';
 const day = (i: number) => new Date(Date.UTC(2026, 7, 19 + i * 3)).toISOString().slice(0, 10); // Aug 19 … Wed, Sep 30
@@ -35,7 +35,7 @@ test('a typed name to add as a new lift comes after the lifts it matches, not be
 test('the program builder describes days that vary their lifts', async ({ page }) => {
   await seed(page);
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await expect(page.getByText(/different lift/)).toBeVisible();
   await expect(page.getByText(/repeats on every day/)).toHaveCount(0);
 });
@@ -85,7 +85,7 @@ test('the warm-up goes on its own line under the target', async ({ page }) => {
 test('the plan header has no dead space, folded or open', async ({ page }) => {
   await seed(page);
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   await page.getByRole('button', { name: '‹ Back' }).click();
   const plan = page.getByRole('region', { name: 'Today’s plan' });

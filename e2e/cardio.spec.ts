@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
@@ -17,7 +17,7 @@ test('cardio: a priority plans treadmill slots; logging one fills the plan, Hist
 
   // A gym with a treadmill.
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Set up your gym' }).click();
   for (const e of ['dumbbells', 'flat bench', 'cable stack', 'treadmill']) await page.getByRole('checkbox', { name: e, exact: true }).check();
   await page.getByRole('button', { name: '‹ Back' }).click();
@@ -64,7 +64,7 @@ test('cardio: a priority plans treadmill slots; logging one fills the plan, Hist
 
 test('cardio machines are gym gear in their own group', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Set up your gym' }).click();
   for (const e of ['treadmill', 'stair climber', 'exercise bike', 'elliptical']) await expect(page.getByRole('checkbox', { name: e, exact: true })).toBeVisible();
   await expect(page.getByText('Cardio', { exact: true }).first()).toBeVisible();

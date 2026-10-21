@@ -528,7 +528,7 @@ function MilestonesSheet({ rows, range }: { rows: MileRow[]; range: Range }) {
 }
 
 /** This week's sets per muscle: what's behind (a lift for each), every muscle against its target band, the next steps. */
-function MusclesSheet({ entries, profile, today, who, body, program, onOpenLift }: { entries: SetEntry[]; profile: Profile; today: string; who?: string; body?: readonly BodyDay[]; program?: Program | null; onOpenLift?: (name: string) => void }) {
+export function MusclesSheet({ entries, profile, today, who, body, program, onOpenLift }: { entries: SetEntry[]; profile: Profile; today: string; who?: string; body?: readonly BodyDay[]; program?: Program | null; onOpenLift?: (name: string) => void }) {
   const v = useMemo(() => {
     const week = weeklyMuscleSets(entries, weekStart(today));
     const last = weeklyMuscleSets(entries, addDays(weekStart(today), -7));

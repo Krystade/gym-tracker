@@ -44,6 +44,10 @@ export const todayPlanFor = (store: ProgramStore, entries: SetEntry[], date: str
 
 const daySlots = (program: Program, plan: DayPlan): Slot[] => (plan.quick != null ? plan.slots ?? [] : (program.days[plan.day] ?? program.days[0]).slots);
 
+/** The day's slots as he'll do them: skips left out, swaps under the names they're done under. */
+export const planSlots = (program: Program, plan: DayPlan): Slot[] => daySlots(program, plan).filter((s) => !plan.skips.includes(s.exercise))
+  .map((s) => (plan.swaps[s.exercise] ? { ...s, exercise: plan.swaps[s.exercise] } : s));
+
 /** The day's lifts in plan order, by the names they're done under (swaps applied). */
 export const plannedNames = (program: Program, plan: DayPlan): string[] => daySlots(program, plan).map((s) => plan.swaps[s.exercise] ?? s.exercise);
 
@@ -77,8 +81,10 @@ export function dayRestDelta(program: Program, plan: DayPlan, entries: SetEntry[
 }
 
 /** `buildQuick`: a one-off day of lifts that fits, for the Quick chip. `restDelta`: the day's (dayRestDelta). */
-export function TodayPlan({ program, plan, entries, past, open, onToggle, onChange, onOpen, onSwap, buildQuick, loadFor, rangeFor, keptRest, restDelta: delta = DELTA }: {
+export function TodayPlan({ program, plan, entries, past, open, onToggle, onEdit, onChange, onOpen, onSwap, buildQuick, loadFor, rangeFor, keptRest, restDelta: delta = DELTA }: {
   program: Program; plan: DayPlan; entries: SetEntry[]; past?: boolean; open: boolean; onToggle: () => void;
+  /** The program's editor (IA A1: Edit on the plan's header, in place of the Today header's Program button). */
+  onEdit?: () => void;
   onChange: (p: DayPlan) => void; onOpen: (exercise: string) => void; onSwap: (original: string) => void;
   buildQuick: (fits: (slots: Slot[]) => boolean) => Slot[];
   /** The weight the lift's card will suggest, if it has one. */
@@ -122,46 +128,36 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
   // The day in sets, for the bar under the header: each planned set a segment, lit once it's done (extra sets don't count).
   const total = live.reduce((n, s) => n + s.sets, 0);
   const setsDone = live.reduce((n, s) => n + Math.min(s.sets, doneOf(plan.swaps[s.exercise] ?? s.exercise)), 0);
-  // The second line of the header: how long it runs when open, how far along when folded. Inside the
-  // toggle, so it fills the 44 px tap area instead of sitting under it. The plan's length, and his recent pace beside it when
-  // the two are over 10 min apart (owner); once started, when it ends at his pace.
+  // The header (IA A1, owner 2026-10-21): "Day B · 14 sets · ≈ 41 min", Edit › beside it. The length is the plan's, sized as
+  // the Program screen says it; what's left to say (his recent pace when over 10 min away, which number sized a minutes plan,
+  // and once started when it ends at his pace) goes on the line under it, inside the toggle so it fills the 44 px tap area.
   const length = () => {
     const L = sessionLengths(entries, plan.date, todoOf(program, plan), { warmups: warm, kept: keptRest, delta });
-    const when = L.started != null && `started ${hhmm(new Date(L.started))} · ends ≈ ${hhmm(new Date(L.endsAt!))}`;
-    // With his pace beside the length, when it started and ends goes on a line of its own.
-    const head = byMinutes ? sizedLength(L, size.by) : `≈ ${toMin(L.plan)} min${L.both ? ` · ${atPace(L.pace!)}` : ''}`;
-    const long = byMinutes || L.both;
-    return <span className="muted small" aria-label="Plan length">{head}{when && (long ? <><br />{when}</> : ` · ${when}`)}</span>;
+    const when = L.started != null ? `started ${hhmm(new Date(L.started))} · ends ≈ ${hhmm(new Date(L.endsAt!))}` : null;
+    const mins = toMin(byMinutes ? sizedSeconds(L, size.by) : L.plan);
+    const more = [byMinutes ? sizedHow(L, size.by) : L.both ? atPace(L.pace!) : null, when].filter(Boolean);
+    return <span className="plan-len" aria-label="Plan length">≈ {mins} min{more.length > 0 && <> <span className="plan-more">{more.map((x, i) => <span key={i}>{i > 0 && ' '}{x}</span>)}</span></>}</span>;
   };
+  // Lift sets, as the Program screen counts a day (a cardio slot is minutes, not sets); how many are done once he's started.
+  const liftSets = live.reduce((n, s) => n + (s.minutes == null ? s.sets : 0), 0);
+  const liftDone = live.reduce((n, s) => n + (s.minutes == null ? Math.min(s.sets, doneOf(plan.swaps[s.exercise] ?? s.exercise)) : 0), 0);
   return (
     <section className="card plan" aria-label={title}>
-      <h2><button type="button" className="plan-toggle" aria-expanded={open} onClick={onToggle}>
-        <span>{title} · {day.name}</span>
-        {open ? length() : <span className="muted small">{finished} of {live.length} done</span>}
-      </button></h2>
+      <div className="plan-head">
+        <h2><button type="button" className="plan-toggle" aria-expanded={open} onClick={onToggle}>
+          {/* "Today's plan" for a screen reader: the card's name, which the eye gets from where it sits. */}
+          <span className="plan-title"><span className="sr-only">{title} · </span><b>{day.name}</b>
+            {liftSets > 0 && <span className="plan-meta"> · {liftDone > 0 ? `${liftDone}/${liftSets}` : liftSets} sets</span>}
+            {open ? <span className="plan-meta"> · {length()}</span> : <span className="plan-meta"> · {finished} of {live.length} done</span>}</span>
+        </button></h2>
+        {onEdit && <button type="button" className="plan-edit" aria-label="Edit plan" data-tour="program" onClick={onEdit}>Edit<Icon name="chev-right" size={18} sw={2} /></button>}
+      </div>
 
       {open && (<>
       {total > 0 && (
         <div className="sets-progress">
-          <p className="sets-num"><b>{setsDone}</b>/{total} <span>sets</span></p>
           <div className="sets-bar" aria-hidden="true">{Array.from({ length: total }, (_, i) => <i key={i} className={i < setsDone ? 'on' : undefined} />)}</div>
         </div>
-      )}
-      <div className="chips seg-wide" role="group" aria-label="Program day">
-        {program.days.map((d, i) => (
-          <button key={d.name} type="button" className="chip" aria-pressed={!quick && i === plan.day} onClick={() => onChange({ ...plan, day: i, skips: [], swaps: {}, slots: undefined, quick: undefined })}>{d.name}</button>
-        ))}
-        <button type="button" className="chip" aria-pressed={quick} onClick={() => { if (!quick) pickQuick(Number(minutes) || 30); }}>Quick</button>
-      </div>
-      {quick && (
-        <label className="quick-minutes">Minutes
-          <Input aria-label="Minutes" inputMode="numeric" value={minutes} onChange={(e) => {
-            setMinutes(e.target.value);
-            const n = Number(e.target.value);
-            if (Number.isInteger(n) && n >= 5 && n <= 180) pickQuick(n);
-          }} />
-          <span className="muted small">What your week is furthest behind on</span>
-        </label>
       )}
       <ol className="plan-slots" aria-label="Planned exercises">
         {day.slots.map((slot) => {
@@ -177,7 +173,7 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
                 {/* The count rides under the name, so the name gets the width it needs. */}
                 <span className="muted small"><span className="plan-count">{skipped ? 'Skipped' : `${done}/${slot.sets}`}</span> · {slot.minutes != null
                   ? cardioTarget(entries, target, slot.minutes, plan.date).text
-                  : <>{range(slot, target)}{!skipped && loadFor && fmtLoad(loadFor(target, slot.sets))}</>}</span>
+                  : <>{range(slot, target)}{!skipped && loadFor && <span className="plan-load">{fmtLoad(loadFor(target, slot.sets))}</span>}</>}</span>
               </button>
               <button type="button" onClick={() => onChange({ ...plan, skips: skipped ? plan.skips.filter((x) => x !== slot.exercise) : [...plan.skips, slot.exercise] })}>
                 {skipped ? 'Undo' : 'Skip'}
@@ -187,6 +183,23 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onChan
           );
         })}
       </ol>
+      {/* Which day, under the lifts (IA A1): picked now and then, so the first lift and its target come first. */}
+      <div className="chips seg-wide plan-days" role="group" aria-label="Program day">
+        {program.days.map((d, i) => (
+          <button key={d.name} type="button" className="chip" aria-pressed={!quick && i === plan.day} onClick={() => onChange({ ...plan, day: i, skips: [], swaps: {}, slots: undefined, quick: undefined })}>{d.name}</button>
+        ))}
+        <button type="button" className="chip" aria-pressed={quick} onClick={() => { if (!quick) pickQuick(Number(minutes) || 30); }}>Quick</button>
+      </div>
+      {quick && (
+        <label className="quick-minutes">Minutes
+          <Input aria-label="Minutes" inputMode="numeric" value={minutes} onChange={(e) => {
+            setMinutes(e.target.value);
+            const n = Number(e.target.value);
+            if (Number.isInteger(n) && n >= 5 && n <= 180) pickQuick(n);
+          }} />
+          <span className="muted small">What your week is furthest behind on</span>
+        </label>
+      )}
       </>)}
     </section>
   );

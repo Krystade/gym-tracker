@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 
 // Item 11: a plan's length is the timer's rests (what it should take); his recent pace is what it will take him. Both show when
 // they're over 10 min apart. Synthetic history: five timed sessions with 6–8 min between sets, about twice the timer's rests.
@@ -20,7 +20,8 @@ const ROWS = ['2026-10-05', '2026-10-07', '2026-10-09', '2026-10-12', '2026-10-1
     return `${d},${name},,${set},${w},${r},,,,sample,${local}`;
   });
 });
-const BOTH = /^≈ (\d+) min · at your recent pace ≈ (\d+) min \((\d+)–(\d+)\)/;
+// (IA A1: the pace on its own line under the length.)
+const BOTH = /^≈ (\d+) min at your recent pace ≈ (\d+) min \((\d+)–(\d+)\)/;
 
 async function seed(page: Page) {
   await page.clock.install({ time: new Date('2026-10-16T18:00:00') });
@@ -36,7 +37,7 @@ const fits = async (page: Page) => expect(await page.evaluate(() => document.doc
 
 test('a plan shows its length and, over 10 min away, his recent pace; once started it ends at his pace', async ({ page }) => {
   await seed(page);
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   // Each day: its length, and his pace for it under that.
   const head = page.getByRole('heading', { name: /^Day A · \d+ sets · ≈ \d+ min/ });
@@ -50,7 +51,7 @@ test('a plan shows its length and, over 10 min away, his recent pace; once start
   const plan = page.getByRole('region', { name: 'Today’s plan' });
   const length = plan.getByLabel('Plan length');
   await expect(length).toHaveText(BOTH);
-  const [, p, f, lo, hi] = BOTH.exec(await length.innerText())!.map(Number);
+  const [, p, f, lo, hi] = BOTH.exec((await length.textContent())!)!.map(Number);
   expect(f - p).toBeGreaterThan(10);
   expect(lo).toBeLessThanOrEqual(f);
   expect(hi).toBeGreaterThanOrEqual(f);

@@ -6,7 +6,9 @@ import type { SetEntry } from '../domain/types';
 import type { Systemic } from '../domain/learn/deload';
 import { dayLabel, readinessModel, type Readiness, type SessionReady } from '../domain/learn/readiness';
 import { P_FRESH } from '../domain/learn/recovery';
-import { readinessPlanned, type PlanDay, type WeekPlan } from '../domain/learn/schedule';
+import { readinessPlanned, slotVolume, type PlanDay, type WeekPlan } from '../domain/learn/schedule';
+import { weeklyMuscleSets, weekStart } from '../domain/analytics';
+import { targetFor } from '../domain/profile';
 
 // Readiness S4: what the READY tile, the week strip and the Why sheet say, from learn/schedule.readinessPlanned. Pure, so every
 // string they show can be checked (by the day only, owner Q2: no clock time anywhere) without a browser.
@@ -123,6 +125,8 @@ export interface StripView {
   reasons: { days: string; label: string }[];
   /** "1 of 3 done" this week. */
   goal: string;
+  /** The same, short, for Ready's one-line Week row: "1 of 3". */
+  count: string;
 }
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -146,13 +150,15 @@ export function stripView(r: Planned): StripView | null {
     const name = i === 0 ? 'Today' : weekday(d.date);
     if (at) at.days.push(name); else reasons.push({ days: [name], label });
   });
-  return { days, reasons: reasons.map((x) => ({ days: x.days.join(', '), label: x.label })), goal: `${r.week.done} of ${r.week.goal} done` };
+  return { days, reasons: reasons.map((x) => ({ days: x.days.join(', '), label: x.label })), goal: `${r.week.done} of ${r.week.goal} done`, count: `${r.week.done} of ${r.week.goal}` };
 }
 
 // ---- The Why sheet -----------------------------------------------------------------------------------------------------------
 
 export interface MuscleRow { muscle: Muscle; last: string; fresh: string; pct: number }
 export interface VolumeRow { muscle: Muscle; done: number; planned: number; band: [number, number]; text: string }
+/** A muscle today's plan works (IA A9): its sets this week before today, what today's plan adds, its weekly range. */
+export interface TodayRow { muscle: Muscle; done: number; add: number; band: [number, number]; text: string }
 export interface WhyView {
   /** The verdict, and why in a sentence. */
   verdict: string; because: string;
@@ -163,6 +169,8 @@ export interface WhyView {
   source: string;
   energy: string; systemic: string; pain: string[];
   volume: VolumeRow[];
+  /** The muscles today's plan touches, most sets first (IA A9: in place of every muscle's bars; All muscles › has those). */
+  today: TodayRow[];
 }
 
 const DAY = 864e5;
@@ -198,7 +206,22 @@ function because(r: Planned): string {
   }
 }
 
-export function whyView(r: Planned, i: Pick<ReadyInput, 'entries' | 'body' | 'tz'>, sys: Systemic | null): WhyView {
+/**
+ * The muscles `slots` (today's plan as Today shows it) work, as the week counts them (fractional sets, a session capped as Stats
+ * caps it): sets this week before today, what the plan adds, the weekly range. Most added first; under half a set left out.
+ */
+export function todayMuscles(slots: readonly Slot[], i: Pick<ReadyInput, 'entries' | 'profile' | 'today'>): TodayRow[] {
+  const add = slotVolume(slots);
+  const before = weeklyMuscleSets(i.entries.filter((e) => e.date < i.today) as SetEntry[], weekStart(i.today)).sets;
+  return (Object.entries(add) as [Muscle, number][]).filter(([, x]) => x >= 0.5)
+    .map(([m, x]) => {
+      const band = targetFor(i.profile, m), done = before[m] ?? 0;
+      return { muscle: m, done, add: x, band, text: `${sets1(done + x)} of ${band[0]}–${band[1]}` };
+    })
+    .sort((a, b) => b.add - a.add || MUSCLES.indexOf(a.muscle) - MUSCLES.indexOf(b.muscle));
+}
+
+export function whyView(r: Planned, i: Pick<ReadyInput, 'entries' | 'body' | 'tz' | 'profile' | 'today'>, sys: Systemic | null, slots: readonly Slot[] = []): WhyView {
   const today = r.today;
   const rec = readinessModel(i.entries, i.body, today, i.tz).recovery;
   const muscles: MuscleRow[] = [];
@@ -231,6 +254,6 @@ export function whyView(r: Planned, i: Pick<ReadyInput, 'entries' | 'body' | 'tz
   return {
     verdict: r.verdict.label, because: because(r), gain, muscles, source: r.source.label,
     energy, systemic: sys ? SYSTEMIC[sys.verdict] : 'Not enough history yet to read a trend',
-    pain: pain.length ? pain : ['No pain risk in this session'], volume,
+    pain: pain.length ? pain : ['No pain risk in this session'], volume, today: todayMuscles(slots, i),
   };
 }

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
@@ -85,7 +85,7 @@ test('the cardio exercise screen aims at the planned minutes', async ({ page }) 
   await goto(page, 'Priorities');
   await page.getByRole('combobox', { name: 'Cardio' }).selectOption('2');
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Set up your gym' }).click();
   for (const e of ['dumbbells', 'flat bench', 'cable stack', 'treadmill']) await page.getByRole('checkbox', { name: e, exact: true }).check();
   await page.getByRole('button', { name: '‹ Back' }).click();

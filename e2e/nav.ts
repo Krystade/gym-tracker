@@ -25,3 +25,9 @@ export async function statsSheet(page: import('@playwright/test').Page, tile: st
   await page.getByRole('dialog').waitFor();
   return page.getByRole('dialog');
 }
+
+/**
+ * Program, opened from Today the way a person would: the plan's Edit › (IA A1, owner 2026-10-21: it replaced the header's
+ * Program button), or with no program yet the Program › line where the plan goes. Only one of the two is ever on Today.
+ */
+export const openProgram = (page: Page) => page.getByRole('button', { name: /^(Program|Edit plan)$/ }).click();

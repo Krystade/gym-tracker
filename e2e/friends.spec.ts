@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 
 // Friends against the local Auth and Firestore emulators. Synthetic users only.
 // Today at 18:00: the emulator checks invite expiry against the real clock, so a fixed date goes stale within a week.
@@ -25,7 +25,7 @@ async function person(browser: Browser, opts: { bench?: boolean; gym?: string } 
     await page.getByRole('button', { name: 'Add set' }).first().click();
   }
   if (opts.gym) {
-    await page.getByRole('button', { name: 'Program', exact: true }).click();
+    await openProgram(page);
     await page.getByRole('button', { name: 'Set up your gym' }).click();
     await page.getByLabel('Gym name').fill(opts.gym);
     await page.getByRole('checkbox', { name: 'barbell', exact: true }).check();

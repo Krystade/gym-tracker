@@ -86,12 +86,12 @@ test('keyboard focus on a button shows the accent outline, and buttons have a pr
   expect(tr).toContain('transform');
 });
 
-test('Today: the header clears the weigh-in card, arrows are readable and 44px, the disabled save reads as disabled', async ({ page }) => {
+test('Today: the header clears the Ready tile, arrows are readable and 44px, the disabled save reads as disabled', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Fri, Oct 2' })).toBeVisible();
   const gap = await page.evaluate(() => {
-    const head = document.querySelector('.today-head')!.getBoundingClientRect(), w = document.querySelector('.weigh')!.getBoundingClientRect();
+    const head = document.querySelector('.today-head')!.getBoundingClientRect(), w = document.querySelector('.ready-card')!.getBoundingClientRect();
     return w.top - head.bottom;
   });
   expect(gap).toBeGreaterThanOrEqual(12);

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 
 const bar = (page: Page) => page.getByRole('navigation', { name: 'Sections' });
 const tabButton = (page: Page, name: string) => bar(page).getByRole('button', { name, exact: true });
@@ -33,7 +33,7 @@ test('Gym opens from More with ‹ More back, and Add gym then leaving saves not
   await goto(page, 'Gym');
   await expect(page.getByRole('button', { name: 'Add gym', exact: true })).toBeVisible();
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await expect(page.getByRole('button', { name: 'Set up your gym' })).toBeVisible();
   // The first edit keeps it.
   await goto(page, 'Gym');
@@ -87,7 +87,7 @@ test('Program shows the gym above the days, outside the folded rebuild', async (
   await page.getByLabel('Gym name').fill('Garage');
   await page.getByRole('button', { name: 'Full gym: tick all gear' }).click();
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('button', { name: 'Build program' }).click();
   const day = page.getByRole('heading', { name: /^Day A/ });
   await expect(day).toBeVisible();
@@ -118,7 +118,7 @@ test('More lists Priorities and goal, Characters, Gym, Program and Photos; each 
   await page.getByRole('button', { name: '‹ More' }).click();
   // Opened from Today, Program still goes back to Today, and More isn't lit.
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await expect(tabButton(page, 'More')).not.toHaveAttribute('aria-current', 'page');
   await page.getByRole('button', { name: '‹ Back' }).click();
   await expect(page.getByRole('button', { name: 'Add exercise' })).toBeVisible();

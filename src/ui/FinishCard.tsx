@@ -3,7 +3,7 @@ import { addDays } from '../domain/analytics';
 import type { BodyDay } from '../domain/body';
 import { isHoldLift } from '../domain/care';
 import { finishSummary, nextUp } from '../domain/finish';
-import { fmtDay, fmtSet, fmtWeight } from '../domain/format';
+import { fmtSet, fmtWeight } from '../domain/format';
 import { volumeAdvice } from '../domain/learn/volume';
 import type { DayPlan, Program } from '../domain/program';
 import type { Profile } from '../domain/profile';
@@ -28,14 +28,27 @@ function when(date: string, k: number, today: string): string {
 }
 
 /**
- * `how`: closed by Finish or by going quiet, or (null) only the plan done. `planName`: the day's (Day A, Quick); `past`: a session
- * before today's, shown the next time the app is opened after it closed by itself (`onDismiss`); else `onMore`, "Add more".
+ * A session before today's that closed while the app was away (IA A1, owner 2026-10-21): one line, "Tue’s workout · 12 sets ·
+ * 34 min", and a tap opens that day in History, where the whole session is.
  */
-export function FinishCard({ entries, date, today, profile, program, plans, planName, how, body, settings, owner, onMore, onDismiss }: {
+export function LastWorkoutLine({ entries, date, today, profile, onOpen }: { entries: SetEntry[]; date: string; today: string; profile: Profile; onOpen: () => void }) {
+  const s = useMemo(() => finishSummary(entries, date, profile), [entries, date, profile]);
+  const day = date === addDays(today, -1) ? 'Yesterday' : WEEKDAY[new Date(`${date}T12:00:00Z`).getUTCDay()];
+  return (
+    <section className="past-workout" aria-label="Last workout">
+      <button type="button" className="card past-line" onClick={onOpen}>
+        <span className="past-line-t"><b>{day}’s workout</b><span> · {s.sets} {s.sets === 1 ? 'set' : 'sets'}{s.minutes != null && ` · ${s.minutes} min`}</span></span>
+        <span className="past-line-go">History<Icon name="chev-right" size={18} sw={2} /></span>
+      </button>
+    </section>
+  );
+}
+
+/** `how`: closed by Finish or by going quiet, or (null) only the plan done. `planName`: the day's (Day A, Quick). `onMore`: "Add more". */
+export function FinishCard({ entries, date, today, profile, program, plans, planName, how, body, settings, owner, onMore }: {
   entries: SetEntry[]; date: string; today: string; profile: Profile; program: Program | null; plans: DayPlan[]; planName?: string;
-  how: 'finish' | 'auto' | null; body: readonly BodyDay[]; settings: SettingsStore; owner: string; onMore?: () => void; onDismiss?: () => void;
+  how: 'finish' | 'auto' | null; body: readonly BodyDay[]; settings: SettingsStore; owner: string; onMore?: () => void;
 }) {
-  const past = date < today;
   const s = useMemo(() => finishSummary(entries, date, profile), [entries, date, profile]);
   const up = useMemo(() => nextUp(entries, program, plans, date, zone()), [entries, program, plans, date]);
   // What the learning layer says for next time: the lifts done today whose next target goes up, and the volume steps (item 07)
@@ -53,15 +66,14 @@ export function FinishCard({ entries, date, today, profile, program, plans, plan
     return (a?.muscles ?? []).filter((m) => m.kind === 'raise' && s.muscles.some((x) => x.muscle === m.muscle)).slice(0, 3);
   }, [entries, body, profile, today, owner, s.muscles]);
 
-  const title = past ? `Last workout · ${fmtDay(date, today)}` : `${how ? 'Workout done' : 'Plan done'}${planName ? ` · ${planName}` : ''}`;
+  const title = `${how ? 'Workout done' : 'Plan done'}${planName ? ` · ${planName}` : ''}`;
   const next = [up.day, up.inDays != null && when(date, up.inDays, today)].filter(Boolean).join(' · ');
   return (
-    <section className="card finish-card" aria-label={past ? 'Last workout' : 'Workout summary'}>
+    <section className="card finish-card" aria-label="Workout summary">
       <div className="finish-head">
         <h2><Icon name="check" size={20} sw={2.5} />{title}</h2>
-        {onDismiss && <button type="button" className="mini icon" aria-label="Dismiss last workout" onClick={onDismiss}><Icon name="close" size={20} /></button>}
       </div>
-      {how === 'auto' && !past && <p className="muted small finish-why">Closed after a quiet spell. Log a set to pick it back up.</p>}
+      {how === 'auto' && <p className="muted small finish-why">Closed after a quiet spell. Log a set to pick it back up.</p>}
       <dl className="finish-stats">
         <div><dt>Sets</dt><dd>{s.sets}{s.bouts > 0 && <small> +{s.bouts} cardio</small>}</dd></div>
         <div><dt>Tonnage</dt><dd>{s.tonnage.toLocaleString('en-US')}<small> lb</small></dd></div>

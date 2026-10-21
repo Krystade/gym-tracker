@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import path from 'node:path';
-import { goto } from './nav';
+import { goto, openProgram } from './nav';
 import { commitsOf, recordRenders, rendersAbove, watchRenders } from './renders';
 
 // What changes nothing renders nothing: a minute going by, and the commits that only cleared a one-off request (a card to
@@ -82,7 +82,7 @@ async function buildProgram(page: Page) {
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Today');
-  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('2');
   await page.getByRole('textbox', { name: 'Sets per session' }).fill('14');
   await page.getByRole('button', { name: 'Build program' }).click();
