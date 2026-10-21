@@ -55,7 +55,7 @@ async function seed(page: Page, at: string) {
   await notched(page);
   await page.clock.install({ time: new Date(at) });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...ROWS].join('\n')) });
   await expect(page.getByText(`✓ Imported ${ROWS.length} new sets`)).toBeVisible();
 }

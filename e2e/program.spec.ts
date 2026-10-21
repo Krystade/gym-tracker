@@ -12,7 +12,7 @@ const openPlan = async (page: import('@playwright/test').Page) => {
 
 test('build a program, then run today from it with skip and log', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
 

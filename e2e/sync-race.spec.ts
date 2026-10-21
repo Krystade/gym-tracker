@@ -22,7 +22,7 @@ async function phone(browser: Browser) {
   return page;
 }
 async function enter(page: Page, mail: string, how: 'Create account' | 'Sign in') {
-  await goto(page, 'More');
+  await goto(page, 'Account');
   await account(page).getByRole('textbox', { name: 'Email' }).fill(mail);
   await account(page).getByLabel('Password').fill(PASSWORD);
   await account(page).getByRole('button', { name: how }).click();
@@ -45,7 +45,7 @@ async function editWeight(page: Page, weight: string) {
   await expect(rows(page).first()).toContainText(`${weight} × 8`);
 }
 async function syncNow(page: Page) {
-  await goto(page, 'More');
+  await goto(page, 'Account');
   await account(page).getByRole('button', { name: 'Sync now' }).click();
   await expect(account(page).getByRole('status')).toHaveText(/^Synced/);
 }
@@ -57,7 +57,7 @@ async function syncHeld(page: Page) {
     if (armed) { armed = false; reached(); await gate; }
     await route.continue();
   });
-  await goto(page, 'More');
+  await goto(page, 'Account');
   await account(page).getByRole('button', { name: 'Sync now' }).click();
   await held;
   await expect(account(page).getByRole('status')).toHaveText('Syncing…');
@@ -100,14 +100,14 @@ test('an edit made while the sync brings another phone’s older edit of that se
   const release = await syncHeld(b); // B's sync has read the cloud's 140 and is about to take it
   await editWeight(b, '150');
   release();
-  await goto(b, 'More');
+  await goto(b, 'Account');
   await expect(account(b).getByRole('status')).toHaveText(/^Synced/);
   await expect.poll(() => cloudWeights(b)).toEqual([150]); // its follow-up sync sent the edit up
   await goto(b, 'Today');
   await expect(rows(b)).toHaveCount(1);
   await expect(rows(b).first()).toContainText('150 × 8');
   // Nothing of B's was replaced: no copy of the 135 it had before the edit claims the sync took it.
-  await goto(b, 'More');
+  await goto(b, 'Account');
   await expect(replacedHeading(b)).toHaveCount(0);
 
   await syncNow(a);
@@ -127,7 +127,7 @@ test('an edit made while the sync brings another phone’s delete of that set: t
   const release = await syncHeld(b); // B's sync has read A's delete and is about to make it here
   await editWeight(b, '150');
   release();
-  await goto(b, 'More');
+  await goto(b, 'Account');
   await expect(account(b).getByRole('status')).toHaveText(/^Synced/);
   await expect.poll(() => cloudWeights(b)).toEqual([150]);
   await goto(b, 'Today');

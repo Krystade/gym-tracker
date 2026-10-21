@@ -52,7 +52,7 @@ test('open an exercise: next sets × reps @ weight with a warm-up, history below
   await expect(page.getByRole('button', { name: 'Log it today' })).toHaveCount(0);
 
   // The backup carries when it was logged and what was suggested; the body file carries energy.
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
   await expect(page.getByText('Copied the CSV to the clipboard')).toBeVisible();
   const csv = await page.evaluate(() => (window as unknown as { copied: string }).copied);

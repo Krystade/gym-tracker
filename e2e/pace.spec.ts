@@ -26,7 +26,7 @@ const BOTH = /^≈ (\d+) min at your recent pace ≈ (\d+) min \((\d+)–(\d+)\)
 async function seed(page: Page) {
   await page.clock.install({ time: new Date('2026-10-16T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...ROWS].join('\n')) });
   await expect(page.getByText(`✓ Imported ${ROWS.length} new sets`)).toBeVisible();
   await goto(page, 'Today');

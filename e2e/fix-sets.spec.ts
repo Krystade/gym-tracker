@@ -20,7 +20,7 @@ const stored = (page: Page) => page.evaluate(() => new Promise<Row[]>((ok, no) =
 test('Fix sets: Change lift moves a day’s sets to the picked lift, Set weight puts ticked BW sets on the bar, Undo puts them back', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-05-01T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'log.csv', mimeType: 'text/csv', buffer: Buffer.from(CSV) });
   await expect(page.getByText('✓ Imported 6 new sets')).toBeVisible();
   const ids = (await stored(page)).map((e) => e.id);

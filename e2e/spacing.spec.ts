@@ -46,7 +46,7 @@ test('Today: the energy row and the date arrows have room, and the button under 
 
 test('cards are inset evenly and sub-screens give their title room under Back', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FX('history.sample.csv'));
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   const bad: string[] = [];
@@ -67,7 +67,7 @@ test('cards are inset evenly and sub-screens give their title room under Back', 
 test('Stats: the program line sits in the week’s card, inside it, under the ring', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FX('history.sample.csv'));
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Today');

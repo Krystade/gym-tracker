@@ -39,7 +39,7 @@ test('cardio form: seconds carry and borrow minutes; an untouched incline is not
 
 test('pasted cardio reads like History; the chart shows tenths of a mile with distinct ticks; no priority shows minutes alone', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByRole('button', { name: 'Paste from notes' }).click();
   // The first line is today; the rest go on two earlier days.
   await page.getByLabel('Workout notes').fill(['bike 25 min', '10/1/26', 'Treadmill 20 min 1.15 mi', '10/3/26', 'Treadmill 20:00 1.27mi 5%', 'stairs 15 min 52 floors'].join('\n'));
@@ -79,7 +79,7 @@ test('pasted cardio reads like History; the chart shows tenths of a mile with di
 
 test('the cardio exercise screen aims at the planned minutes', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Priorities');

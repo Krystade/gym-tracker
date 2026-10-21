@@ -12,7 +12,7 @@ const rows = [
 test('a Quick day fits the minutes given and goes to what the week has missed', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-05T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...rows].join('\n')) });
   await expect(page.getByText(`✓ Imported ${rows.length} new sets`)).toBeVisible();
   await goto(page, 'Today');

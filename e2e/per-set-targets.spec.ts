@@ -9,7 +9,7 @@ const ROWS = ['2026-10-15,Cable Pushdown,,1,120,11,,,,sample,,', '2026-10-15,Cab
 test('the card lists each set’s target and the rule, and each set’s Reps starts at its own', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-19T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...ROWS].join('\n')) });
   await expect(page.getByText(`✓ Imported ${ROWS.length} new sets`)).toBeVisible();
   await goto(page, 'Today');

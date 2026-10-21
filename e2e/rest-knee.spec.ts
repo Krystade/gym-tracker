@@ -28,7 +28,7 @@ async function logBench(page: Page, file: string, day: string, rows: number) {
   await notched(page);
   await page.clock.install({ time: new Date(`${day}T18:00:00`) });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(fx(file));
   // An import this size takes ~7 s (410 rows) to ~18 s (1098) on main as on this branch.
   await expect(page.getByText(`✓ Imported ${rows} new sets`)).toBeVisible({ timeout: 60_000 });

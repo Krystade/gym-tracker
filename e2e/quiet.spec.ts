@@ -78,7 +78,7 @@ test('past midnight, a workout carried to its day lets go on the minute once it 
 
 async function buildProgram(page: Page) {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Today');
@@ -164,7 +164,7 @@ test('a set that switches to the superset’s other lift renders Today once, and
 test('History puts a folded month’s days on the page only once it is opened, with the tap that opens it', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-06T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // two days in January 2026
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   const march = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source\n2026-03-03,Leg Press,,1,200,10,,,,sample';

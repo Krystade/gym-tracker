@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, sendRequest } from './nav';
 
 // A deploy that lands just after a notification tap (the app checks for one each time it comes to the front, and
 // switches to it with a reload) must not close what the tap opened: it waits until the app is next in the background.
@@ -88,8 +88,7 @@ const visibility = (page: Page, state: 'hidden' | 'visible') => page.evaluate((s
 
 test('a deploy taking over just after a tap keeps the thread it opened, and switches once the app is in the background', async ({ browser }) => {
   const [a, b] = await Promise.all([person(browser), person(browser)]);
-  await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(a.name);
-  await friends(b.page).getByRole('button', { name: 'Send request' }).click();
+  await sendRequest(b.page, a.name);
   await a.page.reload();
   await goto(a.page, 'Friends');
   await friends(a.page).getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
@@ -97,7 +96,7 @@ test('a deploy taking over just after a tap keeps the thread it opened, and swit
 
   // B's phone, signed in.
   const page = await installed(browser);
-  await goto(page, 'More');
+  await goto(page, 'Account');
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`${b.name}@test.local`);
   await account.getByLabel('Password').fill(PASSWORD);

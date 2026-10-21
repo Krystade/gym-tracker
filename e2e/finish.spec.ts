@@ -24,7 +24,7 @@ function timedLog(): string {
 async function start(page: Page) {
   await page.clock.install({ time: new Date(`${TODAY}T18:00:00`) });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'sets.csv', mimeType: 'text/csv', buffer: Buffer.from(timedLog()) });
   await expect(page.getByText(/✓ Imported \d+ new sets/)).toBeVisible();
   await goto(page, 'Today');

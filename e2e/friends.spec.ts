@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { goto, openProgram } from './nav';
+import { addFriend, goto, openProgram } from './nav';
 
 // Friends against the local Auth and Firestore emulators. Synthetic users only.
 // Today at 18:00: the emulator checks invite expiry against the real clock, so a fixed date goes stale within a week.
@@ -52,12 +52,14 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   // Two phones set up side by side: each is a sign-up and a username against the emulators.
   const [a, b] = await Promise.all([person(browser, { bench: true }), person(browser)]);
 
-  await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(`@${a.name.toUpperCase()}`);
-  await friends(b.page).getByRole('button', { name: 'Send request' }).click();
-  await expect(note(b.page)).toHaveText(`Request sent to @${a.name}.`);
-  await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill('nobody_here_123');
-  await friends(b.page).getByRole('button', { name: 'Send request' }).click();
-  await expect(friends(b.page).getByRole('alert')).toHaveText('No one goes by “nobody_here_123”. Check the spelling.');
+  // Add a friend is a sheet from the person+ icon; what each send did shows in it.
+  const add = await addFriend(b.page);
+  await add.getByRole('textbox', { name: 'Their username' }).fill(`@${a.name.toUpperCase()}`);
+  await add.getByRole('button', { name: 'Send request' }).click();
+  await expect(add.getByRole('status')).toHaveText(`Request sent to @${a.name}.`);
+  await add.getByRole('textbox', { name: 'Their username' }).fill('nobody_here_123');
+  await add.getByRole('button', { name: 'Send request' }).click();
+  await expect(add.getByRole('alert')).toHaveText('No one goes by “nobody_here_123”. Check the spelling.');
 
   // The request shows as a dot on the Friends tab, and on no other.
   await a.page.reload();
@@ -123,13 +125,14 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
 test('an invite link asks before it befriends, says what each side sees, and works once', async ({ browser }) => {
   // All three phones set up at once; none of them depends on another until the link is opened.
   const [a, c, d] = await Promise.all([person(browser, { bench: true }), person(browser), person(browser)]);
-  await friends(a.page).getByRole('button', { name: 'Make an invite link' }).click();
-  const link = await friends(a.page).getByRole('textbox', { name: 'Your invite link' }).inputValue();
+  const add = await addFriend(a.page);
+  await add.getByRole('button', { name: 'Make an invite link' }).click();
+  const link = await add.getByRole('textbox', { name: 'Your invite link' }).inputValue();
   expect(link).toMatch(/#invite=\w+\.[a-f0-9]{32}$/);
-  await expect(friends(a.page)).toContainText('Works once, for 7 days.');
-  await friends(a.page).getByRole('textbox', { name: /Got an invite link/ }).fill(link);
-  await friends(a.page).getByRole('button', { name: 'Open invite' }).click();
-  await expect(friends(a.page).getByRole('alert')).toHaveText('That’s your own invite link. Send it to a friend.');
+  await expect(add).toContainText('Works once, for 7 days.');
+  await add.getByRole('textbox', { name: /Got an invite link/ }).fill(link);
+  await add.getByRole('button', { name: 'Open invite' }).click();
+  await expect(add.getByRole('alert')).toHaveText('That’s your own invite link. Send it to a friend.');
 
   // Opening the link only asks; Not now leaves both lists as they were.
   await c.page.goto(link);
@@ -158,18 +161,22 @@ test('an invite link asks before it befriends, says what each side sees, and wor
   // Cancelled, a fresh link stops working too.
   await a.page.reload();
   await goto(a.page, 'Friends');
-  await friends(a.page).getByRole('button', { name: 'Make an invite link' }).click();
-  const second = await friends(a.page).getByRole('textbox', { name: 'Your invite link' }).inputValue();
-  await friends(a.page).getByRole('button', { name: 'Cancel link' }).click();
-  await expect(note(a.page)).toHaveText('Invite link cancelled.');
-  await friends(d.page).getByRole('textbox', { name: /Got an invite link/ }).fill(second);
-  await friends(d.page).getByRole('button', { name: 'Open invite' }).click();
-  await expect(friends(d.page).getByRole('alert')).toHaveText('That invite has expired, was cancelled or was already used. Ask for a new link.');
+  const again = await addFriend(a.page);
+  await again.getByRole('button', { name: 'Make an invite link' }).click();
+  const second = await again.getByRole('textbox', { name: 'Your invite link' }).inputValue();
+  await again.getByRole('button', { name: 'Cancel link' }).click();
+  await expect(again.getByRole('status')).toHaveText('Invite link cancelled.');
+  const dAdd = await addFriend(d.page);
+  await dAdd.getByRole('textbox', { name: /Got an invite link/ }).fill(second);
+  await dAdd.getByRole('button', { name: 'Open invite' }).click();
+  await expect(dAdd.getByRole('alert')).toHaveText('That invite has expired, was cancelled or was already used. Ask for a new link.');
 });
 
 async function befriend(a: { page: Page }, b: { page: Page; name: string }) {
-  await friends(a.page).getByRole('button', { name: 'Make an invite link' }).click();
-  const link = await friends(a.page).getByRole('textbox', { name: 'Your invite link' }).inputValue();
+  const add = await addFriend(a.page);
+  await add.getByRole('button', { name: 'Make an invite link' }).click();
+  const link = await add.getByRole('textbox', { name: 'Your invite link' }).inputValue();
+  await add.getByRole('button', { name: 'Done' }).click();
   await b.page.goto(link);
   await friends(b.page).getByRole('region', { name: 'Invite' }).getByRole('button', { name: 'Accept' }).click();
   await expect(note(b.page)).toHaveText(/are now friends/);
@@ -224,8 +231,9 @@ test('the invite link: a tap selects all of it with no keyboard, Copy copies it 
     (window as unknown as W).__copied = [];
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t: string) => { (window as unknown as W).__copied.push(t); } } });
   });
-  await friends(a.page).getByRole('button', { name: 'Make an invite link' }).click();
-  const field = friends(a.page).getByRole('textbox', { name: 'Your invite link' });
+  const add = await addFriend(a.page);
+  await add.getByRole('button', { name: 'Make an invite link' }).click();
+  const field = add.getByRole('textbox', { name: 'Your invite link' });
   const link = await field.inputValue();
   await expect(field).toHaveAttribute('readonly', '');
   await expect(field).toHaveAttribute('inputmode', 'none');
@@ -233,17 +241,17 @@ test('the invite link: a tap selects all of it with no keyboard, Copy copies it 
   await field.click();
   expect(await selected()).toEqual([0, link.length]);
 
-  const copy = friends(a.page).getByRole('button', { name: 'Copy', exact: true });
+  const copy = add.getByRole('button', { name: 'Copy', exact: true });
   await copy.click();
   expect(await a.page.evaluate(() => (window as unknown as W).__copied)).toEqual([link]);
-  await expect(friends(a.page).getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
+  await expect(add.getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
   await expect(copy).toBeVisible(); // back to Copy after a moment
 
   // A clipboard that says no: the link is selected in its field, with a word on copying it from there.
   await a.page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('denied'); } } }));
   await field.evaluate((el: HTMLInputElement) => { el.setSelectionRange(0, 0); el.blur(); });
   await copy.click();
-  await expect(friends(a.page).getByRole('alert')).toHaveText('Couldn’t copy. The link is selected: copy it from there.');
+  await expect(add.getByRole('alert')).toHaveText('Couldn’t copy. The link is selected: copy it from there.');
   await expect(field).toBeFocused();
   expect(await selected()).toEqual([0, link.length]);
 });

@@ -20,7 +20,7 @@ test('an import asks before changing sets already logged, and brand-new rows nee
   await page.getByRole('textbox', { name: 'Reps' }).fill('8');
   await page.getByRole('button', { name: 'Add set' }).click();
   await expect(rows).toHaveCount(1);
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
   const old = file(info, 'old.csv', await copied(page));
 
@@ -34,7 +34,7 @@ test('an import asks before changing sets already logged, and brand-new rows nee
   await page.getByRole('textbox', { name: 'Weight' }).fill('135');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(rows.nth(0)).toContainText('135 × 8');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
 
   await page.getByLabel('Import CSV').setInputFiles(old);
   const card = page.getByRole('alert');
@@ -45,7 +45,7 @@ test('an import asks before changing sets already logged, and brand-new rows nee
   await toBench(page);
   await expect(rows.nth(0)).toContainText('135 × 8');
 
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(old);
   await expect(page.getByRole('alert')).toContainText('This file changes 1 set already in your log.');
   await page.getByRole('button', { name: 'Replace them' }).click();
@@ -57,7 +57,7 @@ test('an import asks before changing sets already logged, and brand-new rows nee
 
 test('Import CSV looks inert, not faded mustard, while the confirm card asks', async ({ page }, info) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   const head = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source,pain_region,pain_severity,logged_at,target_weight_lb,target_reps,target_sets,gym,entered_at\n';
   const row = (set: number, w: number) => `2026-09-01,Bench Press,,${set},${w},8,,,,t,,,,,,,,\n`;
   await page.getByLabel('Import CSV').setInputFiles(file(info, 'a.csv', head + row(1, 100)));
@@ -78,7 +78,7 @@ test('Import CSV looks inert, not faded mustard, while the confirm card asks', a
 
 test('a file with both edited and new sets says so, and adds the new ones either way', async ({ page }, info) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   const head = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source,pain_region,pain_severity,logged_at,target_weight_lb,target_reps,target_sets,gym,entered_at\n';
   const row = (set: number, w: number) => `2026-09-01,Bench Press,,${set},${w},8,,,,t,,,,,,,,\n`;
   await page.getByLabel('Import CSV').setInputFiles(file(info, 'a.csv', head + row(1, 100)));
@@ -100,7 +100,7 @@ test('a file with both edited and new sets says so, and adds the new ones either
 test('a body file asks before changing days already logged', async ({ page }, info) => {
   await clip(page);
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(file(info, 'b1.csv', 'date,weight_lb\n2026-09-01,180\n2026-09-02,181\n'));
   await expect(page.getByText('✓ Body data: 2 days')).toBeVisible();
   await page.getByLabel('Import CSV').setInputFiles(file(info, 'b2.csv', 'date,weight_lb\n2026-09-01,175\n2026-09-02,181\n2026-09-03,182\n'));
@@ -117,7 +117,7 @@ test('a body file asks before changing days already logged', async ({ page }, in
 
 test('a file that is not a log says nothing was imported', async ({ page }, info) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(file(info, 'junk.csv', 'not,a,csv\n1,2,3'));
   await expect(page.getByText('Nothing imported', { exact: true })).toBeVisible();
   await expect(page.getByText(/1 row skipped/)).toBeVisible();

@@ -6,7 +6,7 @@ const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv')
 
 test('pain region and severity, care card, back block, swap suggestions', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
 

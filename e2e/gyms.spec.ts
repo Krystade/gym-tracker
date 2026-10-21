@@ -39,7 +39,7 @@ test('a long gym name ellipsises and Delete stays on one line', async ({ page })
 test('a gym without machines gets a plan it can do; exclusions and inclusions stick', async ({ page }) => {
   page.on('dialog', (d) => void d.accept());
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Today');

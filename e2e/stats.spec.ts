@@ -9,7 +9,7 @@ test('stats: empty state, then charts after import, and priorities edit', async 
   await goto(page, 'Stats');
   await expect(page.getByText('No sessions yet')).toBeVisible();
 
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Stats');
@@ -28,7 +28,7 @@ test('stats: empty state, then charts after import, and priorities edit', async 
 
 test('exercise screen: rep-max picker, calibration note, and a logged test set', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Cable Curl/ }).click();
@@ -89,7 +89,7 @@ function history(weeks = 12): string {
 async function seed(page: Pg, weeks = 12) {
   await page.clock.install({ time: new Date(`${TODAY}T09:00:00`) });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   const files = [{ name: 'history.csv', mimeType: 'text/csv', buffer: Buffer.from(history(weeks)) }];
   await page.getByLabel('Import CSV').setInputFiles(files);
   await expect(page.getByText(/Imported \d+ new/)).toBeVisible();
@@ -247,7 +247,7 @@ test('stats: cardio-only days count toward neither the sessions goal nor the str
     '2026-09-30,Treadmill,1,0,,cardio,1200', '2026-10-01,Treadmill,1,0,,cardio,1200'];
   await page.clock.install({ time: new Date(`${TODAY}T09:00:00`) });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'mixed.csv', mimeType: 'text/csv', buffer: Buffer.from(rows.join('\n')) });
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Stats');

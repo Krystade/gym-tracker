@@ -9,7 +9,7 @@ async function seed(page: Page, now = '2026-10-02T18:00:00') {
   await page.clock.install({ time: new Date(now) });
   await page.goto('/');
   const rows = Array.from({ length: 15 }, (_, i) => `${day(i)},Bench Press,,1,${135 + 5 * i},8,,,,sample`);
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...rows].join('\n')) });
   await expect(page.getByText('✓ Imported 15 new sets')).toBeVisible();
 }

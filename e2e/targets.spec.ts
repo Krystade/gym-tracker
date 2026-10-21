@@ -6,7 +6,7 @@ const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv')
 
 test('weekly targets fit the week, and a priority can be set by hand and handed back', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // Stats shows Priorities once there's a log
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Priorities');

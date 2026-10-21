@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import path from 'node:path';
 import { goto, openProgram } from './nav';
 
 const bar = (page: Page) => page.getByRole('navigation', { name: 'Sections' });
@@ -62,7 +63,8 @@ test('Today names the gym only with two or more, and the line opens Gyms, with B
   await page.screenshot({ path: 'screenshots/86-today-gym-line.png' });
   await line.click();
   await expect(page.getByLabel('Gym name')).toHaveValue('Downtown');
-  await expect(tabButton(page, 'More')).not.toHaveAttribute('aria-current', 'page');
+  // Opened from Today, Today stays lit (owner, 2026-10-21: a screen lights the tab it came from).
+  await expect(bar(page).locator('[aria-current="page"]')).toHaveText('Today');
   await page.getByRole('button', { name: '‹ Back' }).click();
   await expect(line).toBeVisible();
 });
@@ -98,28 +100,72 @@ test('Program shows the gym above the days, outside the folded rebuild', async (
   await page.screenshot({ path: 'screenshots/87-program-gym-line.png' });
 });
 
-test('More lists Priorities and goal, Characters, Gym, Program and Photos; each opens with ‹ More back', async ({ page }) => {
+test('More is four groups of rows; each opens its screen with ‹ More back, and More stays lit', async ({ page }) => {
   await page.goto('/');
   await goto(page, 'More');
   await expect(page.getByRole('heading', { name: 'More', level: 1 })).toBeVisible();
-  const rows = page.getByRole('list', { name: 'More screens' }).getByRole('button');
-  await expect(rows).toHaveText([/^Priorities and goal/, /^Characters/, /^Gym/, /^Program/, /^Photos/]);
+  const main = page.getByRole('main');
+  await expect(main.getByRole('heading', { level: 2 })).toHaveText(['Training setup', 'You', 'Account and data', 'Help']);
+  const group = (name: string) => main.getByRole('list', { name, exact: true }).getByRole('button');
+  await expect(group('Training setup')).toHaveText([/^Program/, /^Weekly goal/, /^Priorities and goal/, /^Gym/]);
+  await expect(group('You')).toHaveText([/^Progress photos/, /^Characters/, /^Cycle tracking/, /^People on this phone/]);
+  await expect(group('Account and data')).toHaveText([/^Account and sync/, /^Notifications/, /^Backup, import and export/]);
+  await expect(group('Help')).toHaveText(['Show walkthrough', 'Accessory placer']);
   await page.screenshot({ path: 'screenshots/88-more.png' });
-  for (const [row, heading] of [['Characters', 'Characters'], ['Gym', 'Gyms'], ['Program', 'Program'], ['Photos', 'Progress photos']]) {
-    await rows.filter({ hasText: new RegExp(`^${row}`) }).click();
-    await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
-    // Opened from More, each is shown as the More tab.
-    await expect(tabButton(page, 'More')).toHaveAttribute('aria-current', 'page');
+  for (const [row, heading] of [['Program', 'Program'], ['Weekly goal', 'Weekly goal'], ['Priorities and goal', 'Priorities and goal'], ['Gym', 'Gyms'],
+    ['Progress photos', 'Progress photos'], ['Characters', 'Characters'], ['Cycle tracking', 'Cycle tracking'], ['People on this phone', 'People on this phone'],
+    ['Account and sync', 'Account and sync'], ['Notifications', 'Notifications'], ['Backup, import and export', 'Backup, import and export']]) {
+    await main.getByRole('button', { name: new RegExp(`^${row}`) }).click();
+    await expect(page.getByRole('heading', { name: heading, level: 1, exact: true })).toBeVisible();
+    // Opened from More, each is shown as the More tab, and only it.
+    await expect(bar(page).locator('[aria-current="page"]')).toHaveText('More');
     await page.getByRole('button', { name: '‹ More' }).click();
     await expect(page.getByRole('heading', { name: 'More', level: 1 })).toBeVisible();
   }
+  // Paste, two deep: still More, and back to Backup.
+  await goto(page, 'Backup');
   await page.getByRole('button', { name: 'Paste from notes' }).click();
-  await expect(tabButton(page, 'More')).toHaveAttribute('aria-current', 'page');
-  await page.getByRole('button', { name: '‹ More' }).click();
-  // Opened from Today, Program still goes back to Today, and More isn't lit.
+  await expect(bar(page).locator('[aria-current="page"]')).toHaveText('More');
+  await page.getByRole('button', { name: '‹ Backup' }).click();
+  await expect(page.getByRole('heading', { name: 'Backup, import and export', level: 1 })).toBeVisible();
+  // Photos is More's alone: not on Stats.
+  await goto(page, 'Stats');
+  await expect(page.getByRole('button', { name: /Progress photos/ })).toHaveCount(0);
+});
+
+test('a screen over a tab lights the tab it came from: Exercise its list, Program and Gym Today (or More)', async ({ page }) => {
+  const lit = bar(page).locator('[aria-current="page"]');
+  await page.goto('/');
+  await goto(page, 'Backup');
+  await page.getByLabel('Import CSV').setInputFiles(path.join(import.meta.dirname, 'fixtures', 'history.sample.csv'));
+  await expect(page.getByText(/Imported \d+ new/)).toBeVisible();
+  // Exercise from Lifts: Lifts.
+  await goto(page, 'Lifts');
+  await page.getByRole('main').getByRole('button', { name: /^Cable Curl/ }).click();
+  await expect(page.getByRole('heading', { name: 'Cable Curl', level: 1 })).toBeVisible();
+  await expect(lit).toHaveText('Lifts');
+  // Exercise from History: History.
+  await goto(page, 'History');
+  const jan5 = page.locator('details.day').filter({ hasText: 'Jan 5' });
+  await jan5.locator('summary').click();
+  await jan5.getByRole('button', { name: /^Cable Curl/ }).click();
+  await expect(page.getByRole('heading', { name: 'Cable Curl', level: 1 })).toBeVisible();
+  await expect(lit).toHaveText('History');
+  // Program from Today: Today, with ‹ Back to it. From More: More.
   await goto(page, 'Today');
   await openProgram(page);
-  await expect(tabButton(page, 'More')).not.toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('heading', { name: 'Program', level: 1 })).toBeVisible();
+  await expect(lit).toHaveText('Today');
   await page.getByRole('button', { name: '‹ Back' }).click();
   await expect(page.getByRole('button', { name: 'Add exercise' })).toBeVisible();
+  await expect(lit).toHaveText('Today');
+  await goto(page, 'Program');
+  await expect(lit).toHaveText('More');
+  // Photos: More.
+  await goto(page, 'Photos');
+  await expect(page.getByRole('heading', { name: 'Progress photos', level: 1 })).toBeVisible();
+  await expect(lit).toHaveText('More');
+  // A tap on the lit tab leaves the screen for the tab's own.
+  await tabButton(page, 'More').click();
+  await expect(page.getByRole('heading', { name: 'More', level: 1 })).toBeVisible();
 });

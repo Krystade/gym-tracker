@@ -64,7 +64,7 @@ test('Records: worked out from the log, a tap opens the day, and a new best show
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--sat').trim())).toBe(`${TOP}px`);
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...ROWS].join('\n')) });
   await expect(page.getByText('✓ Imported 8 new sets')).toBeVisible();
 
@@ -157,7 +157,7 @@ test('Records for a hold, a bodyweight lift and cardio; a farther bout gets the 
   await notched(page);
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   const rows = ['2026-09-01,Plank,,1,0,45,,hold;bodyweight,,sample,,', '2026-09-08,Plank,,1,0,60,,hold;bodyweight,,sample,,',
     '2026-09-01,Pull-up,,1,0,10,,bodyweight,,sample,,', '2026-09-01,Pull-up,,2,0,8,,bodyweight,,sample,,', '2026-09-08,Pull-up,,1,0,12,,bodyweight,,sample,,',
     '2026-09-01,Treadmill,,1,0,,,cardio,,sample,1200,1.5', '2026-09-08,Treadmill,,1,0,,,cardio,,sample,1500,1.6', '2026-09-15,Treadmill,,1,0,,,cardio,,sample,900,1.25'];

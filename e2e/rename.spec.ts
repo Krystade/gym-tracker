@@ -5,7 +5,7 @@ import path from 'node:path';
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv'); // Cable Curl on Jan 5 and 12, Pull-up on Jan 5
 const seed = async (page: Page) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Lifts');

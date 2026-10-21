@@ -49,12 +49,12 @@ test('copies a sync replaced: past 30 days they go at startup; Combine, Keep and
   await page.getByRole('textbox', { name: 'Reps' }).first().fill('10');
   await page.getByRole('button', { name: 'Add set' }).first().click();
   await expect(rows(page)).toHaveCount(1);
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await expect(heading(page)).toHaveCount(0); // nothing replaced: no section at all
 
   await seed(page);
   await page.reload();
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await expect(backup(page).getByRole('heading', { name: 'Replaced by sync (3)' })).toBeVisible();
   // Pruned from the phone, not only hidden.
   await expect.poll(async () => (await stored<{ key: string }>(page, 'replaced')).map((r) => r.key).sort()).toEqual(['energy', 'set', 'weigh-in']);
@@ -92,6 +92,6 @@ test('copies a sync replaced: past 30 days they go at startup; Combine, Keep and
   expect(body[0].at?.weight).toBeGreaterThanOrEqual(T.getTime());
   const [set] = await stored<{ editedAt?: number }>(page, 'sets');
   expect(set.editedAt).toBeGreaterThanOrEqual(T.getTime());
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await expect(heading(page)).toHaveCount(0);
 });

@@ -48,7 +48,7 @@ async function setUp(page: Page, body?: string, sets = SETS, range = ['12', '16'
   await notched(page);
   await page.clock.install({ time: new Date(`${TODAY}T18:00:00`) });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles([
     { name: 'sets.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...sets].join('\n')) },
     ...(body ? [{ name: 'body.csv', mimeType: 'text/csv', buffer: Buffer.from(body) }] : []),

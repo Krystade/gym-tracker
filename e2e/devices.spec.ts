@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { goto, openProgram } from './nav';
+import { addFriend, goto, moreRow, openProgram, type MoreRow } from './nav';
 
 // Every screen and overlay at four phone sizes, with a notched phone's safe areas. Headless browsers report insets of 0,
 // so the shipped CSS and HTML are served with each env(safe-area-inset-*) replaced by the 13 mini's: 47px top, 34px bottom.
@@ -85,11 +85,26 @@ function problems({ top, bottom }: { top: number; bottom: number }) {
   }
   const sheets = [...document.body.querySelectorAll('*')].filter((el) => el !== bar && shown(el) && getComputedStyle(el).position === 'fixed'
     && getComputedStyle(el).pointerEvents !== 'none' && el.getBoundingClientRect().top > innerHeight / 2);
-  for (const s of sheets) if (s.getBoundingClientRect().bottom > barTop + 0.5) out.push(`sheet over the ${bar ? 'tab bar' : 'home indicator'}: ${label(s)}`);
+  // A modal sheet (Add a friend, a Stats tile's) covers the bar by design, over its backdrop; only the docked ones sit on it.
+  for (const s of sheets) if (s.getAttribute('aria-modal') !== 'true' && s.getBoundingClientRect().bottom > barTop + 0.5) out.push(`sheet over the ${bar ? 'tab bar' : 'home indicator'}: ${label(s)}`);
   const floor = Math.min(barTop, ...sheets.map((s) => s.getBoundingClientRect().top));
   for (const el of taps) {
     if (sheets.some((s) => s.contains(el))) continue;
     const r = el.getBoundingClientRect();
+    // A modal sheet's own buttons sit over the bar (it's behind the backdrop): they need only clear the home indicator, as
+    // much of them as its own scroll shows, scrolled to its end.
+    const modal = el.closest('[aria-modal="true"]');
+    if (modal) {
+      for (const sc of modal.querySelectorAll('*')) if (sc.scrollHeight > sc.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(sc).overflowY)) sc.scrollTop = sc.scrollHeight;
+      const q = el.getBoundingClientRect();
+      let shownBottom = q.bottom;
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        if (getComputedStyle(p).overflowY !== 'visible') shownBottom = Math.min(shownBottom, p.getBoundingClientRect().bottom);
+        if (p === modal) break;
+      }
+      if (shownBottom > q.top && shownBottom > innerHeight - bottom + 0.5) out.push(`tappable under the home indicator: ${label(el)} ${Math.round(q.top)}–${Math.round(shownBottom)}`);
+      continue;
+    }
     if (r.top < innerHeight && r.bottom > floor + 0.5) out.push(`tappable under the ${floor < barTop ? 'sheet' : bar ? 'tab bar' : 'home indicator'}: ${label(el)} ${Math.round(r.top)}–${Math.round(r.bottom)}, floor ${Math.round(floor)}`);
   }
   scrollTo(0, was); // back where it was, so the screenshot shows what the person sees
@@ -148,13 +163,13 @@ const addLift = async (page: Page, name: string) => {
 };
 const back = (page: Page, name = '‹ More') => page.getByRole('button', { name, exact: true }).click();
 
-const row = (page: Page, name: string) => page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: new RegExp(`^${name}`) }).click();
+const row = (page: Page, name: MoreRow) => moreRow(page, name).click();
 /** A notched phone with some history on it, left on More. */
 async function start(page: Page) {
   test.setTimeout(120_000);
   await notched(page);
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
 }
@@ -180,6 +195,8 @@ test('Today’s date heading fits each phone, on a long date and on a past year�
 
 test('More and every screen it opens fit each phone', async ({ page }) => {
   await start(page);
+  await check(page, 'backup');
+  await back(page);
   await check(page, 'more');
   await row(page, 'Characters');
   await expect(page.locator('.char canvas').first()).toBeVisible();
@@ -188,12 +205,19 @@ test('More and every screen it opens fit each phone', async ({ page }) => {
   await row(page, 'Photos');
   await check(page, 'photos');
   await back(page);
+  for (const [r, state] of [['Weekly goal', 'weekly-goal'], ['Cycle', 'cycle'], ['People', 'people'], ['Account', 'account'], ['Notifications', 'notifications']] as const) {
+    await row(page, r);
+    await check(page, state);
+    await back(page);
+  }
+  await row(page, 'Backup');
   await page.getByRole('button', { name: 'Paste from notes' }).click();
   await check(page, 'paste');
   await page.getByLabel('Workout notes').fill('9/28/26\nBench: 135x8 felt heavy\n9/29/26 Row 100x10\nCurl 30x10\nTreadmill 20 min 1.2 mi');
   await page.getByRole('button', { name: 'Read notes' }).click();
   await check(page, 'paste-review');
   await page.getByRole('button', { name: '‹ Edit the text' }).click();
+  await back(page, '‹ Backup');
   await back(page);
 });
 
@@ -322,8 +346,10 @@ test('Friends and a friend’s view fit each phone', async ({ browser }) => {
   test.setTimeout(120_000);
   const a = await person(browser, true);
   const b = await person(browser);
-  await a.friends.getByRole('button', { name: 'Make an invite link' }).click();
-  const link = await a.friends.getByRole('textbox', { name: 'Your invite link' }).inputValue();
+  const add = await addFriend(a.page);
+  await check(a.page, 'friends-add');
+  await add.getByRole('button', { name: 'Make an invite link' }).click();
+  const link = await add.getByRole('textbox', { name: 'Your invite link' }).inputValue();
   await check(a.page, 'friends-invite-link');
   await b.page.goto(link);
   await check(b.page, 'friends-invite');

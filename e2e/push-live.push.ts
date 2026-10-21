@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import { expect, test, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, sendRequest } from './nav';
 
 // End to end on this machine: the app (built with a Worker URL) → wrangler dev (local mode) → a fake push service here,
 // which decrypts what arrives with the subscription's private key; then the push is handed to the app's service worker
@@ -230,9 +230,7 @@ test('friend activity: a request rings the person asked, accepting rings the ask
   const [a, b] = await Promise.all([friendPhone(browser, 'a'), friendPhone(browser, 'b')]);
 
   // A asks B by username: B's phone gets the push, in the Worker's words, with A's name from A's profile.
-  await a.friends.getByRole('textbox', { name: 'Their username' }).fill(b.name);
-  await a.friends.getByRole('button', { name: 'Send request' }).click();
-  await expect(a.friends.getByRole('status')).toHaveText(`Request sent to @${b.name}.`);
+  await expect((await sendRequest(a.page, b.name)).getByRole('status')).toHaveText(`Request sent to @${b.name}.`);
   await expect.poll(() => b.keys.pushes().length, { timeout: 15_000 }).toBe(1);
   const req = b.keys.pushes()[0];
   expect(req.headers).toMatchObject({ urgency: 'normal', ttl: '86400', 'content-encoding': 'aes128gcm' });
@@ -263,9 +261,7 @@ test('pings and messages: a friend’s ping rings with their name and the badge,
   // from each friend) don't hold back the pings this test is about.
   const [a, b, c] = await Promise.all([friendPhone(browser, 'a', false), friendPhone(browser, 'b', false), friendPhone(browser, 'c', false)]);
   for (const f of [a, c]) {
-    await b.friends.getByRole('textbox', { name: 'Their username' }).fill(f.name);
-    await b.friends.getByRole('button', { name: 'Send request' }).click();
-    await expect(b.friends.getByRole('status')).toHaveText(`Request sent to @${f.name}.`);
+    await expect((await sendRequest(b.page, f.name)).getByRole('status')).toHaveText(`Request sent to @${f.name}.`);
     await f.page.reload();
     await goto(f.page, 'Friends');
     await f.friends.getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();

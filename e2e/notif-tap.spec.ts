@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { goto, sendRequest } from './nav';
 
 // A notification tap lands where it says, whatever the app was doing: a friend's push on their thread, the recap on the
 // week's digest. The tap arrives as the URL a push carries (`navigate`, `#open=<route>`): a launch on it, or a hash change
@@ -59,8 +59,7 @@ async function person(browser: Browser) {
 
 /** `from` asks, `to` accepts. */
 async function befriend(from: { page: Page }, to: { page: Page; name: string }, fromName: string) {
-  await friends(from.page).getByRole('textbox', { name: 'Their username' }).fill(to.name);
-  await friends(from.page).getByRole('button', { name: 'Send request' }).click();
+  await sendRequest(from.page, to.name);
   await to.page.reload();
   await goto(to.page, 'Friends');
   await friends(to.page).getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
@@ -146,7 +145,7 @@ test('the recap push opens the week’s digest on Today: from another tab, hidde
   // Monday morning: the recap went out last night, about the week just gone.
   await page.clock.install({ time: new Date('2026-10-19T08:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...ROWS].join('\n')) });
   await expect(page.getByText(`✓ Imported ${ROWS.length} new sets`)).toBeVisible();
   const digest = page.getByRole('region', { name: 'Last week' });

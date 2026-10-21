@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Browser, type Locator, type Page } from '@playwright/test';
-import { goto, openProgram } from './nav';
+import { addFriend, goto, openProgram } from './nav';
 import { audit, check, clean, notched, renderCheck, TOP } from './layout';
 import { deloadLog, SIM_LIFTS, simDay } from '../src/domain/learn/deloadSim.sample';
 import { account, befriend, iso, log, ping, put, rand, session, signedIn, Ts, type Seeded } from './seed';
@@ -119,9 +119,23 @@ test('Friends: the feed, a friend’s page and its 8-week board, a thread', asyn
   await check(page, info, found, 'friend-page-live');
 
   // More, signed in, from the Home Screen with notifications on: every switch, the reminder's days and time.
-  await goto(page, 'More');
+  await goto(page, 'Notifications');
   await expect(page.getByRole('checkbox', { name: /Workout reminder/ })).toBeVisible();
-  await check(page, info, found, 'more-notifications');
+  await check(page, info, found, 'more-notifications', [], 'main');
+  // Account and sync, signed in: the account, its username, the hub's row with the handle.
+  await goto(page, 'Account');
+  await expect(page.getByRole('region', { name: 'Username' })).toContainText(`You’re @${me.name}.`);
+  await check(page, info, found, 'more-account', [], 'main');
+  await goto(page, 'More');
+  await check(page, info, found, 'more-signed-in', [], 'main');
+  // The Add a friend sheet (IA plan A4), over Friends; the check reads the sheet.
+  await goto(page, 'Friends');
+  await addFriend(page);
+  await check(page, info, found, 'friends-add', [], 'main');
+  await page.getByRole('dialog', { name: 'Add a friend' }).getByRole('button', { name: 'Make an invite link' }).click();
+  await expect(page.getByRole('dialog', { name: 'Add a friend' }).getByRole('textbox', { name: 'Your invite link' })).toBeVisible();
+  await check(page, info, found, 'friends-add-link', [], 'main');
+  await page.getByRole('dialog', { name: 'Add a friend' }).getByRole('button', { name: 'Done' }).click();
 
   // Live's whole Stats, named for them. Last: the full-page shot of a page this tall leaves a gap in the chrome's pin (a
   // screenshot artefact; the phone takes none) that a shorter page after it keeps.
@@ -258,7 +272,7 @@ async function phone(page: Page) {
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--sat').trim())).toBe(`${TOP}px`);
 }
 async function importLog(page: Page, csv = history(), body: string | null = BODY) {
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles([
     { name: 'sets.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) },
     ...(body ? [{ name: 'body.csv', mimeType: 'text/csv', buffer: Buffer.from(body) }] : []),
@@ -284,7 +298,15 @@ test('Today, History, Lifts, a lift, Stats and More with ten weeks of heavy trai
   const found: string[] = [];
   await check(page, info, found, 'today-empty');
   await importLog(page);
-  await check(page, info, found, 'more');
+  // More and its own screens (IA plan A3), under the render check's stricter rules too.
+  await check(page, info, found, 'more-backup', [], 'main');
+  await goto(page, 'More');
+  await check(page, info, found, 'more', [], 'main');
+  for (const [row, state] of [['Weekly goal', 'more-weekly-goal'], ['Cycle', 'more-cycle'], ['People', 'more-people'], ['Account', 'more-account-signed-out']] as const) {
+    await goto(page, row);
+    await expect(page.getByRole('button', { name: '‹ More' })).toBeVisible();
+    await check(page, info, found, state, [], 'main');
+  }
   await goto(page, 'Today');
   await check(page, info, found, 'today-history');
   await goto(page, 'History');
@@ -302,23 +324,22 @@ test('Today, History, Lifts, a lift, Stats and More with ten weeks of heavy trai
   await goto(page, 'Stats');
   await expect(page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
   await check(page, info, found, 'stats', [], 'main');
-  for (const screen of ['Priorities and goal', 'Characters', 'Gym', 'Program', 'Photos']) {
-    await goto(page, 'More');
-    await page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: new RegExp(`^${screen}`) }).click();
+  for (const screen of ['Priorities', 'Characters', 'Gym', 'Program', 'Photos'] as const) {
+    await goto(page, screen);
     if (screen === 'Characters') await expect(page.getByRole('heading', { name: 'Credits' })).toBeVisible(); // loaded, credits and all
-    await check(page, info, found, `more-${screen.split(' ')[0].toLowerCase()}`);
+    await check(page, info, found, `more-${screen.toLowerCase()}`);
   }
   // The training goal set to Strength: its note, and a barbell lift's range on its page.
   await goto(page, 'Priorities');
   await page.getByRole('group', { name: 'Goal' }).getByRole('button', { name: /^Strength/ }).click();
   await expect(page.getByRole('group', { name: 'Training goal' })).toContainText('5–8 reps');
   await check(page, info, found, 'priorities-strength');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByRole('button', { name: 'Paste from notes' }).click();
   await check(page, info, found, 'more-paste');
 
   // A second person, with a long name: the profile bar sticks to the top of every screen.
-  await goto(page, 'More');
+  await goto(page, 'People');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Maximiliana Featherstonehaugh');
   await page.getByRole('button', { name: /^Add Maximiliana/ }).click();
   await expect(page.locator('.profile-bar')).toBeVisible();
@@ -447,7 +468,7 @@ test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded
   // The render check's rules over the tile and the strip (the rest of Today is the plain audit's).
   const look = async (state: string) => { await noClock(); await check(page, info, found, state, [], '.ready-card, .week-strip'); await png(state); };
   const at = async (day: string) => { await page.clock.setSystemTime(new Date(`${day}T18:00:00`)); await page.reload(); await goto(page, 'Today'); };
-  const goal = async (n: number) => { await goto(page, 'Priorities'); await page.getByRole('textbox', { name: 'Sessions per week goal' }).fill(String(n)); await goto(page, 'Today'); };
+  const goal = async (n: number) => { await goto(page, 'Weekly goal'); await page.getByRole('textbox', { name: 'Sessions per week goal' }).fill(String(n)); await goto(page, 'Today'); };
   // IA A1: the week is a one-line row inside the tile; a tap opens the strip (its marks, sessions and rest reasons).
   const openWeek = async () => {
     const row = tile.getByRole('button', { name: /^Week/ });
@@ -636,7 +657,7 @@ test('More: an import held back, and Duplicate imports with its days, the copies
   await phone(page);
   const found: string[] = [];
   const csv = (name: string, text: string) => ({ name, mimeType: 'text/csv', buffer: Buffer.from(text) });
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(csv('pasted.csv', dupesCsv(pasteRows)));
   await expect(page.getByText(/✓ Imported \d+ new sets/)).toBeVisible();
   await page.getByLabel('Import CSV').setInputFiles(csv('converted.csv', dupesCsv(convertedRows)));
@@ -669,7 +690,7 @@ test('History: Fix sets with its lifts to tick, the weight field, the lift picke
   const rows = ['date,exercise,set,weight_lb,reps,flags,source',
     `${D},Incline Bench Press With A Very Long Name,1,0,15,bodyweight;warmup,notes`, `${D},Incline Bench Press With A Very Long Name,2,0,12,bodyweight,notes`,
     `${D},Cable Pushdown,1,1180,11,unsure,notes`, `${D},Cable Pushdown,2,1185.5,10,,notes`];
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'log.csv', mimeType: 'text/csv', buffer: Buffer.from(rows.join('\n')) });
   await expect(page.getByText(/✓ Imported \d+ new sets/)).toBeVisible();
   await goto(page, 'History');

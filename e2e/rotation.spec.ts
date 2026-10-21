@@ -57,7 +57,7 @@ async function setUp(page: Page) {
   await notched(page);
   await page.clock.install({ time: new Date('2026-10-14T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'plateau.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...HISTORY].join('\n')) });
   await expect(page.getByText(`✓ Imported ${HISTORY.length} new sets`)).toBeVisible();
   await goto(page, 'Today');

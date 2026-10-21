@@ -17,7 +17,7 @@ test('weigh in, import MyFitnessPal, see the trend, export body CSV', async ({ p
   await weigh.getByRole('button', { name: 'Save weight' }).click();
   await expect(weigh).toContainText('183.4 lb');
 
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles([fx('mfp-weight.sample.csv'), fx('mfp-nutrition.sample.csv')]);
   await expect(page.getByText('MyFitnessPal weight: 6 days')).toBeVisible();
   await expect(page.getByText('MyFitnessPal nutrition: 3 days')).toBeVisible();
@@ -26,7 +26,7 @@ test('weigh in, import MyFitnessPal, see the trend, export body CSV', async ({ p
   await goto(page, 'Stats');
   await expect(page.getByRole('region', { name: 'Body weight' })).toHaveCount(0);
 
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByRole('button', { name: 'Export body CSV' }).click();
   await expect(page.getByText('Copied the CSV to the clipboard')).toBeVisible();
   const text = await page.evaluate(() => (window as unknown as { copied: string }).copied);

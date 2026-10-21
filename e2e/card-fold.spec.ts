@@ -94,7 +94,7 @@ test('every open lift card folds from its head, and opens again with a tap; a ca
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
 const buildProgram = async (page: Page) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Today');

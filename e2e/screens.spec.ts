@@ -29,7 +29,7 @@ async function check(page: Page, name: string) {
 
 test('screens at iPhone 13 mini size', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText('✓ Imported 6 new sets')).toBeVisible();
   await page.getByLabel('Import CSV').setInputFiles([path.join(import.meta.dirname, 'fixtures', 'mfp-weight.sample.csv'), path.join(import.meta.dirname, 'fixtures', 'mfp-nutrition.sample.csv')]);

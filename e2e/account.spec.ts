@@ -18,7 +18,7 @@ async function phone(browser: Browser) {
   return page;
 }
 async function enter(page: Page, mail: string, how: 'Create account' | 'Sign in', password = PASSWORD) {
-  await goto(page, 'More');
+  await goto(page, 'Account');
   await account(page).getByRole('textbox', { name: 'Email' }).fill(mail);
   await account(page).getByLabel('Password').fill(password);
   await account(page).getByRole('button', { name: how }).click();
@@ -37,7 +37,7 @@ async function logBench(page: Page, weight: string, reps: string) {
   await expect(rows(page)).toHaveCount(before + 1);
 }
 async function syncNow(page: Page) {
-  await goto(page, 'More');
+  await goto(page, 'Account');
   await account(page).getByRole('button', { name: 'Sync now' }).click();
   await expect(account(page).getByRole('status')).toHaveText(/^Synced/);
 }
@@ -79,7 +79,7 @@ test('a set logged on one phone reaches another that signs in, both ways, and a 
 test('a log kept on the phone before an account moves over on first sign-in, priorities included', async ({ browser }) => {
   const mail = email();
   const a = await phone(browser);
-  await goto(a, 'More');
+  await goto(a, 'Backup');
   await a.getByLabel('Import CSV').setInputFiles(path.join(import.meta.dirname, 'fixtures', 'history.sample.csv')); // January
   await expect(a.getByText('✓ Imported 6 new sets')).toBeVisible();
   await a.getByLabel('Import CSV').setInputFiles(path.join(import.meta.dirname, 'fixtures', 'profile.sample.json'));
@@ -100,6 +100,7 @@ test('a log kept on the phone before an account moves over on first sign-in, pri
   await expect(b.getByRole('img', { name: 'Estimated 1RM over time' }).locator('circle.pt')).toHaveCount(2);
   await goto(b, 'Priorities');
   await expect(b.getByRole('combobox', { name: 'Calves' })).toHaveValue('1');
+  await goto(b, 'Weekly goal');
   await expect(b.getByRole('textbox', { name: 'Sessions per week goal' })).toHaveValue('3');
 });
 

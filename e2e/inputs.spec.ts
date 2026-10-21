@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { addFriend, goto } from './nav';
 import { fetches, recordRenders, rendersAbove, watchRenders } from './renders';
 
 // Fields keep what's typed when something read in the background lands inside the keystroke. A friend-cache read (or any
@@ -71,12 +71,12 @@ test('a friends read coming back mid-keystroke keeps the weight typed', async ({
 
 test('a friends read coming back mid-keystroke keeps the username typed in Add a friend', async ({ page }) => {
   await signedIn(page);
-  const field = friends(page).getByRole('textbox', { name: 'Their username' });
+  const field = (await addFriend(page)).getByRole('textbox', { name: 'Their username' });
   await expect(field).toBeVisible();
   await readsLandInNextKeystroke(page);
   await field.fill('somebody');
   await expect(field).toHaveValue('somebody');
-  await expect(friends(page).getByRole('button', { name: 'Send request' })).toBeEnabled();
+  await expect((await addFriend(page)).getByRole('button', { name: 'Send request' })).toBeEnabled();
 });
 
 // What's read and synced in the background renders only what shows it. The app's top subscribed to all of friends' cache and

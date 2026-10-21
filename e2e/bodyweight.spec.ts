@@ -15,7 +15,7 @@ const ROWS = [
 test('help is a weight below bodyweight: less of it once the range is topped, logged and shown as BW−N', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-04T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...ROWS].join('\n')) });
   await expect(page.getByText(`✓ Imported ${ROWS.length} new sets`)).toBeVisible();
   await goto(page, 'Today');

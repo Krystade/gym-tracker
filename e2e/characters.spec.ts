@@ -6,8 +6,7 @@ const index = JSON.parse(readFileSync('public/characters/index.json', 'utf8')) a
 
 test('More opens a preview of every character, grouped by pack, each one drawn', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
-  await page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: 'Characters' }).click();
+  await goto(page, 'Characters');
   await expect(page.getByRole('heading', { name: 'Characters', exact: true })).toBeVisible();
   for (const s of index.sources) {
     const group = page.getByRole('region', { name: s.group });
@@ -25,5 +24,5 @@ test('More opens a preview of every character, grouped by pack, each one drawn',
   await expect(page.getByRole('link', { name: 'Kenney' }).first()).toBeVisible();
   await page.screenshot({ path: 'screenshots/80-characters.png', fullPage: true });
   await page.getByRole('button', { name: '‹ More' }).click();
-  await expect(page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: 'Characters' })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'You' }).getByRole('button', { name: 'Characters' })).toBeVisible();
 });

@@ -10,19 +10,22 @@ import { copyGym } from '../domain/share';
 import { cleanUsername, inviteUrl, parseInvite, USERNAME, type Invite } from '../domain/invite';
 import { Input } from './Field';
 import { FriendName } from './FriendName';
-import { ChangeUsername } from './ChangeUsername';
+import { StatsSheet } from './StatsSheet';
 
 type Msg = { ok: boolean; text: string } | null;
 const base = () => `${location.origin}${location.pathname}`;
 
 /**
- * Find friends by username or an invite link, answer requests and sent gyms, unblock. Only while signed in. Your friends
- * themselves are Crew's rows above (a tap on a name opens their log, the bubble their thread, where Remove and Block are).
+ * Pick a username, answer an invite, requests and sent gyms, unblock; and the Add a friend sheet (by username or an invite
+ * link), opened from the person+ icon or Crew's Invite (IA plan A4, owner 2026-10-21: a sheet, not a form at the foot of the
+ * page). Only while signed in. Your friends themselves are Crew's rows above (a tap on a name opens their log, the bubble
+ * their thread, where Remove and Block are). Change username is under More › Account and sync.
  * The lists show from what the phone kept (state/friendCache) and are read again on opening, after anything done here, and
  * when news comes in.
  */
-export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChanged }: {
+export function FriendsCard({ uid, gyms, pending, newsRev, adding, onAdding, onPendingDone, onChanged }: {
   uid: string; gyms: GymsStore; pending: Invite | null; newsRev: Box<number>; onPendingDone: () => void;
+  /** The Add a friend sheet is open. */ adding: boolean; onAdding: (open: boolean) => void;
   /** After anything done here: the Friends tab's dot and the badge count again. */ onChanged: () => void;
 }) {
   const cache = useFriendCache(uid);
@@ -43,7 +46,11 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
   // A pasted link is at the bottom of the card; the offer is at the top.
   useEffect(() => { if (offer) offerBox.current?.scrollIntoView({ block: 'nearest' }); }, [offer]);
   const [busy, setBusy] = useState(false);
+  // An outcome shows where you are: in the sheet while it's open, on the page when it's shut. Opening or shutting it clears
+  // the last one, so nothing said about the page turns up in the sheet, or the other way round.
   const [msg, setMsg] = useState<Msg>(null);
+  const wasAdding = useRef(adding);
+  useEffect(() => { if (wasAdding.current !== adding) { wasAdding.current = adding; setMsg(null); } }, [adding]);
   // The invite link's field: read-only (no keyboard, no AutoFill), and a tap selects all of it.
   const linkField = useRef<HTMLInputElement>(null);
   const selectLink = () => { const el = linkField.current; if (el) el.setSelectionRange(0, el.value.length); };
@@ -88,6 +95,13 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
     void open(pending);
   }, [pending, me, open, onPendingDone]);
 
+  // No username yet, the sheet has nothing to add with: the username field instead.
+  useEffect(() => {
+    if (!adding || me !== null) return;
+    onAdding(false);
+    document.getElementById('pick-username')?.focus();
+  }, [adding, me, onAdding]);
+
   const message = msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? 'muted small' : 'warn'}>{msg.text}</p>;
   if (!cache) return null; // the phone's copy, a few ms away: no flash of Loading
   if (me === undefined) return <section className="card" aria-label="Friends"><p className="muted">Loading…</p>{message}</section>;
@@ -96,8 +110,8 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
     return (
       <section className="card" aria-label="Friends">
         <p className="muted small">Pick a username so friends can find you: 3–20 lowercase letters, numbers or _.{pending && ' Then you can accept the invite you opened.'}</p>
-        <form className="sync-form" onSubmit={(e) => { e.preventDefault(); if (ok) void act(async (c) => { await claimUsername(c, uid, n); setMe(n); }); }}>
-          <label>Username<Input autoCapitalize="off" autoCorrect="off" spellCheck={false} value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <form className="sync-form" onSubmit={(e) => { e.preventDefault(); if (ok) void act(async (c) => { await claimUsername(c, uid, n); setMe(n); return `You’re @${n}: friends can find you now.`; }); }}>
+          <label>Username<Input id="pick-username" autoCapitalize="off" autoCorrect="off" spellCheck={false} value={name} onChange={(e) => setName(e.target.value)} /></label>
           {name && !ok && <p className="small err" role="status">3–20 lowercase letters, numbers or _</p>}
           <button type="submit" className="primary wide" disabled={!ok || busy}>Save username</button>
         </form>
@@ -123,104 +137,118 @@ export function FriendsCard({ uid, gyms, pending, newsRev, onPendingDone, onChan
       setMsg({ ok: false, text: 'Couldn’t copy. The link is selected: copy it from there.' });
     }
   };
-  return (
-    <section className="card" aria-label="Friends">
-      <ChangeUsername uid={uid} me={me} changedAt={lists?.changedAt} busy={busy} act={act} setMe={setMe} />
-      {message}
-      {offer && (
-        <section ref={offerBox} className="sub invite-offer" aria-label="Invite">
-          <p><b>@{offer.name}</b> invited you to be friends.</p>
-          <p className="muted small">Accept, and you each see the other’s log, notes, body weight, priorities and program. Never photos. Either of you can remove the other later.</p>
-          <div className="form-actions">
-            <button disabled={busy} onClick={() => setOffer(null)}>Not now</button>
-            <button className="primary" disabled={busy} onClick={() => { const { inv } = offer; void act(async (c) => { const n = await acceptInvite(c, uid, inv); setOffer(null); setPaste(''); return `You and @${n} are now friends.`; }); }}>Accept</button>
-          </div>
-        </section>
-      )}
-      {requests.length > 0 && (
-        <section className="sub" aria-label="Requests">
-          <h3>Requests</h3>
-          <ul className="friend-list">
-            {requests.map((r) => (
-              <li key={r.uid}>
-                <span><FriendName me={uid} friend={r} bare /> wants to be friends</span>
-                <span className="friend-actions">
-                  <button className="primary" disabled={busy} onClick={() => void act(async (c) => { await acceptRequest(c, uid, r.uid); return `You and @${r.name} are now friends.`; })}>Accept</button>
-                  <button disabled={busy} onClick={() => void act(async (c) => { await declineRequest(c, uid, r.uid); })}>Decline</button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {sentGyms.length > 0 && (
-        <section className="sub" aria-label="Gyms sent to you">
-          <h3>Gyms sent to you</h3>
-          <ul className="friend-list">
-            {sentGyms.map((s) => (
-              <li key={s.id}>
-                <span><FriendName me={uid} friend={{ uid: s.from, name: nameNow(s.from, s.fromName) }} bare /> sent you a gym: <b>{s.gym.name}</b></span>
-                <span className="friend-actions">
-                  <button className="primary" disabled={busy} onClick={() => void act(async (c) => {
-                    const n = copyGym(s.gym, gyms.gyms);
-                    if (!(await gyms.save([...gyms.gyms, n], gyms.active?.id ?? n.id))) throw new Error('Saving the gym on this phone failed.');
-                    await clearSentGym(c, uid, s.id);
-                    return `Added ${n.name} to your gyms.`;
-                  })}>Add</button>
-                  <button disabled={busy} onClick={() => void act(async (c) => { await clearSentGym(c, uid, s.id); })}>Dismiss</button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <section className="sub" id="add-friend" aria-label="Add a friend">
-        <h3>Add a friend</h3>
-        <form className="sync-form" onSubmit={(e) => {
-          e.preventDefault();
-          if (USERNAME.test(to)) void act(async (c) => { const r = await sendRequest(c, uid, me, to); setFind(''); return r === 'accepted' ? `You and @${to} are now friends.` : `Request sent to @${to}.`; });
-        }}>
-          <label>Their username<Input autoCapitalize="off" autoCorrect="off" spellCheck={false} value={find} onChange={(e) => setFind(e.target.value)} /></label>
-          <button type="submit" className="wide" disabled={!USERNAME.test(to) || busy}>Send request</button>
-        </form>
-        {link ? (
-          <div className="sync-form">
-            <label className="invite-link" htmlFor="invite-link">Your invite link</label>
-            <div className="invite-row">
-              <input id="invite-link" ref={linkField} readOnly inputMode="none" autoComplete="off" autoCorrect="off" spellCheck={false} value={link} onClick={selectLink} />
-              {/* aria-live: "Copied" is read out where it shows. */}
-              <button type="button" className="mini" aria-live="polite" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</button>
-            </div>
-            <p className="muted small">Send it to one friend: they see who it’s from and accept it. Works once, for 7 days.</p>
-            <div className="form-actions">
-              <button disabled={busy} onClick={() => void act(async (c) => { await revokeInvites(c, uid); return 'Invite link cancelled.'; })}>Cancel link</button>
-              <button className="primary" onClick={() => void share()}>Share link</button>
-            </div>
-          </div>
-        ) : <button className="wide" disabled={busy} onClick={() => void act(async (c) => { await makeInvite(c, uid); })}>Make an invite link</button>}
-        <form className="sync-form" onSubmit={(e) => {
-          e.preventDefault();
-          const inv = parseInvite(paste);
-          if (inv) void open(inv);
-        }}>
-          <label>Got an invite link? Paste it<Input autoCapitalize="off" autoCorrect="off" spellCheck={false} value={paste} onChange={(e) => setPaste(e.target.value)} /></label>
-          <button type="submit" className="wide" disabled={!parseInvite(paste) || busy}>Open invite</button>
-        </form>
-      </section>
-      {blocked.length > 0 && (
-        <section className="sub" aria-label="Blocked">
-          <h3>Blocked</h3>
-          <p className="muted small">They can’t ask to be friends, use your invite links or message you.</p>
-          <ul className="friend-list">
-            {blocked.map((b) => (
-              <li key={b.uid}>
-                <span><FriendName me={uid} friend={b} bare /></span>
-                <button className="mini" disabled={busy} onClick={() => void act(async (c) => { await unblock(c, uid, b.uid); return `Unblocked @${b.name}.`; })}>Unblock</button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+  const offered = offer && (
+    <section ref={offerBox} className="sub invite-offer" aria-label="Invite">
+      <p><b>@{offer.name}</b> invited you to be friends.</p>
+      <p className="muted small">Accept, and you each see the other’s log, notes, body weight, priorities and program. Never photos. Either of you can remove the other later.</p>
+      <div className="form-actions">
+        <button disabled={busy} onClick={() => setOffer(null)}>Not now</button>
+        <button className="primary" disabled={busy} onClick={() => { const { inv } = offer; void act(async (c) => { const n = await acceptInvite(c, uid, inv); setOffer(null); setPaste(''); return `You and @${n} are now friends.`; }); }}>Accept</button>
+      </div>
     </section>
   );
+  const shown = !adding && (msg || offer);
+  const page = shown || requests.length > 0 || sentGyms.length > 0 || blocked.length > 0;
+  return (<>
+    {page && (
+      <section className="card" aria-label="Friends">
+        {!adding && message}
+        {!adding && offered}
+        {requests.length > 0 && (
+          <section className="sub" aria-label="Requests">
+            <h3>Requests</h3>
+            <ul className="friend-list">
+              {requests.map((r) => (
+                <li key={r.uid}>
+                  <span><FriendName me={uid} friend={r} bare /> wants to be friends</span>
+                  <span className="friend-actions">
+                    <button className="primary" disabled={busy} onClick={() => void act(async (c) => { await acceptRequest(c, uid, r.uid); return `You and @${r.name} are now friends.`; })}>Accept</button>
+                    <button disabled={busy} onClick={() => void act(async (c) => { await declineRequest(c, uid, r.uid); })}>Decline</button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {sentGyms.length > 0 && (
+          <section className="sub" aria-label="Gyms sent to you">
+            <h3>Gyms sent to you</h3>
+            <ul className="friend-list">
+              {sentGyms.map((s) => (
+                <li key={s.id}>
+                  <span><FriendName me={uid} friend={{ uid: s.from, name: nameNow(s.from, s.fromName) }} bare /> sent you a gym: <b>{s.gym.name}</b></span>
+                  <span className="friend-actions">
+                    <button className="primary" disabled={busy} onClick={() => void act(async (c) => {
+                      const n = copyGym(s.gym, gyms.gyms);
+                      if (!(await gyms.save([...gyms.gyms, n], gyms.active?.id ?? n.id))) throw new Error('Saving the gym on this phone failed.');
+                      await clearSentGym(c, uid, s.id);
+                      return `Added ${n.name} to your gyms.`;
+                    })}>Add</button>
+                    <button disabled={busy} onClick={() => void act(async (c) => { await clearSentGym(c, uid, s.id); })}>Dismiss</button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {blocked.length > 0 && (
+          <section className="sub" aria-label="Blocked">
+            <h3>Blocked</h3>
+            <p className="muted small">They can’t ask to be friends, use your invite links or message you.</p>
+            <ul className="friend-list">
+              {blocked.map((b) => (
+                <li key={b.uid}>
+                  <span><FriendName me={uid} friend={b} bare /></span>
+                  <button className="mini" disabled={busy} onClick={() => void act(async (c) => { await unblock(c, uid, b.uid); return `Unblocked @${b.name}.`; })}>Unblock</button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </section>
+    )}
+    {adding && (
+      <StatsSheet title="Add a friend" onClose={() => onAdding(false)}>
+        <div className="add-friend">
+          {message}
+          {offered}
+          <form className="sync-form" onSubmit={(e) => {
+            e.preventDefault();
+            if (USERNAME.test(to)) void act(async (c) => { const r = await sendRequest(c, uid, me, to); setFind(''); return r === 'accepted' ? `You and @${to} are now friends.` : `Request sent to @${to}.`; });
+          }}>
+            <label htmlFor="their-username">Their username</label>
+            <div className="invite-row">
+              <Input id="their-username" placeholder="e.g. sam" autoCapitalize="off" autoCorrect="off" spellCheck={false} value={find} onChange={(e) => setFind(e.target.value)} />
+              {/* "Send", named in full: the field says whom to. */}
+              <button type="submit" className="primary" aria-label="Send request" disabled={!USERNAME.test(to) || busy}>Send</button>
+            </div>
+          </form>
+          {link ? (
+            <div className="sync-form">
+              <label className="invite-link" htmlFor="invite-link">Your invite link</label>
+              <div className="invite-row">
+                <input id="invite-link" ref={linkField} readOnly inputMode="none" autoComplete="off" autoCorrect="off" spellCheck={false} value={link} onClick={selectLink} />
+                {/* aria-live: "Copied" is read out where it shows. */}
+                <button type="button" className="mini" aria-live="polite" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</button>
+              </div>
+              <p className="muted small">Send it to one friend: they see who it’s from and accept it. Works once, for 7 days.</p>
+              <div className="form-actions">
+                <button disabled={busy} onClick={() => void act(async (c) => { await revokeInvites(c, uid); return 'Invite link cancelled.'; })}>Cancel link</button>
+                <button className="primary" onClick={() => void share()}>Share link</button>
+              </div>
+            </div>
+          ) : <button className="wide" disabled={busy} onClick={() => void act(async (c) => { await makeInvite(c, uid); })}>Make an invite link</button>}
+          <form className="sync-form" onSubmit={(e) => {
+            e.preventDefault();
+            const inv = parseInvite(paste);
+            if (inv) void open(inv);
+          }}>
+            <label>Got an invite link? Paste it<Input autoCapitalize="off" autoCorrect="off" spellCheck={false} value={paste} onChange={(e) => setPaste(e.target.value)} /></label>
+            <button type="submit" className="wide" disabled={!parseInvite(paste) || busy}>Open invite</button>
+          </form>
+          <p className="muted small">You’re @{me}. Friends see your log, notes, body weight, priorities and program. Never your photos. Your username is under More › Account and sync.</p>
+        </div>
+      </StatsSheet>
+    )}
+  </>);
 }

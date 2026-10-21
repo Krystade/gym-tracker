@@ -155,7 +155,7 @@ test('the rest bar fits a 375 px phone: time, words, −30 s, +30 s and ×, ever
 test('the last planned set of a lift names the plan’s next lift, never a set past the plan', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-16T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(path.join(import.meta.dirname, 'fixtures', 'history.sample.csv'));
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Today');

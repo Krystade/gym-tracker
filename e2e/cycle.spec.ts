@@ -1,14 +1,13 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { goto as tab } from './nav';
+import { addFriend, goto as tab } from './nav';
 import { DOCS, FIRESTORE } from './emu';
 
 // Cycle phase: opt-in per profile, one tap under Energy, private. Synthetic data only.
-const DATA = 'More';
 const cycle = (page: Page) => page.getByRole('group', { name: 'Cycle' });
 const PHASES = ['Period', 'Follicular', 'Ovulation', 'Luteal'];
 
 async function turnOn(page: Page, who = 'Me') {
-  await tab(page, DATA);
+  await tab(page, 'Cycle');
   const sw = page.getByRole('switch', { name: `Track cycle phase for ${who}` });
   await expect(sw).toBeEnabled(); // loaded: what it shows now is what's saved
   await expect(sw).toHaveAttribute('aria-checked', 'false');
@@ -40,7 +39,7 @@ test('off by default: no Cycle row; turned on, one tap saves and survives a relo
   await weigh.getByRole('textbox', { name: 'Weigh-in (lb)' }).fill('150');
   await weigh.getByRole('button', { name: 'Save weight' }).click();
   await expect(weigh).toContainText('150 lb');
-  await tab(page, DATA);
+  await tab(page, 'Backup');
   await page.getByRole('button', { name: 'Export body CSV' }).click();
   await expect(page.getByText(/Copied the CSV/)).toBeVisible();
   const csv = await page.evaluate(() => (window as unknown as { copied: string }).copied);
@@ -48,10 +47,11 @@ test('off by default: no Cycle row; turned on, one tap saves and survives a relo
   expect(csv).not.toMatch(/luteal|cycle|phase/i);
 
   // Off hides the row and keeps the day; on again, it's still there.
+  await tab(page, 'Cycle');
   await page.getByRole('switch', { name: 'Track cycle phase for Me' }).click();
   await tab(page, 'Today');
   await expect(cycle(page)).toHaveCount(0);
-  await tab(page, DATA);
+  await tab(page, 'Cycle');
   await page.getByRole('switch', { name: 'Track cycle phase for Me' }).click();
   await tab(page, 'Today');
   await expect(cycle(page).getByRole('button', { name: 'Luteal' })).toHaveAttribute('aria-pressed', 'true');
@@ -64,11 +64,12 @@ test('off by default: no Cycle row; turned on, one tap saves and survives a relo
 
 test('opt-in per profile: on for one, the other stays off with no Cycle row, and switching back finds it on', async ({ page }) => {
   await page.goto('/');
-  await tab(page, 'More');
+  await tab(page, 'People');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   const bar = page.getByRole('group', { name: 'Who’s training' });
   await expect(bar.getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  await tab(page, 'Cycle');
   await expect(page.getByRole('heading', { name: 'Track cycle phase for Sam' })).toBeVisible();
   await turnOn(page, 'Sam');
   await expect(cycle(page)).toBeVisible();
@@ -76,7 +77,7 @@ test('opt-in per profile: on for one, the other stays off with no Cycle row, and
   await bar.getByRole('button', { name: /Me/ }).click();
   await expect(page.getByRole('group', { name: 'Energy' })).toBeVisible();
   await expect(cycle(page)).toHaveCount(0);
-  await tab(page, 'More');
+  await tab(page, 'Cycle');
   const me = page.getByRole('switch', { name: 'Track cycle phase for Me' });
   await expect(me).toBeEnabled(); // loaded, so off here is Me's own setting, not the state before it loads
   await expect(me).toHaveAttribute('aria-checked', 'false');
@@ -88,7 +89,7 @@ test('opt-in per profile: on for one, the other stays off with no Cycle row, and
 
   await bar.getByRole('button', { name: /Sam/ }).click();
   await expect(cycle(page)).toBeVisible();
-  await tab(page, 'More');
+  await tab(page, 'Cycle');
   await expect(page.getByRole('switch', { name: 'Track cycle phase for Sam' })).toHaveAttribute('aria-checked', 'true');
   await tab(page, 'Today');
   await expect(cycle(page)).toBeVisible();
@@ -100,7 +101,7 @@ test('Delete cycle data says other phones put back what they still have, and cle
   await turnOn(page);
   await cycle(page).getByRole('button', { name: 'Period' }).click();
   await expect(cycle(page).getByRole('button', { name: 'Period' })).toHaveAttribute('aria-pressed', 'true');
-  await tab(page, 'More');
+  await tab(page, 'Cycle');
   await page.getByRole('button', { name: 'Delete cycle data' }).click();
   await expect(page.getByText('Deletes every cycle day on this phone and in your account (other phones put back what they still have)')).toBeVisible();
   await page.screenshot({ path: 'screenshots/cycle-delete.png', fullPage: true });
@@ -191,9 +192,10 @@ test('a friend’s view shows no cycle data and never asks for it', async ({ bro
 
   const asked: string[] = [];
   b.page.on('request', (r) => { if (r.url().startsWith(`${FIRESTORE}/`)) asked.push(`${decodeURIComponent(r.url())} ${r.postData() ?? ''}`); });
-  await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(`@${a.name}`);
-  await friends(b.page).getByRole('button', { name: 'Send request' }).click();
-  await expect(friends(b.page).getByRole('status')).toHaveText(`Request sent to @${a.name}.`);
+  const add = await addFriend(b.page);
+  await add.getByRole('textbox', { name: 'Their username' }).fill(`@${a.name}`);
+  await add.getByRole('button', { name: 'Send request' }).click();
+  await expect(add.getByRole('status')).toHaveText(`Request sent to @${a.name}.`);
   await tab(a.page, 'Friends');
   await friends(a.page).getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
   await expect(friends(a.page).getByRole('status')).toHaveText(`You and @${b.name} are now friends.`);
@@ -225,16 +227,18 @@ test('a new phone that takes the account’s setting turns it on where it stands
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ found: { name: m[1], fields: { days: { mapValue: {} }, tracking: { booleanValue: true }, updatedAt: { integerValue: '1' } }, createTime: '2026-01-01T00:00:00Z', updateTime: '2026-01-01T00:00:00Z' }, readTime: '2026-01-01T00:00:00Z' }]) });
   });
   await page.goto('/');
-  await tab(page, 'Friends');
-  await page.getByRole('button', { name: 'Sign in or create an account' }).click();
+  await tab(page, 'Cycle');
   const sw = page.getByRole('switch', { name: 'Track cycle phase for Me' });
   await expect(sw).toBeEnabled();
   await expect(sw).toHaveAttribute('aria-checked', 'false');
+  await tab(page, 'Friends');
+  await page.getByRole('button', { name: 'Sign in or create an account' }).click();
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`u${rand()}@test.local`);
   await account.getByLabel('Password').fill(PASSWORD);
   await account.getByRole('button', { name: 'Create account' }).click();
   await expect(account.getByRole('status')).toHaveText(/^Synced/);
-  await expect(sw).toHaveAttribute('aria-checked', 'true'); // no reload, no leaving More
+  await tab(page, 'Cycle');
+  await expect(sw).toHaveAttribute('aria-checked', 'true'); // no reload
   await ctx.close();
 });

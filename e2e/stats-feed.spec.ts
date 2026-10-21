@@ -36,10 +36,10 @@ async function seed(page: Page, reduce = false, width = 375) {
   });
   await page.clock.install({ time: new Date(`${TODAY}T18:00:00`) });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'synthetic.csv', mimeType: 'text/csv', buffer: Buffer.from(csv()) });
   await expect(page.getByText(/Imported \d+ new/)).toBeVisible();
-  await goto(page, 'Priorities');
+  await goto(page, 'Weekly goal');
   // Goal 3.
   const goal = page.getByRole('textbox', { name: 'Sessions per week goal' });
   await goal.fill('3');

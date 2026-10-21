@@ -16,7 +16,7 @@ import { Icon } from './icons';
 const PULL = 70; // px down from the top of the page that reads everything again
 
 /**
- * Friends need an account: signed out, this points to the Account card on More. A tab of its own, so no Back.
+ * Friends need an account: signed out, this points to More › Account and sync. A tab of its own, so no Back.
  * Everything here shows from what the phone kept (state/friendCache) and is read again quietly behind it. A pull down at the
  * top reads it all again at once; so does a Refresh button a screen reader or keyboard finds (it shows when focused).
  */
@@ -43,11 +43,13 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
   // Pull down at the top of the page: mostly down, so a sideways drag on Crew's lines never counts.
   const [pull, setPull] = useState(0);
   const start = useRef<{ x: number; y: number } | null>(null);
-  // The invite controls sit in the list below; Crew's Invite button brings them up.
-  const invite = () => document.getElementById('add-friend')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  // Add a friend: a sheet over the page, from the person+ icon or Crew's Invite (IA plan A4).
+  const [adding, setAdding] = useState(false);
+  const invite = () => setAdding(true);
   return (
     <div className="friends-page"
-      onTouchStart={(e) => { start.current = uid && window.scrollY <= 0 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }}
+      // The sheet is portalled but its touches still bubble here through React: a drag in it is no pull.
+      onTouchStart={(e) => { start.current = uid && !adding && window.scrollY <= 0 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }}
       onTouchMove={(e) => {
         const s = start.current;
         if (!s) return;
@@ -57,7 +59,7 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
       onTouchEnd={() => { if (pull > PULL) void refresh(); start.current = null; setPull(0); }}>
       <div className="page-head">
         <h1>Friends</h1>
-        {/* The same place Invite a friend goes: the add form at the foot of the page. */}
+        {/* The same sheet Crew's Invite a friend opens. */}
         {uid && <button className="mini icon" aria-label="Add a friend" onClick={invite}><Icon name="person-plus" size={26} /></button>}
       </div>
       {uid && (<>
@@ -75,7 +77,7 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
         ) : !cloud.mine ? <p className="muted">The account on this phone belongs to another person here; switch to them to see friends.</p>
         : (<>
           <Feed uid={cloud.link.uid} myName={myName} friends={friends} entries={entries} goal={goal} today={today} status={status} news={news} pulled={pulled} onOpenFriend={onView} onOpenMine={onOpenMine} onInvite={invite} onMessage={onMessage} onCompare={onCompare} />
-          <FriendsCard uid={cloud.link.uid} gyms={gyms} pending={pending} newsRev={newsRev} onPendingDone={onPendingDone} onChanged={onChanged} />
+          <FriendsCard uid={cloud.link.uid} gyms={gyms} pending={pending} newsRev={newsRev} adding={adding} onAdding={setAdding} onPendingDone={onPendingDone} onChanged={onChanged} />
         </>)}
     </div>
   );

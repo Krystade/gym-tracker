@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { addFriend, goto } from './nav';
 import { account, befriend, EMU, iso, log, ping, session, signedIn, type Seeded } from './seed';
 import { FIRESTORE } from './emu';
 
@@ -283,8 +283,10 @@ test('your status: set inline, capped at 24, seen on your friend’s feed; Invit
   await crew(b.page).getByRole('textbox', { name: 'Your status' }).press('Escape');
   await setStatus(b.page, 'Leg day survivor 🦵');
 
-  await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(a.name);
-  await friends(b.page).getByRole('button', { name: 'Send request' }).click();
+  const add = await addFriend(b.page);
+  await add.getByRole('textbox', { name: 'Their username' }).fill(a.name);
+  await add.getByRole('button', { name: 'Send request' }).click();
+  await expect(add.getByRole('status')).toHaveText(`Request sent to @${a.name}.`);
   await a.page.reload();
   await goto(a.page, 'Friends');
   await friends(a.page).getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
@@ -301,7 +303,7 @@ test('your status: set inline, capped at 24, seen on your friend’s feed; Invit
   await expect(card.locator('.fd-lifts')).toContainText('135 × 8');
   await expect(crew(a.page).locator('.fd-dateline')).toHaveText('1 of 2 trained today · 1 training now'); // B's sets were logged at 18:00
 
-  // Fewer than three friends: an Invite button in the page, above the tab bar, and it brings the invite controls up.
+  // Fewer than three friends: an Invite button in the page, above the tab bar, and it opens the Add a friend sheet.
   const invite = crew(a.page).getByRole('button', { name: 'Invite a friend' });
   await invite.evaluate((e) => e.scrollIntoView({ block: 'nearest' })); // the browser's own scroll, which keeps its scroll-margin clear of the tab bar
   const [ib, tabs] = [await invite.boundingBox(), await a.page.getByRole('navigation', { name: 'Sections' }).boundingBox()];
@@ -309,7 +311,10 @@ test('your status: set inline, capped at 24, seen on your friend’s feed; Invit
   await a.page.screenshot({ path: `${SHOTS}/crew-a.png` });
   await info.attach('crew-a', { path: `${SHOTS}/crew-a.png`, contentType: 'image/png' });
   await invite.click();
-  await expect(friends(a.page).getByRole('region', { name: 'Add a friend' })).toBeInViewport();
+  const sheet = a.page.getByRole('dialog', { name: 'Add a friend' });
+  await expect(sheet.getByRole('textbox', { name: 'Their username' })).toBeInViewport();
+  await sheet.getByRole('button', { name: 'Done' }).click();
+  await expect(sheet).toHaveCount(0);
 
   // Tapping B's name opens B's page.
   await card.getByRole('button', { name: `@${b.name}`, exact: true }).click();
@@ -333,8 +338,10 @@ const saved = (page: Page, name: string) => page.evaluate(async (name) => {
 
 test('Friends opens from what the phone saved: with Firestore unreachable, friends and their sessions show at once, never Loading', async ({ browser }) => {
   const [b, a] = await Promise.all([person(browser, { lift: 'Bench Press', sets: [[135, 8]] }), person(browser)]);
-  await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(a.name);
-  await friends(b.page).getByRole('button', { name: 'Send request' }).click();
+  const add = await addFriend(b.page);
+  await add.getByRole('textbox', { name: 'Their username' }).fill(a.name);
+  await add.getByRole('button', { name: 'Send request' }).click();
+  await expect(add.getByRole('status')).toHaveText(`Request sent to @${a.name}.`);
   await a.page.reload();
   await goto(a.page, 'Friends');
   await friends(a.page).getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
@@ -354,7 +361,10 @@ test('Friends opens from what the phone saved: with Firestore unreachable, frien
   });
   await goto(a.page, 'Friends');
   await expect(card.locator('.fd-lifts')).toContainText('135 × 8');
-  await expect(friends(a.page)).toContainText(`You’re @${a.name}`);
+  // Your username, from what was saved too: in the Add a friend sheet.
+  const mine = await addFriend(a.page);
+  await expect(mine).toContainText(`You’re @${a.name}`);
+  await mine.getByRole('button', { name: 'Done' }).click();
   await expect(crew(a.page).getByRole('button', { name: `@${b.name}`, exact: true })).toBeVisible();
   await a.page.waitForTimeout(500); // the quiet refresh fails meanwhile; what was saved stays
   await expect(card.locator('.fd-lifts')).toContainText('135 × 8');

@@ -6,7 +6,7 @@ const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv')
 
 const buildProgram = async (page: Page) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Today');
@@ -108,7 +108,7 @@ test('with sets logged but lifts left, the plan is still open after a reload', a
 test('a jump lands the card below the profile bar', async ({ page }) => {
   await buildProgram(page);
   // A second person brings the profile bar; switch straight back to Me (no reload, so Sam's save can't race it).
-  await goto(page, 'More');
+  await goto(page, 'People');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   const bar = page.getByRole('group', { name: 'Who’s training' });

@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { addFriend, goto } from './nav';
 import { DOCS } from './emu';
 
 // Pings and messages between two synthetic accounts on the local Auth and Firestore emulators, on the iPhone 13 mini's
@@ -52,8 +52,10 @@ async function person(browser: Browser) {
 
 /** `from` asks, `to` accepts. */
 async function befriend(from: { page: Page }, to: { page: Page; name: string }, fromName: string) {
-  await friends(from.page).getByRole('textbox', { name: 'Their username' }).fill(to.name);
-  await friends(from.page).getByRole('button', { name: 'Send request' }).click();
+  const add = await addFriend(from.page);
+  await add.getByRole('textbox', { name: 'Their username' }).fill(to.name);
+  await add.getByRole('button', { name: 'Send request' }).click();
+  await expect(add.getByRole('status')).toHaveText(`Request sent to @${to.name}.`);
   await to.page.reload();
   await goto(to.page, 'Friends');
   await friends(to.page).getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
@@ -219,16 +221,17 @@ test('mute is quiet and private; block stops the sender and lists them to unbloc
   await goto(a.page, 'Friends');
   await expect(crew(a.page).getByTestId(`crew-${b.name}`)).toHaveCount(0);
   // Nor can A ask again while blocked.
-  await friends(a.page).getByRole('textbox', { name: 'Their username' }).fill(b.name);
-  await friends(a.page).getByRole('button', { name: 'Send request' }).click();
-  await expect(friends(a.page).getByRole('alert')).toBeVisible();
+  const add = await addFriend(a.page);
+  await add.getByRole('textbox', { name: 'Their username' }).fill(b.name);
+  await add.getByRole('button', { name: 'Send request' }).click();
+  await expect(add.getByRole('alert')).toBeVisible();
 
   // Unblock: gone from the list; A can ask again.
   await blocked.getByRole('button', { name: 'Unblock' }).click();
   await expect(friends(b.page).getByRole('status')).toHaveText(`Unblocked @${a.name}.`);
   await expect(friends(b.page).getByRole('region', { name: 'Blocked' })).toHaveCount(0);
-  await friends(a.page).getByRole('button', { name: 'Send request' }).click();
-  await expect(friends(a.page).getByRole('status')).toContainText(b.name);
+  await add.getByRole('button', { name: 'Send request' }).click();
+  await expect(add.getByRole('status')).toContainText(b.name);
 });
 
 // ---- The sheet on a notched phone, with a thread long enough to reach its full height ----

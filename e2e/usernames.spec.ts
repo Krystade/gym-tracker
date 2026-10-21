@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { goto } from './nav';
+import { addFriend, goto, sendRequest } from './nav';
 
 // Changing your username, and private tags for friends, against the local Auth and Firestore emulators. Synthetic users only.
 const T = new Date(new Date().setHours(18, 0, 0, 0));
@@ -29,9 +29,7 @@ async function person(browser: Browser) {
 }
 
 async function befriend(a: { page: Page; name: string }, b: { page: Page; name: string }) {
-  await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(a.name);
-  await friends(b.page).getByRole('button', { name: 'Send request' }).click();
-  await expect(friends(b.page).getByRole('status')).toHaveText(`Request sent to @${a.name}.`);
+  await expect((await sendRequest(b.page, a.name)).getByRole('status')).toHaveText(`Request sent to @${a.name}.`);
   await a.page.reload();
   await goto(a.page, 'Friends');
   await friends(a.page).getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
@@ -59,16 +57,24 @@ test('a tag only you see follows a friend through a change of username, with “
   await goto(a.page, 'Friends');
   await expect(a.page.getByText('Sam (gym)')).toHaveCount(0);
 
-  // a changes username, in place, beside "You're @…".
+  // a changes username under More › Account and sync, in place, beside "You're @…" (owner, 2026-10-21: off Friends).
   const old = a.name, next = `${a.name}_k`;
-  await friends(a.page).getByRole('button', { name: 'Change username' }).click();
-  const form = friends(a.page).getByRole('form', { name: 'Change username' });
+  await expect(friends(a.page).getByRole('button', { name: 'Change username' })).toHaveCount(0);
+  await goto(a.page, 'Account');
+  const mine = a.page.getByRole('region', { name: 'Username' });
+  await expect(mine).toContainText(`You’re @${old}.`);
+  await mine.getByRole('button', { name: 'Change username' }).click();
+  const form = mine.getByRole('form', { name: 'Change username' });
   await form.getByRole('textbox', { name: 'New username' }).fill(next);
   await form.getByRole('button', { name: 'Save username' }).click();
-  await expect(friends(a.page).getByRole('status')).toHaveText(`You’re @${next} now. Friends see it at once, with “formerly @${old}” for 30 days.`);
-  await expect(friends(a.page)).toContainText(`You’re @${next}.`);
+  await expect(mine.getByRole('status')).toHaveText(`You’re @${next} now. Friends see it at once, with “formerly @${old}” for 30 days.`);
+  await expect(mine).toContainText(`You’re @${next}.`);
+  // Friends' sheet says the new name too.
+  await goto(a.page, 'Friends');
+  await expect(await addFriend(a.page)).toContainText(`You’re @${next}.`);
+  await goto(a.page, 'Account');
   // Once a day: the form says when, and won't save.
-  await friends(a.page).getByRole('button', { name: 'Change username' }).click();
+  await mine.getByRole('button', { name: 'Change username' }).click();
   await expect(form).toContainText('You changed it in the last day.');
   await form.getByRole('textbox', { name: 'New username' }).fill(`${old}_z`);
   await expect(form.getByRole('button', { name: 'Save username' })).toBeDisabled();
@@ -86,9 +92,9 @@ test('a tag only you see follows a friend through a change of username, with “
   await sheet.getByRole('button', { name: 'Close' }).click();
 
   // The old name is free: nobody goes by it now.
-  await friends(b.page).getByRole('textbox', { name: 'Their username' }).fill(old);
-  await friends(b.page).getByRole('button', { name: 'Send request' }).click();
-  await expect(friends(b.page).getByRole('alert')).toHaveText(`No one goes by “${old}”. Check the spelling.`);
+  const add = await sendRequest(b.page, old);
+  await expect(add.getByRole('alert')).toHaveText(`No one goes by “${old}”. Check the spelling.`);
+  await add.getByRole('button', { name: 'Done' }).click();
 
   // Removing the tag leaves the @username alone.
   await crew(b.page).getByRole('button', { name: `Sam (gym) · @${next}`, exact: true }).click();

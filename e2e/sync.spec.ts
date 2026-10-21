@@ -32,7 +32,7 @@ test('private backup: save settings, sync through a mocked GitHub, token stays h
   });
 
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await dataSettled(page);
   const card = page.getByRole('region', { name: 'Private backup' });
   await card.getByText('How to make a token').click();
@@ -81,12 +81,12 @@ test('switching profile while a sync is pulling keeps what it pulled with the pe
     return route.fulfill({ status: 201, json: {} });
   });
   await page.goto('/');
-  await goto(page, 'More');
-  await dataSettled(page);
+  await goto(page, 'People');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   const bar = page.getByRole('group', { name: 'Whoâ€™s training' });
   await bar.getByRole('button', { name: /Me/ }).click();
+  await goto(page, 'Backup');
   await dataSettled(page);
   const card = page.getByRole('region', { name: 'Private backup' });
   await card.getByRole('textbox', { name: 'Repository' }).fill('someone/backup');
@@ -117,7 +117,7 @@ test('deleted.csv: a restore leaves out sets deleted elsewhere, another deviceâ€
   });
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await dataSettled(page);
   const card = page.getByRole('region', { name: 'Private backup' });
   await card.getByRole('textbox', { name: 'Repository' }).fill('someone/backup');
@@ -152,7 +152,7 @@ test('deleted.csv: a restore leaves out sets deleted elsewhere, another deviceâ€
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(sets.getByRole('listitem')).toHaveCount(0);
   await page.clock.fastForward('10:00'); // the sync comes later: deleted.csv gets the delete's time, not the sync's
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await card.getByRole('button', { name: 'Sync now' }).click();
   await expect(card.getByRole('status')).toContainText('backup holds 4 sets');
   // At the time it was deleted here: the clock started at 18:00 local and the spec takes seconds.

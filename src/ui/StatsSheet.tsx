@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import './stats.css';
 
 // A Stats tile's detail, in a sheet from the bottom (owner, 2026-10-20: a sheet, not a drawer under the row). What the plan held
 // against sheets on a 13 mini, and what this does about each:

@@ -351,7 +351,7 @@ test('pasting notes onto a live day keeps the next set prefilled from the last l
   await page.goto('/');
   await openBench(page);
   await logBench(page, '135', '10');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByRole('button', { name: 'Paste from notes' }).click();
   await page.getByLabel('Workout notes').fill(['10/2/26', 'Bench press: 95x12'].join('\n'));
   await page.getByRole('button', { name: 'Read notes' }).click();
@@ -397,7 +397,7 @@ test('editing a set can move its time, and an untouched time stays put', async (
   await expect(when).toHaveValue('18:00');
   await page.getByRole('button', { name: 'Cancel' }).click();
   // Stored times: the moved set keeps when it was entered; the reps-only edit keeps its exact time.
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
   await expect(page.getByText('Copied the CSV to the clipboard')).toBeVisible();
   const [head, ...lines] = (await page.evaluate(() => (window as unknown as { copied: string }).copied)).trim().split('\r\n').map((l) => l.split(','));
@@ -432,7 +432,7 @@ test('a lift logged as a hold is timed in seconds everywhere, whatever its name'
   const file = info.outputPath('hold.csv');
   (await import('node:fs')).writeFileSync(file, csv);
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(file);
   await expect(page.getByText('✓ Imported 2 new sets')).toBeVisible();
   await goto(page, 'Today');

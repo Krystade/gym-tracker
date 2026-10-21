@@ -143,7 +143,7 @@ export function ProgramScreen({ programs, profile, entries, body = [], gyms, uid
       <h1>Program</h1>
       {unset && (
         <section className="card note-card">
-          <p><b>Priorities aren’t set.</b> Every muscle is priority 3, so the plan spreads sets evenly over all of them. Set them under More → Priorities and goal, or import your profile file there, then build.</p>
+          <p><b>Priorities aren’t set.</b> Every muscle is priority 3, so the plan spreads sets evenly over all of them. Set them under More › Priorities and goal (or import your profile file under More › Backup, import and export), then build.</p>
           <button className="mini" onClick={onOpenPriorities}>Set priorities</button>
         </section>
       )}

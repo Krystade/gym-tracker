@@ -48,11 +48,11 @@ function rows(days: Record<number, string[]>, weeks = 8): string[] {
   }
   return out;
 }
-async function importRows(page: Page, r: string[], name: string) {
-  await goto(page, 'More');
+async function importRows(page: Page, r: string[], name: string, to: 'Priorities' | 'Weekly goal' = 'Priorities') {
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name, mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...r].join('\n')) });
   await expect(page.getByText(`✓ Imported ${r.length} new sets`)).toBeVisible();
-  await goto(page, 'Priorities');
+  await goto(page, to);
 }
 
 test('the weekly goal: suggested from the last 8 weeks, dismissed until it changes, then taken with a tap', async ({ page }) => {
@@ -60,7 +60,7 @@ test('the weekly goal: suggested from the last 8 weeks, dismissed until it chang
   await page.clock.install({ time: new Date('2026-10-14T18:00:00') });
   await page.goto('/');
   // Four sessions a week against the default goal of 2.
-  await importRows(page, rows({ 0: ['Bench Press'], 1: ['Leg Press'], 3: ['Lat Pulldown'], 4: ['Cable Curl'] }), 'a.csv');
+  await importRows(page, rows({ 0: ['Bench Press'], 1: ['Leg Press'], 3: ['Lat Pulldown'], 4: ['Cable Curl'] }), 'a.csv', 'Weekly goal');
   const sug = page.getByRole('group', { name: 'Suggested goal' });
   const goal = page.getByRole('textbox', { name: 'Sessions per week goal' });
   await expect(goal).toHaveValue('2');
@@ -73,12 +73,13 @@ test('the weekly goal: suggested from the last 8 weeks, dismissed until it chang
   await expect(sug).toHaveCount(0);
   await expect(goal).toHaveValue('2'); // nothing changed by itself
   await page.reload();
-  await goto(page, 'Priorities');
-  await expect(page.getByRole('heading', { name: 'Muscle priorities' })).toBeVisible();
+  await goto(page, 'Weekly goal');
+  await expect(page.getByRole('heading', { name: 'Weekly goal', level: 1 })).toBeVisible();
+  await expect(goal).toHaveValue('2');
   await expect(sug).toHaveCount(0);
 
   // A fifth day a week: the suggestion is now 5, a new one, so it shows again.
-  await importRows(page, rows({ 5: ['Cable Pushdown'] }), 'b.csv');
+  await importRows(page, rows({ 5: ['Cable Pushdown'] }), 'b.csv', 'Weekly goal');
   await expect(sug).toContainText('average 5 sessions');
   await sug.getByRole('button', { name: 'Set goal to 5' }).click();
   await expect(goal).toHaveValue('5');
@@ -87,8 +88,12 @@ test('the weekly goal: suggested from the last 8 weeks, dismissed until it chang
   await statsSheet(page, 'sessions');
   await expect(page.getByText('The line: your goal of 5 sessions.', { exact: false })).toBeVisible();
   await page.reload();
-  await goto(page, 'Priorities');
+  await goto(page, 'Weekly goal');
   await expect(goal).toHaveValue('5');
+  // Out of Priorities and goal now (owner, 2026-10-21: its own row).
+  await goto(page, 'Priorities');
+  await expect(page.getByRole('combobox', { name: 'Calves' })).toBeVisible();
+  await expect(goal).toHaveCount(0);
 });
 
 test('priorities: listed from what was trained, applied with a tap, or dismissed until the suggestion changes', async ({ page }) => {

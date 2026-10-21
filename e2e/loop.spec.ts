@@ -1,13 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { goto, openProgram } from './nav';
 import path from 'node:path';
-import { dataSettled } from './settle';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
 
 const importFixture = async (page: Page) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE);
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Today');
@@ -108,8 +107,7 @@ test('with two people, Add set names whose set it is', async ({ page }) => {
   await importFixture(page);
   await addCard(page, 'Cable Curl');
   await expect(page.getByRole('button', { name: 'Add set', exact: true })).toBeVisible();
-  await goto(page, 'More');
-  await dataSettled(page);
+  await goto(page, 'People');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   await goto(page, 'Today');

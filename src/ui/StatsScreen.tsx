@@ -3,7 +3,6 @@ import type { SetsStore } from '../state/useSets';
 import type { FittedProfileStore } from '../state/useFittedProfile';
 import type { ProgramStore } from '../state/useProgram';
 import type { BodyStore } from '../state/useBody';
-import type { PhotosStore } from '../state/usePhotos';
 import type { SettingsStore } from '../state/useSettings';
 import type { GymsStore } from '../state/useGyms';
 import { tappedLight } from '../state/lightWeek';
@@ -15,7 +14,7 @@ import { exerciseNames } from '../domain/stats';
 import { restSeconds } from '../domain/timing';
 import { adherence } from '../domain/program';
 import { addDays, weekStart } from '../domain/analytics';
-import { fmtDate, plural } from '../domain/format';
+import { plural } from '../domain/format';
 import { liftKey } from '../domain/ids';
 import { thisWeekCardio } from '../domain/cardio';
 import { arrange, dayOrder, DEFAULT_RANGE, isRange, layoutOf, NO_LAYOUT, RANGES, rows, toggleHide, togglePin, WINDOW_RANGE, type LayoutPrefs, type Range } from '../domain/statsLayout';
@@ -36,9 +35,9 @@ import './stats.css';
 
 const SHEET_WEEK = '__week';
 
-export function StatsScreen({ store, profile, programs, body, photos, today, onOpenPhotos, readOnly, who, settings, gyms, onOpenLift, onOpenPriorities }: {
+export function StatsScreen({ store, profile, programs, body, today, readOnly, who, settings, gyms, onOpenLift, onOpenPriorities }: {
   /** A friend's username: named wherever your own Stats says "your". */ who?: string;
-  store: SetsStore; profile: FittedProfileStore; programs: ProgramStore; body: BodyStore; photos: PhotosStore | null; today: string; onOpenPhotos: () => void; readOnly?: boolean;
+  store: SetsStore; profile: FittedProfileStore; programs: ProgramStore; body: BodyStore; today: string; readOnly?: boolean;
   /** A lift named in a sheet: its screen. */ onOpenLift?: (name: string) => void;
   /** Priorities and the training goal live in settings (owner, 2026-10-20): a row here opens them. */ onOpenPriorities?: () => void;
   /** Each lift's kept rest, for the rest tile's timer. */ settings?: SettingsStore;
@@ -97,11 +96,7 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
       <li><button className="more-row" onClick={onOpenPriorities}><span>Priorities and goal</span><span className="more-note">{goalLabel(p)}</span><Icon name="chev-right" size={20} sw={2} className="more-chev" /></button></li>
     </ul>
   );
-  const photosRow = photos && (
-    <ul className="card more-list" aria-label="Photos">
-      <li><button className="more-row" onClick={onOpenPhotos}><span>Progress photos</span><span className="more-note">{photos.metas.length ? `${plural(photos.metas.length, 'photo')} · ${fmtDate(photos.metas.reduce((a, m) => (m.date > a ? m.date : a), ''))}` : 'On this phone only'}</span><Icon name="chev-right" size={20} sw={2} className="more-chev" /></button></li>
-    </ul>
-  );
+  // Progress photos live on More only (owner, 2026-10-21).
   // A friend's priorities stay on their Stats, read-only; your own are under More (owner, 2026-10-20).
   const friendPrio = readOnly && <Priorities profile={profile} readOnly who={who} cardioMinutes={entries.length ? thisWeekCardio(entries, today) : 0} entries={entries} today={today} />;
   const title = who ? `@${who}’s stats` : 'Stats';
@@ -109,7 +104,7 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
   if (!entries.length) return (<>
     <h1 className={who ? 'who-title' : undefined}>{title}</h1>
     <p className="muted">{who ? `No sessions from @${who} yet.` : 'No sessions yet — log a workout or import your history under More.'}</p>
-    {photosRow}{prioLink}{friendPrio}
+    {prioLink}{friendPrio}
   </>);
 
   const bySection = SECTIONS.map((s) => ({ id: s.id, tiles: tiles.filter((t) => t.section === s.id) }));
@@ -146,7 +141,7 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
         <p className="st-hidden-row">{plural(hiddenAll.length, 'tile')} hidden<button type="button" onClick={() => setShowHidden(!showHidden)}>{showHidden ? 'Tuck away' : 'Show'}</button></p>
       )}
       {editing && (layout.pins.length > 0 || layout.hidden.length > 0) && <button type="button" className="st-reset" onClick={() => setLayout(NO_LAYOUT)}>Reset to default</button>}
-      {photosRow}{prioLink}{friendPrio}
+      {prioLink}{friendPrio}
       {open === SHEET_WEEK && (
         <StatsSheet title="This week" onClose={() => setOpen(null)}>
           <p className="st-sub">Week of <b>{new Date(`${weekStart(today)}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</b></p>

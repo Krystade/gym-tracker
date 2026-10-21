@@ -133,7 +133,7 @@ async function phone(browser: Browser) {
   return page;
 }
 async function enter(page: Page, mail: string, how: 'Create account' | 'Sign in') {
-  await goto(page, 'More');
+  await goto(page, 'Account');
   await account(page).getByRole('textbox', { name: 'Email' }).fill(mail);
   await account(page).getByLabel('Password').fill(PASSWORD);
   await account(page).getByRole('button', { name: how }).click();

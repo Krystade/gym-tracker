@@ -9,7 +9,8 @@ import { Input } from './Field';
 import { GoalSuggestion, PrioritySuggestion } from './TargetSuggestions';
 
 // Muscle priorities and the training goal: settings, opened from More (and from Stats and Program). Owner, 2026-10-20: the
-// priorities list doesn't belong on Stats.
+// priorities list doesn't belong on Stats. The sessions-a-week goal is its own screen on More (owner, 2026-10-21: it drives
+// far more than the priorities: Today's week strip, the Stats ring, Friends' rings, Compare's Goal and the reminder days).
 
 /** A priority's weekly range as read: an excluded one ([0, 0]) plans nothing. */
 const range = ([lo, hi]: [number, number]) => (hi <= 0 ? 'none' : `${fmtN(lo)}–${fmtN(hi)} sets`);
@@ -36,7 +37,7 @@ function GoalCard({ profile }: { profile: FittedProfileStore }) {
   );
 }
 
-/** Settings: the training goal, the sessions goal, the weekly sets per priority, and each muscle's priority. */
+/** Settings: the training goal, the weekly sets per priority, and each muscle's priority. */
 export function PrioritiesScreen({ profile, entries, today, backLabel = '‹ Back', onBack }: { profile: FittedProfileStore; entries: SetEntry[]; today: string; backLabel?: string; onBack: () => void }) {
   return (
     <>
@@ -45,6 +46,27 @@ export function PrioritiesScreen({ profile, entries, today, backLabel = '‹ Bac
       <GoalCard profile={profile} />
       <Priorities profile={profile} cardioMinutes={thisWeekCardio(entries, today)} entries={entries} today={today} />
     </>
+  );
+}
+
+/** More › Weekly goal: sessions a week, and the last 8 weeks' average offered when it's a session or more away. */
+export function WeeklyGoal({ profile, entries, today }: { profile: FittedProfileStore; entries: SetEntry[]; today: string }) {
+  const p = profile.profile;
+  const [goal, setGoal] = useState(String(p.weeklyGoal));
+  const [owner] = useState(activeProfileDb);
+  return (
+    <section className="card" aria-label="Weekly goal">
+      <label className="goal-row">Sessions per week goal
+        <Input aria-label="Sessions per week goal" inputMode="numeric" value={goal}
+          onChange={(e) => {
+            setGoal(e.target.value);
+            const n = Number(e.target.value);
+            if (Number.isInteger(n) && n >= 1 && n <= 7) void profile.save({ ...p, weeklyGoal: n });
+          }} />
+      </label>
+      <p className="muted small">1 to 7. It sets Today’s week plan, your ring on Stats and Friends, Compare’s Goal and the reminder’s first days, and how many sessions the priorities’ weekly sets are spread over.</p>
+      <GoalSuggestion owner={owner} entries={entries} profile={p} today={today} onAccept={(n) => { setGoal(String(n)); void profile.save({ ...p, weeklyGoal: n }); }} />
+    </section>
   );
 }
 
@@ -77,20 +99,12 @@ function TierTarget({ t, profile, who }: { t: Tier; profile: FittedProfileStore;
 /** Also a friend's, read-only, on their Stats (`who`). */
 export function Priorities({ profile, readOnly, who, cardioMinutes, entries, today }: { profile: FittedProfileStore; readOnly?: boolean; who?: string; cardioMinutes: number; entries: SetEntry[]; today: string }) {
   const p = profile.profile;
-  const [goal, setGoal] = useState(String(p.weeklyGoal));
   const [owner] = useState(activeProfileDb);
   return (
     <fieldset className="card plain" id="priorities" disabled={readOnly}>
       <h2>Muscle priorities</h2>
-      <label className="goal-row">Sessions per week goal
-        <Input aria-label="Sessions per week goal" inputMode="numeric" value={goal}
-          onChange={(e) => {
-            setGoal(e.target.value);
-            const n = Number(e.target.value);
-            if (Number.isInteger(n) && n >= 1 && n <= 7) void profile.save({ ...p, weeklyGoal: n });
-          }} />
-      </label>
-      {!readOnly && <GoalSuggestion owner={owner} entries={entries} profile={p} today={today} onAccept={(n) => { setGoal(String(n)); void profile.save({ ...p, weeklyGoal: n }); }} />}
+      {/* A friend's goal, read-only beside their priorities; your own is under More › Weekly goal. */}
+      {readOnly && <label className="goal-row">Sessions per week goal<Input aria-label="Sessions per week goal" value={String(p.weeklyGoal)} readOnly /></label>}
       <section className="sub" role="group" aria-label="Weekly sets">
         <p className="muted small">Weekly sets per muscle, fitted to {profile.budget.sessions} sessions × {profile.budget.perSession} sets. 1 gets the most, 4 the least.</p>
         <ol className="tier-targets">{([1, 2, 3, 4] as Tier[]).map((t) => <TierTarget key={t} t={t} profile={profile} who={who} />)}</ol>

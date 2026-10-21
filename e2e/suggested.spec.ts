@@ -45,7 +45,7 @@ test('no program: Today suggests a session from what the week is behind on; a ta
   await notched(page);
   await page.clock.install({ time: new Date('2026-10-16T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...ROWS].join('\n')) });
   await expect(page.getByText(`✓ Imported ${ROWS.length} new sets`)).toBeVisible();
   await goto(page, 'Today');

@@ -35,10 +35,10 @@ export function reminderPlan(reminder: { days: number[]; at: string; learn?: boo
 }
 
 /**
- * Notifications, on the More screen. Shows nothing at all in a build without a Worker (src/push/config.ts).
+ * Notifications, on More › Notifications. Shows nothing at all in a build without a Worker (src/push/config.ts).
  * `signedIn`: this person is the one the account on this phone belongs to. `goal`: sessions per week, for the reminder days.
  */
-function Card({ signedIn, goal, entries }: { signedIn: boolean; goal: number; entries: SetEntry[] }) {
+function Card({ signedIn, goal, entries, onSignIn }: { signedIn: boolean; goal: number; entries: SetEntry[]; /** More › Account. */ onSignIn?: () => void }) {
   const local = useSyncExternalStore(subscribeLocal, () => JSON.stringify(localState()));
   const { device, prefs: saved, lost } = JSON.parse(local) as ReturnType<typeof localState>;
   const prefs = withDefaults(saved, goal);
@@ -75,7 +75,7 @@ function Card({ signedIn, goal, entries }: { signedIn: boolean; goal: number; en
     <section className="card" aria-labelledby="notify-h">
       <h2 id="notify-h">Notifications</h2>
       <p className="muted small">Notifications need an account.</p>
-      <button className="wide" onClick={() => document.getElementById('account-h')?.scrollIntoView({ block: 'start' })}>Sign in</button>
+      {onSignIn && <button className="wide" onClick={onSignIn}>Sign in</button>}
     </section>
   );
 

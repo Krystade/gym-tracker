@@ -1,6 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
 import { goto } from './nav';
-import { dataSettled } from './settle';
 
 const bar = (page: Page) => page.getByRole('group', { name: 'Who’s training' });
 const addCurl = async (page: Page) => {
@@ -12,8 +11,7 @@ const addCurl = async (page: Page) => {
 test('two people on one phone: separate logs, one-tap switch, typed sets survive a switch', async ({ page }) => {
   await page.goto('/');
   await expect(bar(page)).toHaveCount(0);
-  await goto(page, 'More');
-  await dataSettled(page);
+  await goto(page, 'People');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await expect(page.getByText('Backed up to profiles/sam/')).toBeVisible();
   await page.getByRole('button', { name: 'Add Sam' }).click();
@@ -62,7 +60,7 @@ test('two people on one phone: separate logs, one-tap switch, typed sets survive
   expect(overflow).toBeLessThanOrEqual(0);
 
   // Deleting Sam needs the name typed.
-  await goto(page, 'More');
+  await goto(page, 'People');
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   const del = page.getByRole('button', { name: 'Delete Sam' });
   await expect(del).toBeDisabled();
@@ -73,8 +71,7 @@ test('two people on one phone: separate logs, one-tap switch, typed sets survive
   await expect(page.getByText('Zercher Curl').first()).toBeVisible(); // Me's set is untouched
 
   // A new person can't take over the deleted one's backup folder.
-  await goto(page, 'More');
-  await dataSettled(page);
+  await goto(page, 'People');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await expect(page.getByText(/still holds an old backup/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add Sam' })).toBeDisabled();
@@ -83,7 +80,7 @@ test('two people on one phone: separate logs, one-tap switch, typed sets survive
 test('five people and a long name: chips sit side by side, none squashed, and the last one is scrolled into view', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'People');
   for (const n of ['Sam', 'Kim', 'Alexandria Montgomery', 'Jo']) {
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill(n);
     await page.getByRole('button', { name: `Add ${n}` }).click();
@@ -127,8 +124,7 @@ test('five people and a long name: chips sit side by side, none squashed, and th
 test('switching person goes back to today', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
-  await dataSettled(page);
+  await goto(page, 'People');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   await bar(page).getByRole('button', { name: /Me/ }).click();
@@ -144,7 +140,7 @@ test('switching person goes back to today', async ({ page }) => {
 test('a past day is forgotten after switching away and back', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'People');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   const pressed = (n: RegExp) => expect(bar(page).getByRole('button', { name: n })).toHaveAttribute('aria-pressed', 'true');
@@ -163,8 +159,7 @@ test('a past day is forgotten after switching away and back', async ({ page }) =
 
 test('the exercise search stays visible below the profile bar when the list scrolls', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
-  await dataSettled(page);
+  await goto(page, 'People');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   await goto(page, 'Today');
@@ -186,7 +181,7 @@ const addPerson = async (page: Page, n: string) => {
 test('the delete confirmation opens under that person’s row, and Me says why it has no Delete', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'People');
   for (const n of ['Sam', 'Kim', 'Jo', 'Lee']) await addPerson(page, n);
   await expect(page.getByText('Your own profile can’t be deleted.')).toBeVisible();
   const row = page.getByRole('listitem').filter({ has: page.getByRole('textbox', { name: 'Name of Sam' }) });
@@ -206,7 +201,7 @@ test('the delete confirmation opens under that person’s row, and Me says why i
 
 test('a name typed in the People card survives a profile switch', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'People');
   await addPerson(page, 'Sam');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Kim');
   await bar(page).getByRole('button', { name: /Me/ }).click();
@@ -218,7 +213,7 @@ test('a name typed in the People card survives a profile switch', async ({ page 
 test('a time typed under “Did this earlier?” survives a profile switch', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'People');
   await addPerson(page, 'Sam');
   await bar(page).getByRole('button', { name: /Me/ }).click();
   await goto(page, 'Today');
@@ -236,7 +231,7 @@ test('a time typed under “Did this earlier?” survives a profile switch', asy
 test('a future time restored after a profile switch is still blocked', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'People');
   await addPerson(page, 'Sam');
   await bar(page).getByRole('button', { name: /Me/ }).click();
   await goto(page, 'Today');
@@ -264,7 +259,7 @@ test('a name typed the moment the Data screen opens or remounts after a switch i
     addEventListener('input', () => { for (const ok of pending.splice(0)) ok(true); }, true);
   });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'People');
   await addPerson(page, 'Sam');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Kim');
   await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Kim');

@@ -10,7 +10,7 @@ const ROWS = ['2026-09-01,Cable Pushdown,,1,50,15,,,,sample,,', '2026-09-01,Cabl
 test('going up: the learned 2.5 lb rung, each set less the learned drop, and why in one muted line', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-19T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...ROWS].join('\n')) });
   await expect(page.getByText(`✓ Imported ${ROWS.length} new sets`)).toBeVisible();
   await goto(page, 'Today');

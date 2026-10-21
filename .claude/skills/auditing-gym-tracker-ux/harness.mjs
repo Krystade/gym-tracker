@@ -49,16 +49,20 @@ export async function open({ program = false, out = process.env.OUT ?? '.superpo
   await page.clock.resume();
   const nav = (t) => page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: t, exact: true });
   if (history !== 'none') {
-    await nav('Data').click();
+    // Import lives under More › Backup, import and export (IA plan A3).
+    await nav('More').click();
+    await page.getByRole('main').getByRole('button', { name: /^Backup, import and export/ }).click();
     await page.getByLabel('Import CSV').setInputFiles({ name: 'fixture.csv', mimeType: 'text/csv', buffer: Buffer.from(fixture(today, history)) });
     await page.getByText(/Imported/).waitFor();
     await nav('Today').click();
     await page.evaluate(() => scrollTo(0, 0));
   }
-  if (program) { // build the default program, then return to Today
-    await page.getByRole('button', { name: 'Program', exact: true }).click();
+  if (program) { // build the default program from More › Program, then return to Today
+    await nav('More').click();
+    await page.getByRole('main').getByRole('button', { name: /^Program/ }).click();
     await page.getByRole('button', { name: 'Build program' }).click();
-    await page.getByRole('button', { name: '‹ Back' }).click();
+    await page.getByRole('button', { name: '‹ More' }).click();
+    await nav('Today').click();
     await page.evaluate(() => scrollTo(0, 0));
   }
   // Every user action goes through one of these so the counts are honest.

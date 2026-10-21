@@ -7,7 +7,7 @@ const day = (i: number) => new Date(Date.UTC(2026, 7, 19 + i * 3)).toISOString()
 // Synthetic history: n sessions of one working set each, the weight (or hold time) rising so every session is a PR.
 async function seed(page: Page, name: string, n: number, hold = false) {
   const rows = Array.from({ length: n }, (_, i) => `${day(i)},${name},,1,${hold ? 0 : 135 + 5 * i},${hold ? 20 + i : 8},,${hold ? 'hold' : ''},,sample`);
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...rows].join('\n')) });
   await expect(page.getByText(`✓ Imported ${n} new sets`)).toBeVisible();
 }

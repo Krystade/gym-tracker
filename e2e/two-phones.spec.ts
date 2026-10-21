@@ -19,7 +19,7 @@ async function phone(browser: Browser) {
   return page;
 }
 async function enter(page: Page, mail: string, how: 'Create account' | 'Sign in') {
-  await goto(page, 'More');
+  await goto(page, 'Account');
   await account(page).getByRole('textbox', { name: 'Email' }).fill(mail);
   await account(page).getByLabel('Password').fill(PASSWORD);
   await account(page).getByRole('button', { name: how }).click();
@@ -42,7 +42,7 @@ async function editWeight(page: Page, weight: string) {
   await expect(rows(page).first()).toContainText(`${weight} × 8`);
 }
 async function syncNow(page: Page) {
-  await goto(page, 'More');
+  await goto(page, 'Account');
   await account(page).getByRole('button', { name: 'Sync now' }).click();
   await expect(account(page).getByRole('status')).toHaveText(/^Synced/);
 }
@@ -177,13 +177,13 @@ test('two phones with different copies of a set from before edit times: both tak
   for (const p of [a, b]) { await goto(p, 'Today'); await expect(rows(p)).toHaveCount(1); await expect(rows(p).first()).toContainText('135 × 8'); }
 
   // B's own copy waits under More beside the one that replaced it. A lost nothing, so A shows nothing.
-  await goto(b, 'More');
+  await goto(b, 'Account');
   await expect(account(b).getByRole('heading', { name: 'Replaced by sync (1)' })).toBeVisible();
   const item = replacedList(b).getByRole('listitem');
   await expect(item).toHaveCount(1);
   await expect(item.getByText('Bench Press')).toBeVisible();
   await expect(item.locator('.replaced-pair p')).toHaveText(['This phone had 140 × 8', 'Synced copy 135 × 8']);
-  await goto(a, 'More');
+  await goto(a, 'Account');
   await expect(replacedList(a)).toHaveCount(0);
 
   await item.getByRole('button', { name: /^Keep this phone/ }).click();
@@ -201,8 +201,8 @@ test('two phones with different copies of a set from before edit times: both tak
   await expect.poll(() => cloudWeights(b)).toEqual([140]);
 
   // A's copy was replaced in its turn, and waits under A's More through the reload; B's list stays empty.
-  await goto(a, 'More');
+  await goto(a, 'Account');
   await expect(replacedList(a).getByRole('listitem').locator('.replaced-pair p')).toHaveText(['This phone had 135 × 8', 'Synced copy 140 × 8']);
-  await goto(b, 'More');
+  await goto(b, 'Account');
   await expect(account(b).getByRole('heading', { name: /^Replaced by sync/ })).toHaveCount(0);
 });

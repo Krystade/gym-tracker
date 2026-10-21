@@ -21,7 +21,7 @@ async function cloudMonth(page: Page): Promise<{ sets: number; deleted: string[]
   return { sets: f.sets?.arrayValue.values?.length ?? 0, deleted: Object.keys(f.deleted?.mapValue.fields ?? {}) };
 }
 async function syncNow(page: Page) {
-  await goto(page, 'More');
+  await goto(page, 'Account');
   await account(page).getByRole('button', { name: 'Sync now' }).click();
   await expect(account(page).getByRole('status')).toHaveText(/^Synced/);
 }
@@ -37,7 +37,7 @@ test('Undo after a synced delete keeps the set through the next syncs and a relo
   await page.getByRole('button', { name: 'Add set' }).first().click();
   await expect(rows(page)).toHaveCount(1);
 
-  await goto(page, 'More');
+  await goto(page, 'Account');
   await account(page).getByRole('textbox', { name: 'Email' }).fill(`u${Math.random().toString(36).slice(2, 10)}@test.local`);
   await account(page).getByLabel('Password').fill('synthetic-pass-1');
   await account(page).getByRole('button', { name: 'Create account' }).click();

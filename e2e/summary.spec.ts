@@ -6,7 +6,7 @@ const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv')
 
 test('a PR stays marked on its row, in the day summary and in History', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // Cable Curl, last 70 × 12 · 80 × 8
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Today');
@@ -57,7 +57,7 @@ test('Today so far counts a top set done more than once', async ({ page }) => {
 
 test('a Lifts row says what you lifted last time', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // Cable Curl, last 70 × 12 · 80 × 8 · 80 × (partial)
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Lifts');
@@ -67,7 +67,7 @@ test('a Lifts row says what you lifted last time', async ({ page }) => {
 test('History is grouped by month, with only recent months open', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-06T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // two days in January 2026
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Today');
@@ -88,7 +88,7 @@ test('History is grouped by month, with only recent months open', async ({ page 
 
 test('the priority picker says what each priority asks for', async ({ page }) => {
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(FIXTURE); // Stats shows Priorities once there's a log
   await expect(page.getByText(/Imported 6 new/)).toBeVisible();
   await goto(page, 'Priorities');

@@ -35,7 +35,7 @@ test('Import CSV holds back a second import of the same days; Duplicate imports 
   });
   await page.clock.install({ time: new Date('2026-10-20T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(file('pasted.csv', toCsv(pasteRows)));
   await expect(page.getByText(`✓ Imported ${TWINS + PASTE_ONLY} new sets`)).toBeVisible();
   await expect(card(page)).toHaveCount(0);
@@ -80,7 +80,7 @@ test('Import CSV holds back a second import of the same days; Duplicate imports 
 
   // Undo, after a trip to another tab: every set back, stamped, no tombstone left; and the card offers the removal again.
   await goto(page, 'History');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await card(page).getByRole('button', { name: `Undo: put ${TWINS} sets back` }).click();
   await setCount(page, ALL);
   db = await stored(page);
@@ -93,9 +93,10 @@ test('Import CSV holds back a second import of the same days; Duplicate imports 
 const T = new Date('2026-10-20T18:00:00');
 const acct = (page: Page) => page.getByRole('region', { name: 'Account' });
 async function syncNow(page: Page) {
-  await goto(page, 'More');
+  await goto(page, 'Account');
   await acct(page).getByRole('button', { name: 'Sync now' }).click();
   await expect(acct(page).getByRole('status')).toHaveText(/^Synced/);
+  await goto(page, 'Backup'); // the counts and Duplicate imports are Backup's
 }
 type Value = { stringValue?: string; mapValue?: { fields?: Record<string, Value> }; arrayValue?: { values?: Value[] } };
 /** The account's month as the cloud has it: its sets' sources and the ids its deletes list. */
@@ -115,7 +116,7 @@ test('removed on one phone: gone on the other, never sent back up by it, and not
   await put(request, `users/${me.uid}/months/${MONTH}`, { sets: asSets([...pasteRows, ...convertedRows]), body: [], deleted: {}, updatedAt: at });
   await put(request, `users/${me.uid}/meta/index`, { months: { [MONTH]: at } });
   const a = await signedIn(browser, me, T), b = await signedIn(browser, me, T);
-  for (const p of [a, b]) { await goto(p, 'More'); await setCount(p, ALL); }
+  for (const p of [a, b]) { await goto(p, 'Backup'); await setCount(p, ALL); }
 
   await card(a).getByRole('button', { name: `Remove ${TWINS} duplicates` }).click();
   await card(a).getByRole('alert').getByRole('button', { name: `Remove ${TWINS}` }).click();
@@ -157,7 +158,7 @@ test('removed on one phone: gone on the other, never sent back up by it, and not
     files.set(path, { text: Buffer.from(body.content, 'base64').toString('utf8'), sha: `p${files.size}` });
     return route.fulfill({ status: 201, json: {} });
   });
-  await goto(a, 'More');
+  await goto(a, 'Backup');
   await dataSettled(a);
   const backup = a.getByRole('region', { name: 'Private backup' });
   await backup.getByRole('textbox', { name: 'Repository' }).fill('someone/backup');

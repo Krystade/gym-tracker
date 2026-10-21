@@ -10,7 +10,7 @@ async function seed(page: Page, rows: string[] = [
 ]) {
   await page.clock.install({ time: new Date('2026-10-02T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...rows].join('\n')) });
   await expect(page.getByText(`✓ Imported ${rows.length} new sets`)).toBeVisible();
   await goto(page, 'Today');
@@ -168,7 +168,7 @@ test('a card’s Best and Last lines are the same size, and an idle profile chip
   const card = page.locator('[data-card="seated cable row"]');
   const size = (t: RegExp) => card.getByText(t).evaluate((el) => getComputedStyle(el).fontSize);
   expect(await size(/^Last \(/)).toBe(await size(/^Best /));
-  await goto(page, 'More');
+  await goto(page, 'People');
   await page.getByRole('textbox', { name: 'Name' }).fill('Sam');
   await page.getByRole('button', { name: 'Add Sam' }).click();
   const idle = page.getByRole('group', { name: 'Who’s training' }).locator('button[aria-pressed=false]');

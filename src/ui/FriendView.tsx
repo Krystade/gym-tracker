@@ -42,7 +42,7 @@ export function Screens({ name, data, tab, exercise, today, gyms, onOpen, onExer
   if (tab === 'history') return <HistoryScreen who={name} store={store} onOpen={onOpen} />;
   if (tab === 'lifts') return <LiftsScreen who={name} loggedOnly store={store} onOpen={onOpen} />;
   return (<>
-    <StatsScreen readOnly who={name} store={store} profile={profile} programs={programs} body={body} photos={null} today={today} settings={settings} onOpenPhotos={() => {}} />
+    <StatsScreen readOnly who={name} store={store} profile={profile} programs={programs} body={body} today={today} settings={settings} />
     <TheirGyms list={(data.meta.gyms as { gyms?: Gym[] } | undefined)?.gyms ?? []} gyms={gyms} />
   </>);
 }

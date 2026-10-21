@@ -68,7 +68,7 @@ test('the “?” on the rest bar says why the rest is its length, above the bar
   await notched(page);
   await page.clock.install({ time: new Date('2026-10-16T18:00:00') });
   await page.goto('/');
-  await goto(page, 'More');
+  await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...LAST_WEEK].join('\n')) });
   await expect(page.getByText(`✓ Imported ${LAST_WEEK.length} new sets`)).toBeVisible();
   await goto(page, 'Today');
