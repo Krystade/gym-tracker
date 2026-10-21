@@ -132,12 +132,15 @@ const withTombstones = (cur: Tombstones | undefined, ids: string[], at: number |
  * Deletes a set and records its tombstone in one transaction, so a crash can't leave a deleted set that sync brings back.
  * `at`: when it was deleted; null for a delete another phone made, which the cloud has the time of.
  */
-export async function deleteSetWithTombstone(id: string, at: number | null = Date.now()): Promise<void> {
+export const deleteSetWithTombstone = (id: string, at: number | null = Date.now()): Promise<void> => deleteSetsWithTombstones([id], at);
+/** deleteSetWithTombstone for many sets at once (Duplicate imports): all of them and their tombstones, or none. */
+export async function deleteSetsWithTombstones(ids: string[], at: number | null = Date.now()): Promise<void> {
   const tx = (await db()).transaction([STORE, 'config'], 'readwrite');
   try {
-    tx.objectStore(STORE).delete(id).catch(() => {}); // tx.done carries the failure
+    const sets = tx.objectStore(STORE);
+    for (const id of ids) sets.delete(id).catch(() => {}); // tx.done carries the failure
     const cfg = tx.objectStore('config');
-    await cfg.put(withTombstones(await cfg.get('deleted'), [id], at));
+    await cfg.put(withTombstones(await cfg.get('deleted'), ids, at));
   } catch (e) {
     // Otherwise the delete would still commit without its tombstone. A failed write may have aborted it already.
     try { tx.abort(); } catch { /* already aborted: keep the real error */ }
@@ -148,12 +151,16 @@ export async function deleteSetWithTombstone(id: string, at: number | null = Dat
 }
 
 /** Undoes a delete: the set goes back and its tombstone goes, in one transaction. */
-export async function restoreSet(e: SetEntry): Promise<void> {
+export const restoreSet = (e: SetEntry): Promise<void> => restoreSets([e]);
+/** restoreSet for many sets at once (Duplicate imports' Undo). */
+export async function restoreSets(es: SetEntry[]): Promise<void> {
   const tx = (await db()).transaction([STORE, 'config'], 'readwrite');
   const cfg = tx.objectStore('config');
   const cur: Tombstones | undefined = await cfg.get('deleted');
-  const { [e.id]: _gone, ...at } = cur?.at ?? {};
-  await Promise.all([tx.objectStore(STORE).put(e), cfg.put({ key: 'deleted', ids: (cur?.ids ?? []).filter((x) => x !== e.id), at }), tx.done]);
+  const back = new Set(es.map((e) => e.id));
+  const at = Object.fromEntries(Object.entries(cur?.at ?? {}).filter(([id]) => !back.has(id)));
+  const sets = tx.objectStore(STORE);
+  await Promise.all([...es.map((e) => sets.put(e)), cfg.put({ key: 'deleted', ids: (cur?.ids ?? []).filter((x) => !back.has(x)), at }), tx.done]);
 }
 
 /**
@@ -474,7 +481,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 
 // Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
 const PER_PROFILE = {
-  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, putMany, getAllSettings, putSettings, deleteSettings, getTags, putTags, getStatus, putStatus, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan, deleteDayPlan,
+  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, deleteSetsWithTombstones, restoreSet, restoreSets, renameLift, putMany, getAllSettings, putSettings, deleteSettings, getTags, putTags, getStatus, putStatus, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan, deleteDayPlan,
   getBody, putBody, putBodyMany, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, getTombstoneTimes, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
   getReplaced, putReplaced, deleteReplaced, pruneReplaced, getSyncSnapshot, applySynced, applySyncedMeta,
 };

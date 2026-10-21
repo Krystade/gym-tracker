@@ -3,6 +3,7 @@ import { goto } from './nav';
 import { audit, check, clean, notched, TOP } from './layout';
 import { deloadLog, SIM_LIFTS, simDay } from '../src/domain/learn/deloadSim.sample';
 import { account, befriend, iso, log, ping, put, rand, session, signedIn, Ts, type Seeded } from './seed';
+import { convertedRows, pasteRows, toCsv as dupesCsv, TWINS } from './fixtures/dupes';
 
 // The layout audit (e2e/layout.ts) over every screen and state, at the 13 mini's 375×812 with its notch, in WebKit and Chromium.
 // Each test walks a part of the app with synthetic data (long names, big numbers) and fails listing every finding at once; the
@@ -251,6 +252,36 @@ test('Today mid-session: big numbers, Details, a superset, the rest bar and its 
   await page.getByRole('region', { name: 'Today’s plan' }).getByRole('button', { name: 'Swap' }).first().click();
   await expect(page.getByRole('list', { name: 'Suggested swaps' })).toBeVisible();
   await check(page, info, found, 'today-swap');
+  clean(found);
+});
+
+test('More: an import held back, and Duplicate imports with its days, the copies that differ, the confirm and the result', async ({ page }, info) => {
+  test.setTimeout(120_000);
+  await phone(page);
+  const found: string[] = [];
+  const csv = (name: string, text: string) => ({ name, mimeType: 'text/csv', buffer: Buffer.from(text) });
+  await goto(page, 'More');
+  await page.getByLabel('Import CSV').setInputFiles(csv('pasted.csv', dupesCsv(pasteRows)));
+  await expect(page.getByText(/✓ Imported \d+ new sets/)).toBeVisible();
+  await page.getByLabel('Import CSV').setInputFiles(csv('converted.csv', dupesCsv(convertedRows)));
+  const held = page.getByRole('alert');
+  await expect(held).toContainText('held back');
+  await held.scrollIntoViewIfNeeded();
+  await check(page, info, found, 'more-import-held-back');
+  await held.getByRole('button', { name: 'Add anyway' }).click();
+  const dupes = page.getByRole('region', { name: 'Duplicate imports' });
+  await expect(dupes).toContainText(`${TWINS} sets came in twice`);
+  await dupes.getByText(/^\d+ days?$/).click();
+  await dupes.getByText(/^\d+ that differ$/).click();
+  await expect(dupes.getByRole('list', { name: 'Copies that differ' })).toBeVisible();
+  await dupes.scrollIntoViewIfNeeded();
+  await check(page, info, found, 'more-duplicates');
+  await dupes.getByRole('button', { name: `Remove ${TWINS} duplicates` }).click();
+  await expect(dupes.getByRole('alert')).toBeVisible();
+  await check(page, info, found, 'more-duplicates-confirm');
+  await dupes.getByRole('alert').getByRole('button', { name: `Remove ${TWINS}` }).click();
+  await expect(dupes.getByRole('status')).toContainText('Removed');
+  await check(page, info, found, 'more-duplicates-removed');
   clean(found);
 });
 

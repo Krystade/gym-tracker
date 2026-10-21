@@ -15,7 +15,9 @@ import type { PeopleStore } from '../state/usePeople';
 import { parseBodyFile, stampDay, toBodyCsv, type CsvKind } from '../domain/body';
 import { parseProfileJson } from '../domain/profile';
 import { parseAliasesJson } from '../domain/notes';
-import { useDb } from '../state/profileDb';
+import { useDb, useProfileId } from '../state/profileDb';
+import { DuplicatesCard } from './DuplicatesCard';
+import type { OverlapGroup } from '../domain/duplicates';
 import { knownStoragePersistence, storagePersistence } from '../db/db';
 import { parseCsv, toCsv, type CsvError } from '../domain/csv';
 import { exerciseNames, sessionsByDate } from '../domain/stats';
@@ -31,10 +33,11 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
   onOpenPaste: () => void; onShowWalkthrough: () => void; onOpenCharacters: () => void; onOpenGym: () => void; onOpenProgram: () => void; onOpenPhotos: () => void;
 }) {
   const db = useDb();
+  const profileId = useProfileId();
   const [bodyMsgs, setBodyMsgs] = useState<{ ok: boolean; text: string }[]>([]);
-  const [result, setResult] = useState<{ added: number; updated: number; same: number; kept: boolean; errors: CsvError[] } | null>(null);
-  const [ask, setAsk] = useState<{ what: string; changed: number; fresh: number } | null>(null);
-  const answer = useRef<((replace: boolean) => void) | null>(null);
+  const [result, setResult] = useState<{ added: number; updated: number; same: number; kept: boolean; held: number; errors: CsvError[] } | null>(null);
+  const [ask, setAsk] = useState<{ what: string; changed: number; fresh: number } | { overlap: OverlapGroup[]; sets: number } | null>(null);
+  const answer = useRef<((yes: boolean) => void) | null>(null);
   const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [persisted, setPersisted] = useState<boolean | null | undefined>(knownStoragePersistence);
   useEffect(() => { if (persisted === undefined) void storagePersistence().then(setPersisted); }, []);
@@ -50,7 +53,7 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
 
   async function onFile(file: File) {
     let text: string;
-    try { text = await file.text(); } catch (e) { setResult({ added: 0, updated: 0, same: 0, kept: false, errors: [{ row: 0, message: `Could not read the file: ${String(e)}` }] }); return; }
+    try { text = await file.text(); } catch (e) { setResult({ added: 0, updated: 0, same: 0, kept: false, held: 0, errors: [{ row: 0, message: `Could not read the file: ${String(e)}` }] }); return; }
     if (/\.json$/i.test(file.name)) {
       const al = parseAliasesJson(text);
       if (al) {
@@ -82,16 +85,25 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
     const replace = d.changed.length > 0 && (await confirmReplace('set', d.changed.length, d.fresh.length));
     // A replaced set is an edit: stamped, so the other phone's older copy doesn't win it back in sync.
     const now = Date.now();
-    const list = replace ? [...d.fresh, ...d.changed.map((s) => ({ ...s, editedAt: now }))] : d.fresh;
+    // New sets on a day and lift the log already has from another import are held back unless added anyway, as the paste
+    // screen does: two imports of one log would otherwise put every set in twice (domain/duplicates).
+    const { held, groups } = d.overlap;
+    const anyway = held.length > 0 && (await confirmOverlap(groups, held.length));
+    const out = anyway ? new Set<string>() : new Set(held.map((e) => e.id));
+    const fresh = d.fresh.filter((e) => !out.has(e.id));
+    const list = replace ? [...fresh, ...d.changed.map((s) => ({ ...s, editedAt: now }))] : fresh;
     const r = list.length ? await store.importEntries(list) : { added: 0, updated: 0 };
-    if (r) setResult({ ...r, same: d.same, kept: !replace && d.changed.length > 0, errors });
+    if (r) setResult({ ...r, same: d.same, kept: !replace && d.changed.length > 0, held: out.size, errors });
   }
 
   // A promise the confirm card's buttons settle, so a pick of several files asks about one file at a time.
   function confirmReplace(what: string, changed: number, fresh: number): Promise<boolean> {
     return new Promise((resolve) => { answer.current = resolve; setAsk({ what, changed, fresh }); });
   }
-  function choose(replace: boolean) { answer.current?.(replace); answer.current = null; setAsk(null); }
+  function confirmOverlap(overlap: OverlapGroup[], sets: number): Promise<boolean> {
+    return new Promise((resolve) => { answer.current = resolve; setAsk({ overlap, sets }); });
+  }
+  function choose(yes: boolean) { answer.current?.(yes); answer.current = null; setAsk(null); }
 
   const [fallback, setFallback] = useState<string | null>(null);
   const [bodyFallback, setBodyFallback] = useState<string | null>(null);
@@ -131,7 +143,20 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
         </label>
         <button className="wide" onClick={onOpenPaste}>Paste from notes</button>
         <p className="muted small">History CSV, a name-mappings or priority profile .json, body.csv, or MyFitnessPal’s export (unzip it in Files, then pick Measurement-Summary and Nutrition-Summary together).</p>
-        {ask && (
+        {ask && 'overlap' in ask && (
+          <div role="alert" className="import-confirm">
+            <p>{plural(ask.sets, 'set')} in this file {ask.sets === 1 ? 'is' : 'are'} on days and lifts your log already has from another import, most likely the same sets twice. They’re held back.</p>
+            <ul className="overlap-list muted small">
+              {ask.overlap.slice(0, 4).map((g) => <li key={`${g.date}|${g.exercise}|${g.source}`}>{fmtDay(g.date, localDate(new Date()))} · {g.exercise} ({plural(g.sets, 'set')}; in your log from {g.existingSource}{g.existing !== g.exercise ? ` as ${g.existing}` : ''})</li>)}
+              {ask.overlap.length > 4 && <li>and {plural(ask.overlap.length - 4, 'more lift')}</li>}
+            </ul>
+            <div className="form-actions">
+              <button onClick={() => choose(true)}>Add anyway</button>
+              <button className="primary" autoFocus onClick={() => choose(false)}>Leave them out</button>
+            </div>
+          </div>
+        )}
+        {ask && !('overlap' in ask) && (
           <div role="alert" className="import-confirm">
             <p>This file changes {plural(ask.changed, ask.what)} already in your log{ask.fresh ? ` and adds ${plural(ask.fresh, `new ${ask.what}`)}` : ''}.</p>
             <div className="form-actions">
@@ -148,8 +173,9 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
               <div role="status">
                 {result.added + result.updated > 0
                   ? <p className="ok">✓ Imported {plural(result.added, 'new set')}{result.updated ? `, ${plural(result.updated, 'set')} updated` : ''}</p>
-                  : result.errors.length > 0 || result.kept || !result.same ? <p className="warn">Nothing imported</p>
+                  : result.errors.length > 0 || result.kept || result.held || !result.same ? <p className="warn">Nothing imported</p>
                   : <p className="muted">Nothing new: {plural(result.same, 'set')} already in your log</p>}
+                {result.held > 0 && <p className="muted">{plural(result.held, 'set')} held back: already in your log from another import</p>}
                 {result.errors.length > 0 && (<>
                   <p className="warn">{plural(result.errors.length, 'row')} skipped</p>
                   <ul className="errors">{result.errors.slice(0, 50).map((e) => <li key={e.row}>Row {e.row}: {e.message}</li>)}</ul>
@@ -167,6 +193,7 @@ export function DataScreen({ store, profile, body, sync, cloud, people, onOpenPa
           ? <p className="muted" role="status">{bodyFallback}</p>
           : <textarea className="csv" aria-label="Body CSV export" readOnly value={bodyFallback} onFocus={(e) => e.currentTarget.select()} />)}
       </section>
+      <DuplicatesCard store={store} profile={profileId} onBackup={exportCsv} />
       <CycleCard name={people.active?.name ?? 'Me'} />
       <AccountCard cloud={cloud} people={people.people} replaced={cloud.mine ? replacedList : undefined} />
       <NotificationsCard signedIn={cloud.mine} goal={profile.profile.weeklyGoal} entries={store.entries} />

@@ -29,14 +29,15 @@ export function useSync(store: SetsStore, body: BodyStore, person: Person) {
       // The log as the database has it; what the pull takes lands only where it's still that (db applySynced).
       const log = await db.getSyncSnapshot();
       const r = await sync({
-        client: repoClient(config, (u, i) => fetch(u, i)), sets: log.sets, body: log.body, deleted: log.tombstones, tombAt: log.tombAt, now: new Date(),
+        client: repoClient(config, (u, i) => fetch(u, i)), sets: log.sets, body: log.body, deleted: log.tombstones, tombAt: log.tombAt, now: new Date(), historySeen: config.historySha,
         paths: pathsFor(person.id === MAIN ? null : person.slug),
         apply: phoneApply(db, { log: async () => { await store.synced(); await body.reload(); }, replaced: replacedChanged }).applyMonth,
       });
-      const next = { ...config, lastSync: new Date().toISOString() };
+      const next = { ...config, lastSync: new Date().toISOString(), historySha: r.historySha ?? config.historySha };
       await putSyncConfig(next); setConfig(next);
       const removed = r.removedSets ? `; ${r.removedSets} set${r.removedSets === 1 ? '' : 's'} deleted on another device removed` : '';
-      setStatus({ kind: 'done', text: `Synced: ${r.pulledSets} sets and ${r.pulledBody} body days pulled in${removed}; backup holds ${r.pushedSets} sets and ${r.pushedBody} body days.` });
+      const held = r.heldBack ? `; ${r.heldBack} history.csv set${r.heldBack === 1 ? '' : 's'} held back, already in your log from another import (Import CSV can add them anyway)` : '';
+      setStatus({ kind: 'done', text: `Synced: ${r.pulledSets} sets and ${r.pulledBody} body days pulled in${removed}${held}; backup holds ${r.pushedSets} sets and ${r.pushedBody} body days.` });
     } catch (e) {
       setStatus({ kind: 'error', text: e instanceof SyncError ? e.message : `Sync failed: ${String(e)}` });
     }

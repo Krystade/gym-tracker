@@ -50,6 +50,7 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
 .ok { color: var(--ok); }
 .import-result { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .import-confirm { margin-top: 12px; padding: 12px 16px; background: var(--surface-2); box-shadow: inset 3px 0 var(--warn); border-radius: var(--r-group); }
+.overlap-list { margin: 0 0 10px; padding-left: 18px; overflow-wrap: anywhere; }
 
 .app { min-height: 100dvh; display: flex; flex-direction: column; }
 /* Capped and centred for landscape and tablets; the side insets keep it out from under the notch. */
@@ -581,6 +582,24 @@ details.builder[open] > summary { margin-bottom: 8px; }
 .replaced-pair p { margin: 0; padding: 8px 10px; border-radius: var(--r-md); background: var(--surface-2); display: grid; align-content: start; gap: 2px; overflow-wrap: anywhere; }
 .replaced-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .replaced-actions button { flex: 1 1 auto; }
+
+/* More → Duplicate imports */
+.dupes > p { margin: 0 0 6px; }
+.dupes-more { border-top: 1px solid var(--line); }
+.dupes-more > summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-weight: 600; }
+.dupes-more > summary::-webkit-details-marker { display: none; }
+.dupes-more > summary::after { content: '›'; font-size: var(--fs-xl); color: var(--text-3); transition: transform 0.15s; }
+.dupes-more[open] > summary::after { transform: rotate(90deg); }
+.dupes-days, .dupes-pairs { list-style: none; padding: 0; margin: 0 0 8px; }
+.dupes-days li { display: grid; gap: 2px; padding: 8px 0; overflow-wrap: anywhere; }
+.dupes-days li + li, .dupes-pairs li + li { border-top: 1px solid var(--line); }
+.dupes-pairs li { padding: 10px 0; }
+.dupe-diff { color: var(--accent-text); font-weight: 600; }
+.dupes .tag { white-space: nowrap; font-style: normal; display: inline-block; }
+.tag.dupe-diff { box-shadow: inset 0 0 0 1px var(--accent-text); }
+.dupes-steps { list-style: none; padding: 8px 0 0; margin: 0; border-top: 1px solid var(--line); }
+.dupes-steps li > .muted { display: block; margin-top: 4px; }
+.dupes-done { margin-bottom: 4px; }
 
 /* Paste from notes */
 .paste-label { display: grid; gap: 6px; font-size: var(--fs-sm); color: var(--muted); }

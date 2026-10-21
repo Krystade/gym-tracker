@@ -503,3 +503,63 @@ describe('deletes in the backup (round 10, 2b)', () => {
     expect(deletesIn(gh)).toEqual({ [theirsGone.id]: T1, [mineGone.id]: T2 });
   });
 });
+
+describe('history.csv, once and without twins (round 20)', () => {
+  // A day pasted in on the phone ('notes') that history.csv also holds, from a converter run over the same notes ('log-csv').
+  const row = (source: string, date: string, exercise: string, setNo: number, weight: number): SetEntry =>
+    ({ id: setId(source, date, exercise, setNo), date, seq: seq++, exercise, setNo, weight, reps: 10, flags: [], source });
+  const D = '2026-04-03';
+  const pasted = [row('notes', D, 'Cable Curl', 1, 50), row('notes', D, 'Cable Curl', 2, 55), row('notes', D, 'Hanging Leg Raise', 1, 0)];
+  const converted = [row('log-csv', D, 'Cable Curl', 1, 50), row('log-csv', D, 'Cable Curl', 2, 55), row('log-csv', D, 'Leg Raise', 1, 0)];
+  const elsewhere = row('log-csv', '2026-04-10', 'Cable Curl', 1, 60);
+  const run = async (gh: ReturnType<typeof fakeGitHub>, sets: SetEntry[], o: { deleted?: string[]; tombAt?: Record<string, number>; historySeen?: string } = {}) => {
+    const got = { sets: [] as SetEntry[], deleted: [] as string[] };
+    const r = await sync({
+      client: repoClient(CFG, gh.fetchFn), sets, body: [], deleted: new Set(o.deleted ?? []), tombAt: o.tombAt, now: new Date('2026-10-20T12:00:00Z'), historySeen: o.historySeen,
+      apply: async (_b, taken) => { got.sets.push(...taken.importSets); got.deleted.push(...taken.deleteIds); return { taken, replaced: [], skipped: 0 }; },
+    });
+    return { r, got };
+  };
+
+  it('leaves out history rows on a day and lift the phone already has from another import, renamed lifts too, and says how many', async () => {
+    const gh = fakeGitHub({ 'history.csv': toCsv([...converted, elsewhere]) });
+    const { r, got } = await run(gh, pasted);
+    expect(ids(got.sets)).toEqual([elsewhere.id]);
+    expect(r).toMatchObject({ pulledSets: 1, heldBack: 3, pushedSets: 4 });
+    expect(ids(parseCsv(gh.store.get('app/sets.csv')!.text).entries)).toEqual(ids([...pasted, elsewhere]));
+  });
+
+  it('checks against the backup’s copy of the log too, on a phone that has nothing yet', async () => {
+    const gh = fakeGitHub({ 'history.csv': toCsv(converted), 'app/sets.csv': toCsv(pasted) });
+    const { r, got } = await run(gh, []);
+    expect(ids(got.sets)).toEqual(ids(pasted));
+    expect(r.heldBack).toBe(3);
+  });
+
+  it('pulls a history.csv once: the same file again brings back nothing the phone no longer has; a changed one is read again', async () => {
+    const gh = fakeGitHub({ 'history.csv': toCsv([elsewhere]) });
+    const first = await run(gh, []);
+    expect(ids(first.got.sets)).toEqual([elsewhere.id]);
+    expect(first.r.historySha).toBe('sha-history.csv-0');
+    gh.store.delete('app/sets.csv'); // only history.csv could bring it back now
+    const again = await run(gh, [], { historySeen: first.r.historySha });
+    expect(again.got.sets).toEqual([]);
+    gh.store.set('history.csv', { text: toCsv([elsewhere, row('log-csv', '2026-04-11', 'Cable Curl', 1, 65)]), sha: 'sha-history.csv-1' });
+    gh.store.delete('app/sets.csv');
+    const changed = await run(gh, [], { historySeen: first.r.historySha });
+    expect(changed.got.sets.map((s) => s.date)).toEqual(['2026-04-10', '2026-04-11']);
+    expect(changed.r.historySha).toBe('sha-history.csv-1');
+  });
+
+  it('after the duplicates are removed, neither history.csv nor an old backup still holding them brings them back, and deleted.csv lists them', async () => {
+    const T = Date.parse('2026-10-20T11:00:00Z');
+    const gh = fakeGitHub({ 'history.csv': toCsv(converted), 'app/sets.csv': toCsv([...pasted, ...converted]) });
+    const tomb = Object.fromEntries(converted.map((e) => [e.id, T]));
+    const { got } = await run(gh, pasted, { deleted: converted.map((e) => e.id), tombAt: tomb });
+    expect(got.sets).toEqual([]);
+    expect(ids(parseCsv(gh.store.get('app/sets.csv')!.text).entries)).toEqual(ids(pasted));
+    expect(parseDeletedCsv(gh.store.get('app/deleted.csv')!.text).deleted).toEqual(tomb);
+    // A fresh phone restoring from that backup gets the paste and none of the twins.
+    expect(ids((await run(gh, [])).got.sets)).toEqual(ids(pasted));
+  });
+});

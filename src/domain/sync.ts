@@ -2,12 +2,14 @@ import { parseCsv, parseRows, toCsv, type CsvError } from './csv';
 import { BODY_FIELDS, mergeBody, parseBodyFile, toBodyCsv, type BodyDay } from './body';
 import type { SetEntry } from './types';
 import { editStamp, lifeStamp } from './cloud';
+import { importOverlap } from './duplicates';
 import type { Replaced, Taken } from './replaced';
 
 // The spec's one deliberate network exception: sets and body data to the user's own private repo,
 // only when they tap Sync, with a token they pasted in. Photos never come through here.
 
-export interface SyncConfig { key: 'sync'; repo: string; token: string; branch: string; lastSync?: string }
+/** `historySha`: the content sha of the history.csv this phone last pulled; the same file isn't pulled again. */
+export interface SyncConfig { key: 'sync'; repo: string; token: string; branch: string; lastSync?: string; historySha?: string }
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export class SyncError extends Error {
@@ -142,13 +144,19 @@ type SyncDeps = {
   /** This phone's tombstones, and when each delete made here went, where known (db getSyncSnapshot). */
   deleted: Set<string>; tombAt?: Record<string, number>;
   now: Date; paths?: SyncPaths;
+  /** The sha of the history.csv a sync last pulled (SyncConfig historySha): a file with that same content is not pulled again. */
+  historySeen?: string;
   /**
    * Saves what the pull takes onto this phone, keeping first this phone's values it replaces (domain/replaced): only what's still
    * as `base` had it, so an edit made here while the pull was out stays for the next sync (db applySynced). Throws if it couldn't.
    */
   apply: (base: { sets: SetEntry[]; body: BodyDay[] }, taken: Taken, now: number) => Promise<{ taken: Taken; replaced: Replaced[]; skipped: number }>;
 };
-type SyncResult = { pulledSets: number; pulledBody: number; removedSets: number; pushedSets: number; pushedBody: number };
+/**
+ * `historySha`: the history.csv this sync read, to pass back as `historySeen`. `heldBack`: its sets left out because the log
+ * already has their day and lift from another import (the same sets imported twice).
+ */
+type SyncResult = { pulledSets: number; pulledBody: number; removedSets: number; pushedSets: number; pushedBody: number; historySha?: string; heldBack: number };
 
 /** Pull everything first (a failed pull pushes nothing), merge — the newer edit or delete wins — then push.
  *  If the backup moves underneath us, the whole pull→merge→push runs once more, so the other writer's rows are kept. */
@@ -191,8 +199,14 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
   const gone = (id: string, stamp: number) => id in deleted && stamp <= deleted[id];
 
   const incoming = new Map<string, SetEntry>();
-  // history.csv is only read, never written, so rows it can't parse are skipped rather than blocking the sync.
-  for (const entries of [history ? parseCsv(history.text, 'backup').entries : [], parsedSets?.entries ?? []]) {
+  // history.csv is a one-time seed, only read, never written: pulled once per content (its sha), so a set removed from the log
+  // isn't brought back by the next sync. Rows it can't parse are skipped rather than blocking the sync. New rows on a day and
+  // lift the log (or the backup's copy of it) already has from another import are held back: the same sets twice.
+  const fromHistory = history && history.sha !== deps.historySeen ? parseCsv(history.text, 'backup').entries : [];
+  const backupSets = parsedSets?.entries ?? [];
+  const historyNew = fromHistory.filter((e) => !have.has(e.id) && !gone(e.id, setStamp(e)));
+  const held = new Set(importOverlap([...deps.sets, ...backupSets.filter((e) => !gone(e.id, setStamp(e)))], historyNew).held.map((e) => e.id));
+  for (const entries of [fromHistory.filter((e) => !held.has(e.id)), backupSets]) {
     for (const e of entries) {
       const mine = have.get(e.id);
       if (!mine) { if (!gone(e.id, setStamp(e))) incoming.set(e.id, e); continue; }
@@ -239,10 +253,10 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
     await client.put(BODY_PATH, toBodyCsv(body), remoteBody?.sha, message);
   } catch (e) {
     // What was pulled is already on the phone; the retry starts from there.
-    if (e instanceof SyncError && e.kind === 'conflict') e.pulled = { sets, body, counts: [taken.importSets.length, taken.importBody.length, taken.deleteIds.length] };
+    if (e instanceof SyncError && e.kind === 'conflict') e.pulled = { sets, body, counts: [taken.importSets.length, taken.importBody.length, taken.deleteIds.length]};
     throw e;
   }
-  return { pulledSets: taken.importSets.length, pulledBody: taken.importBody.length, removedSets: taken.deleteIds.length, pushedSets: sets.length, pushedBody: body.length };
+  return { pulledSets: taken.importSets.length, pulledBody: taken.importBody.length, removedSets: taken.deleteIds.length, pushedSets: sets.length, pushedBody: body.length, historySha: history?.sha, heldBack: held.size };
 }
 
 /** GitHub's new-token form, pre-filled (template URL). The repository still has to be picked there: GitHub doesn't take it as a parameter. */

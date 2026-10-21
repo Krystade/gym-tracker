@@ -4,6 +4,7 @@ import { useDb, useProfileId } from './profileDb';
 import { buildNamedSet, type NewSetInput } from '../domain/buildSet';
 import { canonicalName } from '../domain/stats';
 import { diffSets } from '../domain/csv';
+import { importOverlap } from '../domain/duplicates';
 import type { SetEntry } from '../domain/types';
 
 // Other open copies of the app (a Safari tab beside the installed app) hear about each change and re-read.
@@ -68,6 +69,27 @@ export function useSets() {
     return true;
   }, []);
 
+  /** Many sets deleted at once (Duplicate imports), each with its tombstone, so every device syncing drops them too. */
+  const removeMany = useCallback(async (ids: string[]): Promise<boolean> => {
+    try { await db.deleteSetsWithTombstones(ids); } catch (err) { fail('Deleting', err); return false; }
+    const gone = new Set(ids);
+    ref.current = ref.current.filter((x) => !gone.has(x.id));
+    setEntries(ref.current);
+    announce();
+    return true;
+  }, []);
+
+  /** Undo for removeMany: each set back, stamped like restore so the delete it undoes can't win again in sync. */
+  const restoreMany = useCallback(async (gone: SetEntry[]): Promise<boolean> => {
+    const now = Date.now(), es = gone.map((e) => ({ ...e, restoredAt: now }));
+    try { await db.restoreSets(es); } catch (err) { fail('Undoing the delete', err); return false; }
+    const back = new Set(es.map((e) => e.id));
+    ref.current = [...ref.current.filter((x) => !back.has(x.id)), ...es];
+    setEntries(ref.current);
+    announce();
+    return true;
+  }, []);
+
   /** A sync saved sets straight to the database (db applySynced): re-read, and tell the other open copies. */
   const synced = useCallback(async () => { await reload(); announce(); }, [reload]);
 
@@ -108,8 +130,12 @@ export function useSets() {
   }, [reload]);
 
   // Reads the database, not state: back-to-back files in one pick must see each other's rows.
-  const diff = useCallback(async (list: SetEntry[]) => diffSets(await db.getAllSets(), list), [db]);
+  const diff = useCallback(async (list: SetEntry[]) => {
+    const all = await db.getAllSets(), d = diffSets(all, list);
+    // New sets on a day and lift the log has from another import: most likely the same sets imported twice (domain/duplicates).
+    return { ...d, overlap: importOverlap(all, d.fresh) };
+  }, [db]);
 
-  return { entries, loading, error, add, update, remove, synced, restore, reapply, rename, importEntries, diff };
+  return { entries, loading, error, add, update, remove, removeMany, synced, restore, restoreMany, reapply, rename, importEntries, diff };
 }
 export type SetsStore = ReturnType<typeof useSets>;
