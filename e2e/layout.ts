@@ -58,6 +58,9 @@ export const ALLOW: Allow[] = [
   { kind: 'overlap', a: '.fd-corner, .fd-corner *', b: '.fd-ringwrap > .ring, .fd-ringwrap > .ring *, .fd-ringwrap > .avatar, .fd-ringwrap > .avatar *', why: 'a feed avatar’s done/live corner badge sits on its own ring, inside the ring’s box' },
   { kind: 'overlap', a: '.st-ringwrap > .ring, .st-ringwrap > .ring *', b: '.st-rc, .st-rc *', why: 'the week’s count is centred in the hole of its 76px ring (a 1-or-2-digit count out of the goal fits inside it)' },
   { kind: 'overlap', a: '.mband', b: '.mbar, .mtrack', why: 'the muscle-volume band brackets the bar it marks (3px above and below it, by design)' },
+  { kind: 'overlap', a: '.st-tl-track i', b: '.st-tl-track i', why: 'PRs days apart on one row of the PR timeline: their ticks touch, as marks on a strip do' },
+  { kind: 'overlap', a: '.st-div .st-b-track > b', b: '.st-div .st-b-track > i', why: 'a bar either side of zero starts at the zero line drawn across it' },
+  { kind: 'overlap', a: '.st-db-track i', b: '.st-db-track b, .st-db-track i', why: 'a rest’s two dots (you, the timer) sit on the ends of the bar joining them, and meet when the two are close' },
 ];
 
 /** Every finding on the screen as it is now; `extra` adds allowances for this screen only. */

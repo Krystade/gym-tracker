@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { addDays, calendarDays, streak, weekStart, weeklyMuscleSets, weeklySummary } from './analytics';
+import { addDays, calendarDays, SESSION_CAP, sessionsLeft, streak, weekStart, weekStatus, weeklyMuscleSets, weeklySummary } from './analytics';
 
 let seq = 0;
 const s = (date: string, exercise: string, weight: number, reps: number | null, over: Partial<SetEntry> = {}): SetEntry => ({
@@ -82,5 +82,61 @@ describe('summary, streak, calendar', () => {
     expect(c).toHaveLength(7);
     expect(c.at(-1)).toEqual({ date: '2026-09-30', sets: 0 });
     expect(c.find((d) => d.date === '2026-09-29')?.sets).toBe(1);
+  });
+});
+
+// The week of Mon 12 – Sun 18 Oct 2026, one day at a time.
+const WEEK = ['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18'] as const;
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+describe('sessionsLeft: what the rest of the week can still hold, at his goal', () => {
+  it('counts the days to come, today included until he trains, never more than his goal has left', () => {
+    // Goal 3, nothing done yet: three sessions left until only two days (Sat) and one (Sun) remain.
+    expect(WEEK.map((d) => sessionsLeft(d, 3, 0, false))).toEqual([3, 3, 3, 3, 3, 2, 1]);
+    // Goal 3, one session done earlier in the week: two left until Sunday.
+    expect(WEEK.map((d) => sessionsLeft(d, 3, 1, false))).toEqual([2, 2, 2, 2, 2, 2, 1]);
+    // Trained today: today is spent. Sunday's session ends the week.
+    expect(WEEK.map((d) => sessionsLeft(d, 3, 1, true))).toEqual([2, 2, 2, 2, 2, 1, 0]);
+  });
+  it('leaves one more session while a day is left, even past the goal', () => {
+    expect(WEEK.map((d) => sessionsLeft(d, 2, 2, false))).toEqual([1, 1, 1, 1, 1, 1, 1]);
+    expect(WEEK.map((d) => sessionsLeft(d, 2, 3, true))).toEqual([1, 1, 1, 1, 1, 1, 0]);
+  });
+});
+
+describe('weekStatus: behind means the rest of the week can’t make it up, not that the week has days to go', () => {
+  const tier1: [number, number] = [12, 20], tier3: [number, number] = [4, 6];
+  /** Each weekday's status for `value` sets, the goal and the sessions done so far. */
+  const week = (value: number, range: [number, number], goal: number, done: number, trainedToday = false) =>
+    Object.fromEntries(WEEK.map((d, i) => [DAYS[i], weekStatus(value, range, sessionsLeft(d, goal, done, trainedToday))]));
+  it('nothing done yet: on pace every day the sessions left can still reach the target', () => {
+    expect(week(0, tier3, 2, 0)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'pace', Sun: 'pace' });
+    // Twelve sets need two sessions (a session adds at most SESSION_CAP to a muscle): behind only once one session is left.
+    expect(SESSION_CAP).toBeLessThan(12);
+    expect(week(0, tier1, 2, 0)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'pace', Sun: 'under' });
+    expect(week(0, tier1, 3, 0)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'pace', Sun: 'under' });
+  });
+  it('one session in that skipped the muscle (an upper day): its legs day can still come', () => {
+    expect(week(0, tier3, 2, 1)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'pace', Sun: 'pace' });
+    // At goal 2 the one session left can't hold 12: behind once the other session is done. At goal 3, two left, until Sunday.
+    expect(week(0, tier1, 2, 1)).toEqual({ Mon: 'under', Tue: 'under', Wed: 'under', Thu: 'under', Fri: 'under', Sat: 'under', Sun: 'under' });
+    expect(week(0, tier1, 3, 1)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'pace', Sun: 'under' });
+    expect(week(2, tier1, 2, 1)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'pace', Sun: 'pace' });
+  });
+  it('the week over (trained on Sunday): anything short is behind; on target and over whatever the day', () => {
+    expect(week(3, tier3, 2, 2, true)).toEqual({ Mon: 'pace', Tue: 'pace', Wed: 'pace', Thu: 'pace', Fri: 'pace', Sat: 'pace', Sun: 'under' });
+    expect(week(5, tier3, 2, 0)).toEqual({ Mon: 'on', Tue: 'on', Wed: 'on', Thu: 'on', Fri: 'on', Sat: 'on', Sun: 'on' });
+    expect(week(7, tier3, 2, 0)).toEqual({ Mon: 'over', Tue: 'over', Wed: 'over', Thu: 'over', Fri: 'over', Sat: 'over', Sun: 'over' });
+  });
+  it('the edge: exactly what the sessions left can add is on pace, a set more is behind', () => {
+    expect(weekStatus(12 - SESSION_CAP, tier1, 1)).toBe('pace');
+    expect(weekStatus(12 - SESSION_CAP - 0.5, tier1, 1)).toBe('under');
+    expect(weekStatus(0, tier3, 0)).toBe('under');
+  });
+  it('without sessions left (a program), the plain status', () => {
+    expect(weekStatus(2, tier3)).toBe('under');
+    expect(weekStatus(4, tier3)).toBe('on');
+    expect(weekStatus(6, tier3)).toBe('on');
+    expect(weekStatus(6.5, tier3)).toBe('over');
   });
 });

@@ -122,7 +122,7 @@ span.st-meter i, div.st-meter i { display: block; height: 100%; width: var(--w);
 .st-pr-t { font-size: var(--fs-body); font-weight: 700; line-height: 22px; }
 .st-pr-d { font-size: var(--fs-sm); color: var(--gold-ink-2); }
 .st-list { list-style: none; margin: 0; padding: 0; }
-.st-list li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 2px 10px; padding: 8px 0; border-top: 1px solid var(--hairline); font-size: var(--fs-sub); }
+.st-list li { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 2px 10px; padding: 8px 0; border-top: 1px solid var(--hairline); font-size: var(--fs-sub); }
 .st-list li:first-child { border-top: 0; }
 .st-list-d { color: var(--text-2); font-size: var(--fs-sm); grid-row: span 2; }
 .st-list-m { overflow-wrap: anywhere; }
@@ -136,6 +136,8 @@ span.st-meter i, div.st-meter i { display: block; height: 100%; width: var(--w);
 .st-ml-v { font-size: var(--fs-sm); color: var(--text-2); display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; }
 .st-ml-v b { color: var(--text); font-size: var(--fs-body); }
 .st-ml-v small { margin-left: 6px; color: var(--text-3); font-size: var(--fs-sm); }
+.st-ml-d { grid-column: 1 / -1; font-size: var(--fs-sm); color: var(--text-2); }
+.st-ml-d b { color: var(--text); font-weight: 600; }
 
 .st-hint { margin: 0 0 12px; font-size: var(--fs-sm); color: var(--text-2); }
 .st-behind { margin: 0 0 12px; padding: 10px 12px; border-radius: var(--r-group); background: var(--surface); }
@@ -153,3 +155,52 @@ span.st-fix { min-height: 0; color: var(--text-2); }
 .st-sh-body .chart .line { stroke: var(--text-3); }
 .st-sh-body .chart .pt:not(.pr):not(.sel) { stroke: var(--text-3); fill: var(--surface-2); }
 .st-sh-body .chart .pt.pr { stroke: var(--accent); fill: var(--accent); }
+
+/* ---- S2: the new tiles' visuals and sheets ---- */
+.st-pp-l { fill: var(--text-2); font-size: 11px; }
+.st-spark .st-ref { stroke: var(--text-3); stroke-width: 1; }
+
+/* Bars from zero, a row each: label and number above, the bar under them. */
+.st-bars { list-style: none; margin: 0 0 8px; padding: 0; }
+.st-bars li, .st-db li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--hairline); }
+.st-bars li:first-child, .st-db li:first-child { border-top: 0; }
+.st-b-l { min-width: 0; font-size: var(--fs-sub); overflow-wrap: anywhere; }
+.st-b-l small { color: var(--text-2); font-size: var(--fs-sm); }
+.st-b-v { font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.st-b-track { grid-column: 1 / -1; position: relative; display: block; height: 8px; border-radius: 4px; background: var(--fill); }
+.st-b-track > i { display: block; height: 100%; width: var(--w); min-width: 3px; border-radius: 4px; background: var(--col); }
+/* Either side of zero: the zero a line across the track, the bar from it. */
+.st-div .st-b-track > i { position: absolute; top: 0; }
+.st-div .st-b-track > b { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--text-2); }
+
+/* Rest against the timer: two dots on one scale, joined. */
+.st-db { list-style: none; margin: 0; padding: 0; }
+.st-db-track { grid-column: 1 / -1; position: relative; display: block; height: 14px; }
+.st-db-track::before { content: ''; position: absolute; left: 0; right: 0; top: 6px; height: 2px; border-radius: 1px; background: var(--fill); }
+.st-db-track b { position: absolute; top: 5px; height: 4px; border-radius: 2px; background: var(--text-3); }
+.st-db-track i { position: absolute; top: 1px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; }
+.st-db-track i.you, .st-legend i.you { background: var(--accent); }
+.st-db-track i.timer, .st-legend i.timer { background: var(--surface-2); border: 2px solid var(--text-2); box-sizing: border-box; }
+.st-legend { display: flex; gap: 16px; margin: 6px 0 0; font-size: var(--fs-sm); color: var(--text-2); }
+.st-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.st-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
+
+/* PRs by kind: a row per kind, a dot per PR along the range. */
+.st-tl { display: grid; gap: 4px; margin: 0 0 8px; }
+.st-tl-row { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 24px; }
+.st-tl-k { display: flex; justify-content: space-between; gap: 6px; font-size: var(--fs-sm); color: var(--text-2); }
+.st-tl-k b { color: var(--text); font-variant-numeric: tabular-nums; }
+.st-tl-track { position: relative; display: block; height: 14px; margin: 0 6px; }
+.st-tl-track::before { content: ''; position: absolute; left: -6px; right: -6px; top: 6px; height: 2px; background: var(--fill); }
+.st-tl-track i { position: absolute; top: 0; width: 3px; height: 14px; margin-left: -1.5px; border-radius: 1.5px; background: var(--col); }
+.st-tl-track i.now { background: var(--accent); }
+.st-tl-axis { display: flex; justify-content: space-between; margin-left: 98px; font-size: var(--fs-xs); color: var(--text-3); }
+
+/* Plateaus: each flat lift, why, and its next variation. */
+.st-plat { list-style: none; margin: 0 0 8px; padding: 0; }
+.st-plat li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--hairline); }
+.st-plat li:first-child { border-top: 0; }
+.st-pl-n { min-width: 0; font-size: var(--fs-sub); font-weight: 600; overflow-wrap: anywhere; }
+.st-pl-s { font-size: var(--fs-sm); white-space: nowrap; }
+.st-pl-why, .st-pl-rot { grid-column: 1 / -1; font-size: var(--fs-sm); color: var(--text-2); }
+.st-pl-rot b { color: var(--text); font-weight: 600; }

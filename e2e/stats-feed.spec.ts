@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { goto, statsSheet } from './nav';
 
 // Stats as answers (round 18): the week's ring, a new PR (confetti once), Getting stronger with a flat lift flagged, Next
-// milestones, and Behind this week with a lift for each. Synthetic numbers only. Today: Thu 15 Oct 2026, 18:00.
+// milestones, and the week's muscles (none behind on a Thursday). Synthetic numbers only. Today: Thu 15 Oct 2026, 18:00.
 const TODAY = '2026-10-15';
 const SHOTS = 'screenshots/stats-feed';
 mkdirSync(SHOTS, { recursive: true });
@@ -81,7 +81,9 @@ test('Stats answers: the week’s ring, the new PR, who’s getting stronger and
   // Milestones read the fatigue-adjusted level (item 04), a little under today's 245 lb top set.
   await expect(d.getByRole('img', { name: /^2[34]\d of 250 lb$/ })).toBeVisible();
   d = await statsSheet(page, 'muscles');
-  await expect(d.getByRole('region', { name: 'Behind this week' }).locator('li').first()).toBeVisible();
+  // Thursday, trained today, 1 of 3: two sessions left can still make up any muscle, so none reads behind (stats.spec has Sunday's).
+  await expect(d).toContainText('Thursday: 2 sessions left this week');
+  await expect(d.getByRole('region', { name: 'Behind this week' })).toHaveCount(0);
   await d.getByRole('button', { name: 'Done' }).click();
 
   // The confetti is once per PR: back on Stats, the tile stays and nothing falls.

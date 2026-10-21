@@ -1,4 +1,4 @@
-import { addDays, streak, weekStart, weeklyMuscleSets, weeklySummary } from './analytics';
+import { addDays, sessionsLeft, streak, weekStart, weekStatus, weeklyMuscleSets, weeklySummary } from './analytics';
 import { isCardio, isCardioEntry } from './cardio';
 import { monthOf } from './cloud';
 import { dayKinds, isWorking, KINDS, sessionOn, type Kind, type LiftDone } from './crew';
@@ -238,18 +238,17 @@ export function topLifts(entries: readonly SetEntry[], today: string, n = 4, spa
   return rows.sort((a, b) => b.count - a.count || b.last.localeCompare(a.last)).slice(0, n).map((r) => r.name);
 }
 
-/** How much of the training week is behind us on `today`: the days before it (Monday asks for nothing yet). */
-export const weekPaceOf = (today: string) => days(weekStart(today), today) / 7;
-
 /** A muscle behind where the week should be: its sets so far, its target range, and a lift of yours that works it most. */
 export interface Behind { muscle: Muscle; sets: number; range: [number, number]; fix: string | null }
-/** Muscles under their target and under the week's pace, the furthest behind first, `max` of them. */
+/**
+ * Muscles behind what the rest of the week can still make up (analytics weekStatus, with the sessions his goal has left), the
+ * furthest behind first, `max` of them.
+ */
 export function behindMuscles(entries: SetEntry[], profile: Profile, today: string, max = 4): Behind[] {
-  const pace = weekPaceOf(today);
-  if (pace <= 0) return [];
   const { sets } = weeklyMuscleSets(entries, weekStart(today));
+  const left = sessionsLeft(today, profile.weeklyGoal, goalWeek(entries, today, profile.weeklyGoal).sessions, entries.some((e) => e.date === today && isWorking(e)));
   return MUSCLES.map((m) => ({ muscle: m, sets: sets[m], range: targetFor(profile, m) }))
-    .filter((b) => b.range[0] > 0 && b.sets < b.range[0] && b.sets < b.range[0] * pace)
+    .filter((b) => b.range[0] > 0 && weekStatus(b.sets, b.range, left) === 'under')
     .sort((a, b) => a.sets / a.range[0] - b.sets / b.range[0] || MUSCLES.indexOf(a.muscle) - MUSCLES.indexOf(b.muscle))
     .slice(0, max)
     .map((b) => ({ ...b, fix: quickFix(entries, b.muscle, today) }));

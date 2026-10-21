@@ -96,7 +96,7 @@ async function seed(page: Pg, weeks = 12) {
   await goto(page, 'Stats');
 }
 
-test('stats: early in the week, a muscle keeping up with the week reads on pace, with its target beside the value', async ({ page }) => {
+test('stats: early in the week nothing is behind; Sunday, trained, what the week missed is', async ({ page }) => {
   // Monday: two Bench sets. Chest (priority 3) fits one 15-set session × 2 a week to 2.5–4. Wednesday: behind the target, ahead of the week.
   await page.clock.install({ time: new Date('2026-09-28T18:00:00') });
   await page.goto('/');
@@ -113,8 +113,26 @@ test('stats: early in the week, a muscle keeping up with the week reads on pace,
   await expect(chest.locator('.mval')).toHaveText('2 / 2.5–4');
   await expect(chest.locator('.mstat')).toHaveText(/on pace/);
   await expect(chest).toHaveAttribute('aria-label', /on pace/);
-  // Nothing logged for Calves: behind any pace.
-  await expect(page.locator('.mrow[aria-label^="Calves:"] .mstat')).toHaveText(/under/);
+  // Nothing logged for Calves yet, but a session left can still do it all: on pace too, and nothing reads behind.
+  await expect(page.locator('.mrow[aria-label^="Calves:"] .mstat')).toHaveText(/on pace/);
+  await expect(page.getByRole('region', { name: 'Behind this week' })).toHaveCount(0);
+  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+  await expect(page.locator('[data-tile="muscles"] .st-t-val')).toHaveText(/^0\s*behind$/);
+
+  // Sunday, a Bench set: the week has no session left, so what's short of its target is behind.
+  await page.clock.setFixedTime(new Date('2026-10-04T10:00:00'));
+  await page.reload();
+  await goto(page, 'Today');
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
+  await page.getByRole('button', { name: 'Bench Press · logged', exact: true }).click(); // done before: the picker says so
+  await logBench(page, '135', '10');
+  await goto(page, 'Stats');
+  await expect(page.locator('[data-tile="muscles"] .st-t-val')).toHaveText(/^[1-9]\d*\s*behind$/);
+  const d = await sheet(page, 'muscles');
+  await expect(d).toContainText('Sunday: the week is done');
+  await expect(d.locator('.mrow[aria-label^="Calves:"] .mstat')).toHaveText(/under/);
+  await expect(d.getByRole('region', { name: 'Behind this week' })).toContainText('Calves');
 });
 
 test('stats: the calendar shows 12 weeks with weekday and month labels and cells big enough to tap', async ({ page }) => {

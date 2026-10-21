@@ -4,6 +4,15 @@ import type { FittedProfileStore } from '../state/useFittedProfile';
 import type { ProgramStore } from '../state/useProgram';
 import type { BodyStore } from '../state/useBody';
 import type { PhotosStore } from '../state/usePhotos';
+import type { SettingsStore } from '../state/useSettings';
+import type { GymsStore } from '../state/useGyms';
+import { tappedLight } from '../state/lightWeek';
+import { availableSet } from '../domain/equipment';
+import { PROGRAM_LIFTS } from '../domain/catalog';
+import { kneePlan } from '../domain/learn/rest';
+import { rotation } from '../domain/rotation';
+import { exerciseNames } from '../domain/stats';
+import { restSeconds } from '../domain/timing';
 import { adherence } from '../domain/program';
 import { addDays, weekStart } from '../domain/analytics';
 import { fmtDate, plural } from '../domain/format';
@@ -14,6 +23,7 @@ import { activeProfileDb } from '../db/db';
 import { getPref, setPref } from '../state/prefs';
 import { Icon } from './icons';
 import { goalLabel, Priorities } from './PrioritiesScreen';
+import { rotationDismissed } from './RotationSuggestion';
 import { StatsSheet } from './StatsSheet';
 import { StatsTile } from './StatsTile';
 import { SECTIONS, useTiles, WeekHero, WeekSheet, type TileModel } from './StatsTiles';
@@ -24,11 +34,13 @@ import './stats.css';
 
 const SHEET_WEEK = '__week';
 
-export function StatsScreen({ store, profile, programs, body, photos, today, onOpenPhotos, readOnly, who, onOpenLift, onOpenPriorities }: {
+export function StatsScreen({ store, profile, programs, body, photos, today, onOpenPhotos, readOnly, who, settings, gyms, onOpenLift, onOpenPriorities }: {
   /** A friend's username: named wherever your own Stats says "your". */ who?: string;
   store: SetsStore; profile: FittedProfileStore; programs: ProgramStore; body: BodyStore; photos: PhotosStore | null; today: string; onOpenPhotos: () => void; readOnly?: boolean;
   /** A lift named in a sheet: its screen. */ onOpenLift?: (name: string) => void;
   /** Priorities and the training goal live in settings (owner, 2026-10-20): a row here opens them. */ onOpenPriorities?: () => void;
+  /** Each lift's kept rest, for the rest tile's timer. */ settings?: SettingsStore;
+  /** Your gyms: a flat lift's next variation is one this gym can do, as on the lift's page. */ gyms?: GymsStore;
 }) {
   const p = profile.profile, entries = store.entries;
   const [owner] = useState(() => (readOnly ? null : activeProfileDb()));
@@ -48,7 +60,26 @@ export function StatsScreen({ store, profile, programs, body, photos, today, onO
     for (const e of entries) { const k = liftKey(e.exercise); if (keys.has(k)) names.set(k, e.exercise); }
     return [...names.values()];
   }, [layout.pins, entries]);
-  const tiles = useTiles({ entries, profile: p, today, range, who, owner: owner ?? undefined, alsoLifts, body: body.days, onOpenLift, onOpenPriorities });
+  // The rest timer as it would run for each lift, at his usual effort: his setting, else the rest his sets taught it, else the
+  // research default (timing.restFor's base). The learned rests read the same fit the lift tiles do (the log up to today).
+  const timer = useMemo(() => {
+    let knee: ReturnType<typeof kneePlan> | undefined;
+    return (ex: string) => {
+      if (knee === undefined) knee = kneePlan(entries, addDays(today, 1));
+      return restSeconds(ex, settings?.get(ex).rest, knee?.(ex, [{ exercise: ex, ago: 0 }]) ?? null);
+    };
+  }, [entries, today, settings]);
+  // A flat lift's next variation, as its page would offer it (and not once dismissed there).
+  const rotationOf = useMemo(() => {
+    if (!owner || readOnly) return undefined;
+    const g = gyms?.active;
+    const available = g ? availableSet(g, [...PROGRAM_LIFTS, ...exerciseNames(entries), ...g.include]) : undefined;
+    return (lift: string) => {
+      const r = rotation(entries, lift, today, { available, include: g?.include, program: programs.program, body: body.days, light: tappedLight(owner) });
+      return r && !rotationDismissed(owner, r) ? r : null;
+    };
+  }, [owner, readOnly, gyms?.active, entries, today, programs.program, body.days]);
+  const tiles = useTiles({ entries, profile: p, today, range, who, owner: owner ?? undefined, alsoLifts, body: body.days, timer, rotationOf, onOpenLift, onOpenPriorities });
 
   // News to the front of its section, worked out once a day on the first open (owner, 2026-10-20).
   const [front] = useState(() => {

@@ -22,6 +22,29 @@ const zero = (): Record<Muscle, number> => Object.fromEntries(MUSCLES.map((m) =>
 /** (a) Fractional sets of one muscle a session counts: past about 11, more sets in the session stop adding detectable growth (Remmert et al., SportRxiv 537). */
 export const SESSION_CAP = 11;
 
+/**
+ * The sessions the rest of this week still holds: its days to come, Sunday included and today too unless he has trained today;
+ * at most what his weekly goal has left (`done`: sessions so far, today's included), but one while a day is left, since he can
+ * always train once more.
+ */
+export function sessionsLeft(today: string, goal: number, done: number, trainedToday: boolean): number {
+  const free = 7 - ((toDate(today).getUTCDay() + 6) % 7) - (trainedToday ? 1 : 0);
+  return free <= 0 ? 0 : Math.min(free, Math.max(1, goal - done));
+}
+
+/**
+ * A muscle's sets this week against its target range: under, on, over; and short of it but still within reach ('pace') while
+ * the sessions left (`left`, sessionsLeft) can make up the rest, a session adding at most SESSION_CAP sets to a muscle (a split
+ * gives a muscle its whole week in one). 'under' means behind what the rest of the week can still do, never just that the
+ * week has days to go: Monday's and Tuesday's muscles are on pace. Without `left` (a program, which has no "so far"), the plain
+ * status.
+ */
+export function weekStatus(value: number, [lo, hi]: [number, number], left?: number): 'under' | 'pace' | 'on' | 'over' {
+  if (value > hi) return 'over';
+  if (value >= lo) return 'on';
+  return left != null && lo - value <= left * SESSION_CAP + 1e-9 ? 'pace' : 'under';
+}
+
 export function weeklyMuscleSets(entries: SetEntry[], week: string): { sets: Record<Muscle, number>; unmapped: string[] } {
   const end = addDays(week, 7);
   const sets = zero();

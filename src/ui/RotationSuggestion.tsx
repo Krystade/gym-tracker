@@ -15,13 +15,15 @@ import type { SettingsStore } from '../state/useSettings';
 
 const prefName = (lift: string) => `suggest:rotate:${settingsKey(lift)}`;
 const sig = (r: Rotation) => `${settingsKey(r.to)}|${r.stall.since}`;
+/** Dismissed for this plateau (and this variation) on this phone: Stats leaves the offer out too. */
+export const rotationDismissed = (owner: string, r: Rotation): boolean => getPref<string>(owner, prefName(r.from)) === sig(r);
 
 /** `known`: the new lift has history of its own. `onSwitch` absent: the lift isn't in the program, so this is advice only. */
 export function RotationSuggestion({ owner, r, carry, known, today, onSwitch }: {
   owner: string; r: Rotation; carry: Carry | null; known: boolean; today: string; onSwitch?: () => void;
 }) {
   const [, bump] = useState(0);
-  if (getPref<string>(owner, prefName(r.from)) === sig(r)) return null;
+  if (rotationDismissed(owner, r)) return null;
   const why = rotationReason(r);
   const start = carry ? <>Start ≈ <b>{fmtWeight(carry.weight)} lb × {carry.reps}</b>: an estimate from your {r.from}, on the light side.</>
     : known ? <>Picks up from your last {r.to}.</> : <>New to you: start light and log every set.</>;

@@ -127,14 +127,21 @@ test('Friends: the feed, a friend’s page and its 8-week board, a thread', asyn
 const DAY0 = '2026-10-20'; // a Tuesday; the clock is held at 18:00
 const add = (d: string, n: number) => { const t = new Date(`${d}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 const HEADER = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source,pain_region,pain_severity,logged_at,target_weight_lb,target_reps,target_sets,gym,entered_at,duration_s,distance_mi,incline_pct,level,floors,cardio_aim,tags,edited_at';
-/** Ten weeks, three days a week: heavy numbers, a long lift name, a hold, a bodyweight lift, cardio, and an elbow that hurts. */
-function history(): string {
+/**
+ * Ten weeks, three days a week: heavy numbers, a long lift name, a hold, a bodyweight lift, cardio, and an elbow that hurts.
+ * `effort`: the weighted sets carry an RIR and the target the app suggested (some missed), as sets logged in the app do.
+ */
+function history({ effort = false } = {}): string {
   const rows: string[] = [HEADER];
   // Each set 3 min after the day's last, lift after lift, as he logs them: sets of different lifts at the same second would read
   // as a superset whose switches take as long as its rests (learn/switch), and no lift would have a rest of its own.
   const ticks = new Map<string, number>(), tick = (d: string) => { const k = (ticks.get(d) ?? 0) + 1; ticks.set(d, k); return k; };
-  const row = (d: string, lift: string, set: number, w: number | '', r: number | '', o: { flags?: string; note?: string; pain?: [string, number]; dur?: number; mi?: number } = {}) =>
-    rows.push([d, lift, '', set, w, r, '', o.flags ?? '', o.note ? `"${o.note}"` : '', 'sample', o.pain?.[0] ?? '', o.pain?.[1] ?? '', `${d}T17:${String(3 * tick(d)).padStart(2, '0')}:00.000Z`, '', '', '', '', '', o.dur ?? '', o.mi ?? '', '', '', '', '', '', ''].join(','));
+  const row = (d: string, lift: string, set: number, w: number | '', r: number | '', o: { flags?: string; note?: string; pain?: [string, number]; dur?: number; mi?: number } = {}) => {
+    const aimed = effort && typeof w === 'number' && w > 0 && typeof r === 'number' && !o.flags;
+    const miss = aimed && set === 3 && rows.length % 4 === 0;
+    rows.push([d, lift, '', set, w, r, aimed ? (rows.length + set) % 4 : '', o.flags ?? '', o.note ? `"${o.note}"` : '', 'sample', o.pain?.[0] ?? '', o.pain?.[1] ?? '', `${d}T17:${String(3 * tick(d)).padStart(2, '0')}:00.000Z`,
+      aimed ? w : '', aimed ? r + (miss ? 1 : 0) : '', aimed ? 3 : '', '', '', o.dur ?? '', o.mi ?? '', '', '', '', '', '', ''].join(','));
+  };
   for (let w = 9; w >= 1; w--) {
     const mon = add('2026-10-19', -7 * w), wed = add(mon, 2), fri = add(mon, 4);
     for (let k = 1; k <= 3; k++) row(mon, 'Bench Press', k, 225 + 5 * (9 - w), 5);
@@ -398,7 +405,7 @@ test('Stats v2: the tiles, the lift, calendar, muscles and week sheets, every ra
   await goto(page, 'Stats');
   await check(page, info, found, 'stats-v2-new-user', [], 'main');
   await png('new-user');
-  await importLog(page);
+  await importLog(page, history({ effort: true }));
   await goto(page, 'Stats');
   await expect(page.locator('[data-tile^="lift:"]')).toHaveCount(4);
   await check(page, info, found, 'stats-v2', [], 'main');
@@ -429,6 +436,13 @@ test('Stats v2: the tiles, the lift, calendar, muscles and week sheets, every ra
   await sheet('[data-tile="prs"]', 'stats-v2-prs');
   await sheet('[data-tile="pain"]', 'stats-v2-pain');
   await sheet('.st-week', 'stats-v2-week');
+  // S2: every new tile there, and its sheet.
+  for (const t of ['rate', 'plateaus', 'milestones', 'hitrate', 'effort', 'rest', 'pullpush', 'lifts', 'days', 'start', 'energy']) {
+    await expect(page.locator(`[data-tile="${t}"]`)).toBeVisible();
+    await page.locator(`[data-tile="${t}"]`).scrollIntoViewIfNeeded();
+    await png(`tile-${t}`);
+    await sheet(`[data-tile="${t}"]`, `stats-v2-${t}`);
+  }
   for (const r of ['4 wk', '1 yr']) {
     await page.getByRole('group', { name: 'Range' }).getByRole('button', { name: r }).click();
     await check(page, info, found, `stats-v2-${r.replace(' ', '')}`, [], 'main');

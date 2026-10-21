@@ -228,23 +228,27 @@ describe('topLifts: the lifts Stats follows', () => {
   });
 });
 
-describe('behindMuscles: what’s behind where the week should be, each with a lift of yours for it', () => {
-  it('lists muscles under their pace, the furthest behind first, with your own lift that works each most', () => {
-    const p = defaultProfile();
-    // Thursday: 3/7 of the week behind us. Default tiers put everything at priority 3 or so; read the targets from the profile.
-    const e = [
-      ...s('Bench Press', 3, {}, '2026-10-12'), // Chest 3: under its 5–8, but ahead of Thursday's pace (5 × 3/7)
+describe('behindMuscles: what the rest of the week can no longer make up, each with a lift of yours for it', () => {
+  it('lists nothing while the sessions left can still reach every target, then the muscles short once the week is done', () => {
+    const p = defaultProfile(); // goal 2; every muscle priority 3, 4–6 sets
+    const week = [
+      ...s('Bench Press', 3, {}, '2026-10-12'), // Monday: Chest 3 of 4
       ...s('DB Lateral Raise', 3, {}, '2026-09-30'), // done before, not this week
       ...s('Seated Leg Curl', 3, {}, '2026-09-29'),
     ];
-    const got = behindMuscles(e, p, TODAY, 3);
-    expect(got.length).toBeLessThanOrEqual(3);
-    for (const b of got) expect(b.sets).toBeLessThan(b.range[0] * (3 / 7));
-    const side = behindMuscles(e, p, TODAY, 20).find((b) => b.muscle === 'Side Delts');
-    expect(side?.fix).toBe('DB Lateral Raise');
-    expect(behindMuscles(e, p, TODAY, 20).find((b) => b.muscle === 'Chest')).toBeUndefined();
-    // Monday asks for nothing yet.
-    expect(behindMuscles(e, p, '2026-10-12', 20)).toEqual([]);
+    // Monday, Thursday: one session of two done, and one left can add any muscle's 4–6 sets: none behind.
+    expect(behindMuscles(week, p, '2026-10-12', 20)).toEqual([]);
+    expect(behindMuscles(week, p, TODAY, 20)).toEqual([]);
+    // Sunday, trained: the week is done. Chest made its 4; Side Delts never got a set.
+    const done = [...week, ...s('Bench Press', 1, {}, '2026-10-18')];
+    const got = behindMuscles(done, p, '2026-10-18', 3);
+    expect(got).toHaveLength(3);
+    for (const b of got) expect(b.sets).toBeLessThan(b.range[0]);
+    const all = behindMuscles(done, p, '2026-10-18', 20);
+    expect(all.find((b) => b.muscle === 'Side Delts')?.fix).toBe('DB Lateral Raise');
+    expect(all.find((b) => b.muscle === 'Chest')).toBeUndefined();
+    // Furthest behind first.
+    expect(all.map((b) => b.sets / b.range[0])).toEqual([...all.map((b) => b.sets / b.range[0])].sort((x, y) => x - y));
   });
 });
 
