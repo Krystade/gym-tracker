@@ -183,10 +183,12 @@ describe('learn/readiness: candidates', () => {
     expect([...doneThisCycle(P, [plan('2026-03-02', 0), plan('2026-03-04', 1, { quick: 30 })], [...day('2026-03-04')], '2026-04-01')]).toEqual([]);
   });
 
-  it('the next day, the days not yet done this cycle, and the quick day; today’s opened plan with its skips and swaps', () => {
+  it('the next day and the days not yet done this cycle; the quick day only with no program (S3); today’s opened plan with its skips and swaps', () => {
     const plans = [plan('2026-03-02', 0)];
     const cs = candidatesOf(P, plans, day('2026-03-02'), '2026-03-04', [slot('Hammer Curl', 2)]);
-    expect(cs.map((c) => [c.kind, c.day, c.name])).toEqual([['next', 1, 'Push'], ['cycle', 2, 'Pull'], ['quick', null, 'Quick']]);
+    expect(cs.map((c) => [c.kind, c.day, c.name])).toEqual([['next', 1, 'Push'], ['cycle', 2, 'Pull']]);
+    // Pair: no program, the quick day is the one candidate.
+    expect(candidatesOf(null, [], day('2026-03-02'), '2026-03-04', [slot('Hammer Curl', 2)]).map((c) => [c.kind, c.day, c.name])).toEqual([['quick', null, 'Quick']]);
     const opened = candidatesOf(P, [...plans, plan('2026-03-04', 2, { skips: ['DB Curl'], swaps: { 'Lat Pulldown': 'Seated Cable Row' } })], day('2026-03-02'), '2026-03-04', null);
     expect(opened[0]).toMatchObject({ kind: 'next', day: 2, slots: [slot('Seated Cable Row')] });
     expect(opened.map((c) => c.day)).toEqual([2, 1]);
@@ -216,7 +218,7 @@ describe('learn/readiness: the day on a synthetic lifter', () => {
 
   it('Ready is the best candidate’s: the legs trained to failure yesterday score below the upper day, which is chosen', () => {
     const r = readiness(input());
-    expect(r.candidates.length).toBe(3);
+    expect(r.candidates.map((c) => c.name)).toEqual(['Upper', 'Legs']); // a program: no quick day (S3)
     const by = Object.fromEntries(r.candidates.map((c) => [c.name, c]));
     expect(by.Legs.ready!).toBeLessThan(by.Upper.ready! - 30);
     expect(r.ready).toBe(Math.max(...r.candidates.map((c) => c.ready!)));

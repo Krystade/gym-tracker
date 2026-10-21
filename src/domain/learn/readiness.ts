@@ -3,7 +3,7 @@ import type { BodyDay } from '../body';
 import { isCardio, isCardioEntry } from '../cardio';
 import { resolveLift } from '../lifts';
 import type { Muscle } from '../muscles';
-import { nextDay, type DayPlan, type Program, type Slot } from '../program';
+import { cycleDone, nextDay, type DayPlan, type Program, type Slot } from '../program';
 import { perLog } from '../stats';
 import type { SetEntry } from '../types';
 import { aheadVar, READY, type Core, type Est } from './capacity';
@@ -34,12 +34,14 @@ import { recoveryOf, type RecoveryFit } from './recovery';
 //   squares, Birge-scaled (a: Birge 1932). It acts only once its 90 % interval excludes 0 (a Student t interval, n − 2 df): then
 //   the day's predicted shift, b·(energy − usual) with its SD, moves the full-strength line. Before that, single-item wellness
 //   has no validation for resistance training (a: Saw 2016; Laurent 2011), so it moves nothing.
-// Ready is the best candidate's: the program's next day, any program day not yet done this cycle, and the quick day.
+// Ready is the best candidate's: the program's next day and any program day not yet done this cycle; the quick day only with no
+// program (S3: else the small quick day, aimed at fresh muscles, is nearly always "best" and the program never is).
 //
 // Verdicts, by day (owner Q2): checked in this order.
 // - After a layoff of BREAK_DAYS or more (or no training yet): Go today, always (a: deload.BREAK_DAYS: a week off unloads).
-// - Rest today: only when the planner (S3) says today isn't in the best plan AND resting keeps the weekly goal reachable (at least
-//   one spare day). Without a planner (`todayInPlan` not given) there is never a Rest: (c), no action.
+// - Rest today: only when the planner (S3, learn/schedule) says today isn't in the best plan AND resting keeps the weekly goal
+//   reachable (at least one spare day). Without a planner (`todayInPlan` not given) there is never a Rest: (c), no action.
+//   learn/schedule.readinessPlanned runs the planner and passes its answer here.
 // - Go light: learn/deload suggests a deload, or a light week is on (a: Grandou 2020; Saw 2016; Bell 2025).
 // - Go today · tight week: the weekly goal has no spare day left; never Rest (a: weekly volume drives growth and strength, Pelland
 //   2026; with volume equated, more or fewer sessions makes no detectable difference, Schoenfeld, Grgic & Krieger 2019, Boutagy &
@@ -254,31 +256,19 @@ const workingDates = (entries: readonly SetEntry[], before: string, cardio: bool
   return s;
 };
 
-/**
- * The program days done in the current cycle: trained program days (not quick days) before `today`, in date order, cut into
- * cycles: a cycle closes once every day is done, or when a day comes round again before it does (so a reordered week still
- * counts each day once).
- */
-export function doneThisCycle(p: Program, plans: readonly DayPlan[], entries: readonly SetEntry[], today: string): Set<number> {
-  const trained = workingDates(entries, today, true);
-  const since = p.createdAt.slice(0, 10);
-  const xs = plans.filter((x) => x.date < today && x.date >= since && x.quick == null && x.day < p.days.length && trained.has(x.date)).sort((a, b) => a.date.localeCompare(b.date));
-  let done = new Set<number>();
-  for (const x of xs) {
-    if (done.has(x.day)) done = new Set();
-    done.add(x.day);
-    if (done.size === p.days.length) done = new Set();
-  }
-  return done;
-}
+/** The program days done in the current cycle (program.cycleDone, which program.nextDay reads too). */
+export const doneThisCycle = cycleDone;
 
-const applyPlan = (slots: Slot[], plan?: DayPlan) => (plan
+/** A day's slots with its plan's skips and swaps applied. */
+export const applyPlan = (slots: Slot[], plan?: DayPlan) => (plan
   ? slots.filter((s) => !plan.skips.includes(s.exercise)).map((s) => (plan.swaps[s.exercise] ? { ...s, exercise: plan.swaps[s.exercise] } : s))
   : slots);
 
 /**
- * The candidates for `today`: the program's next day (today's stored plan, if he has opened one), every day not yet done this
- * cycle, and the quick day (built by the caller, who knows the time he has: program.quickDay). Distinct by program day.
+ * The candidates for `today`: the program's next day (today's stored plan, if he has opened one) and every day not yet done this
+ * cycle; the quick day (built by the caller, who knows the time he has: program.quickDay) only with no program (S3: small and
+ * aimed at the muscles least trained this week, it reads freshest by construction and would nearly always be "best").
+ * Distinct by program day.
  */
 export function candidatesOf(p: Program | null, plans: readonly DayPlan[], entries: readonly SetEntry[], today: string, quick: Slot[] | null): Candidate[] {
   const out: Candidate[] = [];
@@ -289,8 +279,7 @@ export function candidatesOf(p: Program | null, plans: readonly DayPlan[], entri
     out.push({ kind: 'next', day: next, name: p.days[next].name, slots: dayOf(next, stored) });
     const done = doneThisCycle(p, plans, entries, today);
     p.days.forEach((d, i) => { if (i !== next && !done.has(i)) out.push({ kind: 'cycle', day: i, name: d.name, slots: dayOf(i) }); });
-  }
-  if (quick?.length) out.push({ kind: 'quick', day: null, name: 'Quick', slots: quick });
+  } else if (quick?.length) out.push({ kind: 'quick', day: null, name: 'Quick', slots: quick });
   return out;
 }
 
@@ -391,12 +380,15 @@ export interface ReadinessInput {
   todayInPlan?: boolean | null;
 }
 
-/** What S3's planner reads: Ready of any session on any date from today on, with today's energy only on today. */
+/**
+ * What S3's planner reads: Ready of any session on any date from today on, with today's energy only on today. `painAt`: the date
+ * whose pain risk each lift reads (default the date itself; the planner reads today's on every day of the week).
+ */
 export interface ReadinessModel {
   today: string;
   recovery: RecoveryFit | null;
   energy: EnergyFit;
-  sessionReady(slots: readonly Slot[], date: string): SessionReady;
+  sessionReady(slots: readonly Slot[], date: string, opts?: { painAt?: string }): SessionReady;
 }
 
 const isLiftSlot = (s: Slot) => s.minutes == null && s.sets > 0 && !isCardio(s.exercise);
@@ -422,15 +414,15 @@ export function readinessModel(entries: readonly SetEntry[], body: readonly Body
   const { recovery, energy } = fits;
   const cache = new Map<string, ReturnType<RecoveryFit['cells']>>();
   const dayHour = (date: string) => (Date.parse(`${date}T00:00:00Z`) / DAY) * 24 + (recovery ? recovery.refMinutes(date) : 0) / 60;
-  const sessionReady = (slots: readonly Slot[], date: string): SessionReady => {
-    const hour = dayHour(date), shift = date === today ? energy.shift : NO_SHIFT;
+  const sessionReady = (slots: readonly Slot[], date: string, opts?: { painAt?: string }): SessionReady => {
+    const hour = dayHour(date), shift = date === today ? energy.shift : NO_SHIFT, painAt = opts?.painAt ?? date;
     const lifts: LiftReady[] = [];
     const main = new Set<Muscle>();
     for (const s of slots) {
       if (!isLiftSlot(s)) continue;
       const pFull = liftFull(recovery, s.exercise, hour, shift, cache);
       const fp = firstPain(entries);
-      const pain = fp != null && fp <= date ? painRisk(entries, s.exercise, date).p : 0;
+      const pain = fp != null && fp <= painAt ? painRisk(entries, s.exercise, painAt).p : 0;
       lifts.push({ exercise: s.exercise, sets: s.sets, pFull, pain });
       const v = resolveLift(s.exercise).m;
       if (v) for (const [m, w] of Object.entries(v) as [Muscle, number][]) if (w >= MAIN_SHARE) main.add(m);

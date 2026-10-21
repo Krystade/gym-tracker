@@ -17,6 +17,7 @@ import { fitCore } from './capacity';
 import { fitRecovery } from './recovery';
 import { simulateRecovery } from './recoverySim.sample';
 import { readiness } from './readiness';
+import { readinessPlanned } from './schedule';
 import type { Program } from '../program';
 
 // Shared CI runners are 2-4x slower than a desktop and vary run to run, so wall-clock budgets there catch only an
@@ -281,9 +282,10 @@ it('refits per-muscle recovery on 2k sets in under 20 ms after one more set', ()
   expect(times[0], `refits (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(20 * SLACK);
 }, 60000);
 
-// Readiness S2 (learn/readiness) on Today: the day's number over a 4-day program and a quick day, on 2k sets of recovery history,
-// after one more set today (as the store makes a new log array on every add): the fits before today are the last call's, so
-// what's left is the candidates' cells, pain and the verdict. ~6–15 ms on desktop Node; gated at 25 ms (best of several).
+// Readiness S2 (learn/readiness) on Today: the day's number over a 4-day program (the quick day isn't a candidate with a program,
+// S3), on 2k sets of recovery history, after one more set today (as the store makes a new log array on every add): the fits
+// before today are the last call's, so what's left is the candidates' cells, pain and the verdict. ~6–15 ms on desktop Node;
+// gated at 25 ms (best of several).
 it('re-reads the day’s readiness on 2k sets in under 25 ms after one more set today', () => {
   const { entries, body } = simulateRecovery(1, { sessions: 190, failFrac: 0.2, energy: { slope: 0.02 } });
   const last = entries.at(-1)!, today = addDays(last.date, 1);
@@ -301,9 +303,40 @@ it('re-reads the day’s readiness on 2k sets in under 25 ms after one more set 
     const t = performance.now();
     const r = at(next);
     times.push(performance.now() - t);
-    expect(r.candidates.length).toBe(5);
+    expect(r.candidates.length).toBe(4);
   }
   times.sort((a, b) => a - b);
   expect(entries.length).toBeGreaterThan(2000);
   expect(times[0], `per set (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(25 * SLACK);
+}, 60000);
+
+// Readiness S3 (learn/schedule) when Today opens on a Monday: the week's plan over a 4-day program, all 128 patterns, every day's
+// Ready for each day of the program (28 sessions read), the volume aims and his usual days, plus the day's readiness with the
+// plan's answer; on 2k sets of recovery history, each call on a new log array (as the store makes one). The fits before today are
+// cached (by what they read), so the cost is the 28 sessions' cells. ~10–20 ms on desktop Node; gated at 50 ms, the phone's per-set
+// refit budget (best of several).
+it('plans the week (128 patterns, a 4-day program) with the day’s readiness on 2k sets in under 50 ms', () => {
+  const { entries, body } = simulateRecovery(1, { sessions: 190, failFrac: 0.2, energy: { slope: 0.02 } });
+  let today = addDays(entries.at(-1)!.date, 1);
+  while (new Date(`${today}T00:00:00Z`).getUTCDay() !== 1) today = addDays(today, 1);
+  const s = (exercise: string, sets = 3) => ({ exercise, sets, repMin: 8, repMax: 12 });
+  const program: Program = { key: 'program', perSession: 12, createdAt: '', days: [
+    { name: 'A', slots: [s('Bench Press', 4), s('Incline DB Press'), s('Cable Pushdown')] },
+    { name: 'B', slots: [s('Seated Cable Row', 4), s('Lat Pulldown'), s('DB Curl')] },
+    { name: 'C', slots: [s('Leg Press', 4), s('DB Lateral Raise')] },
+    { name: 'D', slots: [s('Bench Press'), s('Lat Pulldown'), s('Leg Press'), s('DB Curl')] }] };
+  const at = (es: SetEntry[]) => readinessPlanned({ entries: es, body, weeklyGoal: 3, program, plans: [], quick: null, today, tz: 'UTC', profile: defaultProfile() });
+  for (let k = 0; k < 3; k++) at([...entries]);
+  const times: number[] = [];
+  for (let k = 0; k < 7; k++) {
+    const next = [...entries];
+    const t = performance.now();
+    const r = at(next);
+    times.push(performance.now() - t);
+    expect(r.plan!.patterns).toBe(128);
+    expect(r.plan!.days.filter((d) => d.train).length).toBe(3);
+  }
+  times.sort((a, b) => a - b);
+  expect(entries.length).toBeGreaterThan(2000);
+  expect(times[0], `per plan (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(50 * SLACK);
 }, 60000);

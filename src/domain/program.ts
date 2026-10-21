@@ -240,10 +240,27 @@ const counts = (e: SetEntry) => isWorking(e) || !!e.cardio;
 const trainedDates = perLog((entries) => new Set(entries.filter(counts).map((e) => e.date)));
 const trainedOn = (entries: SetEntry[], date: string) => trainedDates(entries).has(date);
 
-/** The day after the last one actually trained; a plan with nothing logged doesn't count. */
-export function nextDay(p: Program, plans: DayPlan[], entries: SetEntry[], today: string): number {
-  const last = plans.filter((x) => x.date < today && x.quick == null && x.day < p.days.length && trainedOn(entries, x.date)).sort((a, b) => b.date.localeCompare(a.date))[0];
-  return last ? (last.day + 1) % p.days.length : 0;
+/**
+ * The program days done in the current cycle: the days trained before `today` (a plan with nothing logged, or a quick day, doesn't
+ * count), in date order, cut into cycles. A cycle closes once every day is done, or when a day comes round again before it is
+ * (so a reordered week still counts each day once).
+ */
+export function cycleDone(p: Program, plans: readonly DayPlan[], entries: readonly SetEntry[], today: string): Set<number> {
+  const xs = plans.filter((x) => x.date < today && x.quick == null && x.day < p.days.length && trainedOn(entries as SetEntry[], x.date)).sort((a, b) => a.date.localeCompare(b.date));
+  let done = new Set<number>();
+  for (const x of xs) {
+    if (done.has(x.day)) done = new Set();
+    done.add(x.day);
+    if (done.size === p.days.length) done = new Set();
+  }
+  return done;
+}
+
+/** The first program day not yet done this cycle (readiness S3: so a day skipped or done out of order comes up next). */
+export function nextDay(p: Program, plans: readonly DayPlan[], entries: readonly SetEntry[], today: string): number {
+  const done = cycleDone(p, plans, entries, today);
+  for (let i = 0; i < p.days.length; i++) if (!done.has(i)) return i;
+  return 0;
 }
 
 /** Planned vs done working sets over training days (dates with sets logged) since `since`. */

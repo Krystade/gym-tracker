@@ -95,6 +95,33 @@ describe('nextDay', () => {
     expect(nextDay(PROG, [plan('2026-09-01', 0)], logged, '2026-09-24')).toBe(1);
     expect(nextDay(PROG, [plan('2026-09-01', 0), plan('2026-09-05', 1)], logged, '2026-09-24')).toBe(1);
   });
+
+  // Readiness S3: "the first day not yet done this cycle", not "the day after the last one" (they differ only out of order).
+  const P4: Program = { ...PROG, days: ['A', 'B', 'C', 'D'].map((name) => ({ name, slots: [{ exercise: 'Cable Curl', sets: 3, repMin: 10, repMax: 15 }] })) };
+  const run = (ds: number[], extra: SetEntry[] = []) => {
+    const dates = ds.map((_, i) => `2026-09-${String(1 + 2 * i).padStart(2, '0')}`);
+    return nextDay(P4, dates.map((d, i) => plan(d, ds[i])), [...dates.map((d) => s(d, 'Cable Curl')), ...extra], '2026-10-01');
+  };
+  it('the first day not yet done this cycle: a day skipped or done out of order comes up next', () => {
+    expect(run([0, 2])).toBe(1); // A, C done: B (the day after the last would be D)
+    expect(run([1])).toBe(0); // B first: A (the day after would be C)
+    expect(run([0, 1, 3])).toBe(2);
+    expect(run([3, 2, 1])).toBe(0);
+  });
+  it('a cycle closes once every day is done, or when a day comes round again before it is', () => {
+    expect(run([0, 1, 2, 3])).toBe(0);
+    expect(run([0, 1, 2, 3, 1])).toBe(0); // a new cycle with B done
+    expect(run([0, 1, 2, 3, 0, 1])).toBe(2);
+    expect(run([0, 2, 0])).toBe(1); // A again before B and D: a new cycle with A done, so B
+    expect(run([1, 3, 1, 0])).toBe(2);
+  });
+  it('a plan with nothing logged, a warm-up only day or a quick day doesn’t count', () => {
+    const plans = [plan('2026-09-01', 0), plan('2026-09-03', 1), plan('2026-09-05', 2, { quick: 20, slots: [] })];
+    expect(nextDay(P4, plans, [s('2026-09-01', 'Cable Curl'), s('2026-09-03', 'Cable Curl', 10, { flags: ['warmup'] }), s('2026-09-05', 'Cable Curl')], '2026-10-01')).toBe(1);
+    // Today's own plan doesn't count until tomorrow.
+    expect(nextDay(P4, [...plans, plan('2026-10-01', 1)], [s('2026-09-01', 'Cable Curl'), s('2026-10-01', 'Cable Curl')], '2026-10-01')).toBe(1);
+    expect(nextDay(P4, [...plans, plan('2026-10-01', 1)], [s('2026-09-01', 'Cable Curl'), s('2026-10-01', 'Cable Curl')], '2026-10-02')).toBe(2);
+  });
 });
 
 describe('adherence', () => {
