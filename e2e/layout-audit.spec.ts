@@ -184,6 +184,7 @@ test('Today, History, Lifts, a lift, Stats and More with ten weeks of heavy trai
   for (const screen of ['Characters', 'Gym', 'Program', 'Photos']) {
     await goto(page, 'More');
     await page.getByRole('list', { name: 'More screens' }).getByRole('button', { name: new RegExp(`^${screen}`) }).click();
+    if (screen === 'Characters') await expect(page.getByRole('heading', { name: 'Credits' })).toBeVisible(); // loaded, credits and all
     await check(page, info, found, `more-${screen.toLowerCase()}`);
   }
   await goto(page, 'More');
