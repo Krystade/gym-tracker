@@ -199,9 +199,15 @@ export const cardioSlot = (machine: string, minutes: number): Slot => ({ exercis
 
 /** (a) A volume block: Barsuhn 2025's 3 weeks (learn/volume BASE_WEEKS): the aims are read again after each. */
 export const BLOCK_DAYS = 21;
-/** The 3-week blocks since the program's aims were read (its build day for one built before them). */
-export const programBlock = (p: Program, today: string): number =>
-  Math.max(0, Math.floor((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${(p.block ?? p.createdAt).slice(0, 10)}T12:00:00Z`)) / 864e5 / BLOCK_DAYS));
+/**
+ * The 3-week blocks since the program's aims were read (`block`, a local day), or for one built before them its build day:
+ * createdAt's LOCAL day (it's a UTC instant: built at 18:00 in California is already tomorrow in UTC), as cycleDone reads it.
+ */
+export const programBlock = (p: Program, today: string): number => {
+  const built = new Date(p.createdAt);
+  const from = p.block ?? (Number.isNaN(built.getTime()) ? p.createdAt.slice(0, 10) : localDate(built));
+  return Math.max(0, Math.floor((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 864e5 / BLOCK_DAYS));
+};
 
 /**
  * A program built like `p` (its days, sets or minutes per session) at `aims`. By minutes: the most sets per session whose every

@@ -302,6 +302,42 @@ describe('the reminder fitted to his log (item 16)', () => {
     expect(await remindAt(uid)).toBe(Date.parse('2027-10-26T23:40:00Z'));
   });
 
+  it('none on a rest date the week plan sent; the next reminder day instead; learning off or an older app: as before', async () => {
+    // Tuesday rests: Friday 18:00 is next, and Tuesday's alarm (had it been set) sends nothing.
+    const rest = await on();
+    await call(rest.uid, 'POST', '/activity', { date: '2027-10-18', next: null, week, rest: ['2027-10-19', '2027-10-20'] });
+    expect(await remindAt(rest.uid)).toBe(Date.parse('2027-10-22T22:00:00Z'));
+    await runInDurableObject(box(rest.uid), async (_o, st) => { const p = await st.storage.get<Record<string, unknown>>('plan'); await st.storage.put('plan', { ...p, remindAt: TUE_6PM }); await st.storage.setAlarm(TUE_6PM); });
+    await setClock(rest.uid, TUE_6PM);
+    await runDurableObjectAlarm(box(rest.uid));
+    expect(pushes(rest.net)).toHaveLength(0);
+    expect(await remindAt(rest.uid)).toBe(Date.parse('2027-10-22T22:00:00Z'));
+    // A plan that no longer rests Tuesday: Tuesday's again.
+    const moved = await on();
+    await call(moved.uid, 'POST', '/activity', { date: '2027-10-18', next: null, week, rest: ['2027-10-19'] });
+    await call(moved.uid, 'POST', '/activity', { date: '2027-10-18', next: null, week, rest: ['2027-10-20'] });
+    expect(await alarm(moved.uid)).toBe(TUE_6PM);
+    await setClock(moved.uid, TUE_6PM);
+    await runDurableObjectAlarm(box(moved.uid));
+    expect(pushes(moved.net)).toHaveLength(1);
+    // Learning off: his days, rest dates or not. An older app sends none: as before.
+    const off = await on({ ...PREFS, reminder: { ...PREFS.reminder, learn: false } });
+    await call(off.uid, 'POST', '/activity', { date: '2027-10-18', next: null, week, rest: ['2027-10-19'] });
+    expect(await alarm(off.uid)).toBe(TUE_6PM);
+    const old = await on();
+    await call(old.uid, 'POST', '/activity', { date: '2027-10-18', next: null, week });
+    expect(await alarm(old.uid)).toBe(TUE_6PM);
+  });
+
+  it('refuses malformed rest dates', async () => {
+    const { uid } = await on();
+    const body = { date: '2027-10-18', next: null, week };
+    for (const rest of [['2027-10-19', '2027-10-19'], ['2027-02-30'], ['2027-13-01'], ['19 Oct'], [20271019], Array.from({ length: 8 }, (_, i) => `2027-10-${20 + i}`), '2027-10-19', {}])
+      expect((await call(uid, 'POST', '/activity', { ...body, rest })).status).toBe(400);
+    expect((await call(uid, 'POST', '/activity', { ...body, rest: [] })).status).toBe(200);
+    expect((await call(uid, 'POST', '/activity', { ...body, rest: ['2027-10-24', '2027-10-19'] })).status).toBe(200);
+  });
+
   it('refuses a malformed learned schedule or goal', async () => {
     const { uid } = await on();
     const body = { date: '2027-10-18', next: null, week };

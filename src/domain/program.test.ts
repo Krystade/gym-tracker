@@ -422,6 +422,15 @@ describe('owner decisions 2026-10-20: plan at the aim, P4 excluded, blocks', () 
     const old = { ...p, block: undefined }; // built before aims: from its build day
     expect(programBlock(old, day(21))).toBe(1);
   });
+  it('counts blocks from the LOCAL day a program without aims was built, not the UTC one', () => {
+    // Built 22:30 on 1 October in New York: 2 October in UTC. Three weeks on is 22 October, local.
+    const late = new Date(2026, 9, 1, 22, 30);
+    expect(late.toISOString().slice(0, 10)).toBe('2026-10-02');
+    const p = { ...buildProgram(withTiers({}, 3), [], { days: 2, perSession: 12 }, late), block: undefined };
+    expect(programBlock(p, '2026-10-21')).toBe(0);
+    expect(programBlock(p, '2026-10-22')).toBe(1);
+    expect(programBlock(p, '2026-11-12')).toBe(2);
+  });
   it('rebuilds like the program it replaces, and tells a real change from none', () => {
     const prof = withTiers({ Chest: 1, Lats: 1 }, 3);
     const a = buildProgram(prof, [], { days: 3, perSession: 14 }, NOW);

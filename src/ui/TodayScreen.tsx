@@ -53,7 +53,10 @@ import { systemic } from '../domain/learn/deload';
 import { deloadSnoozed, endLight, lightOn, snoozeDeload, startLight, tappedLight } from '../state/lightWeek';
 import { DeloadPrompt, LightWeekLine } from './DeloadPrompt';
 import { ReadyCard } from './ReadyTile';
-import { readyMorning, suggestedDay, type ReadyInput } from './readyView';
+import { readyMorning, readyNow, suggestedDay, type ReadyInput } from './readyView';
+import { restDatesOf } from '../push/activity';
+import { PUSH_ON } from '../push/config';
+import { setRestDates } from '../push/usePush';
 import { sizing } from '../domain/learn/session';
 import { kneePlan } from '../domain/learn/rest';
 import { warmupCount } from '../domain/suggest';
@@ -110,6 +113,14 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     [store.entries, body.days, programs.program, programs.plans, profile, quickForReady, today, owner, deloadTaps]); // `tapped` changes only with a tap
   const morning = useMemo(() => (isToday0 ? readyMorning(readyIn) : null), [isToday0, readyIn]);
   const suggested = morning ? suggestedDay(morning) : null;
+  // Readiness S5 (owner Q6): the plan's rest dates for the Worker's reminder, from the plan as it stands (after a set today, with
+  // today's session in it, so the days after it can rest on it). Read once the log settles; a refinement, never a reason to fail.
+  const loggedToday = isToday0 && store.entries.some((e) => e.date === today);
+  useEffect(() => {
+    if (!PUSH_ON || !isToday0 || !morning) return;
+    const t = setTimeout(() => { try { setRestDates(restDatesOf(loggedToday ? readyNow(readyIn) : morning, today)); } catch { /* the reminder as before */ } }, 500);
+    return () => clearTimeout(t);
+  }, [isToday0, morning, loggedToday, readyIn, today]);
   const plan = todayPlanFor(programs, store.entries, date, isToday0 ? suggested : null);
   // The day's δ for his rest knees (item 17): the timer and the plan's length use the same. A plan not saved yet is a new object
   // each render, so it's keyed by what it says.

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from '../domain/types';
 import type { DayPlan, Program } from '../domain/program';
-import { activityOf } from './activity';
+import { activityOf, restDatesOf } from './activity';
+import { readinessPlanned, type PlanDay, type WeekPlan } from '../domain/learn/schedule';
+import { defaultProfile } from '../domain/profile';
 
 let seq = 0;
 const s = (date: string, exercise: string, weight: number, reps: number, flags: SetEntry['flags'] = []): SetEntry => ({
@@ -65,5 +67,57 @@ describe('activityOf', () => {
     expect(activityOf([hurt('2026-10-13', 'Cable Pushdown', { morning: 'settled' })], null, [], TODAY)).not.toHaveProperty('pain'); // answered
     expect(activityOf([hurt('2026-10-13', 'Cable Pushdown', { morning: 'skipped' })], null, [], TODAY)).not.toHaveProperty('pain'); // dismissed
     expect(activityOf([hurt(TODAY, 'A Very Long Lift Name With Many Words In It Indeed')], null, [], TODAY).pain![0].lift).toBe('A Very Long Lift Name With Many Words…'); // cut at a word, 40 at most
+  });
+});
+
+describe("the week plan's rest dates for the reminder (readiness S5, owner Q6)", () => {
+  const TODAY = '2026-10-14'; // Wednesday
+  const day = (date: string, train: boolean, fixed: PlanDay['fixed'] = null, kind: 'goal-met' | 'recovering' | 'usual' | 'spare' = 'spare'): PlanDay =>
+    ({ date, label: date, train, fixed, session: null, ready: null, light: false, rest: train ? null : { kind, label: kind } });
+  const planned = (verdict: string, days: PlanDay[], today = TODAY) => ({ verdict: { kind: verdict }, plan: { today, days } as unknown as WeekPlan });
+
+  it('the rest days up to the next session still to come: never one that rests on a session not done yet', () => {
+    // Rest today and Thursday, train Friday, rest Saturday: Saturday rests on Friday's session, so it waits for it.
+    expect(restDatesOf(planned('rest', [day(TODAY, false), day('2026-10-15', false), day('2026-10-16', true), day('2026-10-17', false), day('2026-10-18', false)]), TODAY))
+      .toEqual([TODAY, '2026-10-15']);
+    // Today trains: nothing after it is certain yet.
+    expect(restDatesOf(planned('go', [day(TODAY, true), day('2026-10-15', false), day('2026-10-16', true)]), TODAY)).toEqual([]);
+    // He trained today: the days after it rest on a session that's done, up to the next one.
+    expect(restDatesOf(planned('go', [day(TODAY, true, 'trained'), day('2026-10-15', false, null, 'recovering'), day('2026-10-16', true), day('2026-10-17', false)]), TODAY))
+      .toEqual(['2026-10-15']);
+    // A layoff's forced session today is still to come.
+    expect(restDatesOf(planned('go', [day(TODAY, true, 'layoff'), day('2026-10-15', false)]), TODAY)).toEqual([]);
+  });
+
+  it('"Goal met · extra session optional" today keeps its reminder; the met goal’s later days are the plan’s rest days', () => {
+    const met = [day(TODAY, false, null, 'goal-met'), day('2026-10-15', false, null, 'goal-met'), day('2026-10-16', false, null, 'goal-met'), day('2026-10-17', false, null, 'goal-met'), day('2026-10-18', false, null, 'goal-met')];
+    expect(restDatesOf(planned('go', met), TODAY)).toEqual(['2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18']);
+    // The planner's own rest today ("Rest today" on the tile) is one.
+    expect(restDatesOf(planned('rest', met), TODAY)).toEqual([TODAY, '2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18']);
+  });
+
+  it('none without a plan for today: the Worker reminds as before', () => {
+    expect(restDatesOf(null, TODAY)).toBeUndefined();
+    expect(restDatesOf({ verdict: { kind: 'rest' }, plan: null }, TODAY)).toBeUndefined();
+    expect(restDatesOf(planned('rest', [day('2026-10-13', false)], '2026-10-13'), TODAY)).toBeUndefined(); // yesterday's plan
+  });
+
+  it('from the planner itself: his goal met on Monday, Wednesday is optional and Thursday to Sunday rest', () => {
+    const entries = [s('2026-10-12', 'Bench Press', 140, 8), s('2026-10-12', 'Bench Press', 140, 8)];
+    const r = readinessPlanned({ entries, body: [], weeklyGoal: 1, program: null, plans: [], quick: null, today: TODAY, tz: 'UTC', profile: defaultProfile() });
+    expect(r.verdict.why).toBe('goal-met');
+    expect(restDatesOf(r, TODAY)).toEqual(['2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18']);
+    // Goal 3, two days left to make it up: today trains, so nothing is sent yet.
+    const short = readinessPlanned({ entries, body: [], weeklyGoal: 3, program: null, plans: [], quick: null, today: '2026-10-17', tz: 'UTC', profile: defaultProfile() });
+    expect(short.plan!.days[0].train).toBe(true);
+    expect(restDatesOf(short, '2026-10-17')).toEqual([]);
+  });
+
+  it('activityOf sends only dates from today, for 7 days, each once and in order; none at all without them', () => {
+    const base = activityOf([], null, [], TODAY, 3, 'UTC');
+    expect(base).not.toHaveProperty('rest');
+    expect(activityOf([], null, [], TODAY, 3, 'UTC', [])).toEqual(base);
+    expect(activityOf([], null, [], TODAY, 3, 'UTC', ['2026-10-13'])).toEqual(base); // yesterday's: past
+    expect(activityOf([], null, [], TODAY, 3, 'UTC', ['2026-10-18', TODAY, '2026-10-18', '2026-10-21', '2026-10-20']).rest).toEqual([TODAY, '2026-10-18', '2026-10-20']);
   });
 });

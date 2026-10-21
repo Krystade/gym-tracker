@@ -80,6 +80,11 @@ export interface Activity {
   goal?: number; remind?: (string | null)[];
   /** Pain days the phone hasn't asked about (item 08): at most two (yesterday and today), each a day, a region and a lift's name. */
   pain?: PainDay[];
+  /**
+   * The local dates in the next 7 days his week plan rests (readiness S5, owner Q6: no reminder on a planned rest day): dates
+   * only, at most 7, each once, sorted. An app before them sends none: the reminder is as before.
+   */
+  rest?: string[];
 }
 const learned = (v: unknown) => (v === null || v === 'off' ? v : hhmm(v, 'remind'));
 const region = (v: unknown) => (typeof v === 'string' && (PAIN_REGIONS as readonly string[]).includes(v) ? (v as PainRegion) : bad('region'));
@@ -92,9 +97,18 @@ function painDays(v: unknown): PainDay[] {
   if (new Set(out.map((p) => p.date)).size !== out.length) bad('pain');
   return out;
 }
+/** A calendar date (2027-02-30 is not one). */
+const day = (v: unknown, what: string) => { const d = date(v, what), t = Date.parse(`${d}T00:00:00Z`); return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === d ? d : bad(what); };
+function restDates(v: unknown): string[] {
+  if (!Array.isArray(v) || v.length > 7) return bad('rest');
+  const out = v.map((x) => day(x, 'rest'));
+  if (new Set(out).size !== out.length) bad('rest');
+  return out.sort();
+}
 export function activity(v: unknown): Activity {
   const o = obj(v, 'body'), w = obj(o.week, 'week');
   return {
+    ...(o.rest != null && { rest: restDates(o.rest) }),
     ...(o.goal != null && { goal: int(o.goal, 1, 7, 'goal') }),
     ...(o.remind != null && { remind: Array.isArray(o.remind) && o.remind.length === 7 ? o.remind.map(learned) : bad('remind') }),
     ...(o.pain != null && { pain: painDays(o.pain) }),

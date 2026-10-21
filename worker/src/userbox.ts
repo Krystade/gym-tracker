@@ -4,7 +4,7 @@ import type { Env } from './env';
 import type { FriendPush } from './notify';
 import { hurtsOf, nextPainAt, painDue } from './pain';
 import { sendOne } from './send';
-import { localDate, nextAt, nextRemind, weekStart } from './schedule';
+import { localDate, nextAt, nextRemind, remindToday, weekStart } from './schedule';
 import { DEFAULT_PREFS, on, type Activity, type Prefs, type Subscription } from './validate';
 import { parseVapid, vapidAuth } from './vapid';
 
@@ -90,7 +90,7 @@ export class UserBox extends DurableObject<Env> {
 
   private timesFor(p: Prefs, now: number, act: Activity | undefined, plan: Plan) {
     return {
-      remindAt: p.kinds.remind ? nextRemind(p.tz, p.reminder, act?.remind, now) : null,
+      remindAt: p.kinds.remind ? nextRemind(p.tz, p.reminder, act?.remind, now, act?.rest) : null,
       recapAt: p.kinds.recap ? nextAt(p.tz, [p.recap.day], p.recap.at, now) : null,
       painAt: on(p.kinds.pain) ? nextPainAt(p.tz, act?.pain, plan.painSent ?? [], now) : null,
     };
@@ -112,13 +112,13 @@ export class UserBox extends DurableObject<Env> {
 
   /**
    * What the reminder, recap and pain question need: the last day anything was logged, the next program day, this week's counts,
-   * his goal, the learned reminder times and the pain days not asked about. The reminder and the pain question are planned again
+   * his goal, the learned reminder times, the week plan's rest dates and the pain days not asked about. The reminder and the pain question are planned again
    * from them (pain answered on the phone first drops out of `pain`, and the question with it).
    */
   async activity(a: Activity): Promise<void> {
     await this.ctx.storage.put('activity', a);
     const prefs = await this.prefs(), plan = await this.plan(), now = this.now();
-    const remindAt = prefs.kinds.remind ? nextRemind(prefs.tz, prefs.reminder, a.remind, now) : null;
+    const remindAt = prefs.kinds.remind ? nextRemind(prefs.tz, prefs.reminder, a.remind, now, a.rest) : null;
     const painAt = on(prefs.kinds.pain) ? nextPainAt(prefs.tz, a.pain, plan.painSent ?? [], now) : null;
     if (remindAt === plan.remindAt && painAt === (plan.painAt ?? null)) return;
     await this.ctx.storage.put('plan', { ...plan, remindAt, painAt });
@@ -183,10 +183,8 @@ export class UserBox extends DurableObject<Env> {
     const today = localDate(prefs.tz, now);
     const act = await this.ctx.storage.get<Activity>('activity');
     if (plan.remindAt != null && plan.remindAt <= now) {
-      // Nothing logged today is the whole point: a day with a set in it gets no reminder. One a day, however the plan moved.
-      // Learning on: none once this week's sessions reach his goal (a JITAI rule, Nahum-Shani 2018: only when needed).
-      const met = prefs.reminder.learn !== false && act?.goal != null && act.week.start === weekStart(today) && act.week.sessions >= act.goal;
-      if (prefs.kinds.remind && act?.date !== today && !met && plan.remindedOn !== today) {
+      // Nothing logged today, one a day, and with learning on not once the goal is met or on a planned rest day: remindToday.
+      if (remindToday(prefs, act, plan.remindedOn, today)) {
         await this.send('remind', remindNote(act?.next));
         plan.remindedOn = today;
       }

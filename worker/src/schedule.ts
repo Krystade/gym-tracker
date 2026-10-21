@@ -65,16 +65,36 @@ export function nextAt(tz: string, days: readonly number[], at: string, after: n
   return null;
 }
 
-/** The first instant after `after` that is a reminder time (remindTime) on its local day; null with none in the next week. */
-export function nextRemind(tz: string, reminder: { days: readonly number[]; at: string; learn?: boolean }, learned: readonly (string | null)[] | undefined, after: number): number | null {
+/**
+ * The first instant after `after` that is a reminder time (remindTime) on its local day; null with none in the next two weeks.
+ * `rest`: local dates the phone's week plan rests (readiness S5, owner Q6): none on them. Only with learning on (`learn` not
+ * false): like the rest of what the app learns, the plan can only take a reminder away. An app before them sends none: as before.
+ */
+export function nextRemind(tz: string, reminder: { days: readonly number[]; at: string; learn?: boolean }, learned: readonly (string | null)[] | undefined, after: number, rest?: readonly string[]): number | null {
   const p = parts(tz, after);
-  for (let i = 0; i <= 8; i++) {
+  // Two weeks: at most 7 rest dates can't hide every one of his days (with none, a weekday missing from the first 8 days is
+  // missing from every week, so the answer is the same as one week's).
+  for (let i = 0; i <= 15; i++) {
     const day = new Date(Date.UTC(p.y, p.m - 1, p.d + i));
     const at = remindTime(reminder, learned, day.getUTCDay());
-    if (at == null) continue;
+    if (at == null || restsOn(reminder, rest, day.toISOString().slice(0, 10))) continue;
     const [hh, mm] = at.split(':').map(Number);
     const t = zonedTime(tz, day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), hh, mm);
     if (t > after) return t;
   }
   return null;
+}
+
+/** Whether `date` (local) is one of the plan's rest dates the reminder keeps quiet on: learning on, and the phone sent it. */
+export const restsOn = (reminder: { learn?: boolean }, rest: readonly string[] | undefined, date: string): boolean =>
+  reminder.learn !== false && !!rest?.includes(date);
+
+/**
+ * Whether the reminder due now goes out on local day `today`: the kind on; nothing logged today (the whole point); one a day,
+ * however the plan moved; with learning on, none once this week's sessions reach his goal (a JITAI rule, Nahum-Shani 2018: only
+ * when needed) and none on a rest date of his week plan (readiness S5).
+ */
+export function remindToday(prefs: { kinds: { remind: boolean }; reminder: { learn?: boolean } }, act: { date: string; week: { start: string; sessions: number }; goal?: number; rest?: readonly string[] } | undefined, remindedOn: string | undefined, today: string): boolean {
+  const met = prefs.reminder.learn !== false && act?.goal != null && act.week.start === weekStart(today) && act.week.sessions >= act.goal;
+  return prefs.kinds.remind && act?.date !== today && !met && remindedOn !== today && !restsOn(prefs.reminder, act?.rest, today);
 }

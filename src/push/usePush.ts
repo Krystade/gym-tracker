@@ -10,15 +10,31 @@ import { take } from './store';
 
 // Both hooks are no-ops in a build without a Worker, so the bundle carries none of this.
 
+/** The week plan's rest dates as Today last read them (readiness S5: restDatesOf), and the sync to tell when they change. */
+let rest: readonly string[] | undefined;
+let restChanged: (() => void) | null = null;
 /**
- * Keeps the Worker current for the signed-in person: the reminder and recap numbers after the log changes, and the
- * subscription each time the app comes back. Signed out, this phone's subscription goes.
+ * From Today: the plan's rest dates for the reminder (owner Q6). Held here, not in React state, so a plan read again after a sync
+ * renders nothing (e2e/inputs); a change posts the activity again, debounced as any other.
+ */
+export function setRestDates(dates: readonly string[] | undefined): void {
+  if (!PUSH_ON || (rest?.join() === dates?.join() && !rest === !dates)) return;
+  rest = dates;
+  restChanged?.();
+}
+
+/**
+ * Keeps the Worker current for the signed-in person: the reminder and recap numbers after the log changes (and the week plan's
+ * rest dates, from Today: setRestDates), and the subscription each time the app comes back. Signed out, this phone's subscription goes.
  */
 export const usePushSync = PUSH_ON ? function usePushSync(entries: SetEntry[], program: Program | null | undefined, plans: DayPlan[], today: string, signedIn: boolean | null, goal?: number) {
   useEffect(() => {
     if (!signedIn) return;
-    const t = setTimeout(() => { void postActivity(activityOf(entries, program, plans, today, goal)).catch(() => {}); }, 3000);
-    return () => clearTimeout(t);
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const post = () => { clearTimeout(t); t = setTimeout(() => { void postActivity(activityOf(entries, program, plans, today, goal, undefined, rest)).catch(() => {}); }, 3000); };
+    post();
+    restChanged = post;
+    return () => { clearTimeout(t); if (restChanged === post) restChanged = null; };
   }, [entries, program, plans, today, signedIn, goal]);
   useEffect(() => {
     if (signedIn === false) { void forgetDevice(); return; }
