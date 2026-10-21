@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { repinChrome } from './viewportPin';
 import { useSets } from '../state/useSets';
 import { useSettings } from '../state/useSettings';
 import { useProfile } from '../state/useProfile';
@@ -131,6 +132,8 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   useOpenRoute((r) => {
     setViewing(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); setPrioOpen(false);
     setTab(tabOf(r)); window.scrollTo(0, 0);
+    // The app just came up from a tap: the fixed bars go where the screen is, whatever iOS restored (ui/viewportPin).
+    repinChrome();
     // The recap opens today's Today at the week's digest.
     if (r === 'recap') { setChosen(null); setRecapAt(Date.now()); }
     // The pain question opens today's Today, where its card sits at the top.

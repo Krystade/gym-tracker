@@ -3,6 +3,7 @@ import type { RestPart } from '../domain/timing';
 import { restAlertState, restPush, subscribeRestAlert } from '../push/client';
 import { PUSH_ON } from '../push/config';
 import { Icon } from './icons';
+import { NEXT } from '../domain/upNext';
 
 // One rest at a time, kept outside the screens so leaving Today and coming back doesn't lose it. `card`: the lift's card.
 // `label`: what the lock-screen alert says ("Bench Press · set 4 next"), where push notifications are on.
@@ -77,6 +78,20 @@ export function restLines(r: Rest): { total: number; parts: RestPart[] } | null 
 /** "Not a superset": a switch running becomes the full rest it stood in for. */
 export const revertSwitch = () => { if (rest?.full) setRest(rest.full); };
 
+/**
+ * What the bar says comes next, from the rest's label (domain/upNext): `sub`, under "Rest", for this lift's next set or the plan
+ * done; `row`, a line of its own, for another lift (the plan's next, a superset's other lift or its next round).
+ */
+export function nextOf(label: string | undefined, card: string | undefined): { sub?: string; row?: string } {
+  if (!label) return {};
+  if (label.startsWith('Switch to ')) return { row: label.slice('Switch to '.length) };
+  if (label.startsWith(NEXT)) return { row: label.slice(NEXT.length) };
+  const m = / · set (\d+) next$/.exec(label);
+  if (!m) return { sub: label };
+  const lift = label.slice(0, m.index);
+  return lift.toLowerCase() === card?.toLowerCase() ? { sub: `Set ${m[1]} next` } : { row: `${lift} · set ${m[1]}` };
+}
+
 /** How long "Rest done" stays up before the bar goes. */
 const DONE_FOR = 30_000;
 const mss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -138,14 +153,15 @@ export function RestTimer() {
     return () => { alive = false; document.removeEventListener('visibilitychange', onVis); lock?.release().catch(() => {}); };
   }, [running]);
 
-  // Room under the page for the bar, so nothing has to stay under it.
+  // Room under the page for the bar, so nothing has to stay under it (taller with a line for the next lift).
+  const { sub: then, row } = nextOf(r?.label, r?.card);
   const bar = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = bar.current, root = document.documentElement;
     if (!el) return;
     root.style.setProperty('--rest-h', `${el.offsetHeight + 8}px`);
     return () => { root.style.removeProperty('--rest-h'); };
-  }, [gone, finishing]);
+  }, [gone, finishing, row]);
   // A new rest: the form just used stays clear of the bar.
   useEffect(() => {
     if (!r) return;
@@ -164,11 +180,10 @@ export function RestTimer() {
   );
   if (gone) return null;
   const what = r?.full ? 'Switch' : 'Rest';
-  // Under the time: what comes next ("Set 3 next", or the lift to switch to), unless the lock-screen alert couldn't be set.
-  const next = r?.label?.startsWith('Switch to ') ? r.label.slice('Switch to '.length) : r?.label?.split(' · ')[1];
-  const sub = PUSH_ON && left > 0 && alert === 'failed' ? 'No lock-screen alert' : next && next[0].toUpperCase() + next.slice(1);
+  // Under the time: this lift's next set ("Set 3 next") or "Plan done", unless the lock-screen alert couldn't be set.
+  const sub = PUSH_ON && left > 0 && alert === 'failed' ? 'No lock-screen alert' : then;
   return (
-    <div ref={bar} className={left > 0 ? 'rest-timer' : 'rest-timer done'} role="timer" aria-label={what}>
+    <div ref={bar} className={`rest-timer${left > 0 ? '' : ' done'}${row ? ' has-next' : ''}`} role="timer" aria-label={what}>
       {left > 0 && r?.total && <i className="rest-progress" aria-hidden="true" style={{ '--p': Math.min(1, (r.until - now) / r.total) } as CSSProperties} />}
       <div className="rest-main">
         {/* The "?" stands where the bar's glyph was: there's no room at 375px for both and the words. */}
@@ -183,9 +198,12 @@ export function RestTimer() {
           {sub && <span className="muted small">{sub}</span>}
         </span>
       </div>
-      <button type="button" className="mini" disabled={left <= 0} onClick={() => adjustRest(-30_000)}>−30 s</button>
+      {/* Done, there's nothing to take off: its room goes to the words ("Rest done" was cut to "Rest d…" at 375px). */}
+      {left > 0 && <button type="button" className="mini" onClick={() => adjustRest(-30_000)}>−30 s</button>}
       <button type="button" className="mini" onClick={() => adjustRest(30_000)}>+30 s</button>
       <button type="button" className="mini icon" aria-label="Close rest timer" onClick={() => setRest(null)}><Icon name="close" /></button>
+      {/* Another lift next: a line of its own the width of the bar, as its name won't fit beside the time and buttons. */}
+      {row && <p className="rest-next small"><span className="muted">Next</span> <b>{row}</b></p>}
       {why && lines && (
         <div className="rest-why" id={whyId} role="dialog" aria-label={`Why this ${what.toLowerCase()}`}>
           <div className="rest-why-head">

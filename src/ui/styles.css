@@ -91,6 +91,10 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
 .finish-bar .rest-main { margin: 0; min-height: 44px; gap: 8px; }
 .finish-bar .rest-main .ic { color: var(--ok); flex: none; }
 .rest-timer.finish-bar .mini.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; padding: 0 16px; }
+/* Another lift next: its own line under the time, the bar's width, so a long name shows whole (wrapping, never cut). */
+.rest-timer.has-next { flex-wrap: wrap; row-gap: 0; }
+.rest-next { flex: 1 0 100%; order: 1; margin: -2px 0 4px; padding: 0 0 0 8px; line-height: 1.3; overflow-wrap: anywhere; }
+.rest-next b { font-weight: 600; }
 /* The "?": the bar's leading glyph, a 44px tap round it that reaches into the bar's padding and the gap. */
 .rest-why-btn { flex: none; display: grid; place-items: center; width: 44px; min-height: 44px; margin: 0 -8px; padding: 0; background: none; color: var(--accent-text); border-radius: var(--r-pill); }
 .rest-why-btn[aria-expanded='true'] { background: var(--fill); }

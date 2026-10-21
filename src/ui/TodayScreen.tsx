@@ -179,6 +179,11 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     const day = timedWorking(entries, date);
     return { to, ...switchFor(model, from.exercise, to, { rests: restsOf(day), switches: switchesOf(day, g.keys, g.after) }) };
   };
+  // After the set `id`, when it ended a round of a group: the group's lifts, for whichever starts the next round.
+  const roundAfter = (entries: SetEntry[], id: string): readonly string[] | undefined => {
+    const g = groupsIn(entries).find((x) => x.after.has(id));
+    return g && g.after.get(id) === null ? g.lifts : undefined;
+  };
   const dismiss = (g: Superset) => { markNotSuperset(owner, date, g.keys); setNotSuper(notSupersets(owner, date)); revertSwitch(); };
   // After a set with another lift to go in the round, that lift's card comes up, ready for its set. A new request each time,
   // so the same lift comes up again; not cleared after, which would render Today again.
@@ -328,7 +333,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
         swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
         openReq={openReq && sameExercise(openReq.to, n) ? openReq : null}
         supersetWith={groupOf(n)?.lifts.filter((x) => !sameExercise(x, n))} onNotSuperset={() => { const g = groupOf(n); if (g) dismiss(g); }}
-        switchAfter={switchAfter} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} restDelta={restDelta} light={!!light}
+        switchAfter={switchAfter} roundAfter={roundAfter} plannedOf={(ex) => plannedSets(programs.program, plan, ex)} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} restDelta={restDelta} light={!!light}
         completesPlan={completesPlan} onPlanDone={onPlanDone} />)}
       {/* Below the cards, so the card you're logging on never moves down. */}
       {!summary && <SessionSummary entries={store.entries} date={date} past={date < today} />}

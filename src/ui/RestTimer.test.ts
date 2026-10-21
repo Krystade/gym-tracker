@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { restPush } = vi.hoisted(() => ({ restPush: vi.fn() }));
 vi.mock('../push/client', () => ({ restPush, restAlertState: () => null, subscribeRestAlert: () => () => {} }));
 vi.mock('../push/config', () => ({ PUSH_ON: true }));
-const { adjustRest, closeTimers, currentOffer, currentRest, finishNow, keepGoing, offerFinish, restLines, revertSwitch, startRest } = await import('./RestTimer');
+const { adjustRest, closeTimers, currentOffer, currentRest, finishNow, keepGoing, nextOf, offerFinish, restLines, revertSwitch, startRest } = await import('./RestTimer');
 
 describe('the rest timer’s lock-screen alert', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-16T18:30:00')); restPush.mockClear(); startRest(0, 'x'); restPush.mockClear(); });
@@ -156,5 +156,16 @@ describe('after the plan’s last set (owner, 2026-10-20): no rest, Finish or Ke
     restPush.mockClear();
     closeTimers();
     expect(restPush).not.toHaveBeenCalled();
+  });
+});
+
+describe('what the bar says comes next', () => {
+  it('this lift’s next set under “Rest”; another lift on a line of its own; the plan done under “Rest”', () => {
+    expect(nextOf('Cable Pushdown · set 3 next', 'cable pushdown')).toEqual({ sub: 'Set 3 next' });
+    expect(nextOf('Next: Machine Chest Press', 'cable pushdown')).toEqual({ row: 'Machine Chest Press' });
+    expect(nextOf('Switch to Cable Curl', 'cable pushdown')).toEqual({ row: 'Cable Curl' });
+    expect(nextOf('Cable Curl · set 3 next', 'cable pushdown')).toEqual({ row: 'Cable Curl · set 3' });
+    expect(nextOf('Plan done', 'cable pushdown')).toEqual({ sub: 'Plan done' });
+    expect(nextOf(undefined, 'x')).toEqual({});
   });
 });

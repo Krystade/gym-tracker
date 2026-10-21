@@ -20,6 +20,11 @@
  * and translating the chrome by that put the tab bar 400px up the screen and the backdrop off the top (the owner's 13 mini,
  * on More). A stuck screen is never above the page, nor past its end at the full height, so while the visual viewport is
  * there the gap is left as it was. (overscroll-behavior on body doesn't stop the bounce: only the root's reaches the viewport.)
+ *
+ * But a bounce takes a finger: it happens only while a touch is down or its fling is still scrolling. Coming back to the app
+ * (a notification tapped on the Home Screen, owner's 13 mini, 2026-10-20) iOS can hand back a stale visual viewport past the
+ * end of a page that got shorter in the background (a lift's card folded, the rest bar gone), with no touch at all: that
+ * looked like a bounce, so the pin left the tab bar mid-screen with the page below it. Without a touch it is a stuck screen.
  */
 // A field that can raise a keyboard or picker. Read-only ones can't (the invite link), nor inputmode=none.
 const FIELD = 'input:not([type=checkbox], [type=radio], [type=range], [type=button], [type=submit], [type=reset], [type=file], [type=image], [readonly], [inputmode=none]), '
@@ -28,6 +33,11 @@ const POLL_MS = 500;
 const LINGER_MS = 5000;
 /** Anything focused that takes text or a pick, read-only or not: while one has focus it can leave the page unannounced. */
 const ANY_FIELD = 'input, select, textarea, [contenteditable]';
+/** How long after a finger lifts (or the fling's last scroll) the page can still be bouncing. */
+const FLING_MS = 700;
+let kick: (() => void) | null = null;
+/** Look at the screen again now and for a few seconds (a notification tap's screen just came up). */
+export const repinChrome = () => kick?.();
 
 export function pinChromeToVisualViewport(root: HTMLElement = document.documentElement): () => void {
   const vv = window.visualViewport;
@@ -37,8 +47,9 @@ export function pinChromeToVisualViewport(root: HTMLElement = document.documentE
   // counts as holding a picker up, until it is focused again.
   let picked: Element | null = null;
   // Mid-bounce: the visual viewport above the page, or at the full height past its end. scrollHeight only when it can be.
-  const bouncing = () => scrollY < 0 || vv.offsetTop < 0 || vv.pageTop < 0
-    || (vv.offsetTop > 0 && vv.height >= innerHeight - 1 && vv.pageTop + vv.height > (document.scrollingElement ?? document.documentElement).scrollHeight + 1);
+  let touching = false, flingUntil = 0;
+  const bouncing = () => (touching || Date.now() < flingUntil) && (scrollY < 0 || vv.offsetTop < 0 || vv.pageTop < 0
+    || (vv.offsetTop > 0 && vv.height >= innerHeight - 1 && vv.pageTop + vv.height > (document.scrollingElement ?? document.documentElement).scrollHeight + 1));
   const update = () => {
     const active = document.activeElement;
     const field = (active?.matches(FIELD) ?? false) && active !== picked;
@@ -68,7 +79,9 @@ export function pinChromeToVisualViewport(root: HTMLElement = document.documentE
   };
   const wake = () => { until = Date.now() + LINGER_MS; if (!poll) poll = window.setInterval(tick, POLL_MS); };
   const later = () => { wake(); timers.forEach(clearTimeout); update(); timers = [100, 400, 800].map((ms) => window.setTimeout(update, ms)); };
-  const moved = () => { update(); wake(); };
+  const moved = () => { if (touching || Date.now() < flingUntil) flingUntil = Date.now() + FLING_MS; update(); wake(); };
+  const down = () => { touching = true; };
+  const up = () => { touching = false; flingUntil = Date.now() + FLING_MS; later(); };
   vv.addEventListener('resize', moved);
   vv.addEventListener('scroll', moved);
   window.addEventListener('scroll', moved, { passive: true });
@@ -79,10 +92,17 @@ export function pinChromeToVisualViewport(root: HTMLElement = document.documentE
   document.addEventListener('focusout', later);
   document.addEventListener('change', onChange, true);
   // A tap anywhere, and coming back to the app (from a share sheet, say), look again straight away.
-  document.addEventListener('touchend', later, { passive: true });
-  const onShow = () => { if (document.visibilityState === 'visible') later(); };
+  document.addEventListener('touchstart', down, { passive: true, capture: true });
+  document.addEventListener('touchend', up, { passive: true, capture: true });
+  document.addEventListener('touchcancel', up, { passive: true, capture: true });
+  // Back from the background: no finger is down, whatever the last one was doing when the app went.
+  const resume = () => { touching = false; flingUntil = 0; later(); };
+  const onShow = () => { if (document.visibilityState === 'visible') resume(); };
   document.addEventListener('visibilitychange', onShow);
-  window.addEventListener('pageshow', later);
+  window.addEventListener('pageshow', resume);
+  window.addEventListener('focus', resume);
+  window.addEventListener('hashchange', later);
+  kick = later;
   update();
   wake();
   return () => {
@@ -93,9 +113,14 @@ export function pinChromeToVisualViewport(root: HTMLElement = document.documentE
     document.removeEventListener('focusin', onFocus);
     document.removeEventListener('focusout', later);
     document.removeEventListener('change', onChange, true);
-    document.removeEventListener('touchend', later);
+    document.removeEventListener('touchstart', down, true);
+    document.removeEventListener('touchend', up, true);
+    document.removeEventListener('touchcancel', up, true);
     document.removeEventListener('visibilitychange', onShow);
-    window.removeEventListener('pageshow', later);
+    window.removeEventListener('pageshow', resume);
+    window.removeEventListener('focus', resume);
+    window.removeEventListener('hashchange', later);
+    if (kick === later) kick = null;
     clearInterval(poll);
     timers.forEach(clearTimeout);
   };

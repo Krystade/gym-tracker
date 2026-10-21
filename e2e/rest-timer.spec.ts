@@ -1,4 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
+import path from 'node:path';
+import { goto } from './nav';
 
 type B = { x: number; y: number; width: number; height: number };
 const overlaps = (a: B, b: B) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
@@ -109,7 +111,7 @@ test('−30 s and +30 s change the rest, and the lift starts its next rest there
   // Never under 0: the last −30 s ends it, and then there's nothing to take off.
   await less.click();
   await expect(timer).toContainText('Rest done');
-  await expect(less).toBeDisabled();
+  await expect(less).toHaveCount(0); // nothing to take off: its room goes to "Rest done"
   const more = timer.getByRole('button', { name: '+30 s' });
   await more.click();
   await expect(timer).toContainText('0:30');
@@ -146,4 +148,81 @@ test('the rest bar fits a 375 px phone: time, words, −30 s, +30 s and ×, ever
     return out;
   });
   expect(bad).toEqual([]);
+});
+
+// Owner, 2026-10-20: the last of 4 planned Cable Pushdown sets started a rest that said "set 5 next". A planned lift's last set
+// names the plan's next lift instead; the last set of the day's plan names no further set.
+test('the last planned set of a lift names the plan’s next lift, never a set past the plan', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-16T18:00:00') });
+  await page.goto('/');
+  await goto(page, 'More');
+  await page.getByLabel('Import CSV').setInputFiles(path.join(import.meta.dirname, 'fixtures', 'history.sample.csv'));
+  await expect(page.getByText(/Imported 6 new/)).toBeVisible();
+  await goto(page, 'Today');
+  await page.getByRole('button', { name: 'Program', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Days per week' }).fill('2');
+  await page.getByRole('textbox', { name: 'Sets per session' }).fill('14');
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  const rows = page.getByRole('list', { name: 'Planned exercises' }).getByRole('listitem');
+  expect(await rows.count(), 'a plan of two lifts or more').toBeGreaterThanOrEqual(2);
+  const names = await rows.locator('.plan-name').evaluateAll((els) => els.map((e) => e.getAttribute('data-exercise')!));
+  // All but the first two skipped: the first lift's last set leads to the second; the second's, to the plan's end.
+  for (let i = (await rows.count()) - 1; i >= 2; i--) await rows.nth(i).getByRole('button', { name: 'Skip' }).click();
+  const timer = page.getByRole('timer', { name: 'Rest' });
+  const sub = timer.locator('.rest-words');
+  for (const [k, name] of names.slice(0, 2).entries()) {
+    const sets = Number((await rows.nth(k).locator('.plan-count').textContent())!.split('/')[1]);
+    expect(sets, `${name}: a planned count`).toBeGreaterThan(1);
+    await rows.nth(k).locator('.plan-name').click();
+    const card = page.locator(`[data-card="${name.toLowerCase()}"]`);
+    for (let i = 1; i <= sets; i++) {
+      const w = card.getByRole('textbox', { name: 'Weight' });
+      if ((await w.inputValue()) === '') await w.fill('50');
+      await card.getByRole('button', { name: /^Add set/ }).click();
+      if (i < sets) {
+        await expect(sub).toContainText(`Set ${i + 1} next`);
+        await expect(card.getByRole('list', { name: `Sets for ${name}` }).getByRole('listitem')).toHaveCount(i);
+      }
+    }
+    // The last planned set: no "Set n+1 next", and what comes next instead.
+    if (k === 0) await expect(timer.locator('.rest-next')).toHaveText(`Next ${names[1]}`);
+    else { await expect(sub).toContainText('Plan done'); await expect(timer.locator('.rest-next')).toHaveCount(0); }
+    await expect(timer).not.toContainText(`Set ${sets + 1} next`);
+  }
+  await page.screenshot({ path: 'test-results/rest-plan-done.png' });
+});
+
+// Owner, 2026-10-20: "most of the text on the timer message is cut off, I see 'Rest d…'". At 375 px the words beside the time
+// had about 77 px, so "Rest done" was cut, and a lift's name would be.
+test('done, the rest bar shows “Rest done” and the next lift in full at 375 px', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-16T18:00:00') });
+  await page.goto('/');
+  const card = await openCurl(page);
+  await card.getByRole('textbox', { name: 'Weight' }).fill('50');
+  await page.clock.pauseAt(new Date('2026-10-16T18:30:00'));
+  await card.getByRole('button', { name: /^Add set/ }).click();
+  const timer = page.getByRole('timer', { name: 'Rest' });
+  await expect(timer).toContainText('2:00');
+  await page.clock.fastForward(121_000);
+  await expect(timer).toContainText('Rest done');
+  const cut = () => timer.evaluate((bar) => [...bar.querySelectorAll<HTMLElement>('.rest-words > span, .rest-next')]
+    .map((el) => {
+      // The text's whole width, laid out uncut on one line (scrollWidth rounds, and an ellipsis can hide under it).
+      const probe = el.cloneNode(true) as HTMLElement;
+      Object.assign(probe.style, { position: 'absolute', visibility: 'hidden', width: 'auto', maxWidth: 'none', whiteSpace: 'nowrap', overflow: 'visible' });
+      el.parentElement!.append(probe);
+      const whole = probe.getBoundingClientRect().width;
+      probe.remove();
+      const lines = Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight || '20'));
+      return { text: el.textContent, over: whole - el.getBoundingClientRect().width * Math.max(1, lines) };
+    }));
+  const done = await cut();
+  expect(done.length, 'words found').toBeGreaterThanOrEqual(2);
+  expect(done.filter((x) => x.over > 0.5)).toEqual([]);
+  // This engine's fallback font is narrower than the phone's SF Pro, where "Rest done" alone takes about 78 px and "Switch
+  // done" about 92: the words need room to spare, not just to fit here (they had 77 px).
+  const room = await timer.evaluate((bar) => bar.querySelector('.rest-main')!.getBoundingClientRect().right - bar.querySelector('.rest-words')!.getBoundingClientRect().left);
+  expect(room, 'room for the words').toBeGreaterThanOrEqual(110);
+  await page.screenshot({ path: 'test-results/rest-done-375.png' });
 });

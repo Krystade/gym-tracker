@@ -195,6 +195,7 @@ test('a rubber-band bounce past the top or the end of a page leaves the tab bar 
   expect(await page.evaluate(() => document.activeElement === document.body), 'no field focused, no keyboard').toBe(true);
 
   // Pulled down past the top, and let go: the visual viewport above the page, the event firing at every step.
+  await finger(page, 'touchstart');
   for (const d of [120, 400, 250, 60]) {
     await vv(page, { offsetTop: -d });
     expect(await edges(), `${d}px past the top`).toEqual([0, H]);
@@ -203,9 +204,11 @@ test('a rubber-band bounce past the top or the end of a page leaves the tab bar 
   await page.waitForTimeout(700); // the twice-a-second check has had a look too
   expect(await edges()).toEqual([0, H]);
   await vv(page, { offsetTop: 0 });
+  await finger(page, 'touchend');
 
   // Pushed up past the end: at the bottom of the page, the full-height visual viewport runs past its end.
   await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+  await finger(page, 'touchstart');
   for (const d of [80, 300, 120]) {
     await vv(page, { offsetTop: d });
     expect(await edges(), `${d}px past the end`).toEqual([0, H]);
@@ -214,12 +217,45 @@ test('a rubber-band bounce past the top or the end of a page leaves the tab bar 
   await page.waitForTimeout(700);
   expect(await edges()).toEqual([0, H]);
   await vv(page, { offsetTop: 0 });
+  await finger(page, 'touchend');
 
   // The stuck screen on the same page still takes the chrome with it: only the bounce is left alone.
   await vv(page, { offsetTop: 300, height: H - 24 });
   expect(await edges()).toEqual([300, 300 + H - 24]);
   await vv(page, { offsetTop: 0, height: null });
   expect(await edges()).toEqual([0, H]);
+});
+
+/** A finger on the screen or lifted, as WebKit tells the page (a bounce needs one). */
+const finger = (page: Page, type: 'touchstart' | 'touchend') => page.evaluate((t) => document.dispatchEvent(new Event(t, { bubbles: true })), type);
+/** The app goes to the background or comes back to the front, as iOS tells it. */
+const visibility = (page: Page, state: 'hidden' | 'visible') => page.evaluate((st) => {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => st });
+  document.dispatchEvent(new Event('visibilitychange'));
+}, state);
+
+// Owner's 13 mini, 2026-10-20: a "Rest done" notification tapped on the Home Screen opened the app with the tab bar mid-screen
+// and the page below it. In the background the page got shorter, and iOS handed back the visual viewport where it was: past the
+// page's end at the full height, as a bounce leaves it, but with no finger on the screen. That is a stuck screen.
+test('back from the background with the screen left past the end of a shorter page, the bars follow the screen', async ({ page }) => {
+  await notched(page);
+  await fakeViewport(page);
+  await page.goto('/');
+  await goto(page, 'More');
+  const H = 812;
+  const edges = async () => [(await box(page, '.status-backdrop')).top, (await box(page, 'nav.tabs')).bottom];
+  await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+  expect(await edges()).toEqual([0, H]);
+  await visibility(page, 'hidden');
+  await vv(page, { offsetTop: 300 }, false); // full height, past the page's end: what a bounce looks like
+  expect(await page.evaluate(() => visualViewport!.pageTop + visualViewport!.height > document.documentElement.scrollHeight), 'past the end').toBe(true);
+  await visibility(page, 'visible');
+  await expect.poll(edges).toEqual([300, 300 + H]);
+  await page.screenshot({ path: 'test-results/viewport-resume.png' });
+  // A tap that opened the app on a route re-pins too, with no visibility event (the window was already up).
+  await vv(page, { offsetTop: 0 }, false);
+  await page.evaluate(() => { location.hash = '#open=rest'; });
+  await expect.poll(edges).toEqual([0, H]);
 });
 
 // Friends, against the emulators (synthetic users only). The owner's phone showed the bar mid-screen again here after typing in

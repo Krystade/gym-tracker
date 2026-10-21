@@ -17,6 +17,7 @@ import { fmtLoad, fmtRamp } from './SuggestionCard';
 import { hhmm, paces, restFor, suggestTime, type RestPart } from '../domain/timing';
 import { kneeAfter } from '../domain/learn/rest';
 import { andList } from '../domain/superset';
+import { upNext } from '../domain/upNext';
 import { startRest } from './RestTimer';
 import { localDate } from '../domain/ids';
 import { addDays } from '../domain/analytics';
@@ -39,7 +40,7 @@ export function ExerciseCard({ plannedMinutes, ...p }: CardProps) {
 }
 
 function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = null, who, swappedFrom, left = [], onGo,
-  supersetWith, onNotSuperset, switchAfter, onSwitch, aside, restDelta, light = false, completesPlan, onPlanDone }: {
+  supersetWith, onNotSuperset, switchAfter, roundAfter, onSwitch, aside, restDelta, light = false, completesPlan, onPlanDone, plannedOf }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
   /** The plan sent you to this card: open it if it's folded. Each request once (a render of the card's own keeps it). */
   openReq?: object | null;
@@ -53,6 +54,10 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   supersetWith?: string[]; onNotSuperset?: () => void;
   /** With the log as it is after the set `id`: the superset's next lift to switch to, null for its full rest, undefined if in none. */
   switchAfter?: (entries: SetEntry[], id: string) => { to: string; seconds: number; parts: RestPart[] } | null | undefined;
+  /** With the log as it is after the set `id`: when that set ended a superset's round, the superset's lifts in order. */
+  roundAfter?: (entries: SetEntry[], id: string) => readonly string[] | undefined;
+  /** Any lift's sets planned today (null for none), for what the rest after a set leads to; without it, this card's alone. */
+  plannedOf?: (exercise: string) => number | null | undefined;
   onSwitch?: (exercise: string) => void;
   /** Shown under the card's head, before its numbers: the suggestion to rotate a stalled lift. */
   aside?: ReactNode;
@@ -133,8 +138,10 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     // A set done just now starts the rest; one entered for an earlier time or day doesn't. Inside a superset with a lift still to
     // go in the round, a short switch instead, and that lift's card comes up.
     if (at === undefined && date === realToday) {
-      const label = `${exercise} · set ${working.length + (isWorking(e) ? 1 : 0) + 1} next`;
+      // What the rest leads to: this lift's next set while its plan has one, else the plan's next lift (domain/upNext).
       const after = [...store.entries.filter((x) => x.id !== e.id), e];
+      const label = upNext({ exercise, entries: after, date, left, round: roundAfter?.(after, e.id),
+        planned: plannedOf ?? ((x) => (sameExercise(x, exercise) ? plannedSets : null)) });
       const switchTo = switchAfter?.(after, e.id);
       // The rest for this set: the lift's base (his setting, his knee once his sets show it, else research) and its effort
       // (domain/timing restFor). The knee reads the log as it was before this set (the core as of the days before is cached
