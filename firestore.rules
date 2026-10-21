@@ -12,6 +12,31 @@ service cloud.firestore {
         && get(/databases/$(db)/documents/users/$(uid)/invites/$(token)).data.expires > request.time;
     }
 
+    // The compare summary's shape (domain/compare Summary): these keys and no others, every range, each series 13 points, at most
+    // 12 lifts a range and 8 firsts, the first of each list in its shape (a request may evaluate only 1,000 expressions: one entry
+    // each fits, all of them don't). Every key is read below, so one missing or of another type errors, and an error refuses.
+    // What's inside a list isn't checked entry by entry: the app reads every friend's summary as untrusted (compare
+    // parseSummary) and drops what isn't in shape.
+    function isDay(s) { return s.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }
+    function nameOk(s) { return s.matches('(?s)^.{1,60}$'); }
+    function liftOk(l) { return l.keys().hasOnly(['n', 's']) && nameOk(l.n) && l.s is list && l.s.size() == 13; }
+    function firstOk(f) { return f.keys().hasOnly(['n', 'w', 'd']) && nameOk(f.n) && f.w >= 0 && f.w <= 2000 && isDay(f.d); }
+    function rangeOk(x, met) {
+      return x.keys().hasOnly(['met', 'vol', 'prs', 'lifts']) && x.met.matches(met)
+        && x.vol is list && (x.vol.size() == 0 || x.vol.size() == 13)
+        && x.prs is list && x.prs.size() == 13
+        && x.lifts is list && x.lifts.size() <= 12 && (x.lifts.size() == 0 || liftOk(x.lifts[0]));
+    }
+    function summaryOk(d) {
+      return d.keys().hasOnly(['v', 'at', 'day', 'goal', 'streak', 'r', 'firsts'])
+        && d.v == 1 && d.at == request.time && isDay(d.day)
+        && d.goal is int && d.goal >= 1 && d.goal <= 7
+        && d.streak is int && d.streak >= 0 && d.streak <= 1000
+        && d.r.keys().hasOnly(['4w', '12w', '1y'])
+        && rangeOk(d.r['4w'], '^[01]{4}$') && rangeOk(d.r['12w'], '^[01]{12}$') && rangeOk(d.r['1y'], '^[01]{52}$')
+        && d.firsts is list && d.firsts.size() <= 8 && (d.firsts.size() == 0 || firstOk(d.firsts[0]));
+    }
+
     // Exact-name lookup only: nobody can list who's here. A name is held by the one profile that goes by it: claimed in the
     // write that names your profile by it, released only in the write that moves your profile off it (or deletes the account).
     function nameDoc(n) { return /databases/$(db)/documents/usernames/$(n); }
@@ -50,6 +75,15 @@ service cloud.firestore {
       match /meta/{d}   { allow read: if me(uid) || friendOf(uid); allow write: if me(uid); }
       // Yours alone, never a friend's to read: cycle phase (domain/cycle).
       match /private/{d} { allow read, write: if me(uid); }
+      // Compare: what your phone publishes for friends to set side by side (domain/compare summarize), one small document of
+      // per-range numbers and no sets. A friend gets it, one read; nobody lists it but you. Only you write it, in its shape, at
+      // the server's time.
+      match /summary/{d} {
+        allow get: if me(uid) || friendOf(uid);
+        allow list: if me(uid);
+        allow create, update: if me(uid) && d == 'compare' && summaryOk(request.resource.data);
+        allow delete: if me(uid);
+      }
 
       match /friends/{f} {
         allow read: if me(uid);

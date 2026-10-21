@@ -41,11 +41,12 @@ const kindsLabel = (sets: SetEntry[]) => dayKinds(sets).kinds.map((k) => KIND_SH
 /** How far into their own goal this week: what the rings are ordered by. */
 const goalShare = (p: Person) => (p.week ? Math.min(1, p.week.sessions / Math.max(1, p.week.goal)) : -1);
 
-export function Feed({ uid, myName, friends, entries, goal, today, status, news, pulled = 0, onOpenFriend, onOpenMine, onInvite, onMessage }: {
+export function Feed({ uid, myName, friends, entries, goal, today, status, news, pulled = 0, onOpenFriend, onOpenMine, onInvite, onMessage, onCompare }: {
   uid: string; /** This phone's person, for your avatar. */ myName?: string; friends: Friend[] | null; entries: SetEntry[];
   /** Your sessions-a-week goal. */ goal: number; today: string; status: StatusStore; news?: FriendNews | null;
   /** Moves on each pull-down or Refresh: every line is read again. */ pulled?: number;
   onOpenFriend: (f: Friend) => void; onOpenMine: () => void; onInvite: () => void; /** A friend's thread: pings and messages. */ onMessage?: (f: Friend) => void;
+  /** Compare: everyone side by side (ui/ComparePage). */ onCompare?: () => void;
 }) {
   const { from } = crewRange(today);
   const minute = useMinute(); // "live" ends 20 minutes after a set, and ages move on, with no read
@@ -133,6 +134,13 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
       <ul className={`fd-rail${rail.some((p) => p.live != null) ? ' has-live' : ''}`} aria-label="Everyone today">
         {rail.map((p, j) => <RailPerson key={p.id} p={p} draw={draw} delay={j * 70} onOpen={() => open(p)} />)}
       </ul>
+      {onCompare && !!friends?.length && (
+        <button className="fd-compare" onClick={onCompare}>
+          <Icon name="trophy" size={22} />
+          <span><b>Compare</b><span>Everyone against their own start: strength, goal, streak</span></span>
+          <Icon name="chev-right" size={20} />
+        </button>
+      )}
 
       {cards.length > 0 && <div className="fd-sec"><h2>Today</h2><span>{new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span></div>}
       {cards.map((p) => (

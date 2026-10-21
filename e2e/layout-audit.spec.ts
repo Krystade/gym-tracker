@@ -4,6 +4,7 @@ import { audit, check, clean, notched, renderCheck, TOP } from './layout';
 import { deloadLog, SIM_LIFTS, simDay } from '../src/domain/learn/deloadSim.sample';
 import { account, befriend, iso, log, ping, put, rand, session, signedIn, Ts, type Seeded } from './seed';
 import { convertedRows, pasteRows, toCsv as dupesCsv, TWINS } from './fixtures/dupes';
+import { friendLog, publish, summaryOf } from './fixtures/compare';
 
 // The layout audit (e2e/layout.ts) over every screen and state, at the 13 mini's 375×812 with its notch, in WebKit and Chromium.
 // Each test walks a part of the app with synthetic data (long names, big numbers) and fails listing every finding at once; the
@@ -128,6 +129,88 @@ test('Friends: the feed, a friend’s page and its 8-week board, a thread', asyn
   await page.getByRole('region', { name: `@${live.name}`, exact: true }).getByRole('button', { name: 'Stats', exact: true }).click();
   await expect(page.getByRole('heading', { name: `@${live.name}’s stats`, level: 1 })).toBeVisible();
   await check(page, info, found, 'friend-stats');
+  clean(found);
+});
+
+// ---- Compare (round 22): each view with 2, 5 and 12 friends, who's shown, a friend not updated yet, Firsts ----
+
+test('Compare: Ranks, Table and Chart with 12, 5 and 2 friends, the People sheet, a friend not updated yet, Firsts', async ({ browser, request }, info) => {
+  test.setTimeout(240_000);
+  // You and 13 friends at the 20-character username cap: 12 publish a summary, one's phone hasn't yet. Three carry your tag for
+  // them (one long), one changed their username yesterday ("formerly").
+  const me = await account(request, long('me'));
+  const friends = await Promise.all(Array.from({ length: 13 }, (_, k) => account(request, long(`f${k}`))));
+  const mine = friendLog(0, T, { rate: 2 });
+  await log(request, me, mine);
+  await Promise.all(friends.slice(0, 12).map((f, k) => publish(request, f, summaryOf(friendLog(k + 1, T, { pull: k % 3 === 0 }), T, 2 + (k % 5)))));
+  for (const f of friends) await befriend(request, me, f, Date.now() - 864e5 * (20 - friends.indexOf(f)));
+  const tagged = { [friends[0].uid]: 'Sam (gym)', [friends[3].uid]: 'Maya from work, Tuesdays', [friends[12].uid]: 'Jun' };
+  await put(request, `users/${me.uid}/private/tags`, { tags: tagged, updatedAt: Date.now() });
+  await put(request, `users/${friends[5].uid}`, { username: friends[5].name, displayName: friends[5].name, prev: 'old_name_was_long_20', changedAt: new Ts(Date.now() - 864e5) });
+
+  const page = await open(browser, me);
+  const found: string[] = [];
+  await page.getByRole('region', { name: 'Crew' }).getByRole('button', { name: /^Compare/ }).click();
+  const c = page.getByRole('region', { name: 'Compare' });
+  await expect(c.getByRole('list', { name: 'Ranked by Strength' }).getByRole('listitem')).toHaveCount(13, { timeout: 20_000 });
+  await expect(c.getByRole('list', { name: 'Not updated yet' })).toContainText('Not updated yet');
+  const strict = (state: string) => check(page, info, found, state, [], '.cmp');
+  // The audit reads boxes, not SVG: every line on the chart must also sit inside the chart, under the text above it.
+  const inside = async (state: string) => {
+    for (const out of await c.locator('svg.cmp-chart').evaluateAll((svgs) => svgs.flatMap((svg) => {
+      const s = svg.getBoundingClientRect();
+      return [...svg.querySelectorAll('path')].map((p) => p.getBoundingClientRect())
+        .filter((b) => b.top < s.top - 1 || b.bottom > s.bottom + 1).map((b) => `[${b.top.toFixed(0)}..${b.bottom.toFixed(0)}] out of [${s.top.toFixed(0)}..${s.bottom.toFixed(0)}]`);
+    }))) found.push(`${state}: a chart line leaves the chart: ${out}`);
+  };
+  await strict('compare-not-updated');
+
+  const people = async (hide: Seeded[], state?: string) => {
+    await c.getByRole('button', { name: /^People:/ }).click();
+    const d = page.getByRole('dialog', { name: 'People' });
+    for (const f of hide) await d.getByRole('button', { name: new RegExp(`@${f.name}`) }).click();
+    if (state) await strict(state);
+    await d.getByRole('button', { name: 'Done' }).click();
+    await expect(d).toHaveCount(0);
+  };
+  const views = async (n: number) => {
+    await c.getByRole('tab', { name: 'Ranks' }).click();
+    await expect(c.getByRole('list', { name: 'Ranked by Strength' }).getByRole('listitem')).toHaveCount(n + 1);
+    await strict(`compare-ranks-${n}`);
+    await c.getByRole('tab', { name: 'Table' }).click();
+    await expect(c.getByRole('table').getByRole('row')).toHaveCount(n + 2);
+    await strict(`compare-table-${n}`);
+    await c.getByRole('tab', { name: 'Chart' }).click();
+    await expect(c.getByRole('group', { name: /^Lines/ }).getByRole('button')).toHaveCount(n + 1);
+    await strict(`compare-chart-${n}`);
+    await inside(`compare-chart-${n}`);
+  };
+  await people([friends[12]], 'compare-people');
+  await views(12);
+  // The other metrics at 12: Goal's weeks as dots, the chart's PRs, a line picked out, the year's range.
+  await c.getByRole('tab', { name: 'Chart' }).click();
+  await c.getByRole('group', { name: /^Lines/ }).getByRole('button').nth(3).click();
+  await strict('compare-chart-12-picked');
+  await inside('compare-chart-12-picked');
+  await c.getByRole('group', { name: 'Compare by' }).getByRole('button', { name: 'PRs' }).click();
+  await c.getByRole('group', { name: 'Range' }).getByRole('button', { name: '1 yr' }).click();
+  await strict('compare-chart-12-prs-1yr');
+  await inside('compare-chart-12-prs-1yr');
+  await c.getByRole('tab', { name: 'Ranks' }).click();
+  for (const m of ['Goal', 'Volume', 'PRs', 'Streak']) {
+    await c.getByRole('group', { name: 'Compare by' }).getByRole('button', { name: m, exact: true }).click();
+    await strict(`compare-ranks-12-${m.toLowerCase()}-1yr`);
+  }
+  await c.getByRole('group', { name: 'Compare by' }).getByRole('button', { name: 'Strength', exact: true }).click();
+  await c.getByRole('group', { name: 'Range' }).getByRole('button', { name: '12 wk' }).click();
+  const firsts = c.getByRole('region', { name: 'Firsts' });
+  await firsts.getByRole('button', { name: /^Show all/ }).click();
+  await firsts.scrollIntoViewIfNeeded();
+  await strict('compare-firsts');
+  await people(friends.slice(5, 12));
+  await views(5);
+  await people(friends.slice(2, 5));
+  await views(2);
   clean(found);
 });
 

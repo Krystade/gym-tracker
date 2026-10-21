@@ -223,3 +223,13 @@
 @keyframes fd-slide { from { opacity: 0; transform: translateX(10px); } }
 @keyframes fd-in { from { opacity: 0; transform: translateY(-8px); } }
 @keyframes fd-tick { from { opacity: 0; transform: translateY(6px); } }
+
+/* Compare (ui/ComparePage): the way in, under Friends' rail. */
+.fd-compare {
+  display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; min-height: 52px; margin: 6px 0 0; padding: 6px 12px;
+  border-radius: var(--r-group); background: var(--surface); text-align: left; font-weight: 400; color: var(--text);
+}
+.fd-compare .ic:first-child { color: var(--accent-text); }
+.fd-compare b { display: block; font-size: var(--fs-sub); line-height: 20px; font-weight: 600; }
+.fd-compare span span { display: block; font-size: var(--fs-xs); line-height: 16px; color: var(--text-2); }
+.fd-compare > .ic:last-child { color: var(--text-3); }

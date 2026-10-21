@@ -11,12 +11,17 @@ import type { BodyStore } from './useBody';
 import { replacedChanged } from './useReplaced';
 import { KEEP_MS } from '../domain/replaced';
 import { forgetFriendCaches } from './friendCache';
+import { publishSummary } from './publishSummary';
 import { useBox, useOwnBox } from './box';
 
 export type CloudStatus = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'done'; text: string } | { kind: 'error'; text: string };
 const QUIET_MS = 3000; // after the last change, so a run of sets syncs once
 const NEWS_MS = 60_000;
 const POLL_MS = 120_000;
+const whenIdle = (f: () => void) => {
+  const w = globalThis as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number };
+  if (w.requestIdleCallback) w.requestIdleCallback(f, { timeout: 3000 }); else setTimeout(f, 500);
+};
 
 /**
  * The account this phone is signed in to. Its log syncs with the person it was linked to at sign-in; while another person
@@ -69,6 +74,9 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
       // Cycle phase, to its own private document. Refused until the rules that allow it are deployed: noted, and the rest goes on.
       // Days brought in, or the account's setting taken by a phone that never set it, both change what Today and More show.
       await syncCycle(c, l.uid, db).then((r) => { if (r.pulled || r.trackingAdopted) cycleChanged('pulled'); }, (e) => console.warn('Cycle sync skipped:', e));
+      // Compare: your summary for friends, when it changed, at most every 15 minutes (state/publishSummary). When the phone is
+      // idle, not in the moment after a set; refused or offline, the sync still counts.
+      whenIdle(() => void publishSummary(c, l.uid, db).catch((e) => console.warn('Compare summary skipped:', e)));
       const at = new Date().toISOString();
       await db.putCloudSeen({ key: 'cloud-seen', uid: l.uid, seen: r.seen, meta: r.metaSeen, at });
       setLastSync(at);

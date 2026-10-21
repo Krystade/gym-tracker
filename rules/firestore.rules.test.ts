@@ -6,6 +6,8 @@ import { collection, deleteDoc, doc, documentId, getDoc, getDocs, query, serverT
 // Synthetic users: alice owns the data, bob is her friend, eve is a stranger.
 let env: RulesTestEnvironment;
 const PROJECT = process.env.RULES_PROJECT ?? 'demo-gym-tracker';
+// The emulator `firebase emulators:exec` started (its FIRESTORE_EMULATOR_HOST), else firebase.json's.
+const [HOST, PORT] = (process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8080').split(':');
 const as = (uid: string | null) => (uid ? env.authenticatedContext(uid) : env.unauthenticatedContext()).firestore() as unknown as Firestore;
 const seed = (f: (db: Firestore) => Promise<unknown>) => env.withSecurityRulesDisabled(async (c) => { await f(c.firestore() as unknown as Firestore); });
 const later = () => Timestamp.fromMillis(Date.now() + 86_400_000);
@@ -20,7 +22,7 @@ const accept = (who: string, owner: string, token: string, used = token) => {
 
 beforeAll(async () => {
   // RULES_PROJECT: a project of their own, to run against an emulator already serving the app's (its rules and data stay put).
-  env = await initializeTestEnvironment({ projectId: PROJECT, firestore: { rules: readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 } });
+  env = await initializeTestEnvironment({ projectId: PROJECT, firestore: { rules: readFileSync('firestore.rules', 'utf8'), host: HOST, port: Number(PORT) } });
 });
 afterAll(() => env.cleanup());
 beforeEach(async () => {
@@ -279,7 +281,7 @@ describe('the push Worker’s reads over REST', () => {
     return `${b({ alg: 'none', typ: 'JWT' })}.${b({ aud: PROJECT, iss: `https://securetoken.google.com/${PROJECT}`, sub: uid, user_id: uid, iat: now, auth_time: now, exp: now + 3600 })}.`;
   };
   const rest = async (uid: string, path: string) => {
-    const r = await fetch(`http://127.0.0.1:8080/v1/projects/${PROJECT}/databases/(default)/documents/${path}`, { headers: { authorization: `Bearer ${token(uid)}` } });
+    const r = await fetch(`http://${HOST}:${PORT}/v1/projects/${PROJECT}/databases/(default)/documents/${path}`, { headers: { authorization: `Bearer ${token(uid)}` } });
     return { status: r.status, body: r.ok ? await r.json() as { createTime: string; fields: Record<string, { stringValue?: string }> } : null };
   };
   it('the friendship probe: 404 for a friend, 403 for a stranger', async () => {
@@ -518,5 +520,140 @@ describe('reading only what changed', () => {
     expect((await assertSucceeds(since(as('alice')))).size).toBe(1);
     await assertFails(since(as('bob'))); // a sender reads back only their own, asking with where from == them
     await assertFails(since(as('eve')));
+  });
+});
+
+// Compare (r22): each person's phone publishes one small summary of per-range numbers; a friend reads it, one read.
+describe('the compare summary (users/{uid}/summary/compare)', () => {
+  const pts = (k = 0) => Array.from({ length: 13 }, (_, i) => i * k);
+  const range = (weeks: number) => ({ met: '1'.repeat(weeks), vol: pts(1), prs: pts(0), lifts: [{ n: 'Bench Press', s: pts(0.5) }] });
+  /** A summary as the app writes it (domain/compare Summary, at the server's time). */
+  const summary = (o: Record<string, unknown> = {}) => ({
+    v: 1, at: serverTimestamp(), day: '2026-10-21', goal: 3, streak: 4,
+    r: { '4w': range(4), '12w': range(12), '1y': range(52) }, firsts: [{ n: 'Bench Press', w: 225, d: '2026-10-03' }], ...o,
+  });
+  const path = (uid: string, d = 'compare') => `users/${uid}/summary/${d}`;
+  const seeded = (uid: string) => seed((db) => setDoc(doc(db, path(uid)), { ...summary(), at: Timestamp.now() }));
+  const write = (uid: string, data: Record<string, unknown>, d = 'compare') => setDoc(doc(as(uid), path(uid, d)), data);
+
+  it('a friend can read it, and its owner; a stranger or someone signed out cannot', async () => {
+    await seeded('alice');
+    await assertSucceeds(getDoc(doc(as('bob'), path('alice'))));
+    await assertSucceeds(getDoc(doc(as('alice'), path('alice'))));
+    await assertFails(getDoc(doc(as('eve'), path('alice'))));
+    await assertFails(getDoc(doc(as(null), path('alice'))));
+  });
+  it('a friend asking for one not written yet (a friend on an older app) is allowed and finds nothing; a stranger is refused', async () => {
+    const got = await assertSucceeds(getDoc(doc(as('bob'), path('alice'))));
+    expect(got.exists()).toBe(false);
+    await assertFails(getDoc(doc(as('eve'), path('alice'))));
+  });
+  it('a pending request is not a friendship: neither side reads the other’s until it’s accepted', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'users/eve'), { username: 'eve', displayName: 'Eve' });
+      await setDoc(doc(db, path('eve')), { ...summary(), at: Timestamp.now() });
+    });
+    await seeded('alice');
+    await assertSucceeds(setDoc(doc(as('eve'), 'users/alice/requests/eve'), { username: 'eve', sent: 1 }));
+    await assertFails(getDoc(doc(as('eve'), path('alice'))));
+    await assertFails(getDoc(doc(as('alice'), path('eve'))));
+    // Putting her on your own list (anyone can name anyone there) doesn't get you hers: only her list naming you does.
+    await assertSucceeds(setDoc(doc(as('eve'), 'users/eve/friends/alice'), { since: 1 }));
+    await assertFails(getDoc(doc(as('eve'), path('alice'))));
+    // Accepted (both documents, the request gone): now each reads the other's.
+    const db = as('alice');
+    await assertSucceeds(writeBatch(db).set(doc(db, 'users/alice/friends/eve'), { since: 1, via: 'request' }).delete(doc(db, 'users/alice/requests/eve')).commit());
+    await assertSucceeds(getDoc(doc(as('eve'), path('alice'))));
+    await assertSucceeds(getDoc(doc(as('alice'), path('eve'))));
+  });
+  it('a removed friend loses it at once', async () => {
+    await seeded('alice');
+    await assertSucceeds(deleteDoc(doc(as('alice'), 'users/alice/friends/bob')));
+    await assertFails(getDoc(doc(as('bob'), path('alice'))));
+  });
+  it('only its owner writes it: creates, replaces and deletes; a friend or a stranger can do none of it', async () => {
+    await assertSucceeds(write('alice', summary()));
+    await assertSucceeds(write('alice', summary({ streak: 5 })));
+    await assertFails(setDoc(doc(as('bob'), path('alice')), summary()));
+    await assertFails(setDoc(doc(as('eve'), path('alice')), summary()));
+    await assertFails(setDoc(doc(as('bob'), path('bob')), summary()).then(() => setDoc(doc(as('bob'), path('alice')), summary())));
+    await assertFails(updateDoc(doc(as('bob'), path('alice')), { streak: 9 }));
+    await assertFails(deleteDoc(doc(as('bob'), path('alice'))));
+    await assertFails(deleteDoc(doc(as('eve'), path('alice'))));
+    await assertSucceeds(deleteDoc(doc(as('alice'), path('alice'))));
+  });
+  it('nobody lists the collection but its owner', async () => {
+    await seeded('alice');
+    await assertSucceeds(getDocs(collection(as('alice'), 'users/alice/summary')));
+    await assertFails(getDocs(collection(as('bob'), 'users/alice/summary')));
+    await assertFails(getDocs(collection(as('eve'), 'users/alice/summary')));
+  });
+  it('its shape is checked: these keys, every range, 13 points, 12 lifts and 8 firsts at most (the first of each in shape), the server’s time, one document', async () => {
+    await assertSucceeds(write('alice', summary())); // the shape the app writes goes in
+    const full = (n: number) => summary({ r: { '4w': range(4), '12w': { ...range(12), lifts: Array.from({ length: 12 }, (_, i) => ({ n: `Lift ${i}`, s: pts(1) })) }, '1y': range(52) },
+      firsts: Array.from({ length: n }, (_, i) => ({ n: 'Deadlift', w: 135 + i, d: '2026-10-03' })) });
+    await assertSucceeds(write('alice', full(8))); // the most it holds: 12 lifts, 8 firsts
+    await assertSucceeds(write('alice', summary({ goal: 1, streak: 0, firsts: [{ n: 'x'.repeat(60), w: 0, d: '2026-10-03' }] }))); // the bounds themselves
+    await assertSucceeds(write('alice', summary({ goal: 7, streak: 1000, r: { '4w': range(4), '12w': { ...range(12), lifts: [{ n: 'Ü'.repeat(60), s: pts(1) }] }, '1y': range(52) }, firsts: [{ n: 'Deadlift', w: 2000, d: '2026-10-03' }] })));
+    await assertSucceeds(write('alice', summary({ r: { '4w': { ...range(4), vol: [] }, '12w': range(12), '1y': range(52) }, firsts: [] }))); // no volume yet, no firsts
+    const r = summary().r as Record<string, ReturnType<typeof range>>;
+    const withRange = (k: string, x: Record<string, unknown>) => summary({ r: { ...r, [k]: { ...r[k], ...x } } });
+    const lift = (x: Record<string, unknown>) => withRange('12w', { lifts: [{ n: 'Bench Press', s: pts(1), ...x }] });
+    const first = (x: Record<string, unknown>) => summary({ firsts: [{ n: 'Bench Press', w: 225, d: '2026-10-03', ...x }] });
+    const bad: [string, Record<string, unknown>, string?][] = [
+      ['another key', summary({ sets: [] })],
+      ['a key missing', (({ streak: _s, ...x }) => x)(summary())],
+      ['another version', summary({ v: 2 })],
+      ['the phone’s clock', summary({ at: Timestamp.now() })],
+      ['not a day', summary({ day: '21/10/2026' })],
+      ['goal 0', summary({ goal: 0 })], ['goal 8', summary({ goal: 8 })], ['goal not whole', summary({ goal: 2.5 })],
+      ['a negative streak', summary({ streak: -1 })], ['a streak past 1000', summary({ streak: 1001 })], ['a streak not whole', summary({ streak: 4.5 })],
+      ['a day as a number', summary({ day: 20261021 })],
+      ['a range missing', summary({ r: { '4w': r['4w'], '12w': r['12w'] } })], ['ranges as a list', summary({ r: [r['4w'], r['12w'], r['1y']] })],
+      ['a range as text', summary({ r: { ...r, '12w': 'x' } })],
+      ['another range', summary({ r: { ...r, '2y': r['1y'] } })],
+      ['sets in a range', withRange('4w', { sets: [] })],
+      ['a range without its lifts', summary({ r: { ...r, '4w': (({ lifts: _l, ...x }) => x)(r['4w']) } })],
+      ['weeks the wrong length', withRange('12w', { met: '1'.repeat(11) })], ['weeks not 0 and 1', withRange('4w', { met: '1x11' })],
+      ['a year’s weeks short', withRange('1y', { met: '1'.repeat(51) })], ['4 weeks short', withRange('4w', { met: '111' })],
+      ['4 weeks long', withRange('4w', { met: '11111' })], ['12 weeks long', withRange('12w', { met: '1'.repeat(13) })], ['a year long', withRange('1y', { met: '1'.repeat(53) })],
+      ['weeks as a list', withRange('4w', { met: [1, 1, 1, 1] })],
+      ['volume the wrong length', withRange('4w', { vol: pts(1).slice(0, 5) })],
+      ['PRs the wrong length', withRange('1y', { prs: pts(1).slice(0, 12) })], ['PRs long', withRange('4w', { prs: [...pts(1), 13] })],
+      ['volume long', withRange('4w', { vol: [...pts(1), 13] })], ['volume as text', withRange('4w', { vol: 'x'.repeat(13) })],
+      ['PRs as text', withRange('4w', { prs: 'x'.repeat(13) })], ['lifts as a map', withRange('4w', { lifts: {} })],
+      ['13 lifts', withRange('12w', { lifts: Array.from({ length: 13 }, (_, i) => ({ n: `Lift ${i}`, s: pts(1) })) })],
+      ['a lift with sets', lift({ sets: [] })], ['a lift with no name', lift({ n: '' })], ['a lift named past 60', lift({ n: 'x'.repeat(61) })],
+      ['a lift’s series too short', lift({ s: pts(1).slice(0, 12) })], ['a lift’s series long', lift({ s: [...pts(1), 13] })],
+      ['a series as text', lift({ s: 'x'.repeat(13) })], ['a lift named with a list', lift({ n: ['Bench Press'] })], ['a lift with no series', withRange('12w', { lifts: [{ n: 'Bench Press' }] })],
+      ['a first lift of another shape', withRange('1y', { lifts: [{ n: 'Bench Press', s: pts(1), x: 1 }, { n: 'Squat', s: pts(1) }] })],
+      ['a lift that isn’t one', withRange('4w', { lifts: ['Bench Press'] })],
+      ['9 firsts', summary({ firsts: Array.from({ length: 9 }, (_, i) => ({ n: 'Deadlift', w: 135 + i, d: '2026-10-03' })) })],
+      ['a first too heavy', first({ w: 2001 })], ['a first under nothing', first({ w: -1 })], ['a first a little under', first({ w: -0.5 })], ['a first not dated', first({ d: 'Oct 3' })],
+      ['a first with more', first({ reps: 5 })], ['a first with no name', first({ n: '' })], ['a first named past 60', first({ n: 'x'.repeat(61) })],
+      ['a first’s weight as text', first({ w: '225' })], ['a first with no date', summary({ firsts: [{ n: 'Bench Press', w: 225 }] })], ['firsts as a map', summary({ firsts: {} })],
+      ['a first first off shape', summary({ firsts: [{ n: 'Deadlift', w: 135, d: '2026-10-03', x: 1 }, { n: 'Deadlift', w: 225, d: '2026-10-04' }] })],
+      ['another document', summary(), 'other'],
+    ];
+    const passed: string[] = [];
+    for (const [why, data, d] of bad) await assertFails(write('alice', data, d)).catch(() => passed.push(why));
+    expect(passed).toEqual([]);
+  });
+});
+
+describe('the paths from before Compare are as they were', () => {
+  it('months and meta: a friend reads and can’t write, a stranger can do neither; private stays the owner’s', async () => {
+    await assertSucceeds(getDoc(doc(as('bob'), 'users/alice/months/2026-10')));
+    await assertSucceeds(getDoc(doc(as('bob'), 'users/alice/meta/index')));
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/meta/index'), { months: {} }));
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/months/2026-10'), { sets: [] }));
+    await assertFails(getDoc(doc(as('eve'), 'users/alice/months/2026-10')));
+    await assertFails(getDoc(doc(as('eve'), 'users/alice/meta/index')));
+    await assertSucceeds(setDoc(doc(as('alice'), 'users/alice/private/cycle'), { days: {}, tracking: false, updatedAt: 1 }));
+    await assertFails(getDoc(doc(as('bob'), 'users/alice/private/cycle')));
+    // A summary is no key to anything else: with one there, a friend still can't write the log, nor a stranger read private.
+    await seed((db) => setDoc(doc(db, 'users/alice/summary/compare'), { v: 1 }));
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/months/2026-11'), { sets: [] }));
+    await assertFails(getDoc(doc(as('eve'), 'users/alice/private/cycle')));
   });
 });

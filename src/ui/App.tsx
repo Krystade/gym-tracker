@@ -46,6 +46,7 @@ import { StatsScreen } from './StatsScreen';
 import { Walkthrough, walkthroughPending } from './Walkthrough';
 import { FriendsScreen } from './FriendsScreen';
 import { FriendPage } from './FriendPage';
+import { ComparePage } from './ComparePage';
 import { CharactersScreen } from './CharactersScreen';
 import { GymsScreen } from './GymsScreen';
 import type { Friend, FriendNews } from '../cloud/friends';
@@ -90,6 +91,8 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const [tab, setTab] = useState<Tab>(launchInvite ? 'friends' : 'today');
   const [pending, setPending] = useState(launchInvite);
   const [viewing, setViewing] = useState<Friend | null>(null);
+  // Compare, open inside Friends; a friend opened from it goes back to it.
+  const [comparing, setComparing] = useState(false);
   // The signed-in account's uid (set by the person whose account it is), and the thread open over everything.
   const [me, setMe] = useState<string | null>(null);
   const [thread, setThread] = useState<ThreadWith | null>(null);
@@ -121,7 +124,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
       const i = parseInvite(location.hash);
       if (!i) return;
       history.replaceState(null, '', location.pathname + location.search);
-      launchInvite = i; setPending(i); setViewing(null); setExercise(null); setTab('friends');
+      launchInvite = i; setPending(i); setViewing(null); setComparing(false); setExercise(null); setTab('friends');
     };
     window.addEventListener('hashchange', on);
     return () => window.removeEventListener('hashchange', on);
@@ -130,7 +133,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
   const [recapAt, setRecapAt] = useState(0);
   // A notification tap: its screen, with nothing on top.
   useOpenRoute((r) => {
-    setViewing(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); setPrioOpen(false);
+    setViewing(null); setComparing(false); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); setPrioOpen(false);
     setTab(tabOf(r)); window.scrollTo(0, 0);
     // The app just came up from a tap: the fixed bars go where the screen is, whatever iOS restored (ui/viewportPin).
     repinChrome();
@@ -161,7 +164,9 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
     pending, waiting, news, newsRev, bumpNews, setMe, openThread: (f: ThreadWith) => setThread(f), clearPending: () => { launchInvite = null; setPending(null); },
     viewing, view: (f: Friend) => { setViewing(f); setTab('friends'); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); setPrioOpen(false); window.scrollTo(0, 0); },
     unview: () => { setViewing(null); window.scrollTo(0, 0); },
-    showTour: () => { setViewing(null); setTab('today'); setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); setPrioOpen(false); window.scrollTo(0, 0); setTour(true); } };
+    comparing, compare: () => { setComparing(true); setViewing(null); setTab('friends'); window.scrollTo(0, 0); },
+    uncompare: () => { setComparing(false); window.scrollTo(0, 0); },
+    showTour: () => { setViewing(null); setComparing(false); setTab('today'); setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); setPrioOpen(false); window.scrollTo(0, 0); setTour(true); } };
 
   return (
     <div className="app">
@@ -176,7 +181,7 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
       {tour && <Walkthrough onClose={() => setTour(false)} />}
       <nav className="tabs" aria-label="Sections">
         {TABS.map(([t, label]) => (
-          <button key={t} data-tour={t} aria-current={current(t) ? 'page' : undefined} onClick={() => { setTab(t); setViewing(null); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); setPrioOpen(false); }}>
+          <button key={t} data-tour={t} aria-current={current(t) ? 'page' : undefined} onClick={() => { setTab(t); setViewing(null); setComparing(false); if (t === 'today') setLogDay(null); setExercise(null); setProgramOpen(false); setPhotosOpen(false); setPasteOpen(false); setCharsOpen(false); setGymOpen(false); setPrioOpen(false); }}>
             <Icon name={TAB_ICON[t][current(t) ? 1 : 0]} size={26} />
             {label}{t === 'friends' && waiting > 0 && <span className="tab-dot" aria-hidden="true" />}
           </button>
@@ -191,6 +196,7 @@ interface Nav {
   setTab: (t: Tab) => void; setExercise: (x: string | null) => void; setProgramOpen: (b: boolean) => void; setPhotosOpen: (b: boolean) => void; setPasteOpen: (b: boolean) => void; setCharsOpen: (b: boolean) => void; setGymOpen: (b: boolean) => void; setPrioOpen: (b: boolean) => void;
   open: (name: string) => void; showTour: () => void;
   pending: Invite | null; clearPending: () => void; waiting: number; viewing: Friend | null; view: (f: Friend) => void; unview: () => void;
+  comparing: boolean; compare: () => void; uncompare: () => void;
   news: FriendNews | null; newsRev: Box<number>; bumpNews: () => void; setMe: (uid: string | null) => void; openThread: (f: ThreadWith) => void;
 }
 
@@ -267,10 +273,12 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : tab === 'history' ? <HistoryScreen store={store} onOpen={open} focus={historyAt} onFocused={() => setHistoryAt(null)} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'lifts' ? <LiftsScreen store={store} onOpen={open} />
           : tab === 'friends' && nav.viewing && uid ? <FriendPage key={nav.viewing.uid} uid={uid} friend={nav.viewing} entries={store.entries} today={date} gyms={gyms} news={nav.news}
-            onBack={nav.unview} onMessage={() => nav.openThread(nav.viewing!)} />
+            onBack={nav.unview} onMessage={() => nav.openThread(nav.viewing!)} backLabel={nav.comparing ? 'Compare' : 'Friends'} />
+          : tab === 'friends' && nav.comparing && uid ? <ComparePage uid={uid} myName={person.name} entries={store.entries} today={date} goal={profile.profile.weeklyGoal}
+            onBack={nav.uncompare} onView={nav.view} onOpenMine={top(() => { nav.uncompare(); setTab('history'); })} />
           : tab === 'friends' ? <FriendsScreen cloud={cloud} gyms={gyms} pending={nav.pending} entries={store.entries} status={status} today={date} onPendingDone={nav.clearPending} onView={nav.view}
             news={nav.news} newsRev={nav.newsRev} onChanged={nav.bumpNews} onMessage={nav.openThread}
-            onSignIn={top(() => setTab('more'))} onOpenMine={top(() => setTab('history'))} myName={person.name} goal={profile.profile.weeklyGoal} />
+            onSignIn={top(() => setTab('more'))} onOpenMine={top(() => setTab('history'))} myName={person.name} goal={profile.profile.weeklyGoal} onCompare={nav.compare} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} photos={photos} today={date} settings={settings} gyms={gyms} onOpenPhotos={() => { setPhotosOpen(true); window.scrollTo(0, 0); }} onOpenLift={open} onOpenPriorities={top(() => setPrioOpen(true))} />
           : <DataScreen store={store} profile={rawProfile} body={body} sync={sync} cloud={cloud} people={people} onOpenPaste={top(() => setPasteOpen(true))} onShowWalkthrough={showTour}
             onOpenCharacters={top(() => setCharsOpen(true))} onOpenGym={top(() => setGymOpen(true))} onOpenProgram={top(() => setProgramOpen(true))} onOpenPhotos={top(() => setPhotosOpen(true))} onOpenPriorities={top(() => setPrioOpen(true))} />}

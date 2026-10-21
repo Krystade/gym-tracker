@@ -23,7 +23,7 @@ function fakeCloud(paths: string[], refuse: Record<string, unknown> = {}) {
   };
   return { cloud: { F, db: {} } as unknown as Cloud, deleted };
 }
-const DOCS = ['users/u1', 'users/u1/meta/settings', 'users/u1/private/cycle'];
+const DOCS = ['users/u1', 'users/u1/meta/settings', 'users/u1/private/cycle', 'users/u1/summary/compare'];
 
 describe('deleteCloudData', () => {
   it('deletes the private cycle document with the rest of the account', async () => {
@@ -32,6 +32,17 @@ describe('deleteCloudData', () => {
     expect(deleted).toContain('users/u1/private/cycle');
     expect(deleted).toContain('users/u1/meta/settings');
     expect(deleted).toContain('users/u1');
+  });
+  it('deletes the Compare summary too; before its rules are deployed, listing it is refused and there is nothing to delete', async () => {
+    const one = fakeCloud(DOCS);
+    await deleteCloudData(one.cloud, 'u1');
+    expect(one.deleted).toContain('users/u1/summary/compare');
+    const refused = fakeCloud(DOCS, { 'users/u1/summary': Object.assign(new Error('refused'), { code: 'permission-denied' }) });
+    await deleteCloudData(refused.cloud, 'u1');
+    expect(refused.deleted).toContain('users/u1');
+    const offline = fakeCloud(DOCS, { 'users/u1/summary': Object.assign(new Error('offline'), { code: 'unavailable' }) });
+    await expect(deleteCloudData(offline.cloud, 'u1')).rejects.toMatchObject({ code: 'unavailable' });
+    expect(offline.deleted).toEqual([]);
   });
   it('goes on when listing private is refused (rules not deployed yet): nothing there to delete', async () => {
     const { cloud, deleted } = fakeCloud(DOCS, { 'users/u1/private': Object.assign(new Error('refused'), { code: 'permission-denied' }) });

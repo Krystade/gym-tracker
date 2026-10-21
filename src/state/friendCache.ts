@@ -9,6 +9,8 @@ import { addDays } from '../domain/analytics';
 import type { Invite } from '../domain/invite';
 import type { InboxDoc, ThreadItem } from '../domain/messages';
 import { readTags, saveTag, type Tags } from '../cloud/tags';
+import { readSummary } from '../cloud/summary';
+import type { ReadSummary } from '../domain/compare';
 import { record } from '../push/store';
 
 // Friends as last read, for one account, kept on the phone: Friends, Crew, the threads and the Friends tab's dot show
@@ -34,6 +36,8 @@ export interface Lists {
 export interface CachedWindow { at: number; from: string; to: string; win: FriendWindow; basis?: WindowBasis }
 /** `mine`: what you sent them, as last read, so a thread can be built again from your inbox without reading theirs (none: kept by an older version). */
 export interface CachedThread { at: number; items: ThreadItem[]; gyms: SentGym[]; mine?: InboxDoc[] }
+/** A friend's Compare summary as last read (cloud/summary): `doc` null, none written yet (or none this app can read). */
+export interface CachedSummary { at: number; doc: ReadSummary | null }
 export interface FriendCache {
   uid: string;
   lists?: Lists;
@@ -43,6 +47,7 @@ export interface FriendCache {
   /** Per friend's uid. */ windows: Record<string, CachedWindow>;
   /** Per friend's uid. */ threads: Record<string, CachedThread>;
   /** Your private tags for friends, by uid (cloud/tags), as last read or saved. */ tags?: Tags;
+  /** Per friend's uid: their Compare summary (none: kept by an older version). */ summaries?: Record<string, CachedSummary>;
 }
 
 // ---- Pure rules ----
@@ -73,7 +78,7 @@ export function threadsBehind(c: FriendCache): string[] {
 /** Nothing kept of someone who's no longer a friend: their log is theirs again. */
 export function pruneTo(c: FriendCache, friends: string[]): FriendCache {
   const keep = <T,>(r: Record<string, T>) => Object.fromEntries(Object.entries(r).filter(([k]) => friends.includes(k)));
-  return { ...c, windows: keep(c.windows), threads: keep(c.threads) };
+  return { ...c, windows: keep(c.windows), threads: keep(c.threads), summaries: keep(c.summaries ?? {}) };
 }
 
 /** Their thread was opened: their unread go at once (and Today's banner if it was theirs), before the news is read again. */
@@ -97,6 +102,7 @@ const asCache = (uid: string, x: Partial<FriendCache> | undefined): FriendCache 
   ...fresh(uid), ...x, uid,
   windows: x?.windows && typeof x.windows === 'object' ? x.windows : {},
   threads: x?.threads && typeof x.threads === 'object' ? x.threads : {},
+  summaries: x?.summaries && typeof x.summaries === 'object' ? x.summaries : undefined,
   inbox: Array.isArray(x?.inbox?.items) && typeof x.inbox.full === 'number' ? x.inbox : undefined,
 });
 
@@ -304,6 +310,31 @@ export function refreshThread(c: Cloud, uid: string, f: string, join = false, ke
     await patchFriendCache(uid, (y) => ({ ...y, threads: { ...y.threads, [f]: t } }));
     return t;
   }, join);
+}
+
+/** Friends whose Compare summary isn't kept here, or was read over 5 minutes ago. */
+export const staleSummaries = (c: FriendCache | undefined, friends: readonly string[], now: number): string[] =>
+  friends.filter((f) => { const s = c?.summaries?.[f]; return !s || now - s.at > STALE_MS; });
+
+/**
+ * Friends' Compare summaries: one read each (cloud/summary), never their sets. One refused (they removed you a moment ago, or
+ * the rules that allow it aren't out yet) is kept as none; one that fails otherwise (offline) leaves what was kept.
+ */
+export function refreshSummaries(c: Cloud, uid: string, friends: readonly string[]): Promise<void> {
+  return once(`summaries:${uid}:${[...friends].sort().join()}`, async () => {
+    const got = await Promise.all(friends.map(async (f): Promise<[string, CachedSummary] | null> => {
+      try { return [f, { at: Date.now(), doc: await readSummary(c, f) }]; } catch (e) {
+        return (e as { code?: string }).code === 'permission-denied' ? [f, { at: Date.now(), doc: null }] : null;
+      }
+    }));
+    const read = got.filter((x): x is [string, CachedSummary] => !!x);
+    if (!read.length) return;
+    await patchFriendCache(uid, (x) => {
+      // Only friends still on the list as kept: one removed while the reads were out stays gone.
+      const on = x.lists ? new Set(x.lists.friends.map((f) => f.uid)) : null;
+      return { ...x, summaries: { ...x.summaries, ...Object.fromEntries(read.filter(([f]) => !on || on.has(f))) } };
+    });
+  }, true);
 }
 
 /**

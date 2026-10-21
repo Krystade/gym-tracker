@@ -1,0 +1,152 @@
+/* Compare (ui/ComparePage): you and your friends side by side, from the mockups in .superpowers/redesign/all-friends (af.css). Each
+   person against their own start and goal; no load is ranked. A person's colour (domain/compare PERSON_COLOURS) marks their
+   avatar ring and their line, never text: names and numbers stay in the text inks. */
+.cmp {
+  /* Heat steps: one steel hue, authored opaque in OKLCH (no translucent tint over the surface). */
+  --h1: oklch(0.335 0.03 250); --h2: oklch(0.445 0.055 250); --h3: oklch(0.585 0.085 248); --h4: oklch(0.73 0.1 245);
+  --h-ink: #0b0d12;
+  --me-row: #24221d; /* oklch(0.25 0.012 85): your row, a warm surface-2; authored, not accent mixed into grey */
+}
+.cmp-head { margin-bottom: 4px; }
+.cmp-people { min-width: 64px; padding: 0 12px; border-radius: var(--r-pill); font-size: var(--fs-sub); color: var(--text); font-variant-numeric: tabular-nums; }
+.cmp-people .ic { color: var(--accent-text); }
+.cmp-sub { margin: 0 0 12px; font-size: var(--fs-sm); line-height: 18px; color: var(--text-2); }
+.cmp-sub b, .cmp-exp b { color: var(--text); font-weight: 600; }
+.cmp-empty { margin: 12px 2px; }
+
+/* The view: underlined tabs, so they never read as the range's pill track under them. */
+.cmp-views { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 12px; box-shadow: inset 0 -1px var(--hairline); }
+.cmp-views button { min-height: 44px; padding: 0; border-radius: 0; background: none; color: var(--text-2); font-size: var(--fs-sub); font-weight: 600; }
+.cmp-views button[aria-selected='true'] { color: var(--accent-text); box-shadow: inset 0 -2px var(--accent); }
+.cmp-range { margin-bottom: 0; }
+
+/* The metric: chips under the range. */
+.cmp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.cmp-chips button { flex: 1 1 auto; min-height: 44px; padding: 0 10px; border-radius: var(--r-pill); background: var(--fill); color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; }
+.cmp-chips button[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
+.cmp-exp { margin: 10px 2px 0; font-size: var(--fs-sm); line-height: 18px; color: var(--text-2); }
+.cmp-foot { margin: 10px 2px 0; font-size: var(--fs-xs); line-height: 16px; color: var(--text-3); }
+
+/* A name: your tag over their @username, "formerly" under it. */
+.cmp-nm { display: grid; min-width: 0; text-align: left; }
+.cmp-tg { font-size: var(--fs-sub); line-height: 19px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.cmp-us { font-size: var(--fs-xs); line-height: 15px; font-weight: 400; color: var(--text-2); overflow-wrap: anywhere; }
+.cmp-was { font-size: 11px; line-height: 14px; font-weight: 400; color: var(--text-3); overflow-wrap: anywhere; min-width: 0; }
+.cmp-was:empty { display: none; }
+.cmp-was .fwas { font-size: inherit; color: inherit; }
+.cmp-asof { font-size: 11px; line-height: 14px; font-weight: 400; color: var(--text-3); }
+.me .cmp-tg { color: var(--accent-text); }
+/* A person's colour as a ring round their avatar: the same colour as their line on the chart. */
+.cmp-av { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--pc, var(--fill-2)); }
+.cmp-av.me { box-shadow: none; }
+
+/* ---- Ranks ---- */
+.cmp-board { list-style: none; margin: 12px 0 0; padding: 4px 0; background: var(--surface); border-radius: var(--r-lg); }
+.cmp-board li + li .cmp-row::before { content: ''; position: absolute; top: 0; left: 76px; right: 12px; height: 1px; background: var(--hairline); }
+.cmp-board li + li .cmp-row.me::before, .cmp-board li:has(.cmp-row.me) + li .cmp-row::before { display: none; }
+.cmp-row {
+  position: relative; display: grid; grid-template-columns: 18px 40px minmax(0, 1fr) 62px 64px; align-items: center; gap: 8px; width: 100%; min-height: 60px;
+  padding: 6px 12px 6px 10px; border-radius: 0; background: none; text-align: left; font-weight: 400; color: var(--text);
+}
+.cmp-row.me { background: var(--me-row); box-shadow: inset 3px 0 var(--accent); }
+.cmp-row .avatar { margin: 0 2px; }
+.cmp-rk { font-size: var(--fs-sm); font-weight: 600; color: var(--text-3); text-align: center; font-variant-numeric: tabular-nums; }
+.cmp-vz svg { display: block; overflow: visible; }
+.cmp-zero { stroke: var(--fill-2); stroke-width: 1; }
+.cmp-val { text-align: right; font-size: var(--fs-md); line-height: 20px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cmp-val small { display: block; font-size: 11px; line-height: 14px; font-weight: 500; color: var(--text-3); white-space: normal; }
+.cmp-dots { display: flex; gap: 1px; }
+.cmp-dots i { width: 4px; height: 10px; border-radius: 2px; background: var(--fill-2); }
+.cmp-dots i.y { background: var(--text-2); }
+.me .cmp-dots i.y { background: var(--accent); }
+
+/* Friends with no summary yet: under the ranked, never ranked. */
+.cmp-missing { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.cmp-missing button {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; width: 100%; min-height: 60px; padding: 10px 12px 10px 14px;
+  border-radius: var(--r-lg); background: none; box-shadow: inset 0 0 0 1px var(--hairline); text-align: left; font-weight: 400; color: var(--text);
+}
+.cmp-missing .avatar { margin: 0 2px; }
+.cmp-why { margin-top: 2px; font-size: var(--fs-xs); line-height: 16px; color: var(--text-2); }
+
+/* ---- Table ---- */
+.cmp-heat { margin-top: 12px; background: var(--surface); border-radius: var(--r-lg); padding: 4px 4px 6px; }
+.cmp-hrow { display: grid; grid-template-columns: minmax(0, 1fr) repeat(5, 45px); gap: 2px; align-items: stretch; }
+.cmp-hrow + .cmp-hrow { margin-top: 2px; }
+.cmp-hhead { align-items: end; }
+.cmp-hn { align-self: end; padding: 0 0 6px 8px; font-size: var(--fs-xs); line-height: 15px; color: var(--text-3); }
+.cmp-hhead > span[role='columnheader'] { display: grid; }
+.cmp-hcol {
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; min-height: 52px; padding: 0 0 6px; border-radius: 6px 6px 0 0;
+  background: none; font-size: 11px; line-height: 13px; font-weight: 600; color: var(--text-2); text-align: center;
+}
+.cmp-hcol span { font-weight: 500; color: var(--text-3); }
+.cmp-hcol.sort { color: var(--accent-text); box-shadow: inset 0 -2px var(--accent); }
+.cmp-hcol.sort span { color: var(--accent-text); }
+.cmp-hname { display: flex; align-items: center; min-height: 48px; padding: 4px 4px 4px 8px; border-radius: 6px; background: none; text-align: left; font-weight: 400; color: var(--text); justify-content: flex-start; }
+.cmp-hname .cmp-tg { font-size: var(--fs-sm); line-height: 17px; }
+.cmp-hname .cmp-us { font-size: 11px; line-height: 14px; }
+.cmp-hrow.me .cmp-hname { box-shadow: inset 3px 0 var(--accent); background: var(--me-row); border-radius: 4px 0 0 4px; }
+.cmp-hc { display: grid; place-items: center; min-height: 48px; border-radius: 6px; font-size: var(--fs-sm); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); background: var(--fill); }
+.cmp-hc.s1, .cmp-sw .s1 { background: var(--h1); }
+.cmp-hc.s2, .cmp-sw .s2 { background: var(--h2); }
+.cmp-hc.s3, .cmp-sw .s3 { background: var(--h3); color: var(--h-ink); }
+.cmp-hc.s4, .cmp-sw .s4 { background: var(--h4); color: var(--h-ink); }
+.cmp-hrow.me .cmp-hc { box-shadow: inset 0 0 0 2px var(--accent); }
+.cmp-hnote {
+  grid-column: 2 / -1; display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 6px; border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--hairline); font-size: var(--fs-xs); line-height: 15px; color: var(--text-2); text-align: center;
+}
+.cmp-legend { display: flex; align-items: center; gap: 8px; margin: 12px 2px 0; font-size: var(--fs-xs); line-height: 16px; color: var(--text-2); }
+.cmp-sw { display: flex; gap: 2px; }
+.cmp-sw i { width: 22px; height: 12px; border-radius: 3px; }
+
+/* ---- Chart ---- */
+.cmp-ovl { margin-top: 12px; padding: 12px 12px 10px; background: var(--surface); border-radius: var(--r-lg); }
+.cmp-readout { margin: 0 0 6px; font-size: var(--fs-sm); line-height: 18px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.cmp-readout b { color: var(--text); font-weight: 600; }
+.cmp-chart { display: block; touch-action: pan-y; overflow: visible; }
+.cmp-chart text { font-size: 11px; fill: var(--text-3); font-variant-numeric: tabular-nums; }
+.cmp-chart text.cmp-lab { font-weight: 700; fill: var(--text-2); }
+.cmp-chart text.cmp-lab.me { fill: var(--accent-text); }
+.cmp-chart text.cmp-lab.on { fill: var(--text); }
+.cmp-grid { stroke: var(--hairline); stroke-width: 1; }
+.cmp-base { stroke: var(--line-strong); stroke-width: 1; }
+.cmp-scrub { stroke: var(--text-3); stroke-width: 1; }
+.cmp-ring { stroke: var(--surface); stroke-width: 2; }
+.cmp-who { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.cmp-wchip {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 6px; min-height: 44px; padding: 4px 10px; border-radius: var(--r-md);
+  background: var(--fill); text-align: left; font-size: var(--fs-sm); line-height: 16px; font-weight: 600; justify-content: stretch;
+}
+.cmp-k { width: 16px; height: 4px; border-radius: 2px; }
+.cmp-wn { min-width: 0; overflow-wrap: anywhere; }
+.cmp-wchip.me .cmp-wn { color: var(--accent-text); }
+.cmp-wv { font-variant-numeric: tabular-nums; color: var(--text-2); }
+.cmp-wchip[aria-pressed='true'] { box-shadow: inset 0 0 0 2px var(--text); }
+.cmp-wchip[aria-pressed='true'] .cmp-k { height: 6px; }
+
+/* ---- Firsts ---- */
+.cmp-firsts { margin-top: 28px; }
+.cmp-firsts .fd-sec { flex-wrap: wrap; }
+.cmp-firsts ol { list-style: none; margin: 0; padding: 4px 0; background: var(--surface); border-radius: var(--r-lg); }
+.cmp-firsts li { position: relative; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 52px; padding: 6px 12px; }
+.cmp-firsts li + li::before { content: ''; position: absolute; top: 0; left: 48px; right: 12px; height: 1px; background: var(--hairline); }
+.cmp-tro { color: var(--accent-text); }
+.cmp-what { font-size: var(--fs-sm); line-height: 18px; overflow-wrap: anywhere; }
+.cmp-what b { font-weight: 600; }
+.cmp-when { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; }
+.cmp-more { margin-top: 6px; }
+
+/* ---- Who's shown (the People sheet) ---- */
+.cmp-pick-note { margin: 0 0 10px; font-size: var(--fs-sm); line-height: 18px; color: var(--text-2); }
+.cmp-picks { list-style: none; margin: 0; padding: 0; }
+.cmp-picks li + li { border-top: 1px solid var(--hairline); }
+.cmp-pick {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) 28px; gap: 10px; align-items: center; width: 100%; min-height: 56px; padding: 6px 2px 6px 4px;
+  border-radius: 0; background: none; text-align: left; font-weight: 400; color: var(--text);
+}
+.cmp-pick .avatar { margin: 0 2px; }
+.cmp-check { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line-strong); color: var(--accent-ink); }
+.cmp-pick[aria-pressed='true'] .cmp-check { background: var(--accent); box-shadow: none; }
+.cmp-pick[aria-pressed='false'] .cmp-nm { opacity: 0.6; }

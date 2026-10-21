@@ -25,9 +25,9 @@ const REACTIONS: PresetKey[] = ['strong', 'fire', 'clap', 'eyes'];
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const dayName = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
-export function FriendPage({ uid, friend, entries, today, gyms, news, onBack, onMessage }: {
+export function FriendPage({ uid, friend, entries, today, gyms, news, onBack, onMessage, backLabel = 'Friends' }: {
   uid: string; friend: Friend; /** Yours, for "You and @them". */ entries: SetEntry[]; today: string; gyms: GymsStore; news: FriendNews | null;
-  onBack: () => void; onMessage?: () => void;
+  onBack: () => void; onMessage?: () => void; /** Where Back goes: Friends, or Compare when opened from it. */ backLabel?: string;
 }) {
   const [deep, setDeep] = useState<FriendTab | null>(null);
   const [whole, setWhole] = useState<{ data?: FriendData; error?: string } | null>(null);
@@ -50,11 +50,11 @@ export function FriendPage({ uid, friend, entries, today, gyms, news, onBack, on
         : <Screens name={friend.name} data={whole.data} tab={deep} exercise={exercise} today={today} gyms={gyms} onOpen={(n) => { setExercise(n); window.scrollTo(0, 0); }} onExerciseBack={() => setExercise(null)} />}
     </>);
   }
-  return <Profile uid={uid} friend={friend} entries={entries} today={today} news={news} onBack={onBack} onMessage={onMessage} onDeep={go} />;
+  return <Profile uid={uid} friend={friend} entries={entries} today={today} news={news} onBack={onBack} onMessage={onMessage} onDeep={go} backLabel={backLabel} />;
 }
 
-function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep }: {
-  uid: string; friend: Friend; entries: SetEntry[]; today: string; news: FriendNews | null; onBack: () => void; onMessage?: () => void; onDeep: (t: FriendTab) => void;
+function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep, backLabel }: {
+  uid: string; friend: Friend; entries: SetEntry[]; today: string; news: FriendNews | null; onBack: () => void; onMessage?: () => void; onDeep: (t: FriendTab) => void; backLabel: string;
 }) {
   const { from } = crewRange(today);
   const minute = useMinute();
@@ -93,7 +93,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep 
   const status = w?.win.status ?? '';
   return (
     <section className="fp" aria-label={`@${friend.name}`}>
-      <div className="fp-top"><button className="quiet-btn fp-back" onClick={onBack}><Icon name="chev-left" size={24} />Friends</button></div>
+      <div className="fp-top"><button className="quiet-btn fp-back" onClick={onBack}><Icon name="chev-left" size={24} />{backLabel}</button></div>
       <div className="fp-hero">
         <span className={`fp-ring${v?.live != null ? ' pulse' : ''}`}>
           {v && <Ring segs={v.ring} total={v.usual} size={92} width={4.5} draw merge />}

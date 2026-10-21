@@ -184,12 +184,12 @@ export async function deleteCloudData({ F, db }: Cloud, uid: string): Promise<vo
   // Before the rules for a newer collection are deployed, listing it is refused; there's nothing in it to delete then. Any
   // other failure (offline, a timeout) stops the delete, so an account is never deleted with anything left behind.
   const refused = (e: unknown) => { if ((e as { code?: string }).code === 'permission-denied') return { docs: [] }; throw e; };
-  const newer = new Set(['private', 'gymInbox', 'inbox', 'blocked', 'sendRate']);
+  const newer = new Set(['private', 'gymInbox', 'inbox', 'blocked', 'sendRate', 'summary']);
   const listed = async (sub: string) => {
     const list = F.getDocs(F.collection(db, `users/${uid}/${sub}`));
     return (await (newer.has(sub) ? list.catch(refused) : list)).docs.map((d) => d.ref);
   };
-  for (const sub of ['meta', 'friends', 'invites', 'requests', 'private', 'gymInbox', 'inbox', 'blocked']) refs.push(...(await listed(sub)));
+  for (const sub of ['meta', 'friends', 'invites', 'requests', 'private', 'gymInbox', 'inbox', 'blocked', 'summary']) refs.push(...(await listed(sub)));
   // The send counters go in the same write as the profile: the rules let a counter inside its hour go only with the account.
   const last = await listed('sendRate');
   const profile = await F.getDoc(F.doc(db, `users/${uid}`));

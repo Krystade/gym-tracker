@@ -5,7 +5,7 @@ import { resetDbForTests } from '../db/db';
 import { listThread, type FriendNews } from '../cloud/friends';
 import {
   flushFriendCache, forgetFriendCaches, hydrateFriendCache, crewRange, FULL_INBOX_MS, notePing, patchFriendCache, peekFriendCache, prefetchFriends, pruneTo, readLocally, refreshChangedThreads, refreshNews, refreshThread, refreshWindow,
-  resetFriendCacheForTests, sameNews, STALE_MS, staleWindow, threadsBehind, type FriendCache,
+  refreshSummaries, resetFriendCacheForTests, sameNews, STALE_MS, staleSummaries, staleWindow, threadsBehind, type FriendCache,
 } from './friendCache';
 import { fakeFirestore, ts } from '../cloud/fakeFirestore';
 
@@ -382,5 +382,46 @@ describe('friend cache: a Crew line read from Firestore (refreshWindow)', () => 
     expect(await refreshWindow(w.cloud, 'me', 'jake', from, to)).toEqual({ sets: [s('2026-09-20'), s('2026-10-15')], status: 'cutting', goal: 2, prs: {} });
     expect(w.log).toEqual([{ path: 'users/jake/meta/index', n: 1 }]);
     expect(peekFriendCache('me')?.windows.jake.basis).toEqual({ months: { '2026-09': 3, '2026-10': 4 }, meta: 5 });
+  });
+});
+
+describe('friend cache: Compare summaries (refreshSummaries)', () => {
+  const doc = (streak: number) => {
+    const pts = Array.from({ length: 13 }, () => 0);
+    const r = (w: number) => ({ met: '1'.repeat(w), vol: [], prs: pts, lifts: [] });
+    return { v: 1, day: '2026-10-17', goal: 3, streak, r: { '4w': r(4), '12w': r(12), '1y': r(52) }, firsts: [], at: ts(5) };
+  };
+  const world = () => fakeFirestore({ 'users/jake/summary/compare': doc(4), 'users/jake/months/2026-10': { sets: [] }, 'users/ana/meta/index': { months: {} } });
+
+  it('one read a friend, of their summary and nothing else; none written yet is kept as none', async () => {
+    const w = world();
+    await refreshSummaries(w.cloud, 'me', ['jake', 'ana']);
+    expect(w.log.map((l) => l.path).sort()).toEqual(['users/ana/summary/compare', 'users/jake/summary/compare']);
+    expect(w.reads()).toBe(2);
+    const c = peekFriendCache('me')!;
+    expect(c.summaries?.jake.doc).toMatchObject({ streak: 4, at: 5 });
+    expect(c.summaries?.ana.doc).toBeNull();
+    expect(staleSummaries(c, ['jake', 'ana', 'sam'], Date.now())).toEqual(['sam']);
+    expect(staleSummaries(c, ['jake'], Date.now() + STALE_MS + 1)).toEqual(['jake']);
+  });
+  it('a refused read is kept as none; an offline one leaves what was kept', async () => {
+    const w = world();
+    await refreshSummaries(w.cloud, 'me', ['jake']);
+    const F = w.cloud.F as unknown as { getDoc: (r: { path: string }) => Promise<unknown> };
+    const get = F.getDoc;
+    F.getDoc = async (r) => { if (r.path.startsWith('users/jake/')) throw Object.assign(new Error('offline'), { code: 'unavailable' }); return get(r); };
+    await refreshSummaries(w.cloud, 'me', ['jake']);
+    expect(peekFriendCache('me')!.summaries?.jake.doc).toMatchObject({ streak: 4 });
+    F.getDoc = async (r) => { if (r.path.startsWith('users/jake/')) throw Object.assign(new Error('refused'), { code: 'permission-denied' }); return get(r); };
+    await refreshSummaries(w.cloud, 'me', ['jake']);
+    expect(peekFriendCache('me')!.summaries?.jake.doc).toBeNull();
+  });
+  it('nothing kept of someone no longer a friend, nor brought back by a read that was out', async () => {
+    const w = world();
+    await patchFriendCache('me', (c) => ({ ...c, lists: { at: 1, me: 'me', friends: [{ uid: 'ana', name: 'ana' }], requests: [], invite: null, sentGyms: [], blocked: [] } }));
+    await refreshSummaries(w.cloud, 'me', ['jake', 'ana']);
+    expect(Object.keys(peekFriendCache('me')!.summaries ?? {})).toEqual(['ana']);
+    const c = pruneTo({ ...empty(), summaries: { jake: { at: 1, doc: null }, gone: { at: 1, doc: null } } }, ['jake']);
+    expect(Object.keys(c.summaries!)).toEqual(['jake']);
   });
 });

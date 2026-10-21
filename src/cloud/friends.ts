@@ -19,6 +19,7 @@ export interface Friend {
   uid: string; name: string; /** You muted their pushes (only you know). */ muted?: boolean;
   /** Their username before their last change, and when that was (ms): "formerly @prev" shows for 30 days (domain/friendNames). */
   prev?: string; changedAt?: number;
+  /** When you became friends (ms), where known: Compare gives each friend a colour in this order (domain/compare personColours). */ since?: number;
 }
 export interface Request { uid: string; name: string }
 const WEEK = 7 * 864e5;
@@ -156,7 +157,8 @@ export async function listFriends(c: Cloud, me: string): Promise<Friend[]> {
   const docs = (await c.F.getDocs(c.F.collection(c.db, `users/${me}/friends`))).docs;
   const out = await Promise.all(docs.map(async (d) => {
     const { name, ...was } = (await myProfile(c, d.id)) ?? { name: 'someone' };
-    return { uid: d.id, name, ...was, ...(d.data().muted === true && { muted: true }) };
+    const since = d.data().since;
+    return { uid: d.id, name, ...was, ...(d.data().muted === true && { muted: true }), ...(typeof since === 'number' && { since }) };
   }));
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
