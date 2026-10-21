@@ -46,10 +46,12 @@
 .fd-card-head { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 0 12px; align-items: center; }
 .fd-card-head > .avatar { width: 40px; height: 40px; }
 .fd-who-text { min-width: 0; }
-.fd-name-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.fd-name { flex: none; min-height: 0; font-size: var(--fs-body); line-height: 22px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; padding: 0; }
+.fd-name-line { display: flex; align-items: center; gap: 0 8px; min-width: 0; flex-wrap: wrap; }
+/* A 44px tap on a 22px line: padding out to 44, the same back off as margin, so the line keeps its height. */
+.fd-name { flex: none; min-height: 0; font-size: var(--fs-body); line-height: 22px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; padding: 11px 0; margin: -11px 0; }
 .fd-name-line .crew-muted { margin-left: -2px; }
-.fd-status { min-width: 0; font-size: var(--fs-sm); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Beside the name when both fit, else on its own line under it: never squeezed to nothing by a long name. */
+.fd-status { min-width: 0; max-width: 100%; font-size: var(--fs-sm); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fd-meta { margin: 0; font-size: var(--fs-sm); color: var(--text-2); line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fd-ago { font-size: var(--fs-sm); color: var(--text-3); white-space: nowrap; }
 .fd-split { display: flex; height: 4px; border-radius: 2px; overflow: hidden; gap: 2px; margin: 12px 0 4px; }
@@ -86,7 +88,7 @@
 .fd-list { list-style: none; margin: 0; background: var(--surface); border-radius: var(--r-group); padding: 2px 4px 2px 14px; }
 .fd-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 60px; padding: 6px 0; }
 .fd-row + .fd-row { border-top: 1px solid var(--hairline); }
-.fd-row .fd-name { font-size: var(--fs-sub); line-height: 20px; }
+.fd-row .fd-name { font-size: var(--fs-sub); line-height: 20px; padding: 12px 0; margin: -12px 0; }
 .fd-row .fd-meta { white-space: normal; } /* the week against their goal may take a second line, never an ellipsis */
 .fd-row .msg-latest { font-size: var(--fs-sm); max-width: 100%; }
 .avatar.faded { opacity: 0.55; }
@@ -149,10 +151,13 @@
   color: var(--kind-ink); font-size: 19px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
 .fp-tile.empty { background: var(--fill); }
 .fp-tile.future { background: none; box-shadow: inset 0 0 0 1px var(--hairline); }
-.fp-tile.today { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text-2); }
-.fp-tile.live { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--live); }
-.fp-tile.sel { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text); }
-.fp-star { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 2px var(--surface); display: grid; place-items: center; }
+/* Today's, live and picked rings and the PR medal sit inside the tile: with 2px between tiles (the most that keeps each a 44px
+   target at 375), anything outside it lands on the next day (the owner's screenshot, 2026-10-20: today's ring over yesterday
+   and its medal). A ring on a coloured tile keeps a dark band inside it, so it reads on every kind's colour. */
+.fp-tile.today { box-shadow: inset 0 0 0 2px var(--text-2); }
+.fp-tile.live { box-shadow: inset 0 0 0 3px var(--live), inset 0 0 0 5px var(--surface); }
+.fp-tile.sel { box-shadow: inset 0 0 0 3px var(--text), inset 0 0 0 5px var(--surface); }
+.fp-star { position: absolute; top: 3px; right: 3px; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 1.5px var(--surface); display: grid; place-items: center; }
 .fp-links { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
 .fp-links button { border-radius: var(--r-pill); }
 .fp-tag { margin-top: 16px; }

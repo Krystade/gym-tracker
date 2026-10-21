@@ -614,7 +614,9 @@ textarea.paste { width: 100%; min-height: 240px; padding: 12px; font-size: var(-
 .paste-existing input { width: 22px; height: 22px; }
 .paste-actions { margin-left: auto; display: flex; gap: 8px; }
 .paste-actions button, .paste-date button { border-radius: var(--r-pill); }
-.mini { min-height: 44px; padding: 0 14px; font-size: var(--fs-sub); }
+.mini { min-height: 44px; min-width: 44px; padding: 0 14px; font-size: var(--fs-sub); }
+/* A small disclosure ("How to make a token"): a 44px row to tap. */
+details.small > summary { padding: 13.5px 0; cursor: pointer; }
 .paste-footer { position: sticky; bottom: calc(var(--sab) + 64px); padding: 8px 0; background: linear-gradient(transparent, var(--bg) 30%); }
 
 /* Gyms */

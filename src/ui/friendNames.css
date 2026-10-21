@@ -10,7 +10,7 @@
 .ftag-form > p { margin: 0; }
 /* Your username, and Change beside it (ui/FriendsCard). */
 .me-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.me-line > p { margin: 0; min-width: 0; }
+.me-line > p { margin: 0; min-width: 0; overflow-wrap: anywhere; } /* a 20-character username breaks rather than run under the button */
 .me-line .mini { flex: none; }
 .name-form { margin-top: 12px; }
 .name-form > p { margin: 0; }
