@@ -12,6 +12,10 @@ import { paceLog, PACE_TRUTH } from './sessionSim.sample';
 import { fitReminder } from './remind';
 import { addDays } from '../analytics';
 
+// Shared CI runners are 2-4x slower than a desktop and vary run to run, so wall-clock budgets there catch only an
+// order-of-magnitude regression. Locally (and on the phone's terms) the budgets stand as written.
+const SLACK = process.env.CI ? 4 : 1;
+
 // Phone budget (00-core §1.3): with 5 years of training (1,000 sessions, ~4 a week: ~14k sets) a refit after one more set stays
 // under 50 ms on an iPhone 13 mini. The new set rebuilds only today's session block and copies only its rows (learn/capacity);
 // the rest is the solve. Desktop Node does it in ~15–25 ms, so the gate is the phone's own 50 ms: a wide margin for a slow or
@@ -38,7 +42,7 @@ it('refits 5 years of synthetic training in under 50 ms after one more set', () 
   }
   times.sort((a, b) => a - b);
   expect(log.length).toBeGreaterThan(12000);
-  expect(times[0], `refits (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(50);
+  expect(times[0], `refits (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(50 * SLACK);
 }, 120000);
 
 // Item 08's pain fit (learn/pain) refits the whole log too, on each change: 5 years (~4,600 lift-sessions) in ~10 ms on desktop
@@ -56,7 +60,7 @@ it('fits 5 years of pain history in under 25 ms', () => {
   }
   times.sort((a, b) => a - b);
   expect(painFit(log).sessions).toBeGreaterThan(4000);
-  expect(times[0], `fits (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(25);
+  expect(times[0], `fits (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(25 * SLACK);
 }, 120000);
 
 // Item 11's pace fit (learn/session) refits only when the days before today change (a new day, an edit to a past one): a set
@@ -75,7 +79,7 @@ it('fits 5 years of timed sessions in under 50 ms', () => {
   }
   times.sort((a, b) => a - b);
   expect(paceFit(entries)!.gaps).toBeGreaterThan(11000);
-  expect(times[0], `fits (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(50);
+  expect(times[0], `fits (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(50 * SLACK);
 }, 120000);
 
 // A set logged today makes a new log, but the days before are the same: the plan header's length and pace reuse the fit and
@@ -101,7 +105,7 @@ it('a set logged today re-reads only today for the plan’s length and his pace'
   }
   times.sort((a, b) => a - b);
   expect(sessionLengths(log, date, slots).pace).not.toBeNull();
-  expect(times[0], `per set (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5);
+  expect(times[0], `per set (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5 * SLACK);
 }, 120000);
 
 // Item 17's knee (learn/rest), with knees in use (Rahimi-like recovery, 1–3 min rests, 5 years): the timer's after each set, and the
@@ -133,8 +137,8 @@ it('the knee after a set, and the day’s δ, stay cheap as today’s sets are l
     delta.push(performance.now() - t);
   }
   knee.sort((a, b) => a - b); delta.sort((a, b) => a - b);
-  expect(knee[0], `knee per set (ms): ${knee.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5);
-  expect(delta[0], `δ per log (ms): ${delta.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(25);
+  expect(knee[0], `knee per set (ms): ${knee.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5 * SLACK);
+  expect(delta[0], `δ per log (ms): ${delta.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(25 * SLACK);
 }, 120000);
 
 // Item 06's check (learn/deload) runs on Today with each change of the log: the core as of the days before today (kept while they're
@@ -161,7 +165,7 @@ it('the deload check stays cheap as today’s sets are logged', () => {
     expect(s).not.toBeNull();
   }
   times.sort((a, b) => a - b);
-  expect(times[0], `per set (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(10);
+  expect(times[0], `per set (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(10 * SLACK);
 }, 120000);
 
 // Item 07's steps (learn/volume) on Stats, after a set is logged: 06's check, three weeks' muscle counts, the pooled per-muscle
@@ -187,7 +191,7 @@ it('the volume steps stay cheap after a set is logged', () => {
   }
   times.sort((a, b) => a - b);
   expect(asked).toBeGreaterThan(3);
-  expect(times[0], `per set (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(15);
+  expect(times[0], `per set (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(15 * SLACK);
 }, 120000);
 
 // Item 16's reminder fit (learn/remind) reads only the days before today, so it refits once a day (or after an edit to a past
@@ -208,7 +212,7 @@ it('fits 5 years of reminder history in under 100 ms, once a day; a set logged t
   times.sort((a, b) => a - b);
   const today = addDays(last, 10);
   expect(fitReminder(entries, today, 'UTC').timed).toBeGreaterThan(990);
-  expect(times[0], `fits (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(100);
+  expect(times[0], `fits (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(100 * SLACK);
   const per: number[] = [];
   const log = [...entries];
   for (let k = 0; k < 9; k++) {
@@ -219,5 +223,5 @@ it('fits 5 years of reminder history in under 100 ms, once a day; a set logged t
     per.push(performance.now() - t);
   }
   per.sort((a, b) => a - b);
-  expect(per[0], `per set (ms): ${per.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5);
+  expect(per[0], `per set (ms): ${per.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5 * SLACK);
 }, 120000);
