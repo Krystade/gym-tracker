@@ -1,5 +1,6 @@
 import { resolveLift } from '../lifts';
 import { MUSCLES, type Muscle } from '../muscles';
+import type { BodyDay } from '../body';
 import type { SetEntry } from '../types';
 import { rng } from './num';
 import { overlap } from './tags';
@@ -35,13 +36,19 @@ export interface RecSim {
   pLog?: number;
   /** Share of sessions with set times. */
   timedFrac?: number;
+  /**
+   * Energy (learn/readiness): each session's energy, 1–5 uniform, logged on its day for the first `logged` sessions (default all),
+   * moves that day's level by `slope`·(energy − 3) (ln e1RM). The draw is made for every session (slope 0 included), so the
+   * rest of the log is the same at any slope or count.
+   */
+  energy?: { slope: number; logged?: number };
   truth?: Partial<RecTruth>;
 }
 export const REC_TRUTH: RecTruth = { tau: 32, phi: 8, beta: 1, aSame: 1.2, rho: 0.5, tauS: 90, aCross: 0.5, kappa: 30, readySd: 0.02, setSd: 0.6, muR: 2 };
 
 const date = (day: number) => new Date(Date.UTC(2024, 0, 1) + day * 864e5).toISOString().slice(0, 10);
 
-export function simulateRecovery(seed: number, o: RecSim): { entries: SetEntry[]; truth: RecTruth } {
+export function simulateRecovery(seed: number, o: RecSim): { entries: SetEntry[]; truth: RecTruth; body: BodyDay[] } {
   const r = rng(seed);
   const t = { ...REC_TRUTH, ...o.truth };
   const V = REC_LIFTS.map((l) => resolveLift(l.name).m!);
@@ -52,11 +59,18 @@ export function simulateRecovery(seed: number, o: RecSim): { entries: SetEntry[]
   const D = (m: Muscle, h: number) => { let s = 0; for (const d of deposits) if (d.m === m && d.t <= h) s += d.a * Math.exp(-(h - d.t) / d.tau); return s; };
   const gaps = o.gaps ?? [1, 1, 1, 2, 2, 3, 4], failFrac = o.failFrac ?? 0, pLog = o.pLog ?? 0.3, timedFrac = o.timedFrac ?? 1;
   const entries: SetEntry[] = [];
+  const body: BodyDay[] = [];
+  const er = rng(seed + 7919); // its own stream: energy never shifts the other draws
   let day = 0, seq = 0;
   for (let s = 0; s < o.sessions; s++) {
     day += r.pick(gaps);
     logE = logE.map((x) => x + r.normal(0, 0.004));
-    const ready = r.normal(0, t.readySd);
+    let ready = r.normal(0, t.readySd);
+    if (o.energy) {
+      const e = (1 + Math.floor(er.next() * 5)) as 1 | 2 | 3 | 4 | 5;
+      ready += o.energy.slope * (e - 3);
+      if (s < (o.energy.logged ?? Infinity)) body.push({ date: date(day), energy: e });
+    }
     const failing = r.next() < failFrac, timed = r.next() < timedFrac;
     let sec = Math.round(Math.min(21, Math.max(7, 17 + r.normal(0, 1.5))) * 3600);
     const done: { L: number; sec: number }[] = [];
@@ -106,7 +120,7 @@ export function simulateRecovery(seed: number, o: RecSim): { entries: SetEntry[]
       }
     }
   }
-  return { entries, truth: t };
+  return { entries, truth: t, body };
 }
 
 /** The same log with each session moved to another session's date (times of day kept): timing no longer says anything. */

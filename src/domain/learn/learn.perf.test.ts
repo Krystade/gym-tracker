@@ -16,6 +16,8 @@ import { simulate as switchSim } from './switchSim.sample';
 import { fitCore } from './capacity';
 import { fitRecovery } from './recovery';
 import { simulateRecovery } from './recoverySim.sample';
+import { readiness } from './readiness';
+import type { Program } from '../program';
 
 // Shared CI runners are 2-4x slower than a desktop and vary run to run, so wall-clock budgets there catch only an
 // order-of-magnitude regression. Locally (and on the phone's terms) the budgets stand as written.
@@ -277,4 +279,31 @@ it('refits per-muscle recovery on 2k sets in under 20 ms after one more set', ()
   times.sort((a, b) => a - b);
   expect(entries.length).toBeGreaterThan(2000);
   expect(times[0], `refits (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(20 * SLACK);
+}, 60000);
+
+// Readiness S2 (learn/readiness) on Today: the day's number over a 4-day program and a quick day, on 2k sets of recovery history,
+// after one more set today (as the store makes a new log array on every add): the fits before today are the last call's, so
+// what's left is the candidates' cells, pain and the verdict. ~6–15 ms on desktop Node; gated at 25 ms (best of several).
+it('re-reads the day’s readiness on 2k sets in under 25 ms after one more set today', () => {
+  const { entries, body } = simulateRecovery(1, { sessions: 190, failFrac: 0.2, energy: { slope: 0.02 } });
+  const last = entries.at(-1)!, today = addDays(last.date, 1);
+  const s = (exercise: string, sets = 3) => ({ exercise, sets, repMin: 8, repMax: 12 });
+  const program: Program = { key: 'program', perSession: 12, createdAt: '', days: [
+    { name: 'A', slots: [s('Bench Press', 4), s('Incline DB Press'), s('Cable Pushdown')] },
+    { name: 'B', slots: [s('Seated Cable Row', 4), s('Lat Pulldown'), s('DB Curl')] },
+    { name: 'C', slots: [s('Leg Press', 4), s('DB Lateral Raise')] },
+    { name: 'D', slots: [s('Bench Press'), s('Lat Pulldown'), s('Leg Press'), s('DB Curl')] }] };
+  const at = (es: SetEntry[]) => readiness({ entries: es, body, weeklyGoal: 3, program, plans: [], quick: [s('DB Curl', 2), s('Cable Pushdown', 2)], today, tz: 'UTC' });
+  for (let k = 0; k < 3; k++) at([...entries]);
+  const times: number[] = [];
+  for (let k = 0; k < 7; k++) {
+    const next = [...entries, { ...last, id: `rdy${k}`, date: today, seq: last.seq + 1 + k, setNo: last.setNo + 1 + k, loggedAt: undefined }];
+    const t = performance.now();
+    const r = at(next);
+    times.push(performance.now() - t);
+    expect(r.candidates.length).toBe(5);
+  }
+  times.sort((a, b) => a - b);
+  expect(entries.length).toBeGreaterThan(2000);
+  expect(times[0], `per set (ms): ${times.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(25 * SLACK);
 }, 60000);
