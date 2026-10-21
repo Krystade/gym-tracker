@@ -35,6 +35,9 @@ async function monday(page: Page) {
   await goto(page, 'Today');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Mon, Oct 12');
   const last = page.getByRole('region', { name: 'Last week' });
+  // Collapsed to one line (IA A1), with the week just gone's numbers; opened, its dates.
+  await expect(last.getByRole('button', { name: /^Last week/ })).toHaveText(/^Last week · 2 of 2 sessions · 6 sets/);
+  await last.getByRole('button', { name: /^Last week/ }).click();
   await expect(last.getByRole('heading', { level: 2 })).toHaveText(/Last week\s*· Oct 5–11/);
   await expect(last).toContainText(/Sessions\s*2 of 2/);
   await expect(page.getByRole('region', { name: 'This week' })).toHaveCount(0);
