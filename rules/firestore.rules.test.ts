@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, deleteField, doc, documentId, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
+import { collection, deleteDoc, deleteField, doc, documentId, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
 
 // Synthetic users: alice owns the data, bob is her friend, eve is a stranger.
 let env: RulesTestEnvironment;
@@ -523,6 +523,15 @@ describe('the push Worker’s reads over REST', () => {
     expect((await rest('eve', 'users/alice/gymInbox/g1')).status).toBe(403);
     expect((await rest('carol', 'users/alice/requests/eve')).status).toBe(403);
   });
+  it('a board report comes back to its reporter with a server createTime; to anyone else but an owner, 403', async () => {
+    await seed((db) => setDoc(doc(db, 'board/p1/reports/eve'), { why: 'spam', at: Timestamp.now() }));
+    const r = await rest('eve', 'board/p1/reports/eve');
+    expect(r.status).toBe(200);
+    expect(Math.abs(Date.parse(r.body!.createTime) - Date.now())).toBeLessThan(60_000);
+    expect((await rest('bob', 'board/p1/reports/bob')).status).toBe(404); // his own, never made: not there
+    expect((await rest('bob', 'board/p1/reports/eve')).status).toBe(403);
+    expect((await rest('root', 'board/p1/reports/eve')).status).toBe(200);
+  });
 });
 
 describe('pings and messages (inbox), with the sender’s counter (sendRate)', () => {
@@ -888,5 +897,407 @@ describe('the paths from before Compare are as they were', () => {
     await seed((db) => setDoc(doc(db, 'users/alice/summary/compare'), { v: 1 }));
     await assertFails(setDoc(doc(as('bob'), 'users/alice/months/2026-11'), { sets: [] }));
     await assertFails(getDoc(doc(as('eve'), 'users/alice/private/cycle')));
+  });
+});
+
+// ---- The board (social S3 + S4, plan §4) ----
+// Members pass the gate: a day-old profile, the one-time acceptance in their private/board, a verified email (the token's). Mara
+// has a display name; Theo, Sam and Lena go by their usernames. Eve is a stranger who never joined. `root` is an owner.
+describe('the board (social S3, S4)', () => {
+  const DAY = 86_400_000;
+  const ago = (ms: number) => Timestamp.fromMillis(Date.now() - ms);
+  /** Signed in with the email verified (or not). */
+  const V = (uid: string | null, verified = true) => (uid ? env.authenticatedContext(uid, { email_verified: verified }) : env.unauthenticatedContext()).firestore() as unknown as Firestore;
+  const DN: Record<string, string> = { mara: 'Mara R.' };
+  const member = (uid: string, o: { createdAt?: Timestamp | null; ok?: unknown } = {}) => seed(async (db) => {
+    const createdAt = o.createdAt === undefined ? ago(2 * DAY) : o.createdAt;
+    await setDoc(doc(db, `users/${uid}`), { username: uid, displayName: DN[uid] ?? uid, ...(createdAt && { createdAt }) });
+    await setDoc(doc(db, `usernames/${uid}`), { uid });
+    if (o.ok !== null) await setDoc(doc(db, `users/${uid}/private/board`), { ok: o.ok ?? true, at: ago(2 * DAY) });
+  });
+  let n = 0;
+  const pid = () => `p${++n}${Math.random().toString(36).slice(2, 6)}`;
+  /** A post as the app writes it: the post and the author's counter, in one write. */
+  const post = (uid: string, data: Record<string, unknown> = {}, o: { rate?: Record<string, unknown> | null; id?: string; verified?: boolean; db?: Firestore } = {}) => {
+    const db = o.db ?? V(uid, o.verified ?? true), b = writeBatch(db);
+    b.set(doc(db, `board/${o.id ?? pid()}`), { uid, name: DN[uid] ?? uid, user: uid, t: 'Deload week, then heavy.', at: serverTimestamp(), reports: 0, likes: 0, ...data });
+    if (o.rate !== null) b.set(doc(db, `boardRate/${uid}`), { at: serverTimestamp(), win: serverTimestamp(), n: 1, ...o.rate });
+    return b.commit();
+  };
+  /** A post already there, written as an admin. */
+  const seedPost = (id: string, uid: string, extra: Record<string, unknown> = {}) =>
+    seed((db) => setDoc(doc(db, `board/${id}`), { uid, name: DN[uid] ?? uid, user: uid, t: `Post ${id}`, at: Timestamp.now(), reports: 0, likes: 0, ...extra }));
+  /** A report as the app makes it: yours, the post's count up one, your report counter moved, in one write. */
+  const report = (who: string, id: string, o: { why?: string; by?: number; doc?: boolean; rate?: Record<string, unknown> | null; verified?: boolean } = {}) => {
+    const db = V(who, o.verified ?? true), b = writeBatch(db);
+    if (o.doc !== false) b.set(doc(db, `board/${id}/reports/${who}`), { why: o.why ?? 'spam', at: serverTimestamp() });
+    if (o.by !== 0) b.update(doc(db, `board/${id}`), { reports: increment(o.by ?? 1) });
+    if (o.rate !== null) b.set(doc(db, `reportRate/${who}`), { at: serverTimestamp(), win: serverTimestamp(), n: 1, ...o.rate });
+    return b.commit();
+  };
+  /** A 💪 as the app gives it (or takes it back): your like document and the post's count, in one write. */
+  const like = (who: string, id: string, o: { by?: number; doc?: boolean; as?: string } = {}) => {
+    const db = V(who), b = writeBatch(db), by = o.by ?? 1;
+    const ref = doc(db, `board/${id}/likes/${o.as ?? who}`);
+    if (o.doc !== false) { if (by > 0) b.set(ref, {}); else b.delete(ref); }
+    if (by) b.update(doc(db, `board/${id}`), { likes: increment(by) });
+    return b.commit();
+  };
+  const page = (db: Firestore, after?: Timestamp) =>
+    getDocs(query(collection(db, 'board'), where('at', '>', ago(30 * DAY)), orderBy('at', 'desc'), ...(after ? [startAfter(after)] : []), limit(20)));
+
+  beforeEach(async () => { for (const m of ['mara', 'theo', 'sam', 'lena']) await member(m); });
+
+  // Positives
+  it('a member posts 1 and 280 characters, the counter in the same write; the next a minute on', async () => {
+    await assertSucceeds(post('mara', { t: 'x' }));
+    const first = (await getDoc(doc(V('mara'), 'boardRate/mara'))).data() as { win: Timestamp };
+    await seed((db) => setDoc(doc(db, 'boardRate/mara'), { at: ago(61_000), win: first.win, n: 1 }));
+    await assertSucceeds(post('mara', { t: 'x'.repeat(280) }, { rate: { win: first.win, n: 2 } }));
+    await assertSucceeds(post('theo')); // no display name: the username as the name
+  });
+  it('anyone signed in pages the board, newest first, 20 at a time; someone signed out can’t', async () => {
+    for (let i = 0; i < 25; i++) await seedPost(`s${String(i).padStart(2, '0')}`, 'theo', { at: ago((i + 1) * 60_000) });
+    const one = await assertSucceeds(page(V('eve', false)));
+    expect(one.size).toBe(20);
+    expect(one.docs[0].id).toBe('s00');
+    const two = await assertSucceeds(page(V('eve', false), one.docs[19].data().at as Timestamp));
+    expect(two.docs.map((d) => d.id)).toEqual(['s20', 's21', 's22', 's23', 's24']);
+    await assertSucceeds(getDoc(doc(V('eve', false), 'board/s00')));
+    await assertFails(page(V(null)));
+    await assertFails(getDoc(doc(V(null), 'board/s00')));
+  });
+  it('a 💪 and its count go up together, and come back down together; anyone signed in sees a like', async () => {
+    await seedPost('p1', 'mara');
+    await assertSucceeds(like('eve', 'p1'));
+    await assertSucceeds(getDoc(doc(V('theo'), 'board/p1/likes/eve')));
+    expect((await getDoc(doc(V('theo'), 'board/p1'))).data()?.likes).toBe(1);
+    await assertSucceeds(like('eve', 'p1', { by: -1 }));
+    expect((await getDoc(doc(V('theo'), 'board/p1'))).data()?.likes).toBe(0);
+  });
+  it('a member reports a post: the count goes up with it; the owner reads the reports, keeps it, removes it, bans and tells the author', async () => {
+    await seedPost('p1', 'sam');
+    await assertSucceeds(report('theo', 'p1', { why: 'harass' }));
+    await assertSucceeds(report('lena', 'p1', { why: 'personal' }));
+    await assertSucceeds(getDoc(doc(V('theo'), 'board/p1/reports/theo'))); // your own, back (the Worker reads it with your token)
+    const rs = await assertSucceeds(getDocs(collection(V('root'), 'board/p1/reports')));
+    expect(rs.docs.map((d) => d.data().why).sort()).toEqual(['harass', 'personal']);
+    await assertSucceeds(updateDoc(doc(V('root'), 'board/p1'), { kept: 2 }));
+    await assertSucceeds(setDoc(doc(V('root'), 'banned/sam'), { at: serverTimestamp(), why: 'spam' }));
+    await assertSucceeds(setDoc(doc(V('root'), 'notices/sam'), { removed: 1, banned: true, at: serverTimestamp() }));
+    await assertSucceeds(getDoc(doc(V('sam'), 'notices/sam')));
+    // Removed: the post with its reports and likes, in one write.
+    await seed((db) => setDoc(doc(db, 'board/p1/likes/eve'), {}));
+    const db = V('root'), b = writeBatch(db);
+    for (const r of ['theo', 'lena']) b.delete(doc(db, `board/p1/reports/${r}`));
+    b.delete(doc(db, 'board/p1/likes/eve'));
+    b.delete(doc(db, 'board/p1'));
+    await assertSucceeds(b.commit());
+    await assertSucceeds(setDoc(doc(V('root'), 'config/verified'), { uids: { mara: serverTimestamp() } }));
+    // An owner lifts the ban.
+    await assertSucceeds(deleteDoc(doc(V('second'), 'banned/sam')));
+  });
+  it('the author deletes their own post', async () => {
+    await seedPost('p1', 'mara');
+    await assertSucceeds(deleteDoc(doc(V('mara'), 'board/p1')));
+  });
+
+  // What a count alone can't show (the mutation check, 2026-10-22): each write moves only its own key, only as yourself, once.
+  it('a report or a 💪 moves only its count, as yourself, once: not the words with it, not someone else’s beside yours, not twice', async () => {
+    await seedPost('p1', 'sam');
+    const rate = (db: Firestore, who: string) => doc(db, `reportRate/${who}`);
+    const rated = { at: serverTimestamp(), win: serverTimestamp(), n: 1 };
+    // Reporting while rewriting the post, or marking it kept.
+    for (const extra of [{ t: 'rewritten' }, { kept: 5 }]) {
+      const db = V('theo'), b = writeBatch(db);
+      b.set(doc(db, 'board/p1/reports/theo'), { why: 'spam', at: serverTimestamp() });
+      b.update(doc(db, 'board/p1'), { reports: increment(1), ...extra });
+      b.set(rate(db, 'theo'), rated);
+      await assertFails(b.commit());
+    }
+    // Someone else's report beside yours, the count up one.
+    {
+      const db = V('theo'), b = writeBatch(db);
+      b.set(doc(db, 'board/p1/reports/theo'), { why: 'spam', at: serverTimestamp() });
+      b.set(doc(db, 'board/p1/reports/lena'), { why: 'spam', at: serverTimestamp() });
+      b.update(doc(db, 'board/p1'), { reports: increment(1) });
+      b.set(rate(db, 'theo'), rated);
+      await assertFails(b.commit());
+    }
+    await assertSucceeds(report('theo', 'p1')); // the plain report still goes
+    // A 💪 while rewriting the post; someone else's beside yours.
+    {
+      const db = V('eve'), b = writeBatch(db);
+      b.set(doc(db, 'board/p1/likes/eve'), {});
+      b.update(doc(db, 'board/p1'), { likes: increment(1), t: 'rewritten' });
+      await assertFails(b.commit());
+    }
+    {
+      const db = V('eve'), b = writeBatch(db);
+      b.set(doc(db, 'board/p1/likes/eve'), {});
+      b.set(doc(db, 'board/p1/likes/theo'), {});
+      b.update(doc(db, 'board/p1'), { likes: increment(1) });
+      await assertFails(b.commit());
+    }
+    await assertSucceeds(like('eve', 'p1'));
+    // Given already: the count again, with no new like.
+    await assertFails(like('eve', 'p1', { doc: false }));
+    // Taken back without the count coming down.
+    await assertFails(deleteDoc(doc(V('eve'), 'board/p1/likes/eve')));
+    expect((await getDoc(doc(V('theo'), 'board/p1'))).data()).toMatchObject({ likes: 1, reports: 1, t: 'Post p1' });
+  });
+  it('a counter of yours starts at the server’s time: never written alone with an earlier last post', async () => {
+    await assertFails(setDoc(doc(V('mara'), 'boardRate/mara'), { at: ago(120_000), win: serverTimestamp(), n: 1 }));
+    await assertFails(setDoc(doc(V('theo'), 'reportRate/theo'), { at: ago(120_000), win: serverTimestamp(), n: 1 }));
+    await assertSucceeds(setDoc(doc(V('mara'), 'boardRate/mara'), { at: serverTimestamp(), win: serverTimestamp(), n: 1 }));
+    // Nobody starts someone else's (it would stand between a new member and their first post).
+    await assertFails(setDoc(doc(V('mara'), 'boardRate/theo'), { at: serverTimestamp(), win: serverTimestamp(), n: 1 }));
+    await assertFails(setDoc(doc(V('mara'), 'reportRate/theo'), { at: serverTimestamp(), win: serverTimestamp(), n: 1 }));
+  });
+  it('the owner lists who is banned, to lift a ban; nobody else can', async () => {
+    await seed((db) => setDoc(doc(db, 'banned/sam'), { at: Timestamp.now() }));
+    const got = await assertSucceeds(getDocs(collection(V('root'), 'banned')));
+    expect(got.docs.map((d) => d.id)).toContain('sam');
+    await assertFails(getDocs(collection(V('mara'), 'banned')));
+    await assertSucceeds(getDoc(doc(V('mara'), 'banned/sam'))); // asking about one account stays open (the gate asks)
+  });
+
+  // Negatives: the gate
+  it('a post is refused signed out, with the email not verified, without the acceptance, under a day old, or banned', async () => {
+    await assertFails(post('mara', {}, { db: V(null) }));
+    await assertFails(post('mara', {}, { verified: false }));
+    await assertFails(post('mara', {}, { db: as('mara') })); // a token without the claim at all
+    await member('eve', { ok: null });
+    await assertFails(post('eve')); // never accepted
+    await member('eve', { ok: false });
+    await assertFails(post('eve'));
+    await seed((db) => setDoc(doc(db, 'users/eve/private/board'), { hidden: ['x'] })); // a hide list, no acceptance
+    await assertFails(post('eve'));
+    await member('eve', { createdAt: Timestamp.now() });
+    await assertFails(post('eve')); // a day old by the server's clock, not yet
+    await member('eve', { createdAt: ago(DAY - 60_000) });
+    await assertFails(post('eve'));
+    await member('eve', { createdAt: null });
+    await assertFails(post('eve')); // a profile from before createdAt: it waits for one
+    await member('eve', { createdAt: ago(DAY + 60_000) });
+    await assertSucceeds(post('eve')); // and now it passes
+    await seed((db) => setDoc(doc(db, 'banned/mara'), { at: Timestamp.now() }));
+    await assertFails(post('mara'));
+  });
+  it('a post holds 1 to 280 characters, no link, the author’s own names, the server’s time, and nothing counted yet', async () => {
+    await assertFails(post('mara', { t: '' }));
+    await assertFails(post('mara', { t: 'x'.repeat(281) }));
+    await assertFails(post('mara', { t: '💪'.repeat(141) })); // UTF-16 units, as the app counts: 282
+    await assertFails(post('mara', { t: 7 }));
+    for (const t of ['see https://x.example', 'ftp://x', 'www.shop.example', 'WWW.SHOP.EXAMPLE', 'line one\nwww.x']) await assertFails(post('mara', { t }));
+    await assertFails(post('mara', { name: 'Someone Else' }));
+    await assertFails(post('mara', { name: 'mara' })); // her display name is Mara R.
+    await assertFails(post('mara', { user: 'theo' }));
+    await assertFails(post('theo', { name: 'Theo K.' }));
+    await assertFails(post('mara', { uid: 'theo' }));
+    await assertFails(post('theo', { uid: 'mara', name: 'Mara R.', user: 'mara' }, { db: V('theo') }));
+    await assertFails(post('mara', { at: Timestamp.now() }));
+    await assertFails(post('mara', { reports: 5 }));
+    await assertFails(post('mara', { likes: 9 }));
+    await assertFails(post('mara', { kept: 0 }));
+    await assertFails(post('mara', { img: 'x' }));
+    await assertFails(post('mara', {}, { rate: null })); // without the counter
+    await assertSucceeds(post('mara', { t: '💪'.repeat(140) }));
+  });
+  it('60 s between posts, 5 a day, and a new day starts again at 1; the counter is yours alone', async () => {
+    await assertSucceeds(post('mara'));
+    const r1 = (await getDoc(doc(V('mara'), 'boardRate/mara'))).data() as { at: Timestamp; win: Timestamp; n: number };
+    await assertFails(post('mara', {}, { rate: { win: r1.win, n: 2 } })); // inside 60 s
+    await seed((db) => setDoc(doc(db, 'boardRate/mara'), { at: ago(61_000), win: r1.win, n: 1 }));
+    await assertFails(post('mara', {}, { rate: { win: r1.win, n: 1 } })); // the count must move
+    await assertFails(post('mara', {}, { rate: { win: r1.win, n: 3 } }));
+    await assertFails(post('mara')); // no starting over inside the day
+    await seed((db) => setDoc(doc(db, 'boardRate/mara'), { at: ago(61_000), win: ago(3600_000), n: 4 }));
+    const win = ((await getDoc(doc(V('mara'), 'boardRate/mara'))).data() as { win: Timestamp }).win;
+    await assertSucceeds(post('mara', {}, { rate: { win, n: 5 } }));
+    await seed((db) => setDoc(doc(db, 'boardRate/mara'), { at: ago(61_000), win, n: 5 }));
+    await assertFails(post('mara', {}, { rate: { win, n: 6 } })); // the 6th in a day
+    await seed((db) => setDoc(doc(db, 'boardRate/mara'), { at: ago(61_000), win: ago(DAY + 1000), n: 5 }));
+    await seed((db) => setDoc(doc(db, 'boardRate/mara'), { at: ago(61_000), win: ago(DAY + 1000), n: 3 }));
+    const old = ((await getDoc(doc(V('mara'), 'boardRate/mara'))).data() as { win: Timestamp }).win;
+    await assertFails(post('mara', {}, { rate: { win: old, n: 4 } })); // a day over: no counting on in it
+    await assertSucceeds(post('mara')); // a new day: n = 1, win = now
+    // The first counter of all: 1, at the server's time.
+    await assertFails(post('theo', {}, { rate: { n: 0 } }));
+    await assertFails(post('theo', {}, { rate: { win: ago(DAY + 1000) } }));
+    await assertFails(post('theo', {}, { rate: { at: ago(61_000) } }));
+    await assertFails(post('theo', {}, { rate: { x: 1 } }));
+    // Yours alone; and it goes only once its day is over, or with the account.
+    await assertFails(getDoc(doc(V('theo'), 'boardRate/mara')));
+    await assertFails(setDoc(doc(V('theo'), 'boardRate/mara'), { at: serverTimestamp(), win: serverTimestamp(), n: 1 }));
+    await assertFails(deleteDoc(doc(V('mara'), 'boardRate/mara')));
+    const db = V('mara'), b = writeBatch(db);
+    b.delete(doc(db, 'boardRate/mara')); b.delete(doc(db, 'usernames/mara')); b.delete(doc(db, 'users/mara'));
+    await assertSucceeds(b.commit());
+  });
+
+  // Negatives: changing a post
+  it('nobody edits a post: not its words, not a count by more than one, not without the document that stands for it', async () => {
+    await seedPost('p1', 'mara');
+    await assertFails(updateDoc(doc(V('mara'), 'board/p1'), { t: 'edited' }));
+    await assertFails(updateDoc(doc(V('mara'), 'board/p1'), { name: 'Mara' }));
+    await assertFails(updateDoc(doc(V('root'), 'board/p1'), { t: 'edited by the owner' }));
+    await assertFails(report('theo', 'p1', { by: 2 }));
+    await assertFails(report('theo', 'p1', { doc: false })); // +1 without a report
+    await assertFails(report('theo', 'p1', { by: 0 })); // a report without the count
+    await assertFails(like('theo', 'p1', { doc: false })); // +1 without a like
+    await assertFails(like('theo', 'p1', { by: 2 }));
+    await assertFails(like('theo', 'p1', { as: 'lena' })); // someone else's like
+    const t = V('theo');
+    await assertFails(writeBatch(t).set(doc(t, 'board/p1/likes/theo'), { n: 9 }).update(doc(t, 'board/p1'), { likes: increment(1) }).commit());
+    await assertFails(like('theo', 'p1', { by: -1 })); // taking back a like never given
+    await assertFails(setDoc(doc(V('theo'), 'board/p1/likes/theo'), {})); // the like alone
+    await assertSucceeds(like('theo', 'p1'));
+    await assertFails(like('theo', 'p1')); // a second
+    await assertFails(like('lena', 'p1', { by: -1, as: 'theo' })); // taking back someone else's
+    await assertSucceeds(like('lena', 'p1'));
+    const l = V('lena');
+    await assertFails(writeBatch(l).delete(doc(l, 'board/p1/likes/lena')).delete(doc(l, 'board/p1/likes/theo')).update(doc(l, 'board/p1'), { likes: increment(-1) }).commit());
+    await assertFails(deleteDoc(doc(V('root'), 'board/p1/likes/theo'))); // an owner, while the post stays
+    await assertFails(getDoc(doc(V(null), 'board/p1/likes/theo')));
+    expect((await getDoc(doc(V('eve'), 'board/p1'))).data()?.likes).toBe(2);
+    // Reviewed: the owner's alone, never more than the reports.
+    await seed((db) => setDoc(doc(db, 'board/p2'), { uid: 'mara', name: 'Mara R.', user: 'mara', t: 'x', at: Timestamp.now(), reports: 3, likes: 0 }));
+    await assertFails(updateDoc(doc(V('mara'), 'board/p2'), { kept: 3 }));
+    await assertFails(updateDoc(doc(V('theo'), 'board/p2'), { kept: 3 }));
+    await assertFails(updateDoc(doc(V('root'), 'board/p2'), { kept: 4 }));
+    await assertFails(updateDoc(doc(V('root'), 'board/p2'), { kept: -1 }));
+    await assertFails(updateDoc(doc(V('root'), 'board/p2'), { kept: 3, hidden: true }));
+    await assertFails(updateDoc(doc(V('root'), 'board/p2'), { hidden: true }));
+    await assertSucceeds(updateDoc(doc(V('root'), 'board/p2'), { kept: 3 }));
+  });
+  it('one report per person per post, for a reason on the list, past the gate, never edited; only the owner reads them', async () => {
+    await seedPost('p1', 'mara');
+    await assertFails(report('theo', 'p1', { why: 'boring' }));
+    await assertFails(report('eve', 'p1')); // never joined the board
+    await assertFails(report('theo', 'p1', { verified: false }));
+    await assertFails(report('theo', 'p1', { rate: null })); // without the counter
+    const t = V('theo');
+    await assertFails(writeBatch(t).set(doc(t, 'board/p1/reports/lena'), { why: 'spam', at: serverTimestamp() }).update(doc(t, 'board/p1'), { reports: increment(1) })
+      .set(doc(t, 'reportRate/theo'), { at: serverTimestamp(), win: serverTimestamp(), n: 1 }).commit()); // as someone else
+    await assertFails(writeBatch(t).set(doc(t, 'board/p1/reports/theo'), { why: 'spam', at: Timestamp.now() }).update(doc(t, 'board/p1'), { reports: increment(1) })
+      .set(doc(t, 'reportRate/theo'), { at: serverTimestamp(), win: serverTimestamp(), n: 1 }).commit()); // the phone's clock
+    await assertFails(writeBatch(t).set(doc(t, 'board/p1/reports/theo'), { why: 'spam', at: serverTimestamp(), note: 'x' }).update(doc(t, 'board/p1'), { reports: increment(1) })
+      .set(doc(t, 'reportRate/theo'), { at: serverTimestamp(), win: serverTimestamp(), n: 1 }).commit());
+    await assertSucceeds(report('theo', 'p1'));
+    await assertFails(report('theo', 'p1')); // a second by the same person
+    const r = await getDoc(doc(V('theo'), 'reportRate/theo'));
+    await assertFails(report('theo', 'p1', { rate: { win: r.data()!.win, n: 2 } }));
+    await assertFails(updateDoc(doc(V('theo'), 'board/p1/reports/theo'), { why: 'harass' }));
+    await assertFails(updateDoc(doc(V('root'), 'board/p1/reports/theo'), { why: 'harass' }));
+    await assertFails(deleteDoc(doc(V('theo'), 'board/p1/reports/theo')));
+    // The poster can't see who reported them; nobody but the owner lists them.
+    await assertFails(getDoc(doc(V('mara'), 'board/p1/reports/theo')));
+    await assertFails(getDocs(collection(V('mara'), 'board/p1/reports')));
+    await assertFails(getDocs(collection(V('theo'), 'board/p1/reports')));
+    await assertFails(getDocs(collection(V('lena'), 'board/p1/likes')));
+    // A report on a post that isn't there.
+    await assertFails(report('lena', 'nope'));
+  });
+  it('20 reports a day each', async () => {
+    await seedPost('p1', 'mara');
+    await seed((db) => setDoc(doc(db, 'reportRate/theo'), { at: ago(5000), win: ago(3600_000), n: 19 }));
+    const win = ((await getDoc(doc(V('theo'), 'reportRate/theo'))).data() as { win: Timestamp }).win;
+    await assertSucceeds(report('theo', 'p1', { rate: { win, n: 20 } }));
+    await seedPost('p2', 'mara');
+    await seed((db) => setDoc(doc(db, 'reportRate/theo'), { at: ago(5000), win, n: 20 }));
+    await assertFails(report('theo', 'p2', { rate: { win, n: 21 } }));
+    await assertFails(report('theo', 'p2'));
+    await assertFails(getDoc(doc(V('lena'), 'reportRate/theo')));
+  });
+
+  // Negatives: the owner's alone
+  it('only an owner bans, tells, or deletes someone else’s post; a ban is anyone’s to see, a notice only its person’s', async () => {
+    await seedPost('p1', 'mara');
+    for (const who of ['mara', 'theo', 'eve']) {
+      await assertFails(setDoc(doc(V(who), `banned/${who === 'mara' ? 'theo' : 'mara'}`), { at: serverTimestamp() }));
+      await assertFails(setDoc(doc(V(who), `notices/${who}`), { removed: 0, banned: false, at: serverTimestamp() }));
+    }
+    await assertFails(deleteDoc(doc(V('theo'), 'board/p1')));
+    await assertFails(setDoc(doc(V('theo'), 'config/verified'), { uids: { theo: serverTimestamp() } }));
+    await assertFails(setDoc(doc(V('root'), 'banned/mara'), { at: Timestamp.now() })); // the server's time
+    await assertFails(setDoc(doc(V('root'), 'banned/mara'), { at: serverTimestamp(), note: 'x' }));
+    await assertFails(setDoc(doc(V('root'), 'banned/mara'), { at: serverTimestamp(), why: 'x'.repeat(201) }));
+    await assertFails(setDoc(doc(V('root'), 'notices/mara'), { removed: -1, banned: false, at: serverTimestamp() }));
+    await assertFails(setDoc(doc(V('root'), 'notices/mara'), { removed: 1, banned: 'yes', at: serverTimestamp() }));
+    await assertFails(setDoc(doc(V('root'), 'notices/mara'), { removed: 1, banned: true, at: Timestamp.now() }));
+    await assertFails(setDoc(doc(V('root'), 'notices/mara'), { removed: 1, banned: true, at: serverTimestamp(), why: 'x' }));
+    await assertSucceeds(setDoc(doc(V('root'), 'banned/mara'), { at: serverTimestamp() }));
+    await assertSucceeds(setDoc(doc(V('root'), 'notices/mara'), { removed: 1, banned: true, at: serverTimestamp() }));
+    await assertSucceeds(getDoc(doc(V('theo'), 'banned/mara')));
+    await assertFails(getDocs(collection(V('theo'), 'banned')));
+    await assertFails(getDoc(doc(V('theo'), 'notices/mara')));
+    await assertFails(getDoc(doc(V(null), 'banned/mara')));
+    await assertFails(deleteDoc(doc(V('mara'), 'banned/mara')));
+    await assertFails(deleteDoc(doc(V('theo'), 'notices/mara')));
+    await assertSucceeds(deleteDoc(doc(V('mara'), 'notices/mara'))); // cleared with the account
+    await assertSucceeds(deleteDoc(doc(V('root'), 'board/p1')));
+  });
+  it('a banned account can’t post, give a 💪 or report', async () => {
+    await seedPost('p1', 'theo');
+    await seed((db) => setDoc(doc(db, 'banned/mara'), { at: Timestamp.now() }));
+    await assertFails(post('mara'));
+    await assertFails(like('mara', 'p1'));
+    await assertFails(report('mara', 'p1'));
+    await assertSucceeds(page(V('mara'))); // still reads
+  });
+
+  // Privacy: the board opens nothing else
+  it('a member who can post is still refused anyone else’s log, settings, summary, private documents, friends and inbox', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'users/alice/meta/profile'), { items: {}, updatedAt: 1 });
+      await setDoc(doc(db, 'users/alice/summary/compare'), { v: 1 });
+      await setDoc(doc(db, 'users/alice/private/tags'), { tags: {} });
+      await setDoc(doc(db, 'users/alice/private/board'), { ok: true, hidden: ['p1'], muted: ['bob'] });
+      await setDoc(doc(db, 'users/alice/private/cycle'), { days: {} });
+      await setDoc(doc(db, 'users/alice/inbox/m1'), { from: 'bob', kind: 'p', e: 'fire', at: Timestamp.now() });
+      await setDoc(doc(db, 'users/alice/requests/bob'), { username: 'bob', sent: 1 });
+      await setDoc(doc(db, 'boardRate/alice'), { at: Timestamp.now(), win: Timestamp.now(), n: 1 });
+    });
+    await assertSucceeds(post('mara')); // she passes the gate
+    const m = V('mara');
+    for (const p of ['users/alice/months/2026-10', 'users/alice/meta/index', 'users/alice/meta/profile', 'users/alice/summary/compare',
+      'users/alice/private/tags', 'users/alice/private/board', 'users/alice/private/cycle', 'users/alice/friends/bob', 'users/alice/inbox/m1',
+      'users/alice/requests/bob', 'users/alice/sendRate/bob', 'boardRate/alice']) {
+      await assertFails(getDoc(doc(m, p)));
+    }
+    for (const c of ['users/alice/months', 'users/alice/meta', 'users/alice/private', 'users/alice/friends', 'users/alice/inbox', 'users/alice/summary', 'usernames', 'boardRate', 'notices']) {
+      await assertFails(getDocs(collection(m, c)));
+    }
+    await assertFails(setDoc(doc(m, 'users/alice/private/board'), { ok: true }));
+  });
+
+  // Friend requests: anyone, or invite only
+  it('a profile set to invite only refuses requests; anyone (or a profile from before the setting) takes them', async () => {
+    const ask = () => setDoc(doc(as('eve'), 'users/mara/requests/eve'), { username: 'eve', sent: 1 });
+    await assertSucceeds(ask()); // no setting: anyone
+    await seed((db) => deleteDoc(doc(db, 'users/mara/requests/eve')));
+    await assertSucceeds(updateDoc(doc(V('mara'), 'users/mara'), { reqs: 'invite' }));
+    await assertFails(ask());
+    await assertFails(setDoc(doc(as('eve'), 'users/nobody/requests/eve'), { username: 'eve', sent: 1 })); // no profile at all
+    await assertSucceeds(updateDoc(doc(V('mara'), 'users/mara'), { reqs: 'any' }));
+    await assertSucceeds(ask());
+    // Only these two, and only your own; an invite link still works with invite only.
+    await assertFails(updateDoc(doc(V('mara'), 'users/mara'), { reqs: 'nobody' }));
+    await assertFails(updateDoc(doc(V('mara'), 'users/mara'), { reqs: true }));
+    await assertFails(updateDoc(doc(V('theo'), 'users/mara'), { reqs: 'invite' }));
+    await assertSucceeds(updateDoc(doc(V('mara'), 'users/mara'), { reqs: 'invite' }));
+    await seed((db) => setDoc(doc(db, 'users/mara/invites/tok1'), { created: 1, expires: later() }));
+    await assertSucceeds(accept('eve', 'mara', 'tok1'));
+  });
+  it('with the setting there, an older app’s change of username and the display-name change still pass', async () => {
+    await assertSucceeds(updateDoc(doc(V('theo'), 'users/theo'), { reqs: 'invite' }));
+    const db = V('theo'), b = writeBatch(db);
+    b.set(doc(db, 'usernames/theo_k'), { uid: 'theo' });
+    b.delete(doc(db, 'usernames/theo'));
+    b.update(doc(db, 'users/theo'), { username: 'theo_k', displayName: 'theo_k', prev: 'theo', changedAt: serverTimestamp() });
+    await assertSucceeds(b.commit());
+    await assertSucceeds(updateDoc(doc(V('theo'), 'users/theo'), { displayName: 'Theo K.', nameAt: serverTimestamp() }));
+    expect((await getDoc(doc(V('eve'), 'users/theo'))).data()).toMatchObject({ username: 'theo_k', displayName: 'Theo K.', reqs: 'invite' });
   });
 });

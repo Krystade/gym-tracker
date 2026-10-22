@@ -117,6 +117,9 @@ describe('routes', () => {
     expect(isRoute('recap')).toBe(true);
     expect(isRoute('javascript:alert(1)')).toBe(false);
     expect([tabOf('rest'), tabOf('today'), tabOf('recap'), tabOf('friends'), tabOf('friend.u1')]).toEqual(['today', 'today', 'today', 'friends', 'friends']);
+    // The owner's board reports open More (at Board review).
+    expect(parseOpen('#open=review')).toBe('review');
+    expect(tabOf('review')).toBe('more');
   });
 });
 

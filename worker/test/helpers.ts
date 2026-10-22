@@ -1,3 +1,4 @@
+import { OWNERS } from '../../src/cloud/owner';
 import { decodeJwt, exportJWK, generateKeyPair, SignJWT, type JWTPayload } from 'jose';
 import { JWKS_URL, forgetKeys } from '../src/auth';
 import { net } from '../src/net';
@@ -109,7 +110,9 @@ export class World {
   put(path: string, fields: Record<string, unknown> = {}, createTime = Date.now()) { this.docs.set(path, { fields, createTime }); return this; }
   friends(a: string, b: string, createTime = Date.now()) { return this.put(`users/${a}/friends/${b}`, { since: 1 }, createTime).put(`users/${b}/friends/${a}`, { since: 1 }, createTime); }
   private may(path: string, uid: string) {
-    const [, owner, coll, id] = path.split('/');
+    const [top, owner, coll, id] = path.split('/');
+    // A report on a board post (social S4): its reporter, or one of the app's owners.
+    if (top === 'board') return coll === 'reports' && (id === uid || OWNERS.includes(uid));
     if (!coll) return true;
     if (uid === owner) return true;
     if (coll === 'meta' || coll === 'months') return this.docs.has(`users/${owner}/friends/${uid}`);

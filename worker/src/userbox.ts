@@ -142,6 +142,8 @@ export class UserBox extends DurableObject<Env> {
     const unread = ((await st.get<number>('unread')) ?? 0) + (p.unread ? 1 : 0);
     if (p.unread) await st.put('unread', unread);
     const prefs = await this.prefs();
+    // The owner's board reports (social S4) ring whatever the friend switches say and whoever reported, once a day at most.
+    if (p.kind === 'report') return this.reportPush(p, now);
     if (!on(ACTIVITY_KINDS.includes(p.kind as ActivityKind) ? prefs.kinds.activity : prefs.kinds.friends)) return 'off';
     if (prefs.muted?.includes(p.from)) return 'muted';
     if (!Object.keys(await this.devices()).length) return 'no device';
@@ -155,6 +157,15 @@ export class UserBox extends DurableObject<Env> {
     Object.assign(rate, { last: now, held: 0, n: rate.n + 1 });
     await st.put(key, rate);
     if (p.daily) await st.put(`daily:${p.daily}`, now);
+    return 'sent';
+  }
+
+  private async reportPush(p: FriendPush, now: number): Promise<Outcome> {
+    const st = this.ctx.storage;
+    if (!Object.keys(await this.devices()).length) return 'no device';
+    if (now - ((await st.get<number>(`daily:${p.daily}`)) ?? -DAY) < DAY) return 'daily';
+    await this.send(p.kind, p.note, undefined, { route: p.route });
+    await st.put(`daily:${p.daily}`, now);
     return 'sent';
   }
 

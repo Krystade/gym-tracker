@@ -30,14 +30,17 @@ const fail = (text: string) => Object.assign(new Error(text), { plain: true });
  * A profile as anyone signed in reads it: the name, what it was before its last change and when; the display name (none: the old
  * shape, the username itself) and when it last changed; when the account first had a profile (none: one from before it).
  */
-export interface Profile { name: string; prev?: string; changedAt?: number; dn?: string; nameAt?: number; createdAt?: number }
+export interface Profile {
+  name: string; prev?: string; changedAt?: number; dn?: string; nameAt?: number; createdAt?: number;
+  /** Friend requests by invite link only (firestore.rules refuse a request then); none: from anyone. */ reqs?: 'invite';
+}
 const millis = (v: unknown) => (v as { toMillis?(): number } | null | undefined)?.toMillis?.();
 function profileFrom(d: Record<string, unknown> | undefined): Profile | null {
   if (typeof d?.username !== 'string') return null;
   const changedAt = millis(d.changedAt), nameAt = millis(d.nameAt), createdAt = millis(d.createdAt), dn = displayOf(d.username, d.displayName);
   return {
     name: d.username, ...(typeof d.prev === 'string' && { prev: d.prev }), ...(changedAt != null && { changedAt }),
-    ...(dn && { dn }), ...(nameAt != null && { nameAt }), ...(createdAt != null && { createdAt }),
+    ...(dn && { dn }), ...(nameAt != null && { nameAt }), ...(createdAt != null && { createdAt }), ...(d.reqs === 'invite' && { reqs: 'invite' as const }),
   };
 }
 export async function myProfile({ F, db }: Cloud, uid: string): Promise<Profile | null> {
@@ -113,6 +116,11 @@ export async function setDisplayName(c: Cloud, uid: string, raw: string): Promis
  */
 export async function ensureCreatedAt({ F, db }: Cloud, uid: string, p: Profile | null): Promise<void> {
   if (p && p.createdAt == null) await F.updateDoc(F.doc(db, `users/${uid}`), { createdAt: F.serverTimestamp() });
+}
+
+/** Who may send you a friend request: anyone with your username, or nobody (invite links only). firestore.rules hold it. */
+export async function setRequestsFrom({ F, db }: Cloud, uid: string, reqs: 'any' | 'invite'): Promise<void> {
+  await F.updateDoc(F.doc(db, `users/${uid}`), { reqs });
 }
 
 /**
@@ -195,7 +203,11 @@ export async function sendRequest(c: Cloud, me: string, myName: string, to: stri
   if ((await F.getDoc(F.doc(db, `users/${me}/requests/${them}`))).exists()) { await acceptRequest(c, me, them, now); return 'accepted'; }
   const ref = F.doc(db, `users/${them}/requests/${me}`);
   if ((await F.getDoc(ref)).exists()) throw fail(`You’ve already asked @${to}. They’ll see it under Friends.`);
-  await F.setDoc(ref, { username: myName, sent: now });
+  try { await F.setDoc(ref, { username: myName, sent: now }); } catch (e) {
+    // Refused: they take friends by invite link only (or blocked you, which this mustn't say).
+    if ((e as { code?: string }).code === 'permission-denied') throw fail(`@${to} takes new friends by invite link only. Ask them for one.`);
+    throw e;
+  }
   notifyFriend('request', them);
   return 'sent';
 }

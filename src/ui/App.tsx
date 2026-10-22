@@ -149,6 +149,8 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
     if (r === 'recap') { setChosen(null); setRecapAt(Date.now()); }
     // The pain question opens today's Today, where its card sits at the top.
     if (r === 'pain') setChosen(null);
+    // New board reports (the owner's): More › Board review.
+    if (r === 'review') setMoreAt('review');
     // A friend's push opens their thread: one tap to answer with a ping.
     setThread(r.startsWith('friend.') ? { uid: r.slice('friend.'.length) } : null);
   });

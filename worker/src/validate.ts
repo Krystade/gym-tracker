@@ -125,9 +125,9 @@ export const docId = (v: unknown, what: string) => (typeof v === 'string' && /^[
 
 export function claim(v: unknown): Claim {
   const o = obj(v, 'body');
-  if (o.kind !== 'request' && o.kind !== 'accepted' && o.kind !== 'gym' && o.kind !== 'inbox') bad('kind');
+  if (o.kind !== 'request' && o.kind !== 'accepted' && o.kind !== 'gym' && o.kind !== 'inbox' && o.kind !== 'report') bad('kind');
   const kind = o.kind as Claim['kind'];
-  return { kind, to: docId(o.to, 'to'), ...((kind === 'gym' || kind === 'inbox') && { id: docId(o.id, 'id') }) };
+  return { kind, to: docId(o.to, 'to'), ...((kind === 'gym' || kind === 'inbox' || kind === 'report') && { id: docId(o.id, 'id') }) };
 }
 
 /** The app icon's count: the unread friend items the app counted. */

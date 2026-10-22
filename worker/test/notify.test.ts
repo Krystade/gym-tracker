@@ -6,6 +6,7 @@ import { friendTopic } from '../../src/push/payload';
 import type { FriendPush } from '../src/notify';
 import { PER_HOUR, type UserBox } from '../src/userbox';
 import { fakeNet, signer, subscriber, World } from './helpers';
+import { OWNERS } from '../../src/cloud/owner';
 
 // Friend activity: a request, an accepted request or invite, a gym sent. Each /notify is checked in a stand-in Firestore
 // that answers as firestore.rules would (helpers.ts World), as the sender, before the recipient's phone hears of it.
@@ -240,5 +241,72 @@ describe('POST /notify: who it is from, for the phone to put its own tag beside 
       await call(p.a, 'POST', '/notify', { kind: 'request', to: p.b });
       expect((await p.read()).notification.data, `${i}`).toEqual({ kind: 'request', route: 'friends', from: p.a, name: 'alice' });
     }
+  });
+});
+
+describe('POST /notify: a board report (social S4)', () => {
+  /**
+   * The owner's phone, subscribed, and a reporter. Every test here shares the owner's Durable Object (each sets its clock on two
+   * days), and each subscribes another phone to it: `sent` counts only this test's phone.
+   */
+  async function board() {
+    const world = new World();
+    const r = uid('rita'), owner = OWNERS[0];
+    world.put(`users/${r}`, { username: 'rita' });
+    const net = fakeNet(s.jwks, () => 201, world);
+    const phone = await subscriber();
+    expect((await call(owner, 'POST', '/subscribe', { endpoint: phone.endpoint, keys: phone.keys })).status).toBe(200);
+    const sent = () => net.sent.filter((x) => x.url === phone.endpoint);
+    return { world, r, owner, net: { get sent() { return sent(); } }, phone };
+  }
+  let day = 0;
+  const nextDay = async (owner: string) => { day += 2; await setClock(owner, Date.now() + day * 864e5); };
+
+  it('rings the owner, whoever the claim names, in the Worker\'s own words: nothing of who or what', async () => {
+    const { world, r, owner, net, phone } = await board();
+    await nextDay(owner);
+    const someone = uid('sam');
+    world.put(`board/p1/reports/${r}`, { why: 'spam', at: 1 });
+    expect((await call(r, 'POST', '/notify', { kind: 'report', to: someone, id: 'p1' })).json).toEqual({ ok: true });
+    expect(net.sent).toHaveLength(1);
+    const p = net.sent[0];
+    expect(p.headers.get('topic')).toBe('report');
+    const n = (await phone.read(p.body)) as { notification: unknown };
+    expect(n.notification).toEqual({ title: 'Board reports', body: 'New reports are waiting in Board review.', lang: 'en', navigate: `${APP}#open=review`, data: { kind: 'report', route: 'review' } });
+    // Nothing went to the person the claim named.
+    expect(await runInDurableObject(box(someone), async (o: UserBox) => (await o.status()).devices.length)).toBe(0);
+  });
+
+  it('refused when the report isn\'t the caller\'s, isn\'t there, or is over a minute old; an owner\'s own rings nobody', async () => {
+    const { world, r, owner, net } = await board();
+    await nextDay(owner);
+    const other = uid('otto');
+    world.put(`board/p2/reports/${other}`, { why: 'spam', at: 1 });
+    expect((await call(r, 'POST', '/notify', { kind: 'report', to: owner, id: 'p2' })).status).toBe(403);
+    expect((await call(r, 'POST', '/notify', { kind: 'report', to: owner, id: 'p3' })).status).toBe(403);
+    world.put(`board/p4/reports/${r}`, { why: 'spam', at: 1 }, Date.now() - 61_000);
+    expect((await call(r, 'POST', '/notify', { kind: 'report', to: owner, id: 'p4' })).status).toBe(403);
+    world.put(`board/p5/reports/${owner}`, { why: 'spam', at: 1 });
+    expect((await call(owner, 'POST', '/notify', { kind: 'report', to: uid('x'), id: 'p5' })).status).toBe(403);
+    expect((await call(r, 'POST', '/notify', { kind: 'report', to: owner })).status).toBe(400);
+    expect(net.sent).toHaveLength(0);
+  });
+
+  it('at most once a day, from anyone, and whatever the owner\'s friend switches and mutes say', async () => {
+    const { world, r, owner, net } = await board();
+    await nextDay(owner);
+    const prefs = { tz: 'UTC', kinds: { rest: true, remind: false, recap: false, activity: false, friends: false }, reminder: { days: [], at: '18:00' }, recap: { day: 0, at: '18:00' }, muted: [r] };
+    expect((await call(owner, 'PUT', '/prefs', prefs)).status).toBe(200);
+    const r2 = uid('rob');
+    world.put(`users/${r2}`, { username: 'rob' });
+    world.put(`board/p6/reports/${r}`, { why: 'spam', at: 1 }).put(`board/p6/reports/${r2}`, { why: 'harass', at: 1 }).put(`board/p7/reports/${r}`, { why: 'danger', at: 1 });
+    await call(r, 'POST', '/notify', { kind: 'report', to: owner, id: 'p6' });
+    await call(r2, 'POST', '/notify', { kind: 'report', to: owner, id: 'p6' });
+    await call(r, 'POST', '/notify', { kind: 'report', to: owner, id: 'p7' });
+    expect(net.sent).toHaveLength(1);
+    await nextDay(owner);
+    world.put(`board/p8/reports/${r2}`, { why: 'spam', at: 1 });
+    await call(r2, 'POST', '/notify', { kind: 'report', to: owner, id: 'p8' });
+    expect(net.sent).toHaveLength(2);
   });
 });

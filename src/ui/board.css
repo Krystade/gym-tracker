@@ -1,0 +1,91 @@
+/* The board (social S3, S4): mockups 01-07 in .superpowers/redesign/social. Cards on --surface, the 💪 and Hide as quiet text
+   actions with 44px targets, sheets reuse StatsSheet's (ui/stats.css) and the thread sheet's (.sheet). */
+
+/* Friends | Board: a pill pair under the title. */
+.fr-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; margin: 0 0 16px; border-radius: var(--r-md); background: var(--fill); }
+.fr-seg button { min-height: 44px; border-radius: 8px; background: none; color: var(--text-2); font-size: var(--fs-sub); }
+.fr-seg button[aria-selected='true'] { background: var(--surface-2); color: var(--text); box-shadow: 0 0 0 1px var(--hairline); }
+
+.bd-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
+.bd-sub { margin: 0; min-width: 0; color: var(--text-2); font-size: var(--fs-sub); }
+.bd-post { flex: none; min-width: 64px; }
+.bd-msg { margin: 0 0 10px; }
+.bd-link { min-height: 44px; padding: 0 4px; background: none; color: var(--accent-text); font-weight: 600; font-size: inherit; }
+.bd-msg .bd-link { min-height: 0; padding: 0; vertical-align: baseline; }
+.bd-empty { margin: 24px 0; text-align: center; }
+
+.bd-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.bd-card { background: var(--surface); border-radius: var(--r-group); padding: 14px 14px 4px; min-width: 0; }
+.bd-card-head { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 0 10px; align-items: center; }
+.bd-card-head .avatar { width: 32px; height: 32px; font-size: 12px; }
+.bd-who { min-width: 0; overflow-wrap: anywhere; line-height: 20px; }
+.bd-lead { font-weight: 600; }
+.bd-user { color: var(--text-3); font-size: var(--fs-sub); }
+.bd-ago { color: var(--text-3); font-size: var(--fs-sm); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bd-text { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-md); line-height: 22px; }
+.bd-heldnote { margin: 8px 0 0; color: var(--warn); }
+.bd-actions { display: flex; align-items: center; gap: 4px; margin: 2px -8px 0; }
+.bd-like, .bd-hide { min-height: 44px; padding: 0 8px; background: none; color: var(--text-2); font-weight: 500; font-size: var(--fs-sub); }
+.bd-like { gap: 6px; }
+.bd-like[aria-pressed='true'] { color: var(--accent-text); }
+.bd-like .bd-n { font-variant-numeric: tabular-nums; }
+.bd-more { margin-left: auto; }
+.bd-held { padding: 14px; border-radius: var(--r-group); background: var(--surface); color: var(--text-3); font-style: italic; font-size: var(--fs-sub); }
+.bd-end { min-height: 1px; display: flex; justify-content: center; padding: 12px 0 24px; }
+
+.bd-notice { display: flex; align-items: center; gap: 12px; }
+.bd-notice p { margin: 0; flex: 1; min-width: 0; }
+p.bd-notice { display: block; }
+
+/* The gate */
+.bd-gate h2 { margin: 0 0 6px; font-size: var(--fs-xl); }
+.bd-gate-lead { margin: 0 0 10px; color: var(--text-2); }
+.bd-rules { margin: 0 0 6px; padding-left: 22px; display: grid; gap: 4px; font-size: var(--fs-sub); }
+.bd-check { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; padding: 8px 0; font-size: var(--fs-md); }
+.bd-check input { width: 24px; height: 24px; flex: none; margin: 0; accent-color: var(--accent); }
+.bd-step { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; font-size: var(--fs-md); }
+.bd-step > span:last-child { min-width: 0; }
+.bd-box { flex: none; width: 24px; height: 24px; border-radius: 6px; border: 2px solid var(--line-strong); display: grid; place-items: center; }
+.bd-box.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.bd-notyet { color: var(--warn); font-size: var(--fs-sub); }
+.bd-stepsub { display: block; margin-top: 2px; }
+.bd-steplink { display: block; min-height: 36px; padding: 0; }
+.bd-gate-btns button.wide { margin: 8px 0; }
+.bd-join { margin-top: 8px; }
+.bd-fold { display: block; margin: 0 auto; }
+
+/* ⋯ and Report: a list of actions, one per row. */
+.bd-acts { list-style: none; margin: 0; padding: 0; }
+.bd-acts li + li { border-top: 1px solid var(--hairline); }
+.bd-acts button { width: 100%; min-height: 52px; padding: 0; justify-content: flex-start; background: none; font-weight: 400; font-size: var(--fs-body); text-align: left; }
+.bd-acts button.danger { color: var(--danger); }
+
+/* A new post */
+.bd-compose { gap: 10px; }
+.bd-compose-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+.bd-compose-head .bd-link { justify-self: start; padding: 0; }
+.bd-compose-head h2 { margin: 0; font-size: var(--fs-body); }
+.bd-compose-head .bd-post { justify-self: end; }
+.bd-field { width: 100%; min-height: 120px; resize: none; padding: 12px; border: 1px solid var(--line-strong); border-radius: var(--r-group); background: var(--bg); color: var(--text);
+  font: inherit; font-size: var(--fs-md); line-height: 22px; }
+.bd-field:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.bd-compose-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--text-2); }
+.bd-compose-meta > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.bd-compose-meta > span:last-child { flex: none; font-variant-numeric: tabular-nums; }
+.bd-compose p { margin: 0; }
+
+/* The owner's review (More › Board review) */
+.rv-sub { margin: -8px 0 16px; color: var(--text-2); }
+.rv-card { background: var(--surface); border-radius: var(--r-group); padding: 14px; margin-bottom: 12px; }
+.rv-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rv-who { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.rv-badge { flex: none; padding: 4px 10px; border-radius: var(--r-pill); background: var(--fill); font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
+.rv-badge.held { background: color-mix(in oklab, var(--danger) 22%, var(--surface)); color: var(--danger); }
+.rv-text { margin: 8px 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rv-why { margin: 0 0 10px; color: var(--text-2); font-size: var(--fs-sm); }
+.rv-btns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.rv-btns .danger { color: var(--danger); }
+.rv-n { color: var(--accent-text); font-variant-numeric: tabular-nums; }
+.rv-banned { list-style: none; margin: 8px 0 0; padding: 0; }
+.rv-banned li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; border-top: 1px solid var(--hairline); }
+.rv-banned li span { min-width: 0; overflow-wrap: anywhere; }

@@ -143,7 +143,7 @@ export async function postActivity(a: Activity): Promise<void> {
  * invite, a gym sent. The Worker checks it in Firestore as this person before anything is sent. Whether or not this
  * phone has notifications on, and never failing the write it follows: a friend without them simply hears nothing.
  */
-export function notifyFriend(kind: 'request' | 'accepted' | 'gym' | 'inbox', to: string, id?: string): void {
+export function notifyFriend(kind: 'request' | 'accepted' | 'gym' | 'inbox' | 'report', to: string, id?: string): void {
   if (!WORKER_REACHABLE) return;
   void api('POST', '/notify', { kind, to, ...(id && { id }) }).catch(() => {});
 }

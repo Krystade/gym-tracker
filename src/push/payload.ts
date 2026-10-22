@@ -7,11 +7,13 @@ export type ActivityKind = 'request' | 'accepted' | 'gym';
 export type MessageKind = 'ping' | 'message';
 export type FriendKind = ActivityKind | MessageKind;
 /** `pain`: the next-morning question about yesterday's pain (item 08, round 20). */
-export type Kind = 'test' | 'rest' | 'remind' | 'recap' | 'pain' | FriendKind;
+/** New reports on the board, to its owner alone (social S4): at most one a day. */
+export type ModKind = 'report';
+export type Kind = 'test' | 'rest' | 'remind' | 'recap' | 'pain' | FriendKind | ModKind;
 export const ACTIVITY_KINDS: readonly ActivityKind[] = ['request', 'accepted', 'gym'];
 
 /** Where a tap on the notification lands: the hash `#open=<route>` (see routes.ts). */
-export type Route = 'rest' | 'today' | 'recap' | 'pain' | 'friends' | `friend.${string}`;
+export type Route = 'rest' | 'today' | 'recap' | 'pain' | 'friends' | 'review' | `friend.${string}`;
 
 export interface PushNote {
   title: string;
@@ -60,10 +62,12 @@ export const DELIVERY: Record<Kind, Delivery> = {
   gym: { ttl: 86400, urgency: 'normal', topic: 'friend' },
   ping: { ttl: 86400, urgency: 'normal', topic: 'friend' },
   message: { ttl: 86400, urgency: 'normal', topic: 'friend' },
+  // The owner's: one waiting at a time, kept a day.
+  report: { ttl: 86400, urgency: 'normal', topic: 'report' },
 };
 
 /** Where each kind lands; a friend's kinds land on that friend (the route passed to buildPayload). */
-const ROUTE: Record<Kind, Route> = { rest: 'rest', remind: 'today', recap: 'recap', pain: 'pain', test: 'today', request: 'friends', accepted: 'friends', gym: 'friends', ping: 'friends', message: 'friends' };
+const ROUTE: Record<Kind, Route> = { rest: 'rest', remind: 'today', recap: 'recap', pain: 'pain', test: 'today', request: 'friends', accepted: 'friends', gym: 'friends', ping: 'friends', message: 'friends', report: 'review' };
 
 /**
  * The Topic header for pushes from one sender: 22 base64url characters of SHA-256(uid). A push still waiting at the push
@@ -157,6 +161,8 @@ export function painNote(hurts: readonly Hurt[]) {
 // Friend activity. `name` is the sender's username, read by the Worker from their profile, never from the request.
 export const requestNote = (name: string) => ({ title: 'Friend request', body: `${name} wants to be friends` });
 export const acceptedNote = (name: string) => ({ title: 'New friend', body: `You and ${name} are friends` });
+/** The owner's daily word that the board has reports waiting: nothing of who or what (a lock screen is no place for it). */
+export const reportNote = () => ({ title: 'Board reports', body: 'New reports are waiting in Board review.' });
 export const gymNote = (name: string, gym: string) => ({ title: 'Gym shared', body: `${name} sent you a gym: ${clip(gym, MAX_GYM) || 'a gym'}` });
 /**
  * The pings, stored by key (firestore.rules allows exactly these), so their words can change without touching what's

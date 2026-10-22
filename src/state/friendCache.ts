@@ -13,6 +13,8 @@ import { readTags, saveTag, type Tags } from '../cloud/tags';
 import { readSummary } from '../cloud/summary';
 import type { ReadSummary } from '../domain/compare';
 import { record } from '../push/store';
+import type { Post } from '../domain/board';
+import type { Mine, Notice } from '../cloud/board';
 
 // Friends as last read, for one account, kept on the phone: Friends, Crew, the threads and the Friends tab's dot show
 // it at once and read Firestore again quietly behind it (stale-while-revalidate). It's read in the background after the
@@ -33,6 +35,8 @@ export interface Lists {
   /** When you last changed it (ms): it changes at most once a day. */ changedAt?: number;
   /** Your display name (none: not set) and when you last changed it (ms): at most once a day (domain/displayName). */ dn?: string; nameAt?: number;
   /** Who the app's owner verified (the ✓), by uid: when (ms). None: never read (an older version kept these lists). */ verified?: Record<string, number>;
+  /** When your account first had a profile (ms; none yet: it's written on this read): the board's day-old gate counts from it. */ createdAt?: number;
+  /** Friend requests by invite link only (none: from anyone with your username). */ reqs?: 'invite';
   friends: Friend[]; requests: Request[]; invite: (Invite & { expires: number }) | null; sentGyms: SentGym[]; blocked: Friend[];
 }
 /** `basis`: the times in their index it was read at, so the next read fetches only what changed (cloud/friends readFriendWindow). */
@@ -41,6 +45,16 @@ export interface CachedWindow { at: number; from: string; to: string; win: Frien
 export interface CachedThread { at: number; items: ThreadItem[]; gyms: SentGym[]; mine?: InboxDoc[] }
 /** A friend's Compare summary as last read (cloud/summary): `doc` null, none written yet (or none this app can read). */
 export interface CachedSummary { at: number; doc: ReadSummary | null }
+/**
+ * The board as last read (state/board): `at` when anything was last read, `full` when the first page was last read whole; the
+ * posts read since (newest first) and whether there are no more; your own board settings, what moderation told you and how much of
+ * it you've seen; the posts you gave a 💪 from this phone, and your own posts from it (to delete once they're 30 days old).
+ */
+export interface BoardCache {
+  at: number; full: number; posts: Post[]; end: boolean;
+  mine?: Mine; notice?: Notice | null; seenRemoved?: number; liked?: string[]; own?: { id: string; at: number }[];
+  /** Who the owner verified, read here when the Friends lists hadn't been yet. */ verified?: Record<string, number>;
+}
 export interface FriendCache {
   uid: string;
   lists?: Lists;
@@ -51,6 +65,7 @@ export interface FriendCache {
   /** Per friend's uid. */ threads: Record<string, CachedThread>;
   /** Your private tags for friends, by uid (cloud/tags), as last read or saved. */ tags?: Tags;
   /** Per friend's uid: their Compare summary (none: kept by an older version). */ summaries?: Record<string, CachedSummary>;
+  /** The board (social S3), as last read. */ board?: BoardCache;
 }
 
 // ---- Pure rules ----
@@ -107,6 +122,7 @@ const asCache = (uid: string, x: Partial<FriendCache> | undefined): FriendCache 
   threads: x?.threads && typeof x.threads === 'object' ? x.threads : {},
   summaries: x?.summaries && typeof x.summaries === 'object' ? x.summaries : undefined,
   inbox: Array.isArray(x?.inbox?.items) && typeof x.inbox.full === 'number' ? x.inbox : undefined,
+  board: x?.board && Array.isArray(x.board.posts) && typeof x.board.at === 'number' ? x.board : undefined,
 });
 
 export const peekFriendCache = (uid: string | null | undefined) => (uid ? mem.get(uid) : undefined);
@@ -267,6 +283,7 @@ export function refreshLists(c: Cloud, uid: string, join = false): Promise<Lists
     const lists: Lists = {
       at: Date.now(), me: p?.name ?? null, ...(p?.changedAt != null && { changedAt: p.changedAt }),
       ...(p?.dn && { dn: p.dn }), ...(p?.nameAt != null && { nameAt: p.nameAt }),
+      ...(p?.createdAt != null && { createdAt: p.createdAt }), ...(p?.reqs && { reqs: p.reqs }),
       friends, requests, invite, sentGyms, blocked,
     };
     const next = await patchFriendCache(uid, (x) => {

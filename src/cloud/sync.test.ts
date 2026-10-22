@@ -5,27 +5,45 @@ import { replacements, type Replaced } from '../domain/replaced';
 import type { Cloud } from './firebase';
 
 /** A stand-in for Firestore: documents by path, collections listed by prefix, and every deleted path. */
-function fakeCloud(paths: string[], refuse: Record<string, unknown> = {}) {
+function fakeCloud(paths: string[], refuse: Record<string, unknown> = {}, data: Record<string, Record<string, unknown>> = {}) {
   const deleted: string[] = [];
+  const batches: string[][] = [];
   const ref = (path: string) => ({ path, id: path.split('/').at(-1)! });
   const F = {
     doc: (_db: unknown, path: string) => ref(path),
     collection: (_db: unknown, path: string) => ({ path }),
+    // The board's own posts, by uid (cloud/sync's one query).
+    query: (c: { path: string }, w: { field: string; value: unknown }) => ({ path: c.path, w }),
+    where: (field: string, _op: string, value: unknown) => ({ field, value }),
     getDoc: async (r: { path: string }) => ({ exists: () => paths.includes(r.path), data: () => (paths.includes(r.path) ? {} : undefined) }),
-    getDocs: async (c: { path: string }) => {
+    getDocs: async (c: { path: string; w?: { field: string; value: unknown } }) => {
       if (refuse[c.path]) throw refuse[c.path];
-      return { docs: paths.filter((p) => p.startsWith(`${c.path}/`) && !p.slice(c.path.length + 1).includes('/')).map((p) => ({ id: ref(p).id, ref: ref(p) })) };
+      return { docs: paths.filter((p) => p.startsWith(`${c.path}/`) && !p.slice(c.path.length + 1).includes('/'))
+        .filter((p) => !c.w || data[p]?.[c.w.field] === c.w.value).map((p) => ({ id: ref(p).id, ref: ref(p) })) };
     },
     writeBatch: () => {
       const batch: string[] = [];
-      return { delete: (r: { path: string }) => { batch.push(r.path); }, commit: async () => { deleted.push(...batch); } };
+      return { delete: (r: { path: string }) => { batch.push(r.path); }, commit: async () => { deleted.push(...batch); batches.push(batch); } };
     },
   };
-  return { cloud: { F, db: {} } as unknown as Cloud, deleted };
+  return { cloud: { F, db: {} } as unknown as Cloud, deleted, batches };
 }
 const DOCS = ['users/u1', 'users/u1/meta/settings', 'users/u1/private/cycle', 'users/u1/summary/compare'];
 
 describe('deleteCloudData', () => {
+  it('deletes your board posts, your notice, and your post and report counters (with the profile, as the rules want)', async () => {
+    const paths = [...DOCS, 'board/mine', 'board/theirs', 'notices/u1', 'boardRate/u1', 'reportRate/u1'];
+    const { cloud, deleted, batches } = fakeCloud(paths, {}, { 'board/mine': { uid: 'u1' }, 'board/theirs': { uid: 'u2' } });
+    await deleteCloudData(cloud, 'u1');
+    expect(deleted).toEqual(expect.arrayContaining(['board/mine', 'notices/u1', 'boardRate/u1', 'reportRate/u1']));
+    expect(deleted).not.toContain('board/theirs');
+    expect(batches.at(-1)).toEqual(expect.arrayContaining(['boardRate/u1', 'reportRate/u1', 'users/u1']));
+    // None there, or the board's rules not deployed yet: nothing to delete, and the account still goes.
+    const none = fakeCloud(DOCS, { board: Object.assign(new Error('refused'), { code: 'permission-denied' }) });
+    await deleteCloudData(none.cloud, 'u1');
+    expect(none.deleted).toContain('users/u1');
+    expect(none.deleted.some((p) => /board|notices|Rate/.test(p))).toBe(false);
+  });
   it('deletes the private cycle document with the rest of the account', async () => {
     const { cloud, deleted } = fakeCloud(DOCS);
     await deleteCloudData(cloud, 'u1');

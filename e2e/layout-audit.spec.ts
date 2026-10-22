@@ -4,7 +4,7 @@ import path from 'node:path';
 import { addFriend, goto, openProgram } from './nav';
 import { audit, check, clean, lines, notched, renderCheck, TOP } from './layout';
 import { deloadLog, SIM_LIFTS, simDay } from '../src/domain/learn/deloadSim.sample';
-import { account, befriend, iso, log, named, ownerAccount, ping, put, rand, session, signedIn, Ts, verify, type Seeded } from './seed';
+import { account, befriend, boardPost, iso, log, named, onBoard, ownerAccount, ping, put, rand, session, signedIn, Ts, verify, type Seeded } from './seed';
 import { convertedRows, pasteRows, toCsv as dupesCsv, TWINS } from './fixtures/dupes';
 import { friendLog, publish, summaryOf } from './fixtures/compare';
 import { sixWeeks, WED } from './fixtures/today';
@@ -230,6 +230,78 @@ test('Display names and the ✓: the feed, a request, the ✓’s sheet, a frien
   await goto(po, 'Account');
   await expect(po.getByRole('region', { name: 'How others see you' }).getByRole('button', { name: /Give the ✓|Remove the ✓/ })).toBeVisible();
   await check(po, info, found, 'names-owner-account', [], 'main');
+  clean(found);
+});
+
+// ---- The board (social S3, S4) ----
+
+test('The board: posts with long names and the ✓, a held post, your own, ⋯, Report, the composer, the gate, Board review, the removed notice', async ({ browser, request }, info) => {
+  test.setTimeout(240_000);
+  // You past the gate, with a long display name; Medal verified, 30 characters with an accent; a stranger at the username cap;
+  // a newcomer not yet through the gate. All usernames at the 20-character cap. Synthetic words only.
+  const [me, medal, stranger, newcomer] = await Promise.all([long('me'), long('medal'), long('ask'), long('new')].map((n) => account(request, n)));
+  await onBoard(request, me, 'Alexandra Montgomery-Okafor 🏋️‍♀️');
+  await onBoard(request, medal, 'Maximiliana Rodríguez-Castillo');
+  await verify(request, medal);
+  const ids = {
+    long: await boardPost(request, medal, `Anyone tried 5/3/1 with a deload every 3rd week instead of 4th? Elbows feel better already. ${'Long words like supercalifragilisticexpialidocious and 💪🏋️‍♀️🔥 wrap too. '.repeat(2)}`.slice(0, 280), 3, { name: 'Maximiliana Rodríguez-Castillo', likes: 12 }),
+    held: await boardPost(request, stranger, 'DM me for cheap gear, ships anywhere', 9, { reports: 3 }),
+    plain: await boardPost(request, stranger, 'First 100 kg bench today after 14 months.\nSlow and ugly but it went up.', 38, { likes: 1 }),
+    mine: await boardPost(request, me, 'Does anyone else’s gym turn the AC off at 9pm?', 120, { name: 'Alexandra Montgomery-Okafor 🏋️‍♀️' }),
+  };
+  await put(request, `board/${ids.held}/reports/r${rand()}`, { why: 'spam', at: new Ts(Date.now()) });
+
+  const page = await open(browser, me);
+  const found: string[] = [];
+  const strictly = async (state: string, scope: string) => { found.push(...lines(await renderCheck(page, scope)).map((l) => `${state}: ${l}`)); };
+  await page.getByRole('tab', { name: 'Board' }).click();
+  const b = page.locator('.board');
+  await expect(b.locator(`[data-post="${ids.long}"]`)).toContainText('Maximiliana', { timeout: 20_000 });
+  await expect(b.locator(`[data-post="${ids.held}"]`)).toHaveText('Hidden after reports, waiting for review');
+  await check(page, info, found, 'board');
+  await strictly('board', '.bd-list');
+  // ⋯ on someone else's post, then Report.
+  await b.locator(`[data-post="${ids.plain}"]`).getByRole('button', { name: /^More for the post by/ }).click();
+  await expect(page.getByRole('dialog', { name: `@${stranger.name}` })).toContainText('Block');
+  await check(page, info, found, 'board-post-actions', [], 'main');
+  await page.getByRole('dialog').getByRole('button', { name: 'Report post…' }).click();
+  await expect(page.getByRole('dialog', { name: 'Report post' })).toContainText('Sexual content, or a minor at risk');
+  await check(page, info, found, 'board-report', [], 'main');
+  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+  // The composer, with a warning and the count.
+  await b.getByRole('button', { name: 'Post', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'New post' });
+  await sheet.getByRole('textbox', { name: 'Your post' }).fill('Does anyone else’s gym turn the AC off at 9pm? Text me 555 123 4567');
+  await expect(sheet.getByRole('status')).toContainText('phone number');
+  await check(page, info, found, 'board-compose');
+  await strictly('board-compose', '.bd-compose');
+  await sheet.getByRole('button', { name: 'Cancel' }).click();
+  await page.context().close();
+
+  // The gate, for someone new to it.
+  const pn = await open(browser, newcomer);
+  await pn.getByRole('tab', { name: 'Board' }).click();
+  const gate = pn.getByRole('region', { name: 'Join the board' });
+  await expect(gate).toContainText('Email verified · not yet');
+  await check(pn, info, found, 'board-gate');
+  await pn.context().close();
+
+  // The owner's review, with the held post first.
+  const owner = await ownerAccount(request);
+  const po = await open(browser, owner);
+  await goto(po, 'More');
+  await po.getByRole('main').getByRole('button', { name: /^Board review/ }).click();
+  await expect(po.getByRole('region', { name: `Reported post by @${stranger.name}` }).first()).toContainText('Spam or selling ×1', { timeout: 20_000 });
+  await check(po, info, found, 'board-owner-review', [], 'main');
+  await po.context().close();
+
+  // The quiet line telling an author a post was removed.
+  await put(request, `notices/${medal.uid}`, { removed: 1, banned: false, at: new Ts(Date.now()) });
+  const pm = await open(browser, medal);
+  await pm.getByRole('tab', { name: 'Board' }).click();
+  await expect(pm.locator('.board').getByRole('status').filter({ hasText: 'removed a post of yours' })).toBeVisible({ timeout: 20_000 });
+  await check(pm, info, found, 'board-removed-notice');
+  await pm.context().close();
   clean(found);
 });
 

@@ -4,6 +4,7 @@ import type { SetsStore } from '../state/useSets';
 import type { BodyStore } from '../state/useBody';
 import type { Person } from '../db/db';
 import { cloudError, loadCloud, type Cloud } from '../cloud/firebase';
+import { setRequestsFrom } from '../cloud/friends';
 import { hydrateFriendCache, patchFriendCache, refreshLists, useFriendCache } from '../state/friendCache';
 import { useReplaced } from '../state/useReplaced';
 import { AccountCard } from './AccountCard';
@@ -71,5 +72,39 @@ function UsernameCard({ uid, onOpenFriends }: { uid: string; onOpenFriends: () =
       {msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? 'muted small' : 'warn'}>{msg.text}</p>}
     </section>
     {lists && me && <SeenAsCard uid={uid} lists={{ ...lists, me }} />}
+    {lists && me && <RequestsCard uid={uid} invite={lists.reqs === 'invite'} />}
   </>);
+}
+
+/**
+ * Who may send you a friend request (social S3): anyone who knows your username (the board shows it to everyone), or only someone
+ * with your invite link. firestore.rules hold it; whoever is refused is told to ask for a link.
+ */
+function RequestsCard({ uid, invite }: { uid: string; invite: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const set = async (to: 'any' | 'invite') => {
+    if ((to === 'invite') === invite) return;
+    setBusy(true); setErr(null);
+    try {
+      await setRequestsFrom(await loadCloud(), uid, to);
+      await patchFriendCache(uid, (c) => {
+        if (!c.lists) return c;
+        const { reqs: _, ...rest } = c.lists;
+        return { ...c, lists: { ...rest, ...(to === 'invite' && { reqs: 'invite' as const }) } };
+      });
+    } catch (e) { setErr(cloudError(e)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <section className="card" aria-labelledby="reqs-h">
+      <h2 id="reqs-h">Friend requests</h2>
+      <div role="radiogroup" aria-label="Who can send you a friend request">
+        <label className="check"><input type="radio" name="reqs" disabled={busy} checked={!invite} onChange={() => void set('any')} /><span>Anyone with your username</span></label>
+        <label className="check"><input type="radio" name="reqs" disabled={busy} checked={invite} onChange={() => void set('invite')} /><span>Invite link only</span></label>
+      </div>
+      <p className="muted small">Your username shows on every post you make on the board. With invite link only, only people you send a link to can ask.</p>
+      {err && <p role="alert" className="warn">{err}</p>}
+    </section>
+  );
 }

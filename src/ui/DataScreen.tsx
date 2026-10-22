@@ -14,6 +14,7 @@ import { PUSH_ON } from '../push/config';
 import { Icon } from './icons';
 import { goalLabel } from './PrioritiesScreen';
 import type { MoreAt } from './MoreScreens';
+import { isOwner } from '../cloud/owner';
 
 /**
  * The More tab (IA plan A3, owner 2026-10-21): rows in four groups, each opening its screen, so the whole tab is one screen.
@@ -50,6 +51,8 @@ export function DataScreen({ store, profile, programs, gyms, photos, cloud, peop
         {PUSH_ON && <Row name="Notifications" sub="Reminders, friends and the weekly recap" onClick={() => onOpen('notifications')} />}
         <Row name="Backup, import and export" sub={`${plural(store.entries.length, 'set')} · CSV · paste · GitHub`}
           note={persisted === false ? <><span aria-hidden="true">!</span><span className="sr-only">Storage not marked persistent</span></> : undefined} warn onClick={() => onOpen('backup')} />
+        {/* The app's owner alone (social S4): the board's reports. */}
+        {cloud.mine && isOwner(cloud.link?.uid) && <Row name="Board review" sub="Reported posts · owner only" onClick={() => onOpen('review')} />}
       </Group>
       <Group name="Help">
         <Row name="Show walkthrough" action onClick={onShowWalkthrough} />

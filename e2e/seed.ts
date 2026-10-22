@@ -127,3 +127,28 @@ export async function signedIn(browser: Browser, who: Seeded, time: Date, setup?
   await goto(page, 'Friends');
   return page;
 }
+
+/** Their email marked verified in the Auth emulator (the board's gate): a sign-in after it carries `email_verified`. */
+export async function emailVerified(request: APIRequestContext, who: Seeded) {
+  const res = await request.post(`http://${EMU_HOST}:${emu.auth}/identitytoolkit.googleapis.com/v1/projects/demo-gym-tracker/accounts:update`, {
+    headers: { Authorization: 'Bearer owner' }, data: { localId: who.uid, emailVerified: true },
+  });
+  expect(res.ok(), `verify ${who.email}: ${await res.text()}`).toBe(true);
+}
+
+/**
+ * Past the board's gate (social S3): the email verified, the profile two days old, the rules accepted. `createdAt` stays on
+ * the profile with the username and display name (put replaces a document whole).
+ */
+export async function onBoard(request: APIRequestContext, who: Seeded, dn = who.name) {
+  await emailVerified(request, who);
+  await put(request, `users/${who.uid}`, { username: who.name, displayName: dn, createdAt: new Ts(Date.now() - 2 * 864e5) });
+  await put(request, `users/${who.uid}/private/board`, { ok: true, at: new Ts(Date.now() - 864e5) });
+}
+
+/** A board post by them, as the app writes one, `minsAgo` minutes old; its id back. */
+export async function boardPost(request: APIRequestContext, who: Seeded, t: string, minsAgo: number, over: Record<string, unknown> = {}) {
+  const id = `e2e${rand()}${rand()}`;
+  await put(request, `board/${id}`, { uid: who.uid, name: who.name, user: who.name, t, at: new Ts(Date.now() - minsAgo * 60_000), reports: 0, likes: 0, ...over });
+  return id;
+}

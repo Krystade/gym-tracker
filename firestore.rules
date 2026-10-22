@@ -104,19 +104,128 @@ service cloud.firestore {
             && (!('nameAt' in o) || request.time > o.nameAt + duration.value(1, 'd'))));
     }
 
+    // ---- The board (social S3, S4): one page of short posts every signed-in person reads ----
+    function banned(uid) { return exists(/databases/$(db)/documents/banned/$(uid)); }
+    function prof(uid) { return get(profileDoc(uid)).data; }
+    function postDoc(id) { return /databases/$(db)/documents/board/$(id); }
+    // To write on the board: a verified email, not banned, the one-time "16 or older, and the board's rules" on your own
+    // private/board (ok), and an account a day old by its profile's createdAt (the server's time; a profile from before S1 gets
+    // one on its next open, so it waits a day from then). Any part missing errors, and an error refuses.
+    function boardOk() {
+      return signedIn() && request.auth.token.email_verified == true && !banned(request.auth.uid)
+        && get(/databases/$(db)/documents/users/$(request.auth.uid)/private/board).data.ok == true
+        && request.time > prof(request.auth.uid).createdAt + duration.value(1, 'd');
+    }
+    // A post's words: 1 to 280 UTF-16 units (as a JS string's length counts), and no link.
+    function textOk(t) { return t is string && t.size() >= 1 && t.size() <= 280 && !t.matches('(?is).*(://|www[.]).*'); }
+    // A post as its author writes it: these keys, as themselves, at the server's time, nothing counted yet, the name and
+    // @username their profile has now, and their post counter moved in the same write (boardRate).
+    function postOk(d) {
+      return d.keys().hasOnly(['uid', 'name', 'user', 't', 'at', 'reports', 'likes'])
+        && d.uid == request.auth.uid && d.at == request.time && d.reports == 0 && d.likes == 0 && textOk(d.t)
+        && d.user == prof(request.auth.uid).username && d.name == prof(request.auth.uid).get('displayName', d.user)
+        && getAfter(/databases/$(db)/documents/boardRate/$(request.auth.uid)).data.at == request.time;
+    }
+    // The counts others may move, each by one and only with the document that stands for it: a report goes up as yours is
+    // made; a 💪 goes up or down as yours is made or taken back. The owner marks the reports so far reviewed (`kept`).
+    function reportMove(id) {
+      let r = /databases/$(db)/documents/board/$(id)/reports/$(request.auth.uid);
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reports'])
+        && request.resource.data.reports == resource.data.reports + 1 && !exists(r) && existsAfter(r);
+    }
+    function likeMove(id) {
+      let l = /databases/$(db)/documents/board/$(id)/likes/$(request.auth.uid);
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+        && ((request.resource.data.likes == resource.data.likes + 1 && !exists(l) && existsAfter(l))
+          || (request.resource.data.likes == resource.data.likes - 1 && exists(l) && !existsAfter(l)));
+    }
+    function keepMove() {
+      return owner() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['kept'])
+        && request.resource.data.kept is int && request.resource.data.kept >= 0 && request.resource.data.kept <= request.resource.data.reports;
+    }
+    // A counter of yours (boardRate: posts, 60 s apart and 5 a day; reportRate: reports, 20 a day): the first, and each after it
+    // at the server's time, `gap` after the last, counting up within the day its first began, or starting again at 1 after it.
+    function rateFirst(d) { return d.keys().hasOnly(['at', 'win', 'n']) && d.at == request.time && d.win == request.time && d.n == 1; }
+    function rateNext(n, o, gap, max) {
+      return n.keys().hasOnly(['at', 'win', 'n']) && n.at == request.time && request.time > o.at + gap
+        && ((n.win == o.win && n.n == o.n + 1 && n.n <= max && request.time < o.win + duration.value(1, 'd'))
+          || (n.win == request.time && n.n == 1 && request.time >= o.win + duration.value(1, 'd')));
+    }
+
+    // Posts: anyone signed in reads them (the app asks for the last 30 days, 20 at a time); the author or an owner deletes one.
+    match /board/{id} {
+      allow get, list: if signedIn();
+      allow create: if boardOk() && postOk(request.resource.data);
+      allow update: if signedIn() && (reportMove(id) || likeMove(id) || keepMove());
+      allow delete: if signedIn() && (resource.data.uid == request.auth.uid || owner());
+      // One report per person per post: made past the gate, as yourself, for one of six reasons, at the server's time, with the
+      // post's count up one and your report counter moved in the same write. The owner reads them; a reporter gets their own back
+      // (the push Worker checks it with their token). Nobody edits one.
+      match /reports/{r} {
+        allow get: if owner() || me(r);
+        allow list: if owner();
+        allow create: if me(r) && boardOk() && request.resource.data.keys().hasOnly(['why', 'at'])
+          && request.resource.data.why in ['harass', 'spam', 'personal', 'sexual', 'danger', 'other'] && request.resource.data.at == request.time
+          && getAfter(postDoc(id)).data.reports == get(postDoc(id)).data.reports + 1
+          && getAfter(/databases/$(db)/documents/reportRate/$(r)).data.at == request.time;
+        allow delete: if owner();
+      }
+      // One 💪 per person per post, empty, with the post's count moved by one in the same write; an owner clears them as the post goes.
+      match /likes/{l} {
+        allow get: if signedIn();
+        allow list: if owner();
+        allow create: if me(l) && !banned(l) && request.resource.data.keys().size() == 0
+          && getAfter(postDoc(id)).data.likes == get(postDoc(id)).data.likes + 1;
+        allow delete: if (me(l) && !banned(l) && existsAfter(postDoc(id)) && getAfter(postDoc(id)).data.likes == get(postDoc(id)).data.likes - 1)
+          || (owner() && !existsAfter(postDoc(id)));
+      }
+    }
+    match /boardRate/{uid} {
+      allow get: if me(uid);
+      allow create: if me(uid) && rateFirst(request.resource.data);
+      allow update: if me(uid) && rateNext(request.resource.data, resource.data, duration.value(60, 's'), 5);
+      allow delete: if me(uid) && (request.time >= resource.data.win + duration.value(1, 'd') || !existsAfter(profileDoc(uid)));
+    }
+    match /reportRate/{uid} {
+      allow get: if me(uid);
+      allow create: if me(uid) && rateFirst(request.resource.data);
+      allow update: if me(uid) && rateNext(request.resource.data, resource.data, duration.value(0, 's'), 20);
+      allow delete: if me(uid) && (request.time >= resource.data.win + duration.value(1, 'd') || !existsAfter(profileDoc(uid)));
+    }
+    // A ban: an owner's alone to write and list. Anyone signed in may ask whether one account is banned (the rules above ask).
+    match /banned/{uid} {
+      allow get: if signedIn();
+      // The owner's list, to lift a ban (More › Board review).
+      allow list: if owner();
+      allow create, update: if owner() && request.resource.data.keys().hasOnly(['at', 'why']) && request.resource.data.at == request.time
+        && (!('why' in request.resource.data) || (request.resource.data.why is string && request.resource.data.why.size() <= 200));
+      allow delete: if owner();
+    }
+    // What moderation tells an author, on their next board open (no push): how many of their posts an owner removed, and a ban.
+    // Only an owner writes it; only its person (or an owner) reads it, and they may clear it with their account.
+    match /notices/{uid} {
+      allow get: if me(uid) || owner();
+      allow create, update: if owner() && request.resource.data.keys().hasOnly(['removed', 'banned', 'at'])
+        && request.resource.data.removed is int && request.resource.data.removed >= 0 && request.resource.data.banned is bool
+        && request.resource.data.at == request.time;
+      allow delete: if me(uid) || owner();
+    }
+
     match /users/{uid} {
       // Name only, so a request can say who it's from; `prev` and `changedAt` say what it was ("formerly @…" for 30 days); the
       // display name and when it last changed (`nameAt`); when the account first had a profile (`createdAt`, the server's time,
-      // kept for the board's day-old gate; an older app writes none, and a profile without one may add it once, as now).
+      // kept for the board's day-old gate; an older app writes none, and a profile without one may add it once, as now); and who
+      // may send a friend request (`reqs`: 'any', the default, or 'invite' for invite links only).
       allow get: if signedIn();
       // A first name: one you hold, no display name yet.
       allow create: if me(uid) && request.resource.data.keys().hasOnly(['username', 'displayName', 'createdAt'])
         && request.resource.data.displayName == request.resource.data.username && holdsAfter(uid, request.resource.data.username)
         && (!('createdAt' in request.resource.data) || request.resource.data.createdAt == request.time);
       allow update: if me(uid)
-        && request.resource.data.keys().hasOnly(['username', 'displayName', 'prev', 'changedAt', 'nameAt', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['username', 'displayName', 'prev', 'changedAt', 'nameAt', 'createdAt', 'reqs'])
         && usernameMove(uid, request.resource.data, resource.data)
         && displayMove(request.resource.data, resource.data)
+        && (!('reqs' in request.resource.data) || request.resource.data.reqs in ['any', 'invite'])
         && (!('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.get('createdAt', request.time));
       allow delete: if me(uid);
 
@@ -162,8 +271,10 @@ service cloud.firestore {
           && !exists(/databases/$(db)/documents/users/$(uid)/friends/$(request.auth.uid))
           && getAfter(/databases/$(db)/documents/users/$(uid)/friends/$(request.auth.uid)).data.via == t;
       }
+      // A request: as yourself, to someone else whose profile takes requests from anyone (`reqs`, absent on a profile from before
+      // the setting: anyone), who hasn't blocked you. "Invite only" leaves invite links as the way in.
       match /requests/{from} {
-        allow create: if me(from) && from != uid && exists(/databases/$(db)/documents/users/$(uid)) && !blocked(uid, from)
+        allow create: if me(from) && from != uid && prof(uid).get('reqs', 'any') == 'any' && !blocked(uid, from)
           && request.resource.data.keys().hasOnly(['username', 'sent']);
         allow read, delete: if me(uid) || me(from);
       }

@@ -12,6 +12,12 @@ import type { Box } from '../state/box';
 import { loadCloud } from '../cloud/firebase';
 import { refreshLists, refreshNews, useFriendCache } from '../state/friendCache';
 import { Icon } from './icons';
+import { Board } from './Board';
+
+type Seg = 'friends' | 'board';
+const SEG_KEY = 'friends:seg';
+/** Friends or Board, as last left on this phone (storage can be missing or throw: Friends then). */
+const keptSeg = (): Seg => { try { return localStorage.getItem(SEG_KEY) === 'board' ? 'board' : 'friends'; } catch { return 'friends'; } };
 
 const PULL = 70; // px down from the top of the page that reads everything again
 
@@ -33,8 +39,13 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
   const [pulled, setPulled] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // Friends | Board (social S3): the board is a page of its own beside your friends, never mixed into their feed.
+  const [seg, setSegState] = useState<Seg>(() => (pending ? 'friends' : keptSeg()));
+  const setSeg = (v: Seg) => { setSegState(v); try { localStorage.setItem(SEG_KEY, v); } catch { /* kept for this visit only */ } };
   const refresh = async () => {
     if (!uid || refreshing) return;
+    // The board reads itself again whole (Board, on `pulled`).
+    if (seg === 'board') { setPulled((n) => n + 1); return; }
     setRefreshing(true); setNote(null); setPulled((n) => n + 1);
     try { const c = await loadCloud(); await Promise.all([refreshLists(c, uid), refreshNews(c, uid)]); onChanged(); }
     catch { setNote('Couldn’t refresh: showing what this phone saved.'); }
@@ -45,7 +56,7 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
   const start = useRef<{ x: number; y: number } | null>(null);
   // Add a friend: a sheet over the page, from the person+ icon or Crew's Invite (IA plan A4).
   const [adding, setAdding] = useState(false);
-  const invite = () => setAdding(true);
+  const invite = () => { setSeg('friends'); setAdding(true); };
   return (
     <div className="friends-page"
       // The sheet is portalled but its touches still bubble here through React: a drag in it is no pull.
@@ -76,8 +87,14 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
           </section>
         ) : !cloud.mine ? <p className="muted">The account on this phone belongs to another person here; switch to them to see friends.</p>
         : (<>
+          <div className="fr-seg" role="tablist" aria-label="Friends or the board">
+            <button type="button" role="tab" aria-selected={seg === 'friends'} onClick={() => setSeg('friends')}>Friends</button>
+            <button type="button" role="tab" aria-selected={seg === 'board'} onClick={() => setSeg('board')}>Board</button>
+          </div>
+          {seg === 'board' ? <Board uid={cloud.link.uid} email={cloud.link.email} pulled={pulled} onAccount={() => setSeg('friends')} /> : (<>
           <Feed uid={cloud.link.uid} myName={myName} friends={friends} entries={entries} goal={goal} today={today} status={status} news={news} pulled={pulled} onOpenFriend={onView} onOpenMine={onOpenMine} onInvite={invite} onMessage={onMessage} onCompare={onCompare} />
           <FriendsCard uid={cloud.link.uid} gyms={gyms} pending={pending} newsRev={newsRev} adding={adding} onAdding={setAdding} onPendingDone={onPendingDone} onChanged={onChanged} />
+          </>)}
         </>)}
     </div>
   );

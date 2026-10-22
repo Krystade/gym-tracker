@@ -174,7 +174,9 @@ async function syncMeta({ F, db }: Pick<Cloud, 'F' | 'db'>, uid: string, input: 
 
 /**
  * Every cloud document of this account that the owner can delete: the log, the index, friends, invites, requests, private
- * (cycle), gyms and messages sent to you, who you blocked, and your send counters.
+ * (cycle), gyms and messages sent to you, who you blocked, and your send counters; on the board (social S3), your posts, your
+ * post and report counters and what moderation told you. (A 💪 you gave stays on its post, as a count with nobody's name to
+ * read; a report you made stays for the owner's review.)
  */
 export async function deleteCloudData({ F, db }: Cloud, uid: string): Promise<void> {
   const index = ((await F.getDoc(F.doc(db, `users/${uid}/meta/index`))).data()?.months ?? {}) as Record<string, number>;
@@ -190,8 +192,18 @@ export async function deleteCloudData({ F, db }: Cloud, uid: string): Promise<vo
     return (await (newer.has(sub) ? list.catch(refused) : list)).docs.map((d) => d.ref);
   };
   for (const sub of ['meta', 'friends', 'invites', 'requests', 'private', 'gymInbox', 'inbox', 'blocked', 'summary']) refs.push(...(await listed(sub)));
+  refs.push(...(await F.getDocs(F.query(F.collection(db, 'board'), F.where('uid', '==', uid))).catch(refused)).docs.map((d) => d.ref));
+  /** One of the board's documents of yours, when there is one (and the rules for it are deployed). */
+  const mineIf = async (path: string) => {
+    const ref = F.doc(db, path);
+    const d = await F.getDoc(ref).catch((e: unknown) => { if ((e as { code?: string }).code === 'permission-denied') return null; throw e; });
+    return d?.exists() ? [ref] : [];
+  };
+  const notice = await mineIf(`notices/${uid}`);
+  refs.push(...notice);
   // The send counters go in the same write as the profile: the rules let a counter inside its hour go only with the account.
   const last = await listed('sendRate');
+  last.push(...(await mineIf(`boardRate/${uid}`)), ...(await mineIf(`reportRate/${uid}`)));
   const profile = await F.getDoc(F.doc(db, `users/${uid}`));
   const username = profile.data()?.username as string | undefined;
   // The name goes with the profile, in one write: the rules release a name only as the profile stops going by it.

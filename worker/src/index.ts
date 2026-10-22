@@ -2,7 +2,7 @@ import { AuthError, verifyIdToken } from './auth';
 import { allowedOrigin, withCors } from './cors';
 import { localMode, type Env } from './env';
 import { FirestoreError } from './firestore';
-import { check, Refused } from './notify';
+import { check, recipients, Refused } from './notify';
 import * as v from './validate';
 
 export { UserBox } from './userbox';
@@ -50,8 +50,10 @@ async function handle(req: Request, env: Env): Promise<Response> {
       const push = await check(env, token, uid, claim, Date.now()).catch((e) => {
         throw e instanceof Refused ? new Http(403, 'refused') : e instanceof FirestoreError ? new Http(502, 'firestore') : e;
       });
-      const outcome = await env.USERS.get(env.USERS.idFromName(claim.to)).friendPush(push);
-      console.log(JSON.stringify({ kind: push.kind, outcome }));
+      for (const to of recipients(claim)) {
+        const outcome = await env.USERS.get(env.USERS.idFromName(to)).friendPush(push);
+        console.log(JSON.stringify({ kind: push.kind, outcome }));
+      }
       return json({ ok: true });
     }
     case 'POST /badge': await box.setBadge(v.badge(await body(req))); return json({ ok: true });

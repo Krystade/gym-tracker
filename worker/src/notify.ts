@@ -1,5 +1,6 @@
-import { acceptedNote, gymNote, messageNote, pingNote, requestNote, type FriendKind, type Route } from '../../src/push/payload';
+import { acceptedNote, gymNote, messageNote, pingNote, reportNote, requestNote, type FriendKind, type ModKind, type Route } from '../../src/push/payload';
 import { displayOf } from '../../src/domain/displayName';
+import { OWNERS } from '../../src/cloud/owner';
 import type { Env } from './env';
 import { getDoc, type Doc } from './firestore';
 
@@ -13,11 +14,11 @@ export class Refused extends Error {}
 export const FRESH_MS = 60_000;
 const SKEW_MS = 60_000;
 
-export interface Claim { kind: 'request' | 'accepted' | 'gym' | 'inbox'; to: string; id?: string }
+export interface Claim { kind: 'request' | 'accepted' | 'gym' | 'inbox' | 'report'; to: string; id?: string }
 
 /** What the recipient's Durable Object is asked to deliver. */
 export interface FriendPush {
-  kind: FriendKind;
+  kind: FriendKind | ModKind;
   from: string;
   /** The same claim twice (a replayed /notify) has the same key and sends nothing the second time. */
   key: string;
@@ -64,9 +65,18 @@ async function friendOf(env: Env4, token: string, to: string): Promise<void> {
  *   their own list, which is why that alone proves nothing.
  * - gym: the gym in `to`'s inbox is from the sender (the sender may read only their own) and new, and they're still friends.
  * - inbox: likewise for a ping or message; its words are the stored ping's or the stored text, never the request's.
+ * - report (social S4): the sender's report on board post `id` exists (only its reporter, or an owner, may read it) and was
+ *   made in the last minute. It rings the app's owners alone, whoever `to` names (`recipients`), and says nothing of who
+ *   reported what. An owner's own reports ring nobody.
  */
 export async function check(env: Env4, token: string, me: string, c: Claim, now: number): Promise<FriendPush> {
   if (c.to === me) throw new Refused('self');
+  if (c.kind === 'report') {
+    if (OWNERS.includes(me)) throw new Refused('self');
+    const d = await getDoc(env, token, ['board', c.id!, 'reports', me]);
+    if (!exists(d) || !fresh(d, now)) throw new Refused('report');
+    return { kind: 'report', from: me, key: `report:${c.id}:${me}`, note: reportNote(), route: 'review', unread: false, daily: 'report' };
+  }
   /**
    * The sender's username for the words ("A friend" without a proper one), and carried as `name` only when it is one, with their
    * display name as `dn`: the words stay the username's, and the phone puts the display name (or your tag) before it (sw-push).
@@ -109,3 +119,6 @@ export async function check(env: Env4, token: string, me: string, c: Claim, now:
     }
   }
 }
+
+/** Who hears of a checked claim: a report, the app's owners (never whoever the claim names); anything else, the person it names. */
+export const recipients = (c: Claim): readonly string[] => (c.kind === 'report' ? OWNERS : [c.to]);
