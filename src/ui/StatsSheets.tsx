@@ -97,9 +97,9 @@ export function SparkRef({ values, at, w, h = 24 }: { values: number[]; at: numb
 
 // ---- Sheet parts ----
 
-interface BarRow { key: string; label: ReactNode; value: ReactNode; frac: number; accent?: boolean; colour?: string }
+export interface BarRow { key: string; label: ReactNode; value: ReactNode; frac: number; accent?: boolean; colour?: string }
 /** Labelled bars from zero, each its own row: the label and its number above, the bar under them. */
-function Bars({ label, rows }: { label: string; rows: BarRow[] }) {
+export function Bars({ label, rows }: { label: string; rows: BarRow[] }) {
   return (
     <ul className="st-bars" aria-label={label}>
       {rows.map((r) => (
@@ -113,7 +113,7 @@ function Bars({ label, rows }: { label: string; rows: BarRow[] }) {
 }
 
 /** Bars either side of a zero line, scaled to the largest: for a rate or a change that can go below zero. */
-function Diverging({ label, rows }: { label: string; rows: { key: string; label: ReactNode; value: ReactNode; v: number | null }[] }) {
+export function Diverging({ label, rows }: { label: string; rows: { key: string; label: ReactNode; value: ReactNode; v: number | null }[] }) {
   const vs = rows.flatMap((r) => (r.v == null ? [] : [r.v]));
   const neg = Math.max(0, ...vs.map((v) => -v)), pos = Math.max(0, ...vs), span = neg + pos || 1, zero = neg / span;
   return (
@@ -134,7 +134,7 @@ function Diverging({ label, rows }: { label: string; rows: { key: string; label:
   );
 }
 
-const Hero = ({ k, children }: { k: string; children: ReactNode }) => <div className="st-dr-hero"><span className="st-dr-k">{k}</span><span className="st-dr-v">{children}</span></div>;
+export const Hero = ({ k, children }: { k: string; children: ReactNode }) => <div className="st-dr-hero"><span className="st-dr-k">{k}</span><span className="st-dr-v">{children}</span></div>;
 const pctOf = (a: number, b: number) => (b ? Math.round((100 * a) / b) : 0);
 
 // ---- Rate of gain ----

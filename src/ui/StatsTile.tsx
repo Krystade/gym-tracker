@@ -5,12 +5,24 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 // the accent, or columns from a zero baseline with the current one in the accent. No dashed lines, no second axis. A status colour
 // (ok, warn, danger) only ever means state, and the words beside it say the same.
 
+/**
+ * Where a number comes from (00-core): (a) research, cited; (b) learned from his log, by a method its sheet names; (c) a neutral
+ * default that only shapes a display. A tile whose number is one of these says so in a chip under its label.
+ */
+export type Evidence = 'a' | 'b' | 'c';
+export const EV_WORD: Record<Evidence, string> = { a: 'research', b: 'learned', c: 'neutral' };
+const EV_SAYS: Record<Evidence, string> = { a: 'from research', b: 'learned from the log', c: 'a neutral default' };
+
 /** What a tile shows. `wide`: a row of its own. `news`: a new PR, a new stall, a muscle behind, pain rising. */
 export interface TileView {
   id: string; label: string; value: string; unit?: string;
   /** The value is words (a lift's name), set a size down. */ word?: boolean;
   ctx: ReactNode; viz?: (w: number) => ReactNode; vizHeight?: number; wide?: boolean; news?: boolean;
+  /** Where its number comes from. */ ev?: Evidence;
 }
+
+/** The evidence chip: its word, and what that means for a screen reader. */
+export const EvChip = ({ ev }: { ev: Evidence }) => <span className={`st-t-ev ev-${ev}`}><span aria-hidden="true">{EV_WORD[ev]}</span><span className="sr-only">{EV_SAYS[ev]}</span></span>;
 
 export function StatsTile({ t, editing, pinned, hidden, onOpen, onPin, onHide, extra }: {
   t: TileView; editing?: boolean; pinned?: boolean; hidden?: boolean; onOpen?: () => void; onPin?: () => void; onHide?: () => void;
@@ -20,6 +32,7 @@ export function StatsTile({ t, editing, pinned, hidden, onOpen, onPin, onHide, e
   const body = (<>
     <span className="st-t-label">{t.label}{t.news && !editing && <span className="sr-only"> · new</span>}</span>
     {t.news && !editing && <span className="st-t-new" aria-hidden="true" />}
+    {t.ev && <EvChip ev={t.ev} />}
     <span className="st-t-body">
       <span className={`st-t-val${t.word ? ' word' : ''}`}>{t.value}{t.unit && <small>{t.unit}</small>}</span>
       <span className="st-t-ctx">{t.ctx}</span>

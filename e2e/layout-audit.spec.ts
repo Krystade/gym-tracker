@@ -1,4 +1,6 @@
 import { expect, test, type APIRequestContext, type Browser, type Locator, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { addFriend, goto, openProgram } from './nav';
 import { audit, check, clean, notched, renderCheck, TOP } from './layout';
 import { deloadLog, SIM_LIFTS, simDay } from '../src/domain/learn/deloadSim.sample';
@@ -748,7 +750,7 @@ test('Stats v2: the tiles, the lift, calendar, muscles and week sheets, every ra
   await sheet('[data-tile="pain"]', 'stats-v2-pain');
   await sheet('.st-week', 'stats-v2-week');
   // S2: every new tile there, and its sheet.
-  for (const t of ['rate', 'plateaus', 'milestones', 'hitrate', 'effort', 'rest', 'pullpush', 'lifts', 'days', 'start', 'energy', 'weight']) {
+  for (const t of ['rate', 'plateaus', 'milestones', 'hitrate', 'effort', 'rest', 'pullpush', 'lifts', 'days', 'start', 'energy', 'weight', 'relstrength']) {
     await expect(page.locator(`[data-tile="${t}"]`)).toBeVisible();
     await page.locator(`[data-tile="${t}"]`).scrollIntoViewIfNeeded();
     await png(`tile-${t}`);
@@ -842,6 +844,85 @@ test('Stats with sets and no weigh-ins: no Body section, nothing about photos or
     await page.evaluate(() => scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
     await page.screenshot({ path: `${process.env.IA_PNG}/${info.project.name}-stats-no-weigh-ins-end.png` });
   }
+  clean(found);
+});
+
+// ---- Stats v2 S4/S5 (plan §4): the learning core's tiles and sheets, relative strength, a muscle's weeks, a lift's two readings ----
+
+/** Weigh-ins over the rest-knee fixture's last 12 weeks (synthetic), 190 lb easing to 186. */
+const BODY_2024 = ['date,weight_lb', ...Array.from({ length: 30 }, (_, i) => `${add('2024-06-01', 3 * i)},${(190 - i * 0.14).toFixed(1)}`)].join('\n');
+
+test('Stats v2 S4/S5: fatigue per set, best rest, the next session, carry-over, relative strength, a muscle’s weeks, a lift’s two readings', async ({ page }, info) => {
+  test.setTimeout(240_000);
+  await notched(page);
+  await page.clock.install({ time: new Date('2024-08-28T18:00:00') });
+  await page.goto('/');
+  const found: string[] = [];
+  const png = async (name: string) => { if (process.env.STATS_PNG) await page.screenshot({ path: `${process.env.STATS_PNG}/${info.project.name}-${name}.png` }); };
+  // 80 timed sessions of a synthetic lifter (coreSim, the rest-knee fixture), weigh-ins, and a program built for the next day.
+  await goto(page, 'Backup');
+  await page.getByLabel('Import CSV').setInputFiles([
+    { name: 'sets.csv', mimeType: 'text/csv', buffer: readFileSync(path.join(import.meta.dirname, 'fixtures', 'rest-knee.sample.csv')) },
+    { name: 'body.csv', mimeType: 'text/csv', buffer: Buffer.from(BODY_2024) },
+  ]);
+  await expect(page.getByText('✓ Imported 1098 new sets')).toBeVisible({ timeout: 60_000 });
+  await goto(page, 'Today');
+  await openProgram(page);
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await expect(page.getByRole('heading', { name: 'Weekly volume' })).toBeVisible();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  await goto(page, 'Stats');
+  await expect(page.locator('[data-tile="fatigue"]')).toBeVisible();
+  await check(page, info, found, 'stats-core', [], 'main');
+  await png('core-top');
+  const sheet = async (open: () => Promise<void>, state: string) => {
+    await open();
+    const d = page.getByRole('dialog');
+    await expect(d).toBeVisible();
+    await expect(page.locator('html')).toHaveClass(/sheet-lock/);
+    await check(page, info, found, state, [], 'main');
+    await png(state);
+    if (await d.locator('.st-sh-body').evaluate((b) => { const more = b.scrollHeight > b.clientHeight + 1; b.scrollTop = b.scrollHeight; return more; })) {
+      await check(page, info, found, `${state}-end`, [], 'main');
+      await png(`${state}-end`);
+    }
+    return d;
+  };
+  const done = async () => { await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click(); await expect(page.getByRole('dialog')).toHaveCount(0); };
+  for (const t of ['fatigue', 'bestrest', 'forecast', 'carry', 'relstrength']) {
+    const tile = page.locator(`[data-tile="${t}"]`);
+    await expect(tile).toBeVisible();
+    await tile.scrollIntoViewIfNeeded();
+    await png(`tile-${t}`);
+    await sheet(() => tile.click(), `stats-core-${t}`);
+    await done();
+  }
+  // A lift's sheet, read as its best set.
+  await sheet(() => page.locator('[data-tile^="lift:"]').first().click(), 'stats-core-lift');
+  await page.getByRole('dialog').getByRole('group', { name: 'Reading' }).getByRole('button', { name: 'Best set' }).click();
+  await page.getByRole('dialog').locator('.st-sh-body').evaluate((b) => { b.scrollTop = 0; });
+  await check(page, info, found, 'stats-core-lift-best', [], 'main');
+  await png('stats-core-lift-best');
+  await done();
+  // The Muscles sheet's list at its foot, then a muscle's weeks against its band.
+  const mus = await sheet(() => page.locator('[data-tile="muscles"]').click(), 'stats-core-muscles');
+  await mus.getByRole('region', { name: /^Each muscle/ }).getByRole('button', { name: /^Chest/ }).click();
+  await expect(page.getByRole('dialog', { name: /^Chest · last 12 weeks$/ })).toBeVisible();
+  await check(page, info, found, 'stats-core-muscle-weeks', [], 'main');
+  await png('stats-core-muscle-weeks');
+  if (await page.getByRole('dialog').locator('.st-sh-body').evaluate((b) => { const more = b.scrollHeight > b.clientHeight + 1; b.scrollTop = b.scrollHeight; return more; })) {
+    await check(page, info, found, 'stats-core-muscle-weeks-end', [], 'main');
+    await png('stats-core-muscle-weeks-end');
+  }
+  await done();
+  // A year: the muscle's weeks at 53 columns.
+  await page.getByRole('group', { name: 'Range' }).getByRole('button', { name: '1 yr' }).click();
+  await check(page, info, found, 'stats-core-1yr', [], 'main');
+  const mus1 = await sheet(() => page.locator('[data-tile="muscles"]').click(), 'stats-core-muscles-1yr');
+  await mus1.getByRole('region', { name: /^Each muscle/ }).getByRole('button', { name: /^Chest/ }).click();
+  await expect(page.getByRole('dialog', { name: /^Chest · past year$/ })).toBeVisible();
+  await check(page, info, found, 'stats-core-muscle-weeks-1yr', [], 'main');
+  await png('stats-core-muscle-weeks-1yr');
   clean(found);
 });
 

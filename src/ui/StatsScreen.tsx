@@ -18,6 +18,7 @@ import { plural } from '../domain/format';
 import { liftKey } from '../domain/ids';
 import { thisWeekCardio } from '../domain/cardio';
 import { arrange, dayOrder, DEFAULT_RANGE, isRange, layoutOf, NO_LAYOUT, RANGES, rows, toggleHide, togglePin, WINDOW_RANGE, type LayoutPrefs, type Range } from '../domain/statsLayout';
+import { MUSCLES, type Muscle } from '../domain/muscles';
 import { defaultProfile } from '../domain/profile';
 import type { SetEntry } from '../domain/types';
 import { activeProfileDb } from '../db/db';
@@ -26,13 +27,21 @@ import { Priorities } from './PrioritiesScreen';
 import { rotationDismissed } from './RotationSuggestion';
 import { StatsSheet } from './StatsSheet';
 import { StatsTile } from './StatsTile';
-import { SECTIONS, useTiles, WeekHero, WeekSheet, type TileModel } from './StatsTiles';
+import { lastOf } from './StatsCoreSheets';
+import { MuscleWeeks, SECTIONS, useTiles, WeekHero, WeekSheet, type TileModel } from './StatsTiles';
+import { Icon } from './icons';
 import './stats.css';
 
 // Stats v2 (plan §6): the week up top, one range for every tile, then sections of tiles two to a row. A tile opens its sheet.
 // Your own Stats keeps what you pin and hide, and the day's news order, per profile; a friend's Stats shows theirs as it comes.
 
 const SHEET_WEEK = '__week';
+/** A muscle's weeks, opened from the Muscles sheet: `muscle:Chest`. */
+const MUSCLE = 'muscle:';
+const muscleOf = (open: string | null): Muscle | null => {
+  const m = open?.startsWith(MUSCLE) ? open.slice(MUSCLE.length) : null;
+  return m && (MUSCLES as readonly string[]).includes(m) ? (m as Muscle) : null;
+};
 
 export function StatsScreen({ store, profile, programs, body, today, readOnly, who, settings, gyms, onOpenLift, onOpenPriorities }: {
   /** A friend's username: named wherever your own Stats says "your". */ who?: string;
@@ -79,7 +88,12 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
       return r && !rotationDismissed(owner, r) ? r : null;
     };
   }, [owner, readOnly, gyms?.active, entries, today, programs.program, body.days]);
-  const tiles = useTiles({ entries, profile: p, today, range, who, owner: owner ?? undefined, alsoLifts, body: body.days, timer, rotationOf, onOpenLift, onOpenPriorities, program: programs.program });
+  // His rest setting per lift, for the next session's timer (and none set: undefined).
+  const kept = useMemo(() => (settings ? (ex: string) => settings.get(ex).rest : undefined), [settings]);
+  const tiles = useTiles({
+    entries, profile: p, today, range, who, owner: owner ?? undefined, alsoLifts, body: body.days, timer, rotationOf, onOpenLift, onOpenPriorities,
+    program: programs.program, plans: programs.plans, kept, onOpenMuscle: (m) => setOpen(`${MUSCLE}${m}`),
+  });
 
   // News to the front of its section, worked out once a day on the first open (owner, 2026-10-20).
   const [front] = useState(() => {
@@ -112,6 +126,7 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
   const a = arrange(bySection, layout, front);
   const hiddenAll = a.sections.flatMap((s) => s.hidden);
   const opened = open && open !== SHEET_WEEK ? tiles.find((t) => t.id === open) : undefined;
+  const muscle = muscleOf(open);
 
   const tile = (t: TileModel) => (
     <StatsTile key={t.id} t={t} editing={editing} pinned={layout.pins.includes(t.id)} hidden={layout.hidden.includes(t.id)}
@@ -150,6 +165,12 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
         </StatsSheet>
       )}
       {opened && <StatsSheet title={opened.title ?? opened.label} link={opened.link} onClose={() => setOpen(null)}>{opened.sheet()}</StatsSheet>}
+      {muscle && (
+        <StatsSheet key={muscle} title={`${muscle} · ${lastOf(range)}`} onClose={() => setOpen(null)}
+          link={<button type="button" className="st-link st-back" onClick={() => setOpen('muscles')}><Icon name="chev-left" size={18} sw={2} />Muscles</button>}>
+          <MuscleWeeks entries={entries} profile={p} today={today} range={range} muscle={muscle} />
+        </StatsSheet>
+      )}
     </>
   );
 }

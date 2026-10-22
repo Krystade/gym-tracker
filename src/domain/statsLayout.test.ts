@@ -106,17 +106,19 @@ describe('dayOrder: the news order, at most once a day', () => {
 describe('a friend’s page: their 8 weeks, and only the tiles a friend may see and their line can fill', () => {
   // Every tile Stats v2 S1 and S2 can show (StatsTiles useTiles), and whether a friend gets it on their page, from what Friends
   // keeps of them (8 weeks of sets, their goal, their PR ids) or from their whole log (their Stats link).
-  const ALL = ['lift:bench press', 'rate', 'prs', 'plateaus', 'milestones', 'hitrate', 'muscles', 'effort', 'rest', 'pullpush', 'tonnage', 'lifts',
-    'calendar', 'sessions', 'days', 'start', 'pain', 'energy', 'weight'];
+  const ALL = ['lift:bench press', 'rate', 'prs', 'plateaus', 'milestones', 'carry', 'hitrate', 'muscles', 'effort', 'rest', 'pullpush', 'tonnage', 'lifts',
+    'forecast', 'calendar', 'sessions', 'days', 'start', 'pain', 'energy', 'fatigue', 'bestrest', 'weight', 'relstrength'];
   const tiles = ALL.map((id) => t(id));
   it('the owner sees every tile', () => expect(ids(forViewer(tiles, { owner: true }))).toEqual(ALL));
-  it('a friend never sees energy or body weight: both come from the owner’s own body log (owner, 2026-10-21)', () => {
-    expect(OWNER_ONLY).toEqual(['energy', 'weight']);
-    expect(ids(forViewer(tiles, { owner: false }))).toEqual(['lift:bench press', 'rate', 'prs', 'plateaus', 'milestones', 'hitrate', 'muscles', 'effort',
-      'rest', 'pullpush', 'tonnage', 'lifts', 'calendar', 'sessions', 'days', 'start', 'pain']);
+  it('a friend never sees energy, body weight or relative strength: all come from the owner’s own body log (owner, 2026-10-21)', () => {
+    expect(OWNER_ONLY).toEqual(['energy', 'weight', 'relstrength']);
+    // Their Stats link (their whole log, program and settings): the learning core's tiles, never anything over a body weight.
+    expect(ids(forViewer(tiles, { owner: false }))).toEqual(['lift:bench press', 'rate', 'prs', 'plateaus', 'milestones', 'carry', 'hitrate', 'muscles', 'effort',
+      'rest', 'pullpush', 'tonnage', 'lifts', 'forecast', 'calendar', 'sessions', 'days', 'start', 'pain', 'fatigue', 'bestrest']);
     expect(ids(forViewer(tiles, { owner: false, window: true }))).not.toContain('weight');
+    expect(ids(forViewer(tiles, { owner: false, window: true }))).not.toContain('relstrength');
   });
-  it('their page leaves out what 8 weeks of sets can’t say: muscles (priorities), rest (timers), lifts in rotation (new, dropped)', () => {
+  it('their page leaves out what 8 weeks of sets can’t say: muscles (priorities), rest (timers), lifts in rotation (new, dropped), the core’s tiles (a whole log)', () => {
     expect(ids(forViewer(tiles, { owner: false, window: true }))).toEqual(
       ['lift:bench press', 'rate', 'prs', 'plateaus', 'milestones', 'hitrate', 'effort', 'pullpush', 'tonnage', 'calendar', 'sessions', 'days', 'start', 'pain']);
   });

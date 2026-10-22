@@ -26,15 +26,16 @@ export const rangeFrom = (r: Range, today: string): string => addDays(today, -(r
 export const rangeWords = (r: Range): string => (r === '1y' ? 'a year' : `${rangeWeeks(r)} weeks`);
 
 /**
- * Tiles only the owner ever sees: energy and weight come from his own body log, which no friend reads (owner, 2026-10-21: friends
- * never see a friend's body weight).
+ * Tiles only the owner ever sees: energy, weight and relative strength come from his own body log, which no friend reads (owner,
+ * 2026-10-21: friends never see a friend's body weight; relative strength is a lift over it).
  */
-export const OWNER_ONLY: readonly string[] = ['energy', 'weight'];
+export const OWNER_ONLY: readonly string[] = ['energy', 'weight', 'relstrength'];
 /**
  * Tiles a friend's 8-week line (their sets, goal and PR ids, as Friends keeps it) can't fill without reading more: Muscles needs
- * their priorities, Rest between sets their timers, Lifts in rotation what they did before the 8 weeks (new and dropped).
+ * their priorities, Rest between sets their timers, Lifts in rotation what they did before the 8 weeks (new and dropped); the
+ * learning core's tiles (fatigue per set, best rest, next session, carry-over) a whole log's fit, their program and settings.
  */
-export const NOT_FROM_WINDOW: readonly string[] = ['muscles', 'rest', 'lifts'];
+export const NOT_FROM_WINDOW: readonly string[] = ['muscles', 'rest', 'lifts', 'fatigue', 'bestrest', 'forecast', 'carry'];
 /** The tiles a viewer gets: anyone but the owner, none of OWNER_ONLY; on a friend's page (`window`), none of NOT_FROM_WINDOW. */
 export function forViewer<T extends { id: string }>(tiles: readonly T[], v: { owner: boolean; window?: boolean }): T[] {
   return tiles.filter((t) => (v.owner || !OWNER_ONLY.includes(t.id)) && !(v.window && NOT_FROM_WINDOW.includes(t.id)));

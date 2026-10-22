@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { coreBefore } from '../domain/learn';
+import { levelSeries } from '../domain/learn/strength';
 import { addDays, calendarDays, REACH, SESSION_CAP, weekStart, weeklyMuscleSets, weeklySummary } from '../domain/analytics';
 import { thisWeekCardio } from '../domain/cardio';
 import { dayKinds } from '../domain/crew';
@@ -14,7 +16,9 @@ import type { Rotation as RotationOffer } from '../domain/rotation';
 import { stall as stallOf } from '../domain/rotation';
 import { e1rm, liftSets } from '../domain/stats';
 import { forViewer, rangeDays, rangeFrom, rangeLabel, rangeWeeks, rangeWords, type Range } from '../domain/statsLayout';
-import type { Program } from '../domain/program';
+import type { DayPlan, Program } from '../domain/program';
+import { bestRests, bestSetPoints, fatiguePerSet, movesTogether, muscleSpan, muscleWeeks, nextSession, relativeStrength } from '../domain/statsCore';
+import { warmupCount } from '../domain/suggest';
 import {
   balance, effort, energyVsLifts, hitRate, liftsInRotation, milestoneDate, MILESTONE_MIN_SESSIONS, plateaus, prTimeline, rateOfGain, rests, sessionsAWeek, strengthIndex, whenTrained, type LiftState,
 } from '../domain/statsTiles';
@@ -31,6 +35,7 @@ import { CareBody } from './CareCard';
 import { Icon } from './icons';
 import { LineChart } from './LineChart';
 import { Ring } from './Ring';
+import { BestRestSheet, CarrySheet, EvLine, lastOf, FatigueSheet, ForecastSheet, MuscleWeeksSheet, PaceBars, RelDir, RelStrengthSheet } from './StatsCoreSheets';
 import { Cols, Heat, Meter, Spark, type TileView } from './StatsTile';
 import {
   balanceWord, BalanceSheet, dayName, DaysSheet, Dir, EffortSheet, EnergySheet, HitRateSheet, hourLabel, LiftsSheet, mss, PlateauSheet, PrDots, PrKinds, Pips,
@@ -75,7 +80,10 @@ export interface StatsInput {
   /** The rest timer's seconds for a lift (your setting, else what your sets taught it, else the research default). */ timer?: (exercise: string) => number;
   /** Your own Stats: the variation a flat lift's page would offer (null: none, or dismissed). */ rotationOf?: (lift: string) => RotationOffer | null;
   onOpenLift?: (name: string) => void; onOpenPriorities?: () => void;
-  /** The program: what a planned session left this week can add to a muscle (feed weekPace). */ program?: Program | null;
+  /** The program: what a planned session left this week can add to a muscle (feed weekPace), and its next day's length. */ program?: Program | null;
+  /** The program's days as run (which day is next). */ plans?: readonly DayPlan[];
+  /** A lift's rest setting, if any (the timer's rests for the next session). */ kept?: (exercise: string) => number | undefined;
+  /** A muscle named in the Muscles sheet: its weeks against its band. */ onOpenMuscle?: (m: Muscle) => void;
   /**
    * A friend's line as Friends keeps it (state/friendCache, 8 weeks): their PR sets are the ids their phone wrote from their whole
    * log (feed friendPrs), since 8 weeks can't tell a PR from a best-in-8-weeks; nothing that needs more than the window is shown.
@@ -108,12 +116,17 @@ function Change({ pct, flat, weeks }: { pct: number | null; flat?: boolean; week
 
 /** Every tile for the log, by section, and which ones have news now. Empty for an empty log. */
 export function useTiles(input: StatsInput): TileModel[] {
-  const { entries, profile, today, range, who, owner, alsoLifts, body, timer, rotationOf, onOpenLift, onOpenPriorities, program, window: win } = input;
+  const { entries, profile, today, range, who, owner, alsoLifts, body, timer, rotationOf, onOpenLift, onOpenPriorities, program, plans, kept, onOpenMuscle, window: win } = input;
   const data = useMemo(() => work(entries, profile, today, range, alsoLifts ?? [], program, win?.prs), [entries, profile, today, range, alsoLifts, program, win?.prs]);
   // Your energy is yours: a friend's Stats leaves it out, as it does their body data.
   const more = useMemo(() => s2(entries, today, range, timer ?? DEFAULT_TIMER, owner ? body ?? [] : []), [entries, today, range, timer, owner, body]);
   // Body weight is yours alone too (owner, 2026-10-21: friends never see a friend's weight); forViewer leaves its tile out as well.
   const bw = useMemo(() => (owner ? weightSummary(body ?? [], rangeFrom(range, today), today) : null), [owner, body, range, today]);
+  // The learning core's tiles need the whole log (its fit, the program, the timer's settings): never from a friend's 8 weeks.
+  const learned = useMemo(() => (win || !entries.length ? null : learnedTiles(entries, today, range, program, plans ?? NO_PLANS, kept)), [win, entries, today, range, program, plans, kept]);
+  // Relative strength is over his body weight: his alone, once he has weighed in (owner, 2026-10-21).
+  const rel = useMemo(() => (owner && body?.length && entries.length
+    ? relativeStrength(data.lifts.map((l) => ({ name: l.trend.name, points: l.trend.points })), body, rangeFrom(range, today), today) : []), [owner, body, entries.length, data.lifts, range, today]);
   // ---- Body: weight, once there's a weigh-in (IA A5, owner 2026-10-21), with or without a set logged ----
   const weight: TileModel | null = bw && (() => {
     const r = bw.rate, band = bw.band, old = days(bw.last.date, today) > 14;
@@ -137,7 +150,7 @@ export function useTiles(input: StatsInput): TileModel[] {
       id: liftTileId(t.name), section: 'progress', label: t.name, value: String(Math.round(last)), unit: 'lb',
       ctx: <><Change pct={pctOf(t)} flat={flat} weeks={t.stall?.weeks} />{!flat && pctOf(t) != null && <> · {rl}</>}</>,
       viz: (w) => <Spark values={t.points.map((p) => p.v)} w={w} />, news: l.news,
-      sheet: () => <LiftSheet t={t} entries={entries} today={today} range={range} prIds={win?.prs} />,
+      sheet: () => <LiftSheet t={t} entries={entries} today={today} range={range} prIds={win?.prs} who={who} />,
       link: onOpenLift && <button type="button" className="st-link" onClick={() => onOpenLift(t.name)}>Open lift<Icon name="chev-right" size={18} sw={2} /></button>,
     });
   }
@@ -180,6 +193,14 @@ export function useTiles(input: StatsInput): TileModel[] {
       sheet: () => <MilestonesSheet rows={data.miles} range={range} />,
     });
   }
+  if (learned?.carry.length) {
+    const c = learned.carry, top = c[0];
+    out.push({
+      id: 'carry', section: 'progress', label: 'Carry-over', value: String(c.length), unit: c.length === 1 ? 'pair' : 'pairs', ev: 'b',
+      ctx: <>{top.other} ≈ {top.ratio.toFixed(2)}× {top.base}</>,
+      sheet: () => <CarrySheet pairs={c} range={range} />,
+    });
+  }
   if (more.hits.sets >= 3) {
     const h = more.hits, weekly = h.weekly.filter((v): v is number => v != null).map((v) => 100 * v);
     out.push({
@@ -195,7 +216,7 @@ export function useTiles(input: StatsInput): TileModel[] {
     id: 'muscles', section: 'load', label: 'Muscles · this week', title: 'Sets per muscle', value: String(mu.behind.length), unit: 'behind',
     ctx: <>{[mu.on && `${mu.on} on target`, mu.pace && `${mu.pace} on pace`, mu.over && `${mu.over} over`].filter(Boolean).join(' · ') || 'none on target yet'}</>,
     viz: (w) => <Cols values={mu.cols.map((c) => c.v)} w={w} colour={(i) => STATUS_COL[mu.cols[i].st]} />, news: mu.behind.length > 0,
-    sheet: () => <MusclesSheet entries={entries} profile={profile} today={today} who={who} body={owner ? body : undefined} program={program} onOpenLift={onOpenLift} />,
+    sheet: () => <MusclesSheet entries={entries} profile={profile} today={today} who={who} body={owner ? body : undefined} program={program} onOpenLift={onOpenLift} range={range} onOpenMuscle={onOpenMuscle} />,
     link: onOpenPriorities && <button type="button" className="st-link" onClick={onOpenPriorities}>Priorities<Icon name="chev-right" size={18} sw={2} /></button>,
   });
   if (more.effort && more.effort.logged >= 3) {
@@ -248,6 +269,15 @@ export function useTiles(input: StatsInput): TileModel[] {
       // Through last week: a week under way understates it.
       viz: (w) => <Spark values={r.weekly.length > 2 ? r.weekly.slice(0, -1) : r.weekly} w={w} />,
       sheet: () => <LiftsSheet r={r} range={range} today={today} />,
+    });
+  }
+  if (learned?.next) {
+    const n = learned.next;
+    out.push({
+      id: 'forecast', section: 'load', label: 'Next session', value: String(Math.round(n.pace.seconds / 60)), unit: 'min', ev: 'b',
+      ctx: <>{cap(whose)} pace · timer {Math.round(n.plan / 60)} min</>,
+      viz: (w) => <PaceBars pace={n.pace.seconds} plan={n.plan} w={w} />,
+      sheet: () => <ForecastSheet n={n} today={today} whose={whose} />,
     });
   }
 
@@ -314,13 +344,57 @@ export function useTiles(input: StatsInput): TileModel[] {
       sheet: () => <EnergySheet e={e} range={range} today={today} />,
     });
   }
+  if (learned?.fatigue) {
+    const f = learned.fatigue, top = f.lifts[0];
+    out.push({
+      id: 'fatigue', section: 'recovery', label: 'Fatigue per set', value: `−${top.loss[1].toFixed(1)}`, unit: 'reps', ev: 'b',
+      ctx: <>3rd {top.name} set</>,
+      viz: (w) => <Cols values={[0, ...top.loss]} w={w} colour={(i) => (i === 2 ? 'var(--accent)' : 'var(--col)')} />,
+      sheet: () => <FatigueSheet f={f} whose={whose} />,
+    });
+  }
+  if (learned?.rests.length) {
+    const r = learned.rests, top = r[0];
+    out.push({
+      id: 'bestrest', section: 'recovery', label: 'Best rest', value: mss(top.seconds), ev: 'b',
+      ctx: <>{top.name} · default {mss(top.research)}</>,
+      viz: (w) => <PaceBars pace={top.seconds} plan={top.research} w={w} />,
+      sheet: () => <BestRestSheet rows={r} whose={whose} />,
+    });
+  }
 
   if (weight) out.push(weight);
+  if (rel.length) {
+    const top = rel[0];
+    out.push({
+      id: 'relstrength', section: 'body', label: 'Relative strength', value: top.now.ratio.toFixed(2), unit: '× body wt', ev: 'b',
+      ctx: <>{top.name}{top.change != null && <> · <RelDir change={top.change} /></>}</>,
+      viz: (w) => <Spark values={top.points.map((p) => p.ratio)} w={w} />,
+      sheet: () => <RelStrengthSheet rows={rel} range={range} />,
+    });
+  }
   return forViewer(out, { owner: !!owner, window: !!win });
 }
 
 /** Without a timer to ask: the research default. */
 const DEFAULT_TIMER = (exercise: string) => restSeconds(exercise);
+const NO_PLANS: readonly DayPlan[] = [];
+
+/**
+ * The learning core's tiles (plan §4 S5), from the fit the lift tiles read (the log up to today): fatigue per set and the best
+ * rest over the whole log (their gates count sessions, which a range would cut), the next program day, and carry-over within the
+ * range. Each empty when its gate isn't passed.
+ */
+function learnedTiles(entries: SetEntry[], today: string, range: Range, program: Program | null | undefined, plans: readonly DayPlan[], kept?: (exercise: string) => number | undefined) {
+  const core = coreBefore(entries, addDays(today, 1)), from = rangeFrom(range, today);
+  const names = [...new Set(entries.filter((e) => e.date >= from && e.date <= today).map((e) => e.exercise))];
+  const warm = new Map<string, number>();
+  const warmups = (ex: string) => { const k = liftKey(ex); if (!warm.has(k)) warm.set(k, warmupCount(entries, ex, today)); return warm.get(k)!; };
+  return {
+    fatigue: fatiguePerSet(core), rests: bestRests(core, names, addDays(today, 1)),
+    next: nextSession(entries, program, plans, today, { warmups, kept }), carry: movesTogether(core, from, today),
+  };
+}
 
 /** What S2's tiles read over the range: one pass each, once per log, day, range, timer and body log. */
 function s2(entries: SetEntry[], today: string, range: Range, timer: (exercise: string) => number, body: readonly BodyDay[]) {
@@ -458,9 +532,19 @@ export function WeekSheet({ entries, profile, today, program }: { entries: SetEn
 
 // ---- Sheets ----
 
-/** A lift over the range: its e1RM each session (drag across to read one), the best set, where it's heading, its rep maxes. */
-function LiftSheet({ t, entries, today, range, prIds }: { t: Trend; entries: SetEntry[]; today: string; range: Range; /** A friend's line: their PR ids (useTiles `window`). */ prIds?: ReadonlySet<string> }) {
+/**
+ * A lift over the range: its e1RM each session (drag across to read one), the best set, where it's heading, its rep maxes. Where
+ * the core has a level for it (what the tile reads), a toggle shows the plain best set each session beside it (C2).
+ */
+function LiftSheet({ t, entries, today, range, prIds, who }: { t: Trend; entries: SetEntry[]; today: string; range: Range; /** A friend's line: their PR ids (useTiles `window`). */ prIds?: ReadonlySet<string>; who?: string }) {
   const from = rangeFrom(range, today);
+  // feed liftTrend's points are the core's level when it has one in the range, else the best set: only then is there a choice.
+  const best = useMemo(() => {
+    const core = coreBefore(entries, addDays(today, 1));
+    return core && levelSeries(core, t.name).some((p) => p.date >= from && p.date <= today) ? bestSetPoints(entries, t.name, from, today) : null;
+  }, [entries, t.name, from, today]);
+  const [reading, setReading] = useState<'level' | 'best'>('level');
+  const shown = reading === 'best' && best?.length ? best : t.points;
   const v = useMemo(() => {
     const kinds = prIds ? null : prKinds(entries);
     const sets = liftSets(entries, t.name).filter((e) => e.date >= from && e.date <= today);
@@ -470,13 +554,24 @@ function LiftSheet({ t, entries, today, range, prIds }: { t: Trend; entries: Set
     // Rep maxes are all-time records: 8 weeks of a friend's sets would pass off their best in 8 weeks as one.
     const held = prIds ? new Map<RecordKind, { value: number }>() : records(entries, t.name);
     const rms = ([3, 5, 8, 10, 12] as const).flatMap((n) => { const h = held.get(`rm${n}` as RecordKind); return h ? [{ n, v: h.value }] : []; });
-    return { points: t.points.map((p) => ({ date: p.date, e1rm: p.v, pr: prDays.has(p.date) })), best, sessions: new Set(sets.map((e) => e.date)).size, rms };
-  }, [entries, t, from, today, prIds]);
-  const last = t.points.at(-1)!.v, peak = Math.max(...t.points.map((p) => p.v)), m = milestone(peak), pct = pctOf(t);
+    return { points: shown.map((p) => ({ date: p.date, e1rm: p.v, pr: prDays.has(p.date) })), best, sessions: new Set(sets.map((e) => e.date)).size, rms };
+  }, [entries, t, from, today, prIds, shown]);
+  const last = shown.at(-1)!.v, peak = Math.max(...shown.map((p) => p.v)), m = milestone(peak);
+  // The best set's change as the tile reads the level's (feed liftTrend): last less first, once two weeks apart.
+  const pct = shown === t.points ? pctOf(t) : days(shown[0].date, shown.at(-1)!.date) >= 14 ? (100 * (last - shown[0].v)) / shown[0].v : null;
   const status = t.stall ? <span className="flat">— Flat {Math.max(1, t.stall.weeks)} wk</span> : pct == null ? 'New' : pct > 0.05 ? <span className="up">↑ Climbing</span> : pct < -0.05 ? <span className="down">↓ Down</span> : '— Level';
   return (<>
-    <div className="st-dr-hero"><span className="st-dr-k">e1RM · {rangeLabel(range)}</span><span className="st-dr-v"><b>{Math.round(last)}</b> lb <Change pct={pct} flat={!!t.stall} weeks={t.stall?.weeks} /></span></div>
-    <LineChart points={v.points} today={today} label={`${t.name} e1RM per session, last ${rangeWords(range)}`} what="this lift" />
+    <div className="st-dr-hero"><span className="st-dr-k">e1RM{best ? (reading === 'best' ? ' · best set' : ' · fatigue-adjusted') : ''} · {rangeLabel(range)}</span><span className="st-dr-v"><b>{Math.round(last)}</b> lb <Change pct={pct} flat={!!t.stall} weeks={t.stall?.weeks} /></span></div>
+    {best && best.length > 0 && (
+      <div className="st-range st-seg" role="group" aria-label="Reading">
+        <button type="button" aria-pressed={reading === 'level'} onClick={() => setReading('level')}>Fatigue-adjusted</button>
+        <button type="button" aria-pressed={reading === 'best'} onClick={() => setReading('best')}>Best set</button>
+      </div>
+    )}
+    <LineChart points={v.points} today={today} label={`${t.name} e1RM per session${best ? (reading === 'best' ? ', best set' : ', fatigue-adjusted') : ''}, last ${rangeWords(range)}`} what="this lift" />
+    {best && best.length > 0 && (reading === 'best'
+      ? <EvLine ev="a">The session’s best single set by Epley’s formula (Epley 1985): a tired back-off set reads at face value, so a session of many sets can read low.</EvLine>
+      : <EvLine ev="b">Fatigue-adjusted: every set of the session read as the fresh strength it implies, the reps the sets before it cost put back, and sessions smoothed into a level. Learned from {who ? `@${who}’s` : 'your'} sets.</EvLine>)}
     <dl className="st-cells3">
       <div><dt>Best set</dt><dd>{v.best ? fmtSet(v.best) : '—'}</dd></div>
       <div><dt>Sessions</dt><dd>{v.sessions}</dd></div>
@@ -549,8 +644,11 @@ function MilestonesSheet({ rows, range }: { rows: MileRow[]; range: Range }) {
   </>);
 }
 
-/** This week's sets per muscle: what's behind (a lift for each), every muscle against its target band, the next steps. */
-export function MusclesSheet({ entries, profile, today, who, body, program, onOpenLift }: { entries: SetEntry[]; profile: Profile; today: string; who?: string; body?: readonly BodyDay[]; program?: Program | null; onOpenLift?: (name: string) => void }) {
+/**
+ * This week's sets per muscle: what's behind (a lift for each), every muscle against its target band, the next steps; and, given
+ * a range and somewhere to open it, each muscle over the range (its own sheet: the weeks against its band).
+ */
+export function MusclesSheet({ entries, profile, today, who, body, program, onOpenLift, range, onOpenMuscle }: { entries: SetEntry[]; profile: Profile; today: string; who?: string; body?: readonly BodyDay[]; program?: Program | null; onOpenLift?: (name: string) => void; range?: Range; onOpenMuscle?: (m: Muscle) => void }) {
   const v = useMemo(() => {
     const week = weeklyMuscleSets(entries, weekStart(today));
     const last = weeklyMuscleSets(entries, addDays(weekStart(today), -7));
@@ -579,7 +677,50 @@ export function MusclesSheet({ entries, profile, today, who, body, program, onOp
     {v.week.unmapped.length > 0 && <p className="muted small">Not counted (unknown muscles): {v.week.unmapped.join(', ')}</p>}
     {body && <VolumeSteps entries={entries} body={body} profile={profile} today={today} />}
     <ChartTable caption="Fractional sets per muscle" head={['Muscle', 'This week / last week']} rows={MUSCLES.map((m) => [m, `${fmt1(v.week.sets[m])} / ${fmt1(v.last.sets[m])}`])} />
+    {range && onOpenMuscle && <MuscleRows entries={entries} profile={profile} today={today} range={range} onOpen={onOpenMuscle} />}
   </>);
+}
+
+/** Each muscle's weeks over the range, worked out once per log, profile, day and range. A muscle not planned has no band. */
+function useMuscleWeeks(entries: SetEntry[], profile: Profile, today: string, range: Range) {
+  return useMemo(() => {
+    const w = muscleWeeks(entries, rangeFrom(range, today), today);
+    let first: string | null = null;
+    for (const e of entries) if (first == null || e.date < first) first = e.date;
+    const band = (m: Muscle) => { const b = targetFor(profile, m); return b[1] > 0 ? b : null; };
+    const rows = MUSCLES.map((m) => ({ m, band: band(m), values: w.sets[m], span: muscleSpan(w.weeks, w.sets[m], band(m) ?? [0, Infinity], first) }));
+    return { weeks: w.weeks, rows };
+  }, [entries, profile, today, range]);
+}
+
+/** The Muscles sheet's list: each muscle planned or trained in the range, its average a week and its weeks in the band; tap for its sheet. */
+function MuscleRows({ entries, profile, today, range, onOpen }: { entries: SetEntry[]; profile: Profile; today: string; range: Range; onOpen: (m: Muscle) => void }) {
+  const { rows } = useMuscleWeeks(entries, profile, today, range);
+  const shown = rows.filter((r) => r.band || r.values.some((v) => v > 0));
+  if (!shown.length) return null;
+  return (
+    <section className="st-mw" aria-label={`Each muscle, ${lastOf(range)}`}>
+      <h3>Each muscle · {lastOf(range)}</h3>
+      <ul>
+        {shown.map((r) => (
+          <li key={r.m}>
+            <button type="button" onClick={() => onOpen(r.m)}>
+              <span className="st-mw-m">{r.m}</span>
+              <span className="st-mw-n">{r.span.avg == null ? 'no whole week yet' : <>{r.span.avg.toFixed(1)} a week{r.band && <> · {r.span.within} of {r.span.weeks} in band</>}</>}</span>
+              <Icon name="chev-right" size={16} sw={2} />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** One muscle over the range (opened from the Muscles sheet): its sets each week against its band, and its Table. */
+export function MuscleWeeks({ entries, profile, today, range, muscle }: { entries: SetEntry[]; profile: Profile; today: string; range: Range; muscle: Muscle }) {
+  const { weeks, rows } = useMuscleWeeks(entries, profile, today, range);
+  const r = rows.find((x) => x.m === muscle)!;
+  return <MuscleWeeksSheet muscle={muscle} weeks={weeks} values={r.values} band={r.band} span={r.span} range={range} own={!!profile.custom?.includes(profile.tiers[muscle])} />;
 }
 
 /** Every muscle behind what the rest of the week can make up (not just four), furthest first, each with a lift of theirs that works it. */

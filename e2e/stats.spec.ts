@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { goto, openProgram } from './nav';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'history.sample.csv');
@@ -278,4 +279,115 @@ test('stats: cardio-only days count toward neither the sessions goal nor the str
   await week.getByRole('button', { name: 'Done' }).click();
   const s = await sheet(page, 'sessions');
   await expect(s.locator('tbody tr').last().locator('td')).toHaveText(['2026-09-28', '1']);
+});
+
+// ---- Stats v2 S4/S5 (plan §4): a muscle's weeks, the lift sheet's two readings, the learning core's tiles behind their gates ----
+
+test('stats: 12 weeks untimed, the core’s tiles stay hidden; a lift reads fatigue-adjusted or best set; a muscle’s weeks and back', async ({ page }) => {
+  await seed(page);
+  // 36 sessions, none timed, no weigh-ins, no program: under every gate.
+  await expect(page.locator('[data-tile="calendar"]')).toBeVisible();
+  for (const id of ['fatigue', 'bestrest', 'forecast', 'carry', 'relstrength']) await expect(page.locator(`[data-tile="${id}"]`)).toHaveCount(0);
+  await expect(page.locator('.st-t-ev')).toHaveCount(0);
+
+  // Bench's sheet: the tile's fatigue-adjusted level, or the best set by Epley (155 × 10 on Friday: 207).
+  const lift = await sheet(page, 'lift:bench press');
+  const reading = lift.getByRole('group', { name: 'Reading' });
+  await expect(reading.getByRole('button', { name: 'Fatigue-adjusted' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(lift.locator('.st-dr-k')).toHaveText('e1RM · fatigue-adjusted · 12 wk');
+  await expect(lift.locator('.st-ev')).toContainText('learned');
+  const adjusted = await lift.locator('.st-dr-v b').textContent();
+  await reading.getByRole('button', { name: 'Best set' }).click();
+  await expect(lift.locator('.st-dr-k')).toHaveText('e1RM · best set · 12 wk');
+  await expect(lift.locator('.st-dr-v b')).toHaveText('207');
+  expect(adjusted).not.toBe('207');
+  await expect(lift.getByRole('img', { name: 'Bench Press e1RM per session, best set, last 12 weeks' })).toBeVisible();
+  await expect(lift.locator('.st-ev')).toContainText(/research.*Epley 1985/);
+  await lift.getByRole('button', { name: 'Done' }).click();
+
+  // The Muscles sheet lists each muscle over the range; Chest opens its weeks against its band, and comes back.
+  const mus = await sheet(page, 'muscles');
+  const list = mus.getByRole('region', { name: 'Each muscle, last 12 weeks' });
+  const chest = list.getByRole('button', { name: /^Chest/ });
+  await expect(chest).toContainText('9.0 a week');
+  await chest.click();
+  const ch = page.getByRole('dialog', { name: 'Chest · last 12 weeks' });
+  await expect(ch).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(ch.getByRole('img', { name: 'Chest, fractional sets per week, last 12 weeks' })).toBeVisible();
+  await expect(ch.locator('rect.band')).toHaveCount(1);
+  await expect(ch.locator('.st-dr-v b')).toHaveText('9.0'); // 11 whole weeks of 9 since the first set; this week left out
+  await expect(ch.locator('tbody tr')).toHaveCount(13);
+  await expect(ch.locator('tbody tr').first().locator('td')).toHaveText(['2026-07-06', '0.0']);
+  await expect(ch.locator('.st-ev')).toContainText('research');
+  await ch.getByRole('button', { name: 'Muscles', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Sets per muscle' })).toBeVisible();
+});
+
+/** Weigh-ins over the rest-knee fixture's last 12 weeks, 190 lb easing to 186. */
+const BODY_2024 = ['date,weight_lb', ...Array.from({ length: 30 }, (_, i) => `${iso(new Date(Date.UTC(2024, 5, 1 + 3 * i)))},${(190 - i * 0.14).toFixed(1)}`)].join('\n');
+const KNEE = path.join(import.meta.dirname, 'fixtures', 'rest-knee.sample.csv');
+
+test('stats: 80 timed sessions, weigh-ins and a program: fatigue per set, best rest, carry-over, relative strength, the next session, each labelled', async ({ page }) => {
+  test.setTimeout(150_000);
+  await page.clock.install({ time: new Date('2024-08-28T18:00:00') });
+  await page.goto('/');
+  await goto(page, 'Backup');
+  await page.getByLabel('Import CSV').setInputFiles([
+    { name: 'sets.csv', mimeType: 'text/csv', buffer: readFileSync(KNEE) }, { name: 'body.csv', mimeType: 'text/csv', buffer: Buffer.from(BODY_2024) }]);
+  await expect(page.getByText('✓ Imported 1098 new sets')).toBeVisible({ timeout: 60_000 });
+  await goto(page, 'Stats');
+
+  const tile = (id: string) => page.locator(`[data-tile="${id}"]`);
+  await expect(tile('fatigue')).toBeVisible();
+  for (const id of ['fatigue', 'bestrest', 'carry', 'relstrength']) await expect(tile(id).locator('.st-t-ev')).toHaveText('learnedlearned from the log');
+  // No program yet: no next session.
+  await expect(tile('forecast')).toHaveCount(0);
+
+  await expect(tile('fatigue').locator('.st-t-val')).toHaveText(/^−2\.\d\s*reps$/);
+  await expect(tile('fatigue').locator('.st-t-ctx')).toHaveText(/^3rd .+ set$/);
+  let d = await sheet(page, 'fatigue');
+  await expect(d.locator('.st-sub').first()).toHaveText(/^Your 3rd .+ set loses about 2\.\d reps, at your usual 2:15 from one set to the next\.$/);
+  await expect(d.getByRole('list', { name: 'Reps the 3rd set loses, per lift' }).getByRole('listitem')).toHaveCount(10);
+  await expect(d).toContainText('A set of another lift for the same muscles just before costs about 0.5 reps');
+  await d.getByRole('button', { name: 'Done' }).click();
+
+  await expect(tile('bestrest').locator('.st-t-val')).toHaveText(/^1:[0-5]\d$/);
+  d = await sheet(page, 'bestrest');
+  await expect(d.getByRole('list', { name: 'Best rest per lift' }).getByRole('listitem')).toHaveCount(10);
+  await expect(d.locator('.st-ev .st-t-ev')).toHaveText(['learnedlearned from the log', 'researchfrom research']);
+  await d.getByRole('button', { name: 'Done' }).click();
+
+  await expect(tile('carry').locator('.st-t-val')).toHaveText(/^4\s*pairs$/);
+  d = await sheet(page, 'carry');
+  const pairs = d.getByRole('list', { name: 'Carry-over per pair' }).getByRole('listitem');
+  await expect(pairs).toHaveCount(4);
+  await expect(pairs.first()).toContainText('Incline DB Press against Bench Press');
+  await expect(pairs.first()).toContainText('0.38×');
+  await d.getByRole('button', { name: 'Done' }).click();
+  // Four weeks can't hold 8 weeks of a pair; fatigue per set reads the whole log, whatever the range.
+  await page.getByRole('group', { name: 'Range' }).getByRole('button', { name: '4 wk' }).click();
+  await expect(tile('carry')).toHaveCount(0);
+  await expect(tile('fatigue')).toBeVisible();
+  await page.getByRole('group', { name: 'Range' }).getByRole('button', { name: '12 wk' }).click();
+
+  const body = page.getByRole('region', { name: 'Body' });
+  await expect(body.locator('[data-tile="relstrength"] .st-t-val')).toHaveText(/^\d\.\d\d\s*× body wt$/);
+  d = await sheet(page, 'relstrength');
+  await expect(d.getByRole('list', { name: 'Relative strength per lift' }).getByRole('listitem')).toHaveCount(4);
+  await d.getByRole('button', { name: 'Done' }).click();
+
+  // A program: the next session at his pace and at the timer's rests.
+  await goto(page, 'Today');
+  await openProgram(page);
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await expect(page.getByRole('heading', { name: 'Weekly volume' })).toBeVisible();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  await goto(page, 'Stats');
+  await expect(tile('forecast').locator('.st-t-val')).toHaveText(/^\d+\s*min$/);
+  await expect(tile('forecast').locator('.st-t-ctx')).toHaveText(/^Your pace · timer \d+ min$/);
+  d = await sheet(page, 'forecast');
+  await expect(d.locator('.st-lines dt')).toHaveText(['At your pace', 'At the timer', 'The plan']);
+  await expect(d.getByRole('list', { name: 'The timer’s rest per lift' }).getByRole('listitem').first()).toBeVisible();
+  await expect(d.locator('.st-ev .st-t-ev')).toHaveText(['learnedlearned from the log', 'researchfrom research']);
 });

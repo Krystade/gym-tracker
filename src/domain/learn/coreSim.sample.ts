@@ -1,7 +1,7 @@
 import { resolveLift } from '../lifts';
 import type { SetEntry } from '../types';
 import { rng, type Rng } from './num';
-import { overlap } from './tags';
+import { overlap, tagsOf } from './tags';
 
 // A synthetic lifter with KNOWN session-fatigue parameters, for the learning core's recovery tests: a TypeScript port of the
 // stage-0 prototype (scratchpad core_sim.py). Synthetic only; no personal data. Ten catalog lifts, five day templates, the
@@ -36,6 +36,13 @@ export interface SimOptions {
   easyBackoff?: boolean;
   /** The share of sessions whose first set is a test: taken to failure and logged as such (RIR 0, flag `test`). */
   testFrac?: number;
+  /**
+   * A drift every lift of one movement shares (SD of ln e1RM per session, on top of each lift's own walk): lifts that carry over
+   * to each other (statsCore movesTogether's positive control). Lifts of no shared movement keep walking on their own.
+   */
+  family?: number;
+  /** Every lift's steady climb, ln e1RM per session (default 0.002·3/7, ~0.2 % a week): 0 leaves only the walks. */
+  trend?: number;
   truth?: Partial<Truth>;
 }
 /**
@@ -60,6 +67,7 @@ export function simulate(seed: number, o: SimOptions): { entries: SetEntry[]; tr
   const truth = { ...defaultTruth(r), ...o.truth };
   const V = SIM_LIFTS.map((l) => resolveLift(l.name).m);
   const O = V.map((vj) => V.map((vs) => overlap(vj, vs)));
+  const MOVES = SIM_LIFTS.map((l) => tagsOf(l.name).move);
   let logE = SIM_LIFTS.map((l) => Math.log(l.start));
   const entries: SetEntry[] = [];
   const sets = new Map<string, SetTruth>();
@@ -69,7 +77,16 @@ export function simulate(seed: number, o: SimOptions): { entries: SetEntry[]; tr
   let day = 0, seq = 0;
   for (let d = 0; d < o.sessions; d++) {
     day += r.pick([2, 3, 4]);
-    logE = logE.map((x) => x + 0.002 * 3 / 7 + r.normal(0, 0.008));
+    logE = logE.map((x) => x + (o.trend ?? 0.002 * 3 / 7) + r.normal(0, 0.008));
+    if (o.family) {
+      const shared = new Map<string, number>();
+      logE = logE.map((x, i) => {
+        const m = MOVES[i];
+        if (!m) return x;
+        if (!shared.has(m)) shared.set(m, r.normal(0, o.family!));
+        return x + shared.get(m)!;
+      });
+    }
     const ready = r.normal(0, truth.readySd);
     const tmpl = r.shuffle([...DAYS[d % DAYS.length]]);
     const timed = r.next() < timedFrac;

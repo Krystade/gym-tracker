@@ -207,3 +207,26 @@ span.st-fix { min-height: 0; color: var(--text-2); }
 .st-pl-s { font-size: var(--fs-sm); white-space: nowrap; }
 .st-pl-why, .st-pl-rot { grid-column: 1 / -1; font-size: var(--fs-sm); color: var(--text-2); }
 .st-pl-rot b { color: var(--text); font-weight: 600; }
+
+/* ---- S4/S5: the last tiles (relative strength, a muscle's weeks, the learning core's) ---- */
+/* Where a number comes from: research, learned, neutral. A grey pill under the tile's label; in a sheet, before its method. */
+.st-t-ev { align-self: flex-start; display: inline-block; padding: 0 7px; border-radius: var(--r-pill); background: var(--fill); color: var(--text-2); font-size: 11px; line-height: 18px; font-weight: 600; letter-spacing: 0.02em; }
+.st-ev { display: flex; align-items: baseline; gap: 8px; margin: 10px 0; font-size: var(--fs-sm); color: var(--text-2); }
+.st-ev .st-t-ev { flex: none; }
+/* A sheet's two readings of one thing (a lift: fatigue-adjusted or best set): the range control's look, a size down. */
+.st-seg { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 4px 0 10px; }
+/* Rows with a third line under the number (a band, a family). */
+.st-rows .st-b-v b { color: var(--text); font-weight: 600; }
+.st-b-sub { grid-column: 1 / -1; font-size: var(--fs-sm); color: var(--text-3); }
+/* The Muscles sheet's list: a muscle a row, its sheet a tap away. */
+.st-mw ul { list-style: none; margin: 0; padding: 0; }
+.st-mw li + li { border-top: 1px solid var(--hairline); }
+.st-mw button { width: 100%; min-height: 48px; display: grid; grid-template-columns: minmax(0, 1fr) auto 16px; align-items: center; gap: 8px; padding: 0; background: none; color: var(--text); text-align: left; font-weight: 400; }
+.st-mw-m { font-size: var(--fs-sub); min-width: 0; overflow-wrap: anywhere; }
+.st-mw-n { font-size: var(--fs-sm); color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.st-mw .ic { color: var(--text-3); }
+.st-back { padding: 0 8px 0 0; }
+/* A muscle's target band behind its weekly bars: an opaque fill, not a tint (a tint over the sheet reads muddy). */
+.chart .band { fill: var(--fill); }
+.st-legend.st-legend-band { margin-bottom: 12px; }
+.st-legend i.band { border-radius: 3px; background: var(--fill); border: 1px solid var(--fill-2); box-sizing: border-box; }

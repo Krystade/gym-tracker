@@ -9,12 +9,12 @@ function barPath(x: number, w: number, base: number, h: number): string {
   return `M${x},${base} V${base - h + r} Q${x},${base - h} ${x + r},${base - h} H${x + w - r} Q${x + w},${base - h} ${x + w},${base - h + r} V${base} Z`;
 }
 
-// `unit` goes on the top label only, as on the Exercise chart.
-export function BarChart({ label, points, format, tick = String, unit, goal }: {
-  label: string; points: { x: string; y: number }[]; format: (n: number) => string; tick?: (n: number) => string; unit?: string; goal?: number;
+// `unit` goes on the top label only, as on the Exercise chart. `band`: a target range, drawn as a filled band behind the bars.
+export function BarChart({ label, points, format, tick = String, unit, goal, band }: {
+  label: string; points: { x: string; y: number }[]; format: (n: number) => string; tick?: (n: number) => string; unit?: string; goal?: number; band?: readonly [number, number];
 }) {
   const [sel, setSel] = useState<number | null>(null);
-  const max = Math.max(goal ?? 0, ...points.map((p) => p.y), 1);
+  const max = Math.max(goal ?? 0, band?.[1] ?? 0, ...points.map((p) => p.y), 1);
   const slot = (W - L - R) / points.length;
   const base = H - B;
   const Y = (v: number) => T + (1 - v / max) * (H - T - B);
@@ -22,6 +22,7 @@ export function BarChart({ label, points, format, tick = String, unit, goal }: {
     <>
       <svg className="chart" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label}>
         {[0, max / 2, max].map((v) => <line key={v} x1={L} x2={W - R} y1={Y(v)} y2={Y(v)} className="grid" />)}
+        {band && <rect x={L} width={W - R - L} y={Y(band[1])} height={Math.max(1, Y(band[0]) - Y(band[1]))} className="band" />}
         <line x1={L} x2={W - R} y1={base} y2={base} className="axis" />
         <text x={L - 6} y={T + 4} className="lbl" textAnchor="end">{tick(max)}{unit ? ` ${unit}` : ''}</text>
         <text x={L - 6} y={Y(max / 2) + 4} className="lbl" textAnchor="end">{tick(max / 2)}</text>

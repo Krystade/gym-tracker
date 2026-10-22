@@ -101,7 +101,8 @@ test('a friend’s page opens inside Friends from what the phone keeps, compares
   expect((await st.boundingBox())!.y).toBeGreaterThan((await shared.boundingBox())!.y);
   // Left out: what only its owner sees (energy), what their line can't fill (muscles need their priorities, rest their timers,
   // lifts in rotation the log before the 8 weeks); no week tile (the page's head is their week), no range to pick.
-  for (const id of ['energy', 'muscles', 'rest', 'lifts']) await expect(st.locator(`[data-tile="${id}"]`)).toHaveCount(0);
+  // Nor the learning core's (a whole log's fit, their program and settings), nor anything over a body weight.
+  for (const id of ['energy', 'muscles', 'rest', 'lifts', 'fatigue', 'bestrest', 'forecast', 'carry', 'relstrength']) await expect(st.locator(`[data-tile="${id}"]`)).toHaveCount(0);
   await expect(st.locator('.st-week')).toHaveCount(0);
   await expect(st.getByRole('group', { name: 'Range' })).toHaveCount(0);
   await expect(st.getByRole('button', { name: 'Edit' })).toHaveCount(0);
@@ -225,11 +226,13 @@ test('a friend’s weigh-ins never show: no Body on their Stats, none of their w
   const st = page.getByRole('region', { name: `@${fr.name}’s stats` });
   await expect(st.locator('[data-tile="sessions"]')).toBeVisible();
   await expect(st.locator('[data-tile="weight"]')).toHaveCount(0);
+  await expect(st.locator('[data-tile="relstrength"]')).toHaveCount(0); // a lift over their weight: theirs alone too
   await fp.getByRole('group', { name: 'Whole log' }).getByRole('button', { name: 'Stats' }).click();
   await expect(page.getByRole('heading', { name: `@${fr.name}’s stats`, level: 1 })).toBeVisible();
   // Their log is loaded (their squat tile is there) and still no Body.
   await expect(page.locator('[data-tile^="lift:"]').first()).toBeVisible();
   await expect(page.getByRole('region', { name: 'Body' })).toHaveCount(0);
   await expect(page.locator('[data-tile="weight"]')).toHaveCount(0);
-  await expect(page.locator('main')).not.toContainText(/17[1-4]\.\d|Body weight|lb trend|weigh-in/i);
+  await expect(page.locator('[data-tile="relstrength"]')).toHaveCount(0);
+  await expect(page.locator('main')).not.toContainText(/17[1-4]\.\d|Body weight|lb trend|weigh-in|Relative strength|× body wt/i);
 });
