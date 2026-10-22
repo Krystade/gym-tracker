@@ -1,4 +1,5 @@
 import { amount, DEF, DEFS, GROUPS, closest, highest, plateLoad, tierWord, TIERS, unlockedOn, unlockText, type Achievements, type Def, type Tier, type Track, type Unlock } from '../domain/achievements';
+import { Icon } from './icons';
 import { Medal, TIER_COLOUR } from './Medal';
 import './ach.css';
 
@@ -49,6 +50,43 @@ export function AchShelf({ a, w }: { a: Achievements; w: number }) {
   return <span className="ach-shelf">{shown.slice(0, n).map((m) => <Medal key={m.id} tier={m.tier} glyph={m.id} size={40} />)}</span>;
 }
 
+/**
+ * What a set just saved unlocked (plan §6): a line each under the lift card's PR line, the highest level of each. Tapping one
+ * opens Stats at its levels. The box is always there, so a screen reader hears lines as they come (aria-live), and it isn't a
+ * status: the PR line is that.
+ */
+export function AchLines({ us, onOpen }: { us: readonly Unlock[] | null; onOpen?: (id: string) => void }) {
+  return (
+    <div className="ach-lines" aria-live="polite">
+      {us?.map((u) => (
+        <button key={`${u.id}:${u.level}:${u.lift ?? ''}`} type="button" className="ach-line" onClick={() => onOpen?.(u.id)}>
+          <Medal tier={u.tier} glyph={u.id} size={36} />
+          <span className="ach-line-txt">
+            <span><span className={`ach-tier t-${u.tier}`}>{tierWord(u.tier)}</span> · <b>{DEF.get(u.id)!.title}</b></span>
+            <span className="ach-line-sub">{unlockText(u)}</span>
+          </span>
+          {onOpen && <Icon name="chev-right" size={18} sw={2} className="ach-line-go" />}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The closest next level, as the finish card shows it. */
+export function NextRow({ t, onOpen }: { t: Track; onOpen?: (id: string) => void }) {
+  const nt = nextTier(t)!;
+  return (
+    <button type="button" className="ach-row" onClick={() => onOpen?.(t.id)}>
+      <Medal tier="lock" glyph={t.id} size={44} />
+      <span className="ach-row-txt">
+        <b>{titleOf(t)} · {tierWord(nt)}</b>
+        <span>{ofNext(t)}</span>
+        {t.value > 0 && <Bar frac={t.value / t.next!} tier={nt} />}
+      </span>
+    </button>
+  );
+}
+
 /** Part of the way to the next level, in that level's colour. */
 const Bar = ({ frac, tier }: { frac: number; tier: Tier }) => (
   <span className="ach-bar" aria-hidden="true"><i style={{ width: `${Math.max(3, Math.min(100, 100 * frac))}%`, background: TIER_COLOUR[tier].rim }} /></span>
@@ -74,16 +112,16 @@ function FamilyRow({ t, onOpen }: { t: Track; onOpen: (id: string) => void }) {
 }
 
 /** An unlock: its medal, tier and what it means. */
-function UnlockRow({ u, today, onOpen }: { u: Unlock; today: string; onOpen: (id: string) => void }) {
+export function UnlockRow({ u, today, onOpen }: { u: Unlock; today?: string; onOpen?: (id: string) => void }) {
   return (
-    <button type="button" className="ach-row" onClick={() => onOpen(u.id)}>
+    <button type="button" className="ach-row" onClick={() => onOpen?.(u.id)}>
       <Medal tier={u.tier} glyph={u.id} size={44} />
       <span className="ach-row-txt">
         <b>{DEF.get(u.id)!.title}</b>
         <span className={`ach-tier t-${u.tier}`}>{tierWord(u.tier)}</span>
         <span>{unlockText(u)}</span>
       </span>
-      <span className="ach-when">{achDay(u.date, today)}</span>
+      {today && <span className="ach-when">{achDay(u.date, today)}</span>}
     </button>
   );
 }
@@ -125,19 +163,7 @@ export function AchievementsSheet({ a, today, since, onOpen }: { a: Achievements
       {next.length > 0 && (
         <section className="ach-sec" aria-label="Next up">
           <h3>Next up<span>closest first</span></h3>
-          {next.map((t) => {
-            const nt = nextTier(t)!;
-            return (
-              <button key={`${t.id}:${t.lift ?? ''}`} type="button" className="ach-row" onClick={() => onOpen(t.id)}>
-                <Medal tier="lock" glyph={t.id} size={44} />
-                <span className="ach-row-txt">
-                  <b>{titleOf(t)} · {nt}</b>
-                  <span>{ofNext(t)}</span>
-                  {t.value > 0 && <Bar frac={t.value / t.next!} tier={nt} />}
-                </span>
-              </button>
-            );
-          })}
+          {next.map((t) => <NextRow key={`${t.id}:${t.lift ?? ''}`} t={t} onOpen={onOpen} />)}
         </section>
       )}
       {GROUPS.map((g) => {

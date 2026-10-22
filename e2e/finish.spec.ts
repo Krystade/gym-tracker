@@ -112,6 +112,10 @@ test('Finish: the summary in the plan’s place; Add more brings the plan back, 
   await expect(sum.locator('.finish-stats')).toContainText(`Time${3 * (sets - 1) + 1} min`);
   await expect(sum.getByRole('list', { name: 'Sets per muscle this week' }).getByRole('listitem').first()).toBeVisible();
   await expect(sum.getByLabel('Next')).toContainText('Next: Day B');
+  // What today unlocked, counted from today (the first open: the six sessions imported from before count for nothing), and the
+  // closest level still to come.
+  await expect(sum.getByRole('region', { name: 'Achievements today' })).toContainText('Your first session');
+  await expect(sum.getByRole('region', { name: 'Closest achievement' }).getByRole('button')).toHaveCount(1);
   await page.screenshot({ path: 'screenshots/finish-summary.png', fullPage: true });
 
   // A reload keeps it finished.

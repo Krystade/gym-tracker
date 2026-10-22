@@ -12,7 +12,7 @@ import type { SetEntry } from '../domain/types';
  * way, and a lift's name only for the pain question (owner, 2026-10-20: name the region and lift).
  */
 export interface Activity {
-  date: string; next: string | null; week: { start: string; sessions: number; sets: number; prs: number; cardio: number };
+  date: string; next: string | null; week: { start: string; sessions: number; sets: number; prs: number; cardio: number; ach?: number };
   /** His sessions-a-week goal: the reminder is quiet once the week reaches it (with learning on). */
   goal?: number;
   /** Per weekday (0 = Sunday), the learned reminder time "HH:MM", 'off' or null (learn/remind): days and times only. */
@@ -51,9 +51,10 @@ export function restDatesOf(r: { verdict: { kind: string }; plan: WeekPlan | nul
 /**
  * `date`: the last day anything was logged (the reminder stays quiet on a day that has one). `next`: the program day that
  * comes up next. `week`: this week's sessions, sets and PRs, counted as Stats counts them, and `cardio`: its cardio-only days.
- * `rest`: the week plan's rest dates (restDatesOf), those from today on.
+ * `rest`: the week plan's rest dates (restDatesOf), those from today on. `ach`: the week's achievements (domain/achievements
+ * weekCount), a count only, for the recap's "· 3 achievements".
  */
-export function activityOf(entries: SetEntry[], program: Program | null | undefined, plans: DayPlan[], today: string, goal?: number, tz = zone(), rest?: readonly string[]): Activity {
+export function activityOf(entries: SetEntry[], program: Program | null | undefined, plans: DayPlan[], today: string, goal?: number, tz = zone(), rest?: readonly string[], ach?: number): Activity {
   const date = entries.reduce((d, e) => (e.date <= today && e.date > d ? e.date : d), '0000-00-00');
   const start = weekStart(today);
   const w = weeklySummary(entries, 1, today)[0];
@@ -61,7 +62,7 @@ export function activityOf(entries: SetEntry[], program: Program | null | undefi
   const prs = [...prIds(entries)].filter((id) => thisWeek.has(id)).length;
   // Counting today's plan too: on a day with nothing logged it's the same day, and after a session it's the one after.
   const next = program?.days.length ? program.days[nextDay(program, plans, entries, addDays(today, 1))]?.name ?? null : null;
-  const a: Activity = { date, next: next?.slice(0, 40) ?? null, week: { start, sessions: Math.min(w.sessions, 7), sets: w.sets, prs, cardio: Math.min(w.cardioDays, 7) } };
+  const a: Activity = { date, next: next?.slice(0, 40) ?? null, week: { start, sessions: Math.min(w.sessions, 7), sets: w.sets, prs, cardio: Math.min(w.cardioDays, 7), ...(ach != null && { ach: Math.min(Math.max(0, Math.round(ach)), 999) }) } };
   if (goal != null && Number.isInteger(goal) && goal >= 1 && goal <= 7) a.goal = goal;
   try { a.remind = fitReminder(entries, today, tz).schedule; } catch { /* a refinement: never a reason to fail the post */ }
   // Lift names cut at a word (a cut mid-word here can't be mended on the Worker: "Dumbbe").

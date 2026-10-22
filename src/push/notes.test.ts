@@ -12,7 +12,7 @@ const len = (s: string) => [...new Intl.Segmenter('en', { granularity: 'grapheme
 describe('notification texts fit the lock screen', () => {
   const notes = [
     ['test', testNote()], ['rest', restNote(`${'Next: '}${LIFT}`)], ['rest, set', restNote(`${LIFT} · set 12 next`)], ['rest, none', restNote()],
-    ['remind', remindNote(LIFT.slice(0, 40))], ['recap', recapNote({ sessions: 7, sets: 999, prs: 99, cardio: 7 })],
+    ['remind', remindNote(LIFT.slice(0, 40))], ['recap', recapNote({ sessions: 7, sets: 9999, prs: 999, cardio: 7, ach: 999 })],
     ...PAIN_REGIONS.map((r) => [`pain ${r}`, painNote([{ region: r, lift: LIFT }])] as const),
     ['request', tagNote(requestNote(NAME), 'request', NAME, TAG)], ['accepted', tagNote(acceptedNote(NAME), 'accepted', NAME, TAG)],
     ['gym', tagNote(gymNote(NAME, 'x'.repeat(80)), 'gym', NAME, TAG)], ['ping', tagNote(pingNote(NAME, 'strong'), 'ping', NAME, TAG)],

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { achievementsOf, type Achievements } from '../domain/achievements';
+import { achievementsOf, gained, highest, type Achievements, type Unlock } from '../domain/achievements';
 import type { Profile } from '../domain/profile';
 import type { DayPlan, Program } from '../domain/program';
 import type { SetEntry } from '../domain/types';
@@ -26,13 +26,19 @@ export function useAchStart(today: string) {
 }
 export type AchStart = ReturnType<typeof useAchStart>;
 
-interface Ctx { since: string | null; profile: Profile; program: Program | null; plans: readonly DayPlan[] }
+interface Ctx {
+  since: string | null; profile: Profile; program: Program | null; plans: readonly DayPlan[];
+  /** Opens Stats at a family's levels (a line tapped on Today). */ onOpen?: (id: string) => void;
+}
 const AchCtx = createContext<Ctx | null>(null);
 
-export function AchProvider({ since, profile, program, plans, children }: Ctx & { children: ReactNode }) {
-  const v = useMemo(() => ({ since, profile, program, plans }), [since, profile, program, plans]);
+export function AchProvider({ since, profile, program, plans, onOpen, children }: Ctx & { children: ReactNode }) {
+  const v = useMemo(() => ({ since, profile, program, plans, onOpen }), [since, profile, program, plans, onOpen]);
   return <AchCtx.Provider value={v}>{children}</AchCtx.Provider>;
 }
+
+/** Opens Stats at a family's levels; undefined outside a person's screens. */
+export const useAchOpen = (): ((id: string) => void) | undefined => useContext(AchCtx)?.onOpen;
 
 /** The start day, or null before it is read (and outside a person's screens). */
 export const useAchSince = (): string | null => useContext(AchCtx)?.since ?? null;
@@ -48,4 +54,28 @@ export function useAchievements(entries: readonly SetEntry[], today: string): Ac
 export function useAchContext(): ((entries: readonly SetEntry[], today: string) => Achievements) | null {
   const c = useContext(AchCtx);
   return useMemo(() => (c?.since ? (entries: readonly SetEntry[], today: string) => achievementsOf(entries, { profile: c.profile, today, since: c.since!, program: c.program, plans: c.plans }) : null), [c]);
+}
+
+/** How long a card's lines stay (plan §6: about 30 s), unless the next set clears them first. */
+export const LINE_MS = 30_000;
+
+/**
+ * What a set just saved unlocked, as lines for its card (AchLines): the highest level of each, worked out off the save (on a
+ * timer after it, so saving never waits on it, and the lines never land inside a keystroke). `saved` after each new set,
+ * `clear` as the next one starts.
+ */
+export function useAchLines() {
+  const of = useAchContext();
+  const [lines, setLines] = useState<Unlock[] | null>(null);
+  useEffect(() => { if (!lines) return; const t = setTimeout(() => setLines(null), LINE_MS); return () => clearTimeout(t); }, [lines]);
+  const clear = useCallback(() => setLines(null), []);
+  const saved = useCallback((before: readonly SetEntry[], e: SetEntry, today: string) => {
+    if (!of) return;
+    setTimeout(() => {
+      const after = [...before.filter((x) => x.id !== e.id), e];
+      const g = highest(gained(of(before, today), of(after, today)));
+      if (g.length) setLines(g);
+    });
+  }, [of]);
+  return { lines, clear, saved };
 }

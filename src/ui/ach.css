@@ -40,3 +40,15 @@
 .ach-dh p { margin: 0; flex: 1 1 auto; min-width: 0; font-size: var(--fs-sub); line-height: 21px; color: var(--text-2); }
 
 .ach-foot { margin: 18px 0 4px; font-size: var(--fs-sm); line-height: 19px; color: var(--text-2); }
+
+/* Under a lift card's PR line: what that set unlocked. Empty, it takes no room (it stays, so a screen reader hears lines come). */
+.ach-lines { display: grid; gap: 8px; }
+.ach-lines:not(:empty) { margin-top: 8px; }
+.ach-line { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 8px 10px; border-radius: var(--r-md); background: var(--fill);
+  color: var(--text); text-align: left; font-weight: 400; }
+.ach-line-txt { display: flex; flex-direction: column; gap: 1px; flex: 1 1 auto; min-width: 0; font-size: var(--fs-sub); line-height: 20px; overflow-wrap: anywhere; }
+.ach-line-txt b { font-weight: 600; }
+.ach-line-txt .ach-tier { font-size: var(--fs-sub); font-weight: 600; letter-spacing: 0; text-transform: none; }
+.ach-line-sub { color: var(--text-2); }
+.ach-line-go { flex: none; color: var(--text-3); }
+

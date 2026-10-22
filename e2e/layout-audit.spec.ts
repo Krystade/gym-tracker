@@ -518,7 +518,16 @@ test('Finishing: the Finish bar, the summary in the plan’s place, and a sessio
   await check(page, info, found, 'finish-bar');
   await bar.getByRole('button', { name: 'Finish' }).click();
   await expect(page.getByRole('region', { name: 'Workout summary' })).toBeVisible();
-  await check(page, info, found, 'finish-summary');
+  // The day's achievements and the closest next one, under the render check's rules too (each row a 44 px button).
+  const achSecs = 'section[aria-label="Achievements today"], section[aria-label="Closest achievement"]';
+  await expect(page.getByRole('region', { name: 'Achievements today' })).toContainText('Your first session');
+  await check(page, info, found, 'finish-summary', [], achSecs);
+  if (process.env.STATS_PNG) {
+    await page.getByRole('region', { name: 'Achievements today' }).evaluate((e) => e.scrollIntoView({ block: 'start' }));
+    await page.screenshot({ path: `${process.env.STATS_PNG}/${info.project.name}-ach-finish.png` });
+    await page.getByRole('region', { name: 'Closest achievement' }).evaluate((e) => e.scrollIntoView({ block: 'center' }));
+    await page.screenshot({ path: `${process.env.STATS_PNG}/${info.project.name}-ach-finish-next.png` });
+  }
   // The next day, two sets and away: it closes while the app is gone, and its summary waits for the next open, the morning after.
   const day2 = add(DAY0, 1);
   await page.goto('about:blank');
@@ -950,6 +959,29 @@ test('Achievements on an unlock day: the tile first in Progress, the sheet to it
   await check(page, info, found, 'ach-detail-plates', [], 'main');
   await png('detail-plates');
   await sheetEnd('ach-detail-plates');
+  clean(found);
+});
+
+test('Achievements on Today: what a set unlocked, said under its card, the tier in words and its medal', async ({ page }, info) => {
+  test.setTimeout(120_000);
+  const found: string[] = [];
+  const { png } = achShots(page, info, found);
+  // Counting from today, the first open: the ten weeks imported count for nothing, so today's first set is a first session,
+  // its first PR (it still has to beat them), and four plates a side from here.
+  await phone(page);
+  await importLog(page);
+  await goto(page, 'Today');
+  const card = await addCard(page, 'Barbell Squat');
+  await logSet(page, card, '18:30:00', '450', '5');
+  // The lines are worked out on a timer once the set is saved (its PR line shown), and logSet holds the clock.
+  await expect(card.getByRole('status')).toContainText('PR');
+  await page.clock.runFor(100);
+  const lines = card.locator('.ach-lines');
+  await expect(lines.getByRole('button')).toHaveCount(3);
+  await expect(lines).toContainText('Barbell Squat: 405 lb, 4 plates a side');
+  await check(page, info, found, 'ach-lines', [], '.ach-lines');
+  await card.evaluate((c) => c.scrollIntoView({ block: 'start' }));
+  await png('lines');
   clean(found);
 });
 

@@ -9,6 +9,8 @@ import { activeProfileDb } from '../db/db';
 import { clearDraft, getDraft, markDirty, saveDraft } from '../state/drafts';
 import { Stepper } from './Stepper';
 import { prToast } from '../domain/records';
+import { AchLines } from './AchievementsSheet';
+import { useAchLines, useAchOpen } from '../state/useAchievements';
 import { prSetIds } from '../domain/summary';
 import { Input } from './Field';
 
@@ -106,6 +108,8 @@ export function CardioCard({ exercise, date, today: realToday = date, store, onO
   // A record broken: the same rule and banner as a lift's card, and the bout keeps its PR mark.
   const [pr, setPr] = useState<string | null>(null);
   useEffect(() => { if (!pr) return; const t = setTimeout(() => setPr(null), 6000); return () => clearTimeout(t); }, [pr]);
+  // What the bout just saved unlocked (cardio minutes, a session): lines under the PR line, as on a lift's card.
+  const ach = useAchLines(), openAch = useAchOpen();
   const prs = useMemo(() => prSetIds(store.entries, date), [store.entries, date]);
   const bouts = store.entries.filter((e) => e.date === date && e.cardio && sameExercise(e.exercise, exercise)).sort(byOrderDone);
   if (editing && !bouts.some((x) => x.id === editing.id)) setEditing(null);
@@ -126,14 +130,16 @@ export function CardioCard({ exercise, date, today: realToday = date, store, onO
           <b>{exercise}</b><span className="ok">✓</span>{bouts.some((x) => prs.has(x.id)) && <span className="tag pr-tag">PR</span>}<span className="muted nw">{fmtCardio(bouts.at(-1)!.cardio!)}</span>
         </button>
         {pr && <p role="status" className="pr">{pr}</p>}
+        <AchLines us={ach.lines} onOpen={openAch} />
       </section>
     );
   }
   async function add(c: CardioData, note: string | undefined, at: string | null | undefined) {
     setPr(null);
+    ach.clear();
     const e = await store.add({ date, exercise, weight: 0, reps: null, flags: ['cardio'], gym, note,
       cardio: { ...c, ...(target.aim != null && { aim: target.aim }) }, ...(at !== undefined && { at: at ? new Date(`${date}T${at}:00`) : null }) });
-    if (e) setPr(prToast(store.entries, e));
+    if (e) { setPr(prToast(store.entries, e)); ach.saved(store.entries, e, realToday); }
     if (e && at === undefined && date === realToday && completesPlan?.([...store.entries.filter((x) => x.id !== e.id), e])) onPlanDone?.();
     return !!e;
   }
@@ -153,6 +159,7 @@ export function CardioCard({ exercise, date, today: realToday = date, store, onO
         ))}
       </ol>
       {pr && <p role="status" className="pr">{pr}</p>}
+      <AchLines us={ach.lines} onOpen={openAch} />
       {gone && <p className="undo-note" role="status">Session deleted. <button className="mini" onClick={async () => { if (await store.restore(gone)) setGone(null); }}>Undo</button></p>}
       {editing ? (
         <div className="edit-box">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { repinChrome } from './viewportPin';
 import { useSets } from '../state/useSets';
 import { useSettings } from '../state/useSettings';
@@ -17,6 +17,8 @@ import { ProfileDbProvider } from '../state/profileDb';
 import { useFittedProfile } from '../state/useFittedProfile';
 import { useStatus } from '../state/useStatus';
 import { AchProvider, useAchStart } from '../state/useAchievements';
+import { achievementsOf } from '../domain/achievements';
+import type { SetEntry } from '../domain/types';
 import { useBox, useOwnBox, type Box } from '../state/box';
 import { onMinute } from '../state/clock';
 import { getDraft, saveDraft } from '../state/drafts';
@@ -242,8 +244,16 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   account.current = { uid: uid ?? null, date };
   const { setMe } = nav;
   useEffect(() => { setMe(uid ?? null); }, [uid, setMe]);
+  // An achievement's line tapped on a lift card: Stats, at that family's levels.
+  const [achAt, setAchAt] = useState<string | null>(null);
+  const openAch = useCallback((id: string) => { setExercise(null); setTab('stats'); setAchAt(id); window.scrollTo(0, 0); }, [setExercise, setTab]);
   // Push: the reminder and recap numbers, for the person whose account this is (signed out: this phone's subscription goes).
-  usePushSync(store.entries, programs.program, programs.plans, date, cloud.link === null ? false : cloud.mine ? true : null, rawProfile.profile.weeklyGoal);
+  // Achievements for the recap's count (the screens read theirs through AchProvider).
+  const achOf = useMemo(() => {
+    const since = ach.since;
+    return since ? (es: SetEntry[], d: string) => achievementsOf(es, { profile: rawProfile.profile, today: d, since, program: programs.program, plans: programs.plans }) : null;
+  }, [ach.since, rawProfile.profile, programs.program, programs.plans]);
+  usePushSync(store.entries, programs.program, programs.plans, date, cloud.link === null ? false : cloud.mine ? true : null, rawProfile.profile.weeklyGoal, achOf);
   // A record tapped on a lift's screen: History opens at its day.
   const [historyAt, setHistoryAt] = useState<string | null>(null);
   // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.
@@ -260,7 +270,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const error = store.error ?? programs.error ?? body.error ?? photos.error ?? gyms.error ?? people.error;
 
   return (
-    <AchProvider since={ach.since} profile={rawProfile.profile} program={programs.program} plans={programs.plans}>
+    <AchProvider since={ach.since} profile={rawProfile.profile} program={programs.program} plans={programs.plans} onOpen={openAch}>
       {uid && <NewsReader uid={uid} rev={nav.newsRev} newsAt={newsAt} />}
       {error && <div role="alert" className="banner">{error}</div>}
       <main className="screen">
@@ -293,7 +303,8 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : tab === 'friends' ? <FriendsScreen cloud={cloud} gyms={gyms} pending={nav.pending} entries={store.entries} status={status} today={date} onPendingDone={nav.clearPending} onView={nav.view}
             news={nav.news} newsRev={nav.newsRev} onChanged={nav.bumpNews} onMessage={nav.openThread}
             onSignIn={() => toMore('account')} onOpenMine={top(() => setTab('history'))} myName={person.name} goal={profile.profile.weeklyGoal} onCompare={nav.compare} />
-          : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} today={date} settings={settings} gyms={gyms} onOpenLift={open} onOpenPriorities={top(() => setPrioOpen(true))} />
+          : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} today={date} settings={settings} gyms={gyms} onOpenLift={open} onOpenPriorities={top(() => setPrioOpen(true))}
+            openAch={achAt} onOpenedAch={() => setAchAt(null)} />
           : <DataScreen store={store} profile={rawProfile} programs={programs} gyms={gyms} photos={photos} cloud={cloud} people={people} onShowWalkthrough={showTour} onOpen={toMore}
             onOpenCharacters={top(() => setCharsOpen(true))} onOpenGym={top(() => setGymOpen(true))} onOpenProgram={top(() => setProgramOpen(true))} onOpenPhotos={top(() => setPhotosOpen(true))} onOpenPriorities={top(() => setPrioOpen(true))} />}
       </main>

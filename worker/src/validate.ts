@@ -71,12 +71,13 @@ export function timer(v: unknown): Timer {
 }
 
 /**
- * `week.cardio`: cardio-only days, apart from sessions; an app from before it sends none, read as 0. `goal`: his sessions a week.
+ * `week.cardio`: cardio-only days, apart from sessions; an app from before it sends none, read as 0. `week.ach`: the week's
+ * achievements, a count (an app before them sends none: the recap leaves them out). `goal`: his sessions a week.
  * `remind`: per weekday (0 = Sunday), the app's learned reminder time "HH:MM", 'off' (not one of his days), or null (nothing
  * learned): src/domain/learn/remind.ts. An app from before them sends neither.
  */
 export interface Activity {
-  date: string; next: string | null; week: { start: string; sessions: number; sets: number; prs: number; cardio: number };
+  date: string; next: string | null; week: { start: string; sessions: number; sets: number; prs: number; cardio: number; ach?: number };
   goal?: number; remind?: (string | null)[];
   /** Pain days the phone hasn't asked about (item 08): at most two (yesterday and today), each a day, a region and a lift's name. */
   pain?: PainDay[];
@@ -115,7 +116,7 @@ export function activity(v: unknown): Activity {
     date: date(o.date, 'date'),
     next: o.next == null ? null : text(o.next, 40, 'next'),
     week: { start: date(w.start, 'start'), sessions: int(w.sessions, 0, 7, 'sessions'), sets: int(w.sets, 0, 10_000, 'sets'), prs: int(w.prs, 0, 10_000, 'prs'),
-      cardio: w.cardio == null ? 0 : int(w.cardio, 0, 7, 'cardio') },
+      cardio: w.cardio == null ? 0 : int(w.cardio, 0, 7, 'cardio'), ...(w.ach != null && { ach: int(w.ach, 0, 999, 'ach') }) },
   };
 }
 

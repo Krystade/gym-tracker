@@ -27,6 +27,8 @@ import { prSetIds } from '../domain/summary';
 import { fmtPerSide } from '../domain/plates';
 import { isCardio } from '../domain/cardio';
 import { CardioCard } from './CardioCard';
+import { AchLines } from './AchievementsSheet';
+import { useAchLines, useAchOpen } from '../state/useAchievements';
 
 const TargetIcon = () => <Icon name="target" size={20} />;
 
@@ -74,6 +76,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   const [shut, setShut] = useState<boolean | null>(null);
   const [pr, setPr] = useState<string | null>(null);
   useEffect(() => { if (!pr) return; const t = setTimeout(() => setPr(null), 6000); return () => clearTimeout(t); }, [pr]);
+  // What the set just saved unlocked: lines under the PR line (plan §6), tapped open on Stats.
+  const ach = useAchLines(), openAch = useAchOpen();
   // A delete happens straight away; for 8 s the set can come back.
   const [gone, setGone] = useState<{ set: SetEntry; no: number } | null>(null);
   // Started before paint, so the 8 s run from when the offer first shows.
@@ -128,6 +132,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
 
   async function addSet(v: SetFormValue): Promise<boolean> {
     setPr(null);
+    ach.clear();
     // What was suggested rides along with every set, so suggested and done can be compared later.
     const { at, ...rest } = v;
     // In a light week a working set is marked light (item 06): stopped short on purpose, so nothing reads it as his best.
@@ -164,6 +169,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     }
     // The same rule as the PR badge; a set that broke several records names the best one.
     setPr(prToast(store.entries, e));
+    ach.saved(store.entries, e, realToday);
     return true;
   }
 
@@ -215,6 +221,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
           <Icon name="chev-right" size={18} className="fold-chev" />
         </button>
         {pr && <p role="status" className="pr">{pr}</p>}
+        <AchLines us={ach.lines} onOpen={openAch} />
         {justDone && onGo && left.length > 0 && (
           <div className="chips left-row" role="group" aria-label="Left to do">
             <span className="chip-label">Left</span>
@@ -254,6 +261,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       </ol>
       {gone && <p className="undo-note" role="status">Set {gone.no} deleted. <button className="mini" onClick={async () => { if (await store.restore(gone.set)) setGone(null); }}>Undo</button></p>}
       {pr && <p role="status" className="pr">{pr}</p>}
+      <AchLines us={ach.lines} onOpen={openAch} />
       {sharp && !editing && (
         <div className="pain-stop" role="status">
           <p><b>Sharp pain: stop {exercise} for today.</b>{eased}</p>

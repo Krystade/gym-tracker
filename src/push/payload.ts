@@ -106,13 +106,17 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 export const testNote = () => ({ title: 'Test notification', body: 'Notifications work on this phone.' });
 export const restNote = (label?: string | null) => ({ title: 'Rest done', body: clip(label ?? '', MAX_LABEL) || 'Time for your next set' });
 export const remindNote = (next?: string | null) => ({ title: 'Time to train', body: next ? `${clip(next, 40)} is up · nothing logged yet` : 'Nothing logged yet today' });
-/** Sessions are lift days; cardio-only days go beside them, never toward the goal. An app before them sends no `cardio`. */
-export const recapNote = (w: { sessions: number; sets: number; prs: number; cardio?: number } | null) => {
+/**
+ * Sessions are lift days; cardio-only days go beside them, never toward the goal. An app before them sends no `cardio`. `ach`:
+ * the week's achievements, a count only, said when there are some (owner Q5: the recap is the only achievements push).
+ */
+export const recapNote = (w: { sessions: number; sets: number; prs: number; cardio?: number; ach?: number } | null) => {
   const cardio = w?.cardio ? plural(w.cardio, 'cardio day') : '';
+  const ach = w?.ach ? ` · ${plural(w.ach, 'achievement')}` : '';
   return {
     title: 'Your week',
-    body: w && w.sessions > 0 ? `This week: ${plural(w.sessions, 'session')}${cardio && ` + ${cardio}`} · ${plural(w.sets, 'set')} · ${plural(w.prs, 'PR')}`
-      : cardio ? `This week: no sessions · ${cardio}` : 'This week: no sessions logged',
+    body: w && w.sessions > 0 ? `This week: ${plural(w.sessions, 'session')}${cardio && ` + ${cardio}`} · ${plural(w.sets, 'set')} · ${plural(w.prs, 'PR')}${ach}`
+      : cardio ? `This week: no sessions · ${cardio}${ach}` : 'This week: no sessions logged',
   };
 };
 

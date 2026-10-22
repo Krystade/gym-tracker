@@ -36,6 +36,13 @@ describe('activityOf', () => {
     expect(activityOf(entries, null, [], TODAY).week).toEqual({ start: '2026-10-12', sessions: 1, sets: 1, prs: 0, cardio: 2 });
   });
 
+  it('the week’s achievements go as a count when given, never more than the Worker takes', () => {
+    const entries = [s('2026-10-12', 'Bench Press', 140, 8)];
+    expect(activityOf(entries, null, [], TODAY).week).not.toHaveProperty('ach');
+    expect(activityOf(entries, null, [], TODAY, undefined, 'UTC', undefined, 3).week.ach).toBe(3);
+    expect(activityOf(entries, null, [], TODAY, undefined, 'UTC', undefined, 5000).week.ach).toBe(999);
+  });
+
   it('after a session today the next day moves on; with no program there is none', () => {
     const entries = [s('2026-10-12', 'Bench Press', 140, 8), s(TODAY, 'Squat', 185, 5)];
     expect(activityOf(entries, program, [plan('2026-10-12', 0), plan(TODAY, 1)], TODAY).next).toBe('Day A');

@@ -3,7 +3,7 @@ import { addDays } from './analytics';
 import { defaultProfile, type Profile } from './profile';
 import type { DayPlan, Program } from './program';
 import type { Flag, SetEntry } from './types';
-import { achievements, achievementsOf, amount, closest, DEFS, familySteps, gained, highest, platesAt, STRENGTH, unlockedOn, unlockKey, unlockText, type Context } from './achievements';
+import { achievements, achievementsOf, amount, closest, DEFS, familySteps, gained, highest, platesAt, weekCount, STRENGTH, unlockedOn, unlockKey, unlockText, type Context } from './achievements';
 import { synthLog } from './achievements.sample';
 
 // Synthetic sets only.
@@ -329,6 +329,17 @@ describe('reading it', () => {
     expect(new Set(top.map(key)).size).toBe(top.length);
     for (const u of today) expect(top.find((t) => key(t) === key(u))!.level).toBeGreaterThanOrEqual(u.level);
     expect(highest(top)).toEqual(top);
+  });
+  it('this week’s count: Monday on, each day its highest levels', () => {
+    // day(0) is a Monday. Last week: a session. This week: a first deadlift at 315 (three plate levels: one), and 9 more sessions
+    // to the 10th (bronze).
+    const log = [set(day(-3), 'Cable Curl', 30, 10), set(day(0), 'Deadlift', 315, 3), ...Array.from({ length: 8 }, (_, i) => set(day(1 + (i % 6)), 'Cable Curl', 30, 10 + i))];
+    const a = achievements(log, ctx({ today: day(6) }));
+    const thisWeek = a.unlocks.filter((u) => u.date >= day(0));
+    expect(thisWeek.filter((u) => u.id === 'plates')).toHaveLength(3);
+    expect(weekCount(a, day(6))).toBe(highest(thisWeek.filter((u) => u.date === day(0))).length + thisWeek.filter((u) => u.date > day(0)).length);
+    expect(weekCount(a, day(6))).toBeLessThan(thisWeek.length);
+    expect(weekCount(a, day(-1))).toBe(a.unlocks.filter((u) => u.date === day(-3)).length);
   });
   it('words', () => {
     expect([amount('plates', 2), amount('stronger', 25), amount('best-run', 4), amount('sessions', 1), amount('useful-sets', 2000)]).toEqual(['225 lb', '25%', '4 weeks in a row', '1 session', '2,000 sets']);

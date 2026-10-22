@@ -14,6 +14,9 @@ import { zone } from '../push/activity';
 import { tappedLight } from '../state/lightWeek';
 import type { SettingsStore } from '../state/useSettings';
 import { Icon } from './icons';
+import { closest, highest, unlockedOn } from '../domain/achievements';
+import { useAchievements, useAchOpen } from '../state/useAchievements';
+import { NextRow, UnlockRow } from './AchievementsSheet';
 
 // The plan, turned into the day's summary once it's done (owner, 2026-10-20): on Finish, by itself once the session has gone
 // quiet, or as everything planned is done. A card in the plan's place on Today, never over anything (the phone is his alone,
@@ -66,6 +69,11 @@ export function FinishCard({ entries, date, today, profile, program, plans, plan
     return (a?.muscles ?? []).filter((m) => m.kind === 'raise' && s.muscles.some((x) => x.muscle === m.muscle)).slice(0, 3);
   }, [entries, body, profile, today, owner, s.muscles]);
 
+  // The day's achievements, the highest level of each, and the closest next one (plan §6). A tap opens its levels on Stats.
+  const ach = useAchievements(entries, today), openAch = useAchOpen();
+  const earned = useMemo(() => (ach ? highest(unlockedOn(ach, date)) : []), [ach, date]);
+  const closer = useMemo(() => (ach ? closest(ach, 1)[0] : undefined), [ach]);
+
   const title = `${how ? 'Workout done' : 'Plan done'}${planName ? ` · ${planName}` : ''}`;
   const next = [up.day, up.inDays != null && when(date, up.inDays, today)].filter(Boolean).join(' · ');
   return (
@@ -83,6 +91,18 @@ export function FinishCard({ entries, date, today, profile, program, plans, plan
         <ul className="finish-prs" aria-label="PRs">
           {s.prs.map((p) => <li key={p.exercise}><span className="tag pr-tag">PR</span><b>{p.exercise}</b><span className="nw">{fmtSet(p.set)}</span></li>)}
         </ul>
+      )}
+      {earned.length > 0 && (
+        <section aria-label="Achievements today">
+          <h3 className="finish-sub">Achievements {date === today ? 'today' : 'that day'}</h3>
+          {earned.map((u) => <UnlockRow key={`${u.id}:${u.level}:${u.lift ?? ''}`} u={u} onOpen={openAch} />)}
+        </section>
+      )}
+      {closer && (
+        <section aria-label="Closest achievement">
+          <h3 className="finish-sub">Next up</h3>
+          <NextRow t={closer} onOpen={openAch} />
+        </section>
       )}
       {s.muscles.length > 0 && (
         <>

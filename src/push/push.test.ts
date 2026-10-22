@@ -28,6 +28,11 @@ describe('payload', () => {
     expect(recapNote(null).body).toBe('This week: no sessions logged');
     expect(recapNote({ sessions: 2, sets: 30, prs: 1, cardio: 1 }).body).toBe('This week: 2 sessions + 1 cardio day · 30 sets · 1 PR');
     expect(recapNote({ sessions: 0, sets: 0, prs: 0, cardio: 3 }).body).toBe('This week: no sessions · 3 cardio days');
+    // The week's achievements, a count only, when there are some.
+    expect(recapNote({ sessions: 2, sets: 30, prs: 1, ach: 3 }).body).toBe('This week: 2 sessions · 30 sets · 1 PR · 3 achievements');
+    expect(recapNote({ sessions: 2, sets: 30, prs: 1, ach: 1 }).body).toBe('This week: 2 sessions · 30 sets · 1 PR · 1 achievement');
+    expect(recapNote({ sessions: 2, sets: 30, prs: 1, ach: 0 }).body).toBe('This week: 2 sessions · 30 sets · 1 PR');
+    expect(recapNote({ sessions: 0, sets: 0, prs: 0, cardio: 2, ach: 1 }).body).toBe('This week: no sessions · 2 cardio days · 1 achievement');
     expect(remindNote(null).body).toBe('Nothing logged yet today');
     expect(restNote('').body).toBe('Time for your next set');
     expect(restNote('x'.repeat(200)).body).toHaveLength(60);

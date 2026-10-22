@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { FittedProfileStore } from '../state/useFittedProfile';
 import type { ProgramStore } from '../state/useProgram';
@@ -52,13 +52,14 @@ const achOf = (open: string | null): string | null => {
   return id && DEF.has(id) ? id : null;
 };
 
-export function StatsScreen({ store, profile, programs, body, today, readOnly, who, settings, gyms, onOpenLift, onOpenPriorities }: {
+export function StatsScreen({ store, profile, programs, body, today, readOnly, who, settings, gyms, onOpenLift, onOpenPriorities, openAch, onOpenedAch }: {
   /** A friend's username: named wherever your own Stats says "your". */ who?: string;
   store: SetsStore; profile: FittedProfileStore; programs: ProgramStore; body: BodyStore; today: string; readOnly?: boolean;
   /** A lift named in a sheet: its screen. */ onOpenLift?: (name: string) => void;
   /** Priorities and the training goal live in settings (owner, 2026-10-20): the Muscles sheet's link opens them. */ onOpenPriorities?: () => void;
   /** Each lift's kept rest, for the rest tile's timer. */ settings?: SettingsStore;
   /** Your gyms: a flat lift's next variation is one this gym can do, as on the lift's page. */ gyms?: GymsStore;
+  /** Opened at an achievement family's levels (a line tapped on Today); `onOpenedAch` once it is. */ openAch?: string | null; onOpenedAch?: () => void;
 }) {
   const p = profile.profile, entries = store.entries;
   const [owner] = useState(() => (readOnly ? null : activeProfileDb()));
@@ -66,7 +67,9 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
   const [layout, setLayoutState] = useState<LayoutPrefs>(() => (owner ? layoutOf({ pins: getPref(owner, 'stats:pins'), hidden: getPref(owner, 'stats:hidden') }) : NO_LAYOUT));
   const [editing, setEditing] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(() => (openAch && !readOnly ? `ach:${openAch}` : null));
+  // Asked for while already here (it isn't, from Today, but a second tap could be): open it; either way, it's been taken.
+  useEffect(() => { if (!openAch) return; if (!readOnly) setOpen(`ach:${openAch}`); onOpenedAch?.(); }, [openAch]); // eslint-disable-line react-hooks/exhaustive-deps
   const setRange = (r: Range) => { setRangeState(r); if (owner) setPref(owner, 'stats:range', r); };
   const setLayout = (l: LayoutPrefs) => { setLayoutState(l); if (owner) { setPref(owner, 'stats:pins', l.pins); setPref(owner, 'stats:hidden', l.hidden); } };
 

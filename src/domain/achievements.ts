@@ -534,6 +534,13 @@ export function highest(us: readonly Unlock[]): Unlock[] {
   return us.filter((u) => keep.has(u));
 }
 
+/** Achievements this week (Monday to `today`), each day's counted as its highest levels (highest): the weekly recap's number. */
+export function weekCount(a: Achievements, today: string): number {
+  const from = weekStart(today), byDay = new Map<string, Unlock[]>();
+  for (const u of a.unlocks) if (u.date >= from && u.date <= today) (byDay.get(u.date) ?? byDay.set(u.date, []).get(u.date)!).push(u);
+  return [...byDay.values()].reduce((n, us) => n + highest(us).length, 0);
+}
+
 /** The tracks closest to their next level (goal gradient: plan §2), closest first; repeats and maxed ones have none. */
 export function closest(a: Achievements, n = 3): Track[] {
   return a.tracks.filter((t) => t.next != null && !a.hidden.includes(t.id))

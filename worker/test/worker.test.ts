@@ -223,6 +223,17 @@ describe('reminder and recap', () => {
     expect((await call(uid, 'POST', '/activity', { date: '2027-10-19', next: null, week: { start: '2027-10-18', sessions: 2, sets: 30, prs: 1, cardio: 8 } })).status).toBe(400);
   });
 
+  it('the recap counts the week’s achievements when the app sends them; out of range is refused', async () => {
+    const { uid, net, phone } = await planned('2027-10-19', { start: '2027-10-18', sessions: 3, sets: 40, prs: 2, cardio: 0, ach: 4 });
+    await runInDurableObject(box(uid), async (_o, st) => { const p = await st.storage.get<{ remindAt: number }>('plan'); await st.storage.put('plan', { ...p, remindAt: null }); });
+    await setClock(uid, Date.parse('2027-10-24T23:00:00Z'));
+    await runDurableObjectAlarm(box(uid));
+    expect((await phone.read(pushes(net)[0].body)).notification.body).toBe('This week: 3 sessions · 40 sets · 2 PRs · 4 achievements');
+    for (const ach of [-1, 1000, 1.5, '4']) {
+      expect((await call(uid, 'POST', '/activity', { date: '2027-10-19', next: null, week: { start: '2027-10-18', sessions: 3, sets: 40, prs: 2, ach } })).status).toBe(400);
+    }
+  });
+
   it('a recap with counts from an earlier week says nothing was logged', async () => {
     const { uid, net, phone } = await planned('2027-10-13', { start: '2027-10-11', sessions: 3, sets: 40, prs: 0 });
     await runInDurableObject(box(uid), async (_o, st) => { const p = await st.storage.get<{ remindAt: number }>('plan'); await st.storage.put('plan', { ...p, remindAt: null }); });

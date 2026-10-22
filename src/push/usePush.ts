@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { weekCount, type Achievements } from '../domain/achievements';
 import type { DayPlan, Program } from '../domain/program';
 import type { SetEntry } from '../domain/types';
 import { activityOf } from './activity';
@@ -26,16 +27,25 @@ export function setRestDates(dates: readonly string[] | undefined): void {
 /**
  * Keeps the Worker current for the signed-in person: the reminder and recap numbers after the log changes (and the week plan's
  * rest dates, from Today: setRestDates), and the subscription each time the app comes back. Signed out, this phone's subscription goes.
+ * `ach`: this person's achievements on a log (useAchievements): the week's count for the recap, worked out in the debounce.
  */
-export const usePushSync = PUSH_ON ? function usePushSync(entries: SetEntry[], program: Program | null | undefined, plans: DayPlan[], today: string, signedIn: boolean | null, goal?: number) {
+export const usePushSync = PUSH_ON ? function usePushSync(entries: SetEntry[], program: Program | null | undefined, plans: DayPlan[], today: string, signedIn: boolean | null, goal?: number,
+  ach?: ((entries: SetEntry[], today: string) => Achievements) | null) {
   useEffect(() => {
     if (!signedIn) return;
     let t: ReturnType<typeof setTimeout> | undefined;
-    const post = () => { clearTimeout(t); t = setTimeout(() => { void postActivity(activityOf(entries, program, plans, today, goal, undefined, rest)).catch(() => {}); }, 3000); };
+    const post = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        let n: number | undefined;
+        try { n = ach ? weekCount(ach(entries, today), today) : undefined; } catch { /* a count beside the recap: never a reason not to post */ }
+        void postActivity(activityOf(entries, program, plans, today, goal, undefined, rest, n)).catch(() => {});
+      }, 3000);
+    };
     post();
     restChanged = post;
     return () => { clearTimeout(t); if (restChanged === post) restChanged = null; };
-  }, [entries, program, plans, today, signedIn, goal]);
+  }, [entries, program, plans, today, signedIn, goal, ach]);
   useEffect(() => {
     if (signedIn === false) { void forgetDevice(); return; }
     if (!signedIn) return;
