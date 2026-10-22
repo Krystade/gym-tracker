@@ -1,0 +1,42 @@
+/* Achievements (plan §6): the Stats tile's medals, the sheet and a family's detail. Tier colours live on the medals (Medal.tsx);
+   the tier is always said in words as well. */
+
+.medal { display: block; flex: none; }
+
+/* The tile: a row of medals, each family's highest. */
+.ach-shelf { display: flex; gap: 8px; height: 40px; }
+
+/* The sheet */
+.ach-tiers { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin: 4px 0 8px; padding: 0; list-style: none; }
+.ach-tiers li { display: grid; justify-items: center; gap: 2px; min-width: 0; }
+.ach-tiers b { font-size: var(--fs-body); line-height: 22px; font-variant-numeric: tabular-nums; }
+.ach-tiers span { font-size: var(--fs-xs); color: var(--text-2); line-height: 16px; }
+
+.ach-sec { margin: 0; }
+.ach-sec > h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 18px 0 0; padding-bottom: 6px; border-bottom: 1px solid var(--hairline);
+  font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-2); }
+.ach-sec > h3 span { font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; text-transform: none; }
+
+.ach-row, .ach-levels li { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 10px 0; border-bottom: 1px solid var(--hairline);
+  background: none; color: var(--text); text-align: left; font-weight: 400; border-radius: 0; }
+.ach-row:last-child, .ach-levels li:last-child { border-bottom: 0; }
+.ach-row-txt { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.ach-row-txt b { font-size: var(--fs-body); line-height: 22px; font-weight: 600; overflow-wrap: anywhere; }
+.ach-row-txt > span { font-size: var(--fs-sub); line-height: 20px; color: var(--text-2); overflow-wrap: anywhere; }
+.ach-row.locked .ach-row-txt b, .ach-levels li.locked .ach-row-txt b { color: var(--text-2); }
+.ach-when { flex: none; font-size: var(--fs-sub); color: var(--text-2); font-variant-numeric: tabular-nums; }
+/* The tier in words, in its medal's ink (each 8:1 or more on the sheet). */
+.ach-row-txt > .ach-tier { font-size: var(--fs-xs); line-height: 16px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.ach-tier.t-starter { color: #c7ccd6; } .ach-tier.t-bronze { color: #f2b98a; } .ach-tier.t-silver { color: #eef1f5; }
+.ach-tier.t-gold { color: #ffe48f; } .ach-tier.t-platinum { color: #d3f7f9; }
+
+.ach-bar { display: block; height: 6px; margin-top: 6px; border-radius: 3px; background: var(--fill); overflow: hidden; }
+.ach-bar i { display: block; height: 100%; border-radius: 3px; }
+
+.ach-levels { margin: 0; padding: 0; list-style: none; }
+.ach-levels li { min-height: 56px; }
+
+.ach-dh { display: flex; align-items: center; gap: 14px; margin: 2px 0 4px; }
+.ach-dh p { margin: 0; flex: 1 1 auto; min-width: 0; font-size: var(--fs-sub); line-height: 21px; color: var(--text-2); }
+
+.ach-foot { margin: 18px 0 4px; font-size: var(--fs-sm); line-height: 19px; color: var(--text-2); }

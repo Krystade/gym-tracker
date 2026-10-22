@@ -25,6 +25,7 @@ import {
 import { restSeconds } from '../domain/timing';
 import { weightSummary, type BodyDay } from '../domain/body';
 import type { SetEntry } from '../domain/types';
+import { highest, unlockedOn, type Achievements } from '../domain/achievements';
 import { streak } from '../domain/analytics';
 import { getPref, setPref } from '../state/prefs';
 import { BarChart } from './charts/BarChart';
@@ -42,6 +43,7 @@ import {
   PullPush, RateSheet, RestSheet, shortDate, signed, spread, SparkRef, StartSheet,
 } from './StatsSheets';
 import { VolumeSteps } from './VolumeSteps';
+import { AchievementsSheet, AchShelf, nextLine } from './AchievementsSheet';
 import { WeightSheet } from './WeightSheet';
 import { LastWeek } from './WeekDigest';
 
@@ -89,6 +91,8 @@ export interface StatsInput {
    * log (feed friendPrs), since 8 weeks can't tell a PR from a best-in-8-weeks; nothing that needs more than the window is shown.
    */
   window?: { prs: ReadonlySet<string> };
+  /** Your own Stats: your achievements (lifetime, from the day you started counting), and a family opened from their sheet. */
+  ach?: { a: Achievements; since: string; onOpen: (id: string) => void };
 }
 
 const DAY = 864e5;
@@ -116,7 +120,7 @@ function Change({ pct, flat, weeks }: { pct: number | null; flat?: boolean; week
 
 /** Every tile for the log, by section, and which ones have news now. Empty for an empty log. */
 export function useTiles(input: StatsInput): TileModel[] {
-  const { entries, profile, today, range, who, owner, alsoLifts, body, timer, rotationOf, onOpenLift, onOpenPriorities, program, plans, kept, onOpenMuscle, window: win } = input;
+  const { entries, profile, today, range, who, owner, alsoLifts, body, timer, rotationOf, onOpenLift, onOpenPriorities, program, plans, kept, onOpenMuscle, window: win, ach } = input;
   const data = useMemo(() => work(entries, profile, today, range, alsoLifts ?? [], program, win?.prs), [entries, profile, today, range, alsoLifts, program, win?.prs]);
   // Your energy is yours: a friend's Stats leaves it out, as it does their body data.
   const more = useMemo(() => s2(entries, today, range, timer ?? DEFAULT_TIMER, owner ? body ?? [] : []), [entries, today, range, timer, owner, body]);
@@ -207,6 +211,17 @@ export function useTiles(input: StatsInput): TileModel[] {
       id: 'hitrate', section: 'progress', label: 'Target hit rate', value: String(Math.round((100 * h.hit) / h.sets)), unit: '%',
       ctx: <>{h.hit} of {h.sets} sets hit</>, viz: (w) => <Spark values={weekly} w={w} />,
       sheet: () => <HitRateSheet r={h} range={range} />,
+    });
+  }
+
+  // Achievements: one wide tile, lifetime (the range doesn't apply). Yours only: never on a friend's.
+  if (ach && owner) {
+    const { a, since, onOpen } = ach, fresh = highest(unlockedOn(a, today)).length, next = nextLine(a);
+    // On an unlock day it leads Progress, ahead of the other news there (plan §6); else it sits last.
+    out[fresh ? 'unshift' : 'push']({
+      id: 'achievements', section: 'progress', label: 'Achievements', value: String(a.unlocks.length), unit: fresh ? `earned · ${fresh} today` : 'earned',
+      ctx: next ?? 'Every level reached', wide: true, news: fresh > 0, vizHeight: 40, viz: (w) => <AchShelf a={a} w={w} />,
+      sheet: () => <AchievementsSheet a={a} today={today} since={since} onOpen={onOpen} />,
     });
   }
 

@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Browser, type Locator, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Browser, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { addFriend, goto, openProgram } from './nav';
@@ -771,6 +771,95 @@ test('Stats v2: the tiles, the lift, calendar, muscles and week sheets, every ra
   await expect(page.getByRole('region', { name: 'Pinned' }).locator('[data-tile="tonnage"]')).toBeVisible();
   await check(page, info, found, 'stats-v2-pinned', [], 'main');
   await png('pinned');
+  clean(found);
+});
+
+// ---- Achievements (plan stage 2): the Stats tile, its sheet, a family's levels. Counting starts on the profile's first open. ----
+
+/** Sets logged on DAY0 (a row per set, the import's columns): a new lift at three plates, and one more lift tried. */
+const unlockDay = () => [
+  ...[1, 2, 3].map((k) => [DAY0, 'Deadlift', '', k, 315, 3, '', '', '', 'sample', '', '', `${DAY0}T17:0${k}:00.000Z`, ...Array(13).fill('')].join(',')),
+  ...[1, 2].map((k) => [DAY0, 'Romanian Deadlift', '', k, 225, 8, '', '', '', 'sample', '', '', `${DAY0}T17:1${k}:00.000Z`, ...Array(13).fill('')].join(',')),
+].join('\n');
+
+/** PNGs to look at when asked for (STATS_PNG=<dir>), and a sheet's body scrolled to its end, checked in view. */
+const achShots = (page: Page, info: TestInfo, found: string[]) => {
+  const png = async (name: string) => { if (process.env.STATS_PNG) await page.screenshot({ path: `${process.env.STATS_PNG}/${info.project.name}-ach-${name}.png` }); };
+  const sheetEnd = async (state: string) => {
+    const d = page.getByRole('dialog');
+    if (await d.locator('.st-sh-body').evaluate((b) => { const more = b.scrollHeight > b.clientHeight + 1; b.scrollTop = b.scrollHeight; return more; })) {
+      await check(page, info, found, `${state}-end`, [], 'main');
+      await png(`${state}-end`);
+    }
+  };
+  return { png, sheetEnd };
+};
+
+test('Achievements on day one: a history from before the start counts nothing; the tile shows what’s next, locked', async ({ page }, info) => {
+  test.setTimeout(120_000);
+  const found: string[] = [];
+  const { png, sheetEnd } = achShots(page, info, found);
+  const tile = page.locator('[data-tile="achievements"]');
+  // Day one: his whole history is from before the start, so nothing counts yet; the tile shows the next ones, locked.
+  await phone(page);
+  await importLog(page);
+  await goto(page, 'Stats');
+  await expect(tile).toContainText('0earned');
+  await tile.scrollIntoViewIfNeeded();
+  await check(page, info, found, 'ach-day-one', [], 'main');
+  await png('day-one');
+  await tile.click();
+  await expect(page.getByRole('dialog', { name: 'Achievements' })).toContainText('Counting from today');
+  await check(page, info, found, 'ach-day-one-sheet', [], 'main');
+  await png('day-one-sheet');
+  await sheetEnd('ach-day-one-sheet');
+  clean(found);
+});
+
+test('Achievements on an unlock day: the tile first in Progress, the sheet to its end, a family’s levels, a lift’s plates', async ({ page }, info) => {
+  test.setTimeout(180_000);
+  const found: string[] = [];
+  const { png, sheetEnd } = achShots(page, info, found);
+  const tile = page.locator('[data-tile="achievements"]');
+  // A profile that started counting nine weeks ago (the clock then, on its first open), on a day two lifts unlock things.
+  await notched(page);
+  await page.clock.install({ time: new Date('2026-08-17T07:00:00') });
+  await page.goto('/');
+  await goto(page, 'Stats');
+  await page.clock.setSystemTime(new Date(`${DAY0}T18:00:00`));
+  await page.reload();
+  await importLog(page, `${history()}\n${unlockDay()}`);
+  await goto(page, 'Stats');
+  // News first in Progress, the day something unlocks.
+  await expect(page.getByRole('region', { name: 'Progress' }).locator('.st-tile').first()).toHaveAttribute('data-tile', 'achievements');
+  await expect(tile).toContainText('today');
+  await check(page, info, found, 'ach-tile', [], 'main');
+  await png('tile');
+  await tile.click();
+  const d = page.getByRole('dialog', { name: 'Achievements' });
+  await expect(d.getByRole('region', { name: 'New today' })).toContainText('Deadlift: 315 lb, 3 plates a side');
+  await expect(d).toContainText('Counting from Aug 17');
+  await check(page, info, found, 'ach-sheet', [], 'main');
+  await png('sheet');
+  await d.locator('.st-sh-body').evaluate((b) => { b.scrollTop = 900; });
+  await check(page, info, found, 'ach-sheet-mid', [], 'main');
+  await png('sheet-mid');
+  await sheetEnd('ach-sheet');
+  // A family's levels, and back.
+  await d.getByRole('region', { name: 'Showing up' }).getByRole('button', { name: /^Goal weeks/ }).click();
+  const g = page.getByRole('dialog', { name: 'Goal weeks' });
+  await expect(g.getByRole('region', { name: 'Levels' })).toBeVisible();
+  await check(page, info, found, 'ach-detail', [], 'main');
+  await png('detail');
+  await g.getByRole('button', { name: 'Achievements' }).click();
+  // A per-lift family: a section per lift.
+  await page.getByRole('dialog', { name: 'Achievements' }).getByRole('region', { name: 'Milestones' }).getByRole('button', { name: /^Plates · Deadlift/ }).click();
+  const pl = page.getByRole('dialog', { name: 'Plates' });
+  await expect(pl.getByRole('region', { name: 'Deadlift', exact: true })).toBeVisible();
+  await expect(pl.getByRole('region', { name: 'Bench Press' })).toBeVisible();
+  await check(page, info, found, 'ach-detail-plates', [], 'main');
+  await png('detail-plates');
+  await sheetEnd('ach-detail-plates');
   clean(found);
 });
 

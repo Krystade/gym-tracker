@@ -30,6 +30,9 @@ import { StatsTile } from './StatsTile';
 import { lastOf } from './StatsCoreSheets';
 import { MuscleWeeks, SECTIONS, useTiles, WeekHero, WeekSheet, type TileModel } from './StatsTiles';
 import { Icon } from './icons';
+import { AchievementDetail } from './AchievementsSheet';
+import { DEF } from '../domain/achievements';
+import { useAchievements, useAchSince } from '../state/useAchievements';
 import './stats.css';
 
 // Stats v2 (plan §6): the week up top, one range for every tile, then sections of tiles two to a row. A tile opens its sheet.
@@ -41,6 +44,12 @@ const MUSCLE = 'muscle:';
 const muscleOf = (open: string | null): Muscle | null => {
   const m = open?.startsWith(MUSCLE) ? open.slice(MUSCLE.length) : null;
   return m && (MUSCLES as readonly string[]).includes(m) ? (m as Muscle) : null;
+};
+/** An achievement family's levels, opened from the Achievements sheet: `ach:goal-weeks`. */
+const ACH = 'ach:';
+const achOf = (open: string | null): string | null => {
+  const id = open?.startsWith(ACH) ? open.slice(ACH.length) : null;
+  return id && DEF.has(id) ? id : null;
 };
 
 export function StatsScreen({ store, profile, programs, body, today, readOnly, who, settings, gyms, onOpenLift, onOpenPriorities }: {
@@ -90,9 +99,13 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
   }, [owner, readOnly, gyms?.active, entries, today, programs.program, body.days]);
   // His rest setting per lift, for the next session's timer (and none set: undefined).
   const kept = useMemo(() => (settings ? (ex: string) => settings.get(ex).rest : undefined), [settings]);
+  // Your achievements: lifetime, from the day this profile started counting (never on a friend's Stats).
+  const since = useAchSince();
+  const achAll = useAchievements(entries, today);
+  const ach = useMemo(() => (owner && since && achAll ? { a: achAll, since, onOpen: (id: string) => setOpen(`${ACH}${id}`) } : undefined), [owner, since, achAll]);
   const tiles = useTiles({
     entries, profile: p, today, range, who, owner: owner ?? undefined, alsoLifts, body: body.days, timer, rotationOf, onOpenLift, onOpenPriorities,
-    program: programs.program, plans: programs.plans, kept, onOpenMuscle: (m) => setOpen(`${MUSCLE}${m}`),
+    program: programs.program, plans: programs.plans, kept, onOpenMuscle: (m) => setOpen(`${MUSCLE}${m}`), ach,
   });
 
   // News to the front of its section, worked out once a day on the first open (owner, 2026-10-20).
@@ -127,6 +140,7 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
   const hiddenAll = a.sections.flatMap((s) => s.hidden);
   const opened = open && open !== SHEET_WEEK ? tiles.find((t) => t.id === open) : undefined;
   const muscle = muscleOf(open);
+  const achId = ach ? achOf(open) : null;
 
   const tile = (t: TileModel) => (
     <StatsTile key={t.id} t={t} editing={editing} pinned={layout.pins.includes(t.id)} hidden={layout.hidden.includes(t.id)}
@@ -169,6 +183,12 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
         <StatsSheet key={muscle} title={`${muscle} · ${lastOf(range)}`} onClose={() => setOpen(null)}
           link={<button type="button" className="st-link st-back" onClick={() => setOpen('muscles')}><Icon name="chev-left" size={18} sw={2} />Muscles</button>}>
           <MuscleWeeks entries={entries} profile={p} today={today} range={range} muscle={muscle} />
+        </StatsSheet>
+      )}
+      {achId && ach && (
+        <StatsSheet key={achId} title={DEF.get(achId)!.title} onClose={() => setOpen(null)}
+          link={<button type="button" className="st-link st-back" onClick={() => setOpen('achievements')}><Icon name="chev-left" size={18} sw={2} />Achievements</button>}>
+          <AchievementDetail a={ach.a} id={achId} today={today} since={ach.since} />
         </StatsSheet>
       )}
     </>

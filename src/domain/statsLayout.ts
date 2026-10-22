@@ -33,9 +33,10 @@ export const OWNER_ONLY: readonly string[] = ['energy', 'weight', 'relstrength']
 /**
  * Tiles a friend's 8-week line (their sets, goal and PR ids, as Friends keeps it) can't fill without reading more: Muscles needs
  * their priorities, Rest between sets their timers, Lifts in rotation what they did before the 8 weeks (new and dropped); the
- * learning core's tiles (fatigue per set, best rest, next session, carry-over) a whole log's fit, their program and settings.
+ * learning core's tiles (fatigue per set, best rest, next session, carry-over) a whole log's fit, their program and settings;
+ * Achievements their whole log since they started counting (a friend's are their own to share: plan stage 4).
  */
-export const NOT_FROM_WINDOW: readonly string[] = ['muscles', 'rest', 'lifts', 'fatigue', 'bestrest', 'forecast', 'carry'];
+export const NOT_FROM_WINDOW: readonly string[] = ['muscles', 'rest', 'lifts', 'fatigue', 'bestrest', 'forecast', 'carry', 'achievements'];
 /** The tiles a viewer gets: anyone but the owner, none of OWNER_ONLY; on a friend's page (`window`), none of NOT_FROM_WINDOW. */
 export function forViewer<T extends { id: string }>(tiles: readonly T[], v: { owner: boolean; window?: boolean }): T[] {
   return tiles.filter((t) => (v.owner || !OWNER_ONLY.includes(t.id)) && !(v.window && NOT_FROM_WINDOW.includes(t.id)));

@@ -16,6 +16,7 @@ import { ProfileBar } from './ProfileBar';
 import { ProfileDbProvider } from '../state/profileDb';
 import { useFittedProfile } from '../state/useFittedProfile';
 import { useStatus } from '../state/useStatus';
+import { AchProvider, useAchStart } from '../state/useAchievements';
 import { useBox, useOwnBox, type Box } from '../state/box';
 import { onMinute } from '../state/clock';
 import { getDraft, saveDraft } from '../state/drafts';
@@ -213,6 +214,8 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const body = useBody();
   const photos = usePhotos();
   const status = useStatus();
+  // The day this profile's achievements count from: kept on its first open of this build (owner 2026-10-21: from 0).
+  const ach = useAchStart(nav.date);
   const sync = useSync(store, body, person);
   // Settings pulled from the account are saved on the phone, then every screen reads them again.
   // Friends' news after a sync, at most once a minute (a workout syncs after every set); anything done in Friends reads it at once.
@@ -220,13 +223,13 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const newsAt = useRef(0);
   const account = useRef<{ uid: string | null; date: string }>({ uid: null, date: nav.date });
   const cloud = useCloud(store, body, person, {
-    reload: () => { void rawProfile.reload(); void programs.reload(); void settings.reload(); void gyms.reload(); void status.reload(); },
+    reload: () => { void rawProfile.reload(); void programs.reload(); void settings.reload(); void gyms.reload(); void status.reload(); void ach.reload(); },
     onSynced: () => {
       if (Date.now() - newsAt.current > 60_000) nav.bumpNews();
       const { uid: u, date: d } = account.current;
       if (u) prefetchSoon(u, d);
     },
-    rev: [rawProfile.profile, programs.program, programs.plans, settings.get, settings.tags, gyms.gyms, status.status],
+    rev: [rawProfile.profile, programs.program, programs.plans, settings.get, settings.tags, gyms.gyms, status.status, ach.since],
   });
   const { tab, exercise, date, logDay, setLogDay, programOpen, photosOpen, pasteOpen, charsOpen, gymOpen, prioOpen, moreAt, setTab, setExercise, setProgramOpen, setPhotosOpen, setPasteOpen, setCharsOpen, setGymOpen, setPrioOpen, setMoreAt, open, showTour } = nav;
   // A screen opened from More goes back to it by name, or to the screen of More's that opened it (Paste, from Backup); from
@@ -257,7 +260,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const error = store.error ?? programs.error ?? body.error ?? photos.error ?? gyms.error ?? people.error;
 
   return (
-    <>
+    <AchProvider since={ach.since} profile={rawProfile.profile} program={programs.program} plans={programs.plans}>
       {uid && <NewsReader uid={uid} rev={nav.newsRev} newsAt={newsAt} />}
       {error && <div role="alert" className="banner">{error}</div>}
       <main className="screen">
@@ -294,7 +297,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : <DataScreen store={store} profile={rawProfile} programs={programs} gyms={gyms} photos={photos} cloud={cloud} people={people} onShowWalkthrough={showTour} onOpen={toMore}
             onOpenCharacters={top(() => setCharsOpen(true))} onOpenGym={top(() => setGymOpen(true))} onOpenProgram={top(() => setProgramOpen(true))} onOpenPhotos={top(() => setPhotosOpen(true))} onOpenPriorities={top(() => setPrioOpen(true))} />}
       </main>
-    </>
+    </AchProvider>
   );
 }
 

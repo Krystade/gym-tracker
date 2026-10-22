@@ -525,6 +525,15 @@ export function gained(before: Achievements, after: Achievements): Unlock[] {
 export const unlockedOn = (a: Achievements, date: string): Unlock[] =>
   a.unlocks.filter((u) => u.date === date).sort((x, y) => TIERS.indexOf(y.tier) - TIERS.indexOf(x.tier) || DEFS.findIndex((d) => d.id === x.id) - DEFS.findIndex((d) => d.id === y.id));
 
+/** Of several unlocks, only the highest level of each family (each lift, for a per-lift one), in the order given: a lift's
+ *  first set at 315 is "3 plates a side", not that and 2 and 1 as well. */
+export function highest(us: readonly Unlock[]): Unlock[] {
+  const top = new Map<string, Unlock>();
+  for (const u of us) { const k = `${u.id}:${u.lift ? liftKey(u.lift) : ''}`, t = top.get(k); if (!t || u.level > t.level) top.set(k, u); }
+  const keep = new Set(top.values());
+  return us.filter((u) => keep.has(u));
+}
+
 /** The tracks closest to their next level (goal gradient: plan §2), closest first; repeats and maxed ones have none. */
 export function closest(a: Achievements, n = 3): Track[] {
   return a.tracks.filter((t) => t.next != null && !a.hidden.includes(t.id))

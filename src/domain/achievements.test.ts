@@ -3,7 +3,7 @@ import { addDays } from './analytics';
 import { defaultProfile, type Profile } from './profile';
 import type { DayPlan, Program } from './program';
 import type { Flag, SetEntry } from './types';
-import { achievements, achievementsOf, amount, closest, DEFS, familySteps, gained, platesAt, STRENGTH, unlockedOn, unlockKey, unlockText, type Context } from './achievements';
+import { achievements, achievementsOf, amount, closest, DEFS, familySteps, gained, highest, platesAt, STRENGTH, unlockedOn, unlockKey, unlockText, type Context } from './achievements';
 import { synthLog } from './achievements.sample';
 
 // Synthetic sets only.
@@ -318,6 +318,17 @@ describe('reading it', () => {
     const next = closest(a, 2);
     expect(next.length).toBe(2);
     expect(next[0].value / next[0].next!).toBeGreaterThanOrEqual(next[1].value / next[1].next!);
+  });
+  it('highest: one line per family and lift, its top level, in the order given', () => {
+    const log = [set(day(0), 'Deadlift', 315, 3), set(day(0), 'Romanian Deadlift', 225, 8)];
+    const today = unlockedOn(achievements(log, ctx({ today: day(0) })), day(0));
+    expect(today.filter((u) => u.id === 'plates')).toHaveLength(5);
+    const top = highest(today);
+    expect(top.filter((u) => u.id === 'plates').map((u) => [u.lift, u.tier])).toEqual([['Deadlift', 'gold'], ['Romanian Deadlift', 'silver']]);
+    const key = (u: { id: string; lift?: string }) => `${u.id}:${u.lift ?? ''}`;
+    expect(new Set(top.map(key)).size).toBe(top.length);
+    for (const u of today) expect(top.find((t) => key(t) === key(u))!.level).toBeGreaterThanOrEqual(u.level);
+    expect(highest(top)).toEqual(top);
   });
   it('words', () => {
     expect([amount('plates', 2), amount('stronger', 25), amount('best-run', 4), amount('sessions', 1), amount('useful-sets', 2000)]).toEqual(['225 lb', '25%', '4 weeks in a row', '1 session', '2,000 sets']);

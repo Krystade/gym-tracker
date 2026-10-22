@@ -1,0 +1,206 @@
+import { amount, DEF, DEFS, GROUPS, closest, highest, plateLoad, tierWord, TIERS, unlockedOn, unlockText, type Achievements, type Def, type Tier, type Track, type Unlock } from '../domain/achievements';
+import { Medal, TIER_COLOUR } from './Medal';
+import './ach.css';
+
+// Achievements on Stats (plan §6): the sheet the wide tile opens, and a family's detail. Lifetime, from the day this profile
+// started counting: the range control doesn't apply. Each row opens its family's detail; nothing here writes anything.
+
+/** "Today", "Mar 20", or "Mar 20, 2025" in another year. */
+export const achDay = (d: string, today: string) => (d === today ? 'Today'
+  : new Date(`${d}T12:00:00`).toLocaleDateString(undefined, d.slice(0, 4) === today.slice(0, 4) ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' }));
+
+const tierAt = (t: Track): Tier | 'lock' => (t.level >= 0 ? DEF.get(t.id)!.levels[t.level].tier : 'lock');
+const nextTier = (t: Track): Tier | null => DEF.get(t.id)!.levels[t.level + 1]?.tier ?? null;
+const titleOf = (t: Pick<Track, 'id' | 'lift'>) => `${DEF.get(t.id)!.title}${t.lift ? ` · ${t.lift}` : ''}`;
+
+/** What's left to the next level, said: "1 week to go", "Bench Press: 225 lb", "25% on three lifts". */
+export function toGo(t: Track): string {
+  const n = t.next!;
+  if (t.id === 'plates') return `${t.lift}: ${plateLoad(n)} lb`;
+  if (t.id === 'bodyweight') return `${t.lift}: ${n} in a set`;
+  if (t.id === 'stronger') return `${n}% on three lifts`;
+  return `${amount(t.id, n - t.value)} to go`;
+}
+/** How far along to the next level: "11 of 12 weeks", "6 of 10 in a set", "135 lb · 225 lb next". */
+function ofNext(t: Track): string {
+  const n = t.next!, v = t.value;
+  if (t.id === 'plates') return `${v ? `${plateLoad(v)} lb` : 'Not yet'} · ${plateLoad(n)} lb next`;
+  if (t.id === 'bodyweight') return `${v} of ${n} in a set`;
+  if (t.id === 'stronger') return `${v}% of ${n}% on three lifts`;
+  return `${v.toLocaleString('en-US')} of ${amount(t.id, n)}`;
+}
+/** The tile's line: the closest next level. */
+export function nextLine(a: Achievements): string | null {
+  const t = closest(a, 1)[0];
+  return t ? `Next: ${DEF.get(t.id)!.title} ${nextTier(t)} · ${toGo(t)}` : null;
+}
+
+/** The tile's medals: each family's highest, the family most lately earned first; none yet, the next ones, locked. */
+export function AchShelf({ a, w }: { a: Achievements; w: number }) {
+  const n = Math.max(1, Math.min(6, Math.floor((w + 8) / 48)));
+  const best = new Map<string, Unlock>(), last = new Map<string, string>();
+  for (const u of a.unlocks) {
+    const b = best.get(u.id);
+    if (!b || TIERS.indexOf(u.tier) > TIERS.indexOf(b.tier)) best.set(u.id, u);
+    if ((last.get(u.id) ?? '') < u.date) last.set(u.id, u.date);
+  }
+  const got = [...best.values()].sort((x, y) => last.get(y.id)!.localeCompare(last.get(x.id)!) || TIERS.indexOf(y.tier) - TIERS.indexOf(x.tier));
+  const shown: { id: string; tier: Tier | 'lock' }[] = got.length ? got.map((u) => ({ id: u.id, tier: u.tier })) : closest(a, n).map((t) => ({ id: t.id, tier: 'lock' as const }));
+  return <span className="ach-shelf">{shown.slice(0, n).map((m) => <Medal key={m.id} tier={m.tier} glyph={m.id} size={40} />)}</span>;
+}
+
+/** Part of the way to the next level, in that level's colour. */
+const Bar = ({ frac, tier }: { frac: number; tier: Tier }) => (
+  <span className="ach-bar" aria-hidden="true"><i style={{ width: `${Math.max(3, Math.min(100, 100 * frac))}%`, background: TIER_COLOUR[tier].rim }} /></span>
+);
+
+/** One family (one lift of a per-lift one): its medal, where it stands, and the bar to its next level. */
+function FamilyRow({ t, onOpen }: { t: Track; onOpen: (id: string) => void }) {
+  const d = DEF.get(t.id)!, tier = tierAt(t), nt = nextTier(t);
+  const line = d.repeat ? (t.value ? `${t.value.toLocaleString('en-US')} ${t.value === 1 ? 'time' : 'times'}` : `Not yet · ${d.how[0].toLowerCase()}${d.how.slice(1)}`)
+    : nt ? `${t.value ? amount(t.id, t.value) : 'Not yet'} · ${nt} at ${amount(t.id, t.next!)}`
+      : `${amount(t.id, t.value)} · every level`;
+  return (
+    <button type="button" className={`ach-row${tier === 'lock' ? ' locked' : ''}`} onClick={() => onOpen(t.id)}>
+      <Medal tier={tier} glyph={t.id} size={44} />
+      <span className="ach-row-txt">
+        <b>{titleOf(t)}</b>
+        {tier !== 'lock' && <span className="sr-only">{tierWord(tier)}. </span>}
+        <span>{line}</span>
+        {nt && !d.repeat && t.value > 0 && <Bar frac={t.value / t.next!} tier={nt} />}
+      </span>
+    </button>
+  );
+}
+
+/** An unlock: its medal, tier and what it means. */
+function UnlockRow({ u, today, onOpen }: { u: Unlock; today: string; onOpen: (id: string) => void }) {
+  return (
+    <button type="button" className="ach-row" onClick={() => onOpen(u.id)}>
+      <Medal tier={u.tier} glyph={u.id} size={44} />
+      <span className="ach-row-txt">
+        <b>{DEF.get(u.id)!.title}</b>
+        <span className={`ach-tier t-${u.tier}`}>{tierWord(u.tier)}</span>
+        <span>{unlockText(u)}</span>
+      </span>
+      <span className="ach-when">{achDay(u.date, today)}</span>
+    </button>
+  );
+}
+
+/** Where every family's tracks stand: one per family, one per lift for plates and bodyweight (a locked row before any). */
+const tracksOf = (a: Achievements, d: Def): Track[] => {
+  const ts = a.tracks.filter((t) => t.id === d.id);
+  return ts.length ? ts : [{ id: d.id, value: 0, level: -1, next: d.levels[0].at }];
+};
+
+/** Counting from the start: said once at the foot of the sheet and of each detail. */
+function Foot({ since, today }: { since: string; today: string }) {
+  return (
+    <p className="ach-foot">
+      Counting from {since === today ? 'today' : achDay(since, today)}: only sets logged from then on count, so everyone starts at 0
+      (a PR still has to beat everything before). Worked out from your log as it is: edit or delete a set and these follow.
+    </p>
+  );
+}
+
+export function AchievementsSheet({ a, today, since, onOpen }: { a: Achievements; today: string; since: string; onOpen: (id: string) => void }) {
+  // Today's, the highest level of each (a first set at 315 is three plates, not one, two and three).
+  const fresh = highest(unlockedOn(a, today));
+  const next = closest(a, 3);
+  return (
+    <div className="ach">
+      <ul className="ach-tiers" aria-label="Earned by tier">
+        {TIERS.map((t) => {
+          const n = a.unlocks.filter((u) => u.tier === t).length;
+          return <li key={t}><Medal tier={n ? t : 'lock'} size={36} /><b>{n}</b><span>{tierWord(t)}</span></li>;
+        })}
+      </ul>
+      {fresh.length > 0 && (
+        <section className="ach-sec" aria-label="New today">
+          <h3>New<span>today</span></h3>
+          {fresh.map((u) => <UnlockRow key={`${u.id}:${u.level}:${u.lift ?? ''}`} u={u} today={today} onOpen={onOpen} />)}
+        </section>
+      )}
+      {next.length > 0 && (
+        <section className="ach-sec" aria-label="Next up">
+          <h3>Next up<span>closest first</span></h3>
+          {next.map((t) => {
+            const nt = nextTier(t)!;
+            return (
+              <button key={`${t.id}:${t.lift ?? ''}`} type="button" className="ach-row" onClick={() => onOpen(t.id)}>
+                <Medal tier="lock" glyph={t.id} size={44} />
+                <span className="ach-row-txt">
+                  <b>{titleOf(t)} · {nt}</b>
+                  <span>{ofNext(t)}</span>
+                  {t.value > 0 && <Bar frac={t.value / t.next!} tier={nt} />}
+                </span>
+              </button>
+            );
+          })}
+        </section>
+      )}
+      {GROUPS.map((g) => {
+        const defs = DEFS.filter((d) => d.group === g.id && !a.hidden.includes(d.id));
+        if (!defs.length) return null;
+        return (
+          <section key={g.id} className="ach-sec" aria-label={g.title}>
+            <h3>{g.title}{g.note && <span>{g.note}</span>}</h3>
+            {defs.flatMap((d) => tracksOf(a, d)).map((t) => <FamilyRow key={`${t.id}:${t.lift ?? ''}`} t={t} onOpen={onOpen} />)}
+          </section>
+        );
+      })}
+      <Foot since={since} today={today} />
+    </div>
+  );
+}
+
+/** A family's levels: the day each was reached, and how far to the next. */
+function Levels({ d, t, unlocks, today }: { d: Def; t: Track; unlocks: Unlock[]; today: string }) {
+  return (
+    <ol className="ach-levels">
+      {d.levels.map((lv, i) => {
+        const u = unlocks.find((x) => x.level === i);
+        return (
+          <li key={lv.tier} className={u ? undefined : 'locked'}>
+            <Medal tier={u ? lv.tier : 'lock'} glyph={d.id} size={36} />
+            <span className="ach-row-txt">
+              <b>{d.repeat ? (u ? `${t.value.toLocaleString('en-US')} ${t.value === 1 ? 'time' : 'times'}` : 'Not yet') : amount(d.id, lv.at)}</b>
+              <span>{tierWord(lv.tier)}{!u && i === t.level + 1 && t.value > 0 && !d.repeat ? ` · ${amount(d.id, t.value)} so far` : ''}{d.repeat && u ? ` · first ${achDay(u.date, today)}` : ''}</span>
+            </span>
+            <span className="ach-when">{u ? achDay(u.date, today) : '—'}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+export function AchievementDetail({ a, id, today, since }: { a: Achievements; id: string; today: string; since: string }) {
+  const d = DEF.get(id);
+  if (!d) return null;
+  const ts = tracksOf(a, d);
+  const top = ts.reduce((m, t) => (t.level > m.level ? t : m), ts[0]);
+  return (
+    <div className="ach">
+      <div className="ach-dh">
+        <Medal tier={tierAt(top)} glyph={id} size={64} />
+        <p>{d.how}.</p>
+      </div>
+      {d.perLift && ts[0].lift
+        ? ts.map((t) => (
+          <section key={t.lift} className="ach-sec" aria-label={t.lift}>
+            <h3>{t.lift}</h3>
+            <Levels d={d} t={t} unlocks={a.unlocks.filter((u) => u.id === id && u.lift === t.lift)} today={today} />
+          </section>
+        ))
+        : (
+          <section className="ach-sec" aria-label="Levels">
+            <h3>Levels</h3>
+            <Levels d={d} t={ts[0]} unlocks={a.unlocks.filter((u) => u.id === id)} today={today} />
+          </section>
+        )}
+      <Foot since={since} today={today} />
+    </div>
+  );
+}
