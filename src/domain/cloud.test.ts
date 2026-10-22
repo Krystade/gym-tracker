@@ -140,6 +140,20 @@ describe('mergeMeta', () => {
     expect(r.items.program).toEqual(program);
     expect(r.pull).toEqual({});
   });
+  it('the day achievements count from: the earliest either phone kept, whichever changed it', () => {
+    // A new phone's first sync: its own day would win by the usual rule; the earlier one the account has wins.
+    const a = mergeMeta({ achievements: '2026-10-25' }, { achievements: '2026-10-22' }, {});
+    expect(a.items.achievements).toBe('2026-10-22');
+    expect(a.pull).toEqual({ achievements: '2026-10-22' });
+    const b = mergeMeta({ achievements: '2026-10-22' }, { achievements: '2026-10-25' }, {});
+    expect(b.items.achievements).toBe('2026-10-22');
+    expect(b).toMatchObject({ changed: true, pull: {} });
+    // Unchanged here since the last sync (the cloud would win by the usual rule): still the earliest.
+    const c = mergeMeta({ achievements: '2026-10-22' }, { achievements: '2026-10-30' }, { achievements: metaHash('2026-10-22') });
+    expect(c.items.achievements).toBe('2026-10-22');
+    // Only one side has it: that one.
+    expect(mergeMeta({}, { achievements: '2026-10-30' }, {}).pull).toEqual({ achievements: '2026-10-30' });
+  });
   it('nothing changed on either side is a no-op', () => {
     const first = mergeMeta({ program }, null, {});
     const again = mergeMeta({ program: { perSession: 5, key: 'program' } }, first.items, first.seen);

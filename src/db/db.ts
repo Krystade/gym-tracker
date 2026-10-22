@@ -209,6 +209,23 @@ export const putTags = async (t: TagPrefs): Promise<void> => { await (await db()
 export const getStatus = async (): Promise<string | undefined> => ((await (await db()).get('config', 'status')) as { text: string } | undefined)?.text;
 export const putStatus = async (text: string): Promise<void> => { await (await db()).put('config', { key: 'status', text }); };
 
+/**
+ * The day this profile's achievements count from (domain/achievements `since`; owner 2026-10-21: everyone starts from 0): its
+ * first run of a build with achievements. Absent until then; synced as the meta item `achievements`, the earliest of the phones'.
+ */
+interface AchStart { key: 'achievements'; since: string }
+/** A kept start that is a day, else none (a bad synced value starts again rather than counting from nonsense). */
+const achDay = (r: unknown): string | undefined => { const v = (r as AchStart | undefined)?.since; return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined; };
+export const getAchStart = async (): Promise<string | undefined> => achDay(await (await db()).get('config', 'achievements'));
+/** The start kept, or `today` kept and returned if there's none yet: one transaction, so two open copies agree on one day. */
+export async function startAchievements(today: string): Promise<string> {
+  const tx = (await db()).transaction('config', 'readwrite');
+  const had = achDay(await tx.store.get('achievements'));
+  if (!had) await tx.store.put({ key: 'achievements', since: today } satisfies AchStart);
+  await tx.done;
+  return had ?? today;
+}
+
 export const getProfile = async (): Promise<Profile | undefined> => (await db()).get('profile', 'profile');
 export const putProfile = async (p: Profile): Promise<void> => { await (await db()).put('profile', p); };
 
@@ -401,6 +418,7 @@ function metaRow(k: string): { store: string; key: string; get: (r: Row) => unkn
   if (k === 'program' || k.startsWith('day:')) return { store: 'program', key: k, ...whole };
   if (k.startsWith('settings:')) return { store: 'settings', key: k.slice(9), ...whole };
   if (k === 'tags') return { store: 'config', key: k, ...whole };
+  if (k === 'achievements') return { store: 'config', key: k, get: (r) => r?.since, put: (v) => ({ key: k, since: v }), del: () => null };
   if (k === 'status') return { store: 'config', key: k, get: (r) => r?.text, put: (v) => ({ key: 'status', text: cleanStatus(v) }), del: () => null };
   if (k.startsWith('alias:')) {
     const name = k.slice(6);
@@ -481,7 +499,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 
 // Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
 const PER_PROFILE = {
-  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, deleteSetsWithTombstones, restoreSet, restoreSets, renameLift, putMany, getAllSettings, putSettings, deleteSettings, getTags, putTags, getStatus, putStatus, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan, deleteDayPlan,
+  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, deleteSetsWithTombstones, restoreSet, restoreSets, renameLift, putMany, getAllSettings, putSettings, deleteSettings, getTags, putTags, getStatus, putStatus, getAchStart, startAchievements, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan, deleteDayPlan,
   getBody, putBody, putBodyMany, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, getTombstoneTimes, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
   getReplaced, putReplaced, deleteReplaced, pruneReplaced, getSyncSnapshot, applySynced, applySyncedMeta,
 };

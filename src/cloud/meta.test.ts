@@ -39,6 +39,28 @@ describe('the Crew status phrase in the synced settings', () => {
   });
 });
 
+describe('the day achievements count from (owner 2026-10-21: everyone starts from 0)', () => {
+  it('is kept once per profile: the first run’s day, never moved by a later run', async () => {
+    expect(await boundDb('main').getAchStart()).toBeUndefined();
+    expect(await readMeta(boundDb('main'))).not.toHaveProperty('achievements');
+    expect(await boundDb('main').startAchievements('2026-10-22')).toBe('2026-10-22');
+    expect(await boundDb('main').startAchievements('2026-10-23')).toBe('2026-10-22');
+    expect(await boundDb('p2').getAchStart()).toBeUndefined();
+    expect((await readMeta(boundDb('main'))).achievements).toBe('2026-10-22');
+  });
+  it('comes down onto the phone', async () => {
+    await boundDb('main').startAchievements('2026-10-25');
+    await pull(boundDb('main'), { achievements: '2026-10-22' });
+    expect(await boundDb('main').getAchStart()).toBe('2026-10-22');
+  });
+  it('a start that isn’t a day reads as none, and the next run starts again', async () => {
+    await pull(boundDb('main'), { achievements: 'soon' });
+    expect(await boundDb('main').getAchStart()).toBeUndefined();
+    expect(await boundDb('main').startAchievements('2026-10-24')).toBe('2026-10-24');
+    expect(await boundDb('main').getAchStart()).toBe('2026-10-24');
+  });
+});
+
 describe('settings deleted on another phone (round 10)', () => {
   it('a lift’s settings, a day plan, a name mapping and the last gym go from this phone; the rest stay', async () => {
     const db = boundDb('main');
@@ -67,14 +89,15 @@ describe('settings a sync saves onto this phone (round 10)', () => {
   }
   /** Another phone's copy of each: a string retyped, the active gym switched, a field added to the rest. */
   const theirsOf = (base: MetaItems) => Object.fromEntries(Object.entries(base).map(([k, v]) =>
-    [k, typeof v === 'string' ? `${v}x` : k === 'gyms' ? { ...(v as object), active: 'g9' } : { ...(v as object), extra: 1 }]));
+    [k, k === 'achievements' ? '2026-10-20' : typeof v === 'string' ? `${v}x` : k === 'gyms' ? { ...(v as object), active: 'g9' } : { ...(v as object), extra: 1 }]));
   it('reads every kind the way readMeta does: an unchanged item is saved over, not left', async () => {
     const db = boundDb('main');
     await everyKind(db);
+    await db.startAchievements('2026-10-22');
     const base = await readMeta(db);
-    expect(Object.keys(base).sort()).toEqual(['alias:pushdowns', 'day:2026-10-01', 'gyms', 'profile', 'program', 'settings:bench press', 'status', 'tags']);
+    expect(Object.keys(base).sort()).toEqual(['achievements', 'alias:pushdowns', 'day:2026-10-01', 'gyms', 'profile', 'program', 'settings:bench press', 'status', 'tags']);
     const changed = theirsOf(base);
-    expect(await db.applySyncedMeta(base, changed, [])).toEqual({ pulled: 8, removed: 0, skipped: 0 });
+    expect(await db.applySyncedMeta(base, changed, [])).toEqual({ pulled: 9, removed: 0, skipped: 0 });
     expect(await readMeta(db)).toEqual(changed);
   });
   it('leaves every kind changed on this phone since the sync read it, saved over or deleted', async () => {

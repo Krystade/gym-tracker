@@ -120,7 +120,7 @@ export function monthsToSync(local: Map<string, LocalMonth>, remoteIndex: Record
 
 /**
  * Everything else that's yours, flattened to one item per key (`profile`, `program`, `day:<date>`, `settings:<lift>`, `alias:<name>`,
- * `gyms`, `tags`), so two phones merge as a union. `seen` holds each item's fingerprint as the last sync left it.
+ * `gyms`, `tags`, `status`, `achievements`), so two phones merge as a union. `seen` holds each item's fingerprint as the last sync left it.
  */
 export type MetaItems = Record<string, unknown>;
 /** `remove`: items deleted on another phone, to delete on this one too. */
@@ -134,6 +134,7 @@ const deep = (x: unknown): unknown => Array.isArray(x) ? x.map(deep)
 /** A fingerprint that ignores key order and undefined fields. */
 export const metaHash = (x: unknown): string => hash(JSON.stringify(deep(x)));
 
+const isDay = (x: unknown): x is string => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x);
 /**
  * Per item: one the phone changed since the last sync wins (so a first sync keeps the phone's own); otherwise the cloud's.
  * A deletable item that the last sync saw, now gone from one side while the other still has it exactly as that sync left it,
@@ -148,7 +149,10 @@ export function mergeMeta(local: MetaItems, remote: MetaItems | null, seen: Reco
       if (l === undefined && metaHash(r) === seen[k]) continue; // deleted here: it leaves the cloud
       if (r === undefined && lh === seen[k]) { remove.push(k); continue; } // deleted on another phone: it goes here too
     }
-    const v = l !== undefined && (lh !== seen[k] || r === undefined) ? l : r;
+    // The day achievements count from (domain/achievements): the earliest any phone kept, so a new phone's first run can't move
+    // it later and take back what was earned before it; otherwise the rule below.
+    const v = k === 'achievements' && isDay(l) && isDay(r) ? (l < r ? l : r)
+      : l !== undefined && (lh !== seen[k] || r === undefined) ? l : r;
     if (v === undefined) continue;
     items[k] = v;
     next[k] = metaHash(v);

@@ -3,10 +3,11 @@ import type { MetaItems } from '../domain/cloud';
 
 /**
  * Everything of yours on this phone apart from the log and photos: priorities, program, day plans, lift settings, name mappings,
- * gyms, tags, Crew status. A sync saves them back item by item with db applySyncedMeta, which reads each the same way.
+ * gyms, tags, Crew status, the day achievements count from. A sync saves them back item by item with db applySyncedMeta, which
+ * reads each the same way.
  */
 export async function readMeta(db: ProfileDb): Promise<MetaItems> {
-  const [profile, program, plans, settings, aliases, gyms, tags, status] = await Promise.all([db.getProfile(), db.getProgram(), db.getDayPlans(), db.getAllSettings(), db.getAliases(), getGyms(), db.getTags(), db.getStatus()]);
+  const [profile, program, plans, settings, aliases, gyms, tags, status, achievements] = await Promise.all([db.getProfile(), db.getProgram(), db.getDayPlans(), db.getAllSettings(), db.getAliases(), getGyms(), db.getTags(), db.getStatus(), db.getAchStart()]);
   const out: MetaItems = {};
   if (profile) out.profile = profile;
   if (program) out.program = program;
@@ -16,5 +17,6 @@ export async function readMeta(db: ProfileDb): Promise<MetaItems> {
   if (gyms.gyms.length) out.gyms = gyms;
   if (tags) out.tags = tags;
   if (status !== undefined) out.status = status;
+  if (achievements) out.achievements = achievements;
   return out;
 }
