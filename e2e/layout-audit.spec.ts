@@ -985,6 +985,62 @@ test('Achievements on Today: what a set unlocked, said under its card, the tier 
   clean(found);
 });
 
+test('Achievements with friends: a chip on a friend’s session, their page’s newest and tile, its sheet; your switch to show them', async ({ browser, request }, info) => {
+  test.setTimeout(180_000);
+  const found: string[] = [];
+  const [me, fr] = await Promise.all([long('me'), long('medal')].map((n) => account(request, n)));
+  const theirs = [...session(at(9, 9), [['Pull-up', [[0, 10]]]]), ...session(at(0, 17), [['Single Leg Romanian Deadlift With Dumbbells', [[225, 5], [315, 3]]], ['Pull-up', [[0, 12]]]])];
+  const d = (n: number) => iso(at(n, 12));
+  // Their phone's achievements: two silver-and-up today (the feed's chips, one under the longest lift name), and the rest.
+  const ach = [
+    { i: 'plates', l: 1, d: d(0), n: 'Single Leg Romanian Deadlift With Dumbbells' }, { i: 'bodyweight', l: 2, d: d(0), n: 'Pull-up' },
+    { i: 'sessions', l: 1, d: d(0) }, { i: 'prs', l: 1, d: d(3) }, { i: 'goal-weeks', l: 1, d: d(4) }, { i: 'new-lifts', l: 0, d: d(9) },
+  ];
+  await Promise.all([log(request, me, session(at(2, 17), [['Barbell Squat', [[185, 5]]]])), log(request, fr, theirs, { goal: 3 })]);
+  await publish(request, fr, { ...summaryOf(theirs, T, 3), ach } as never);
+  await befriend(request, me, fr);
+  const page = await open(browser, me);
+  const png = async (name: string) => { if (process.env.STATS_PNG) await page.screenshot({ path: `${process.env.STATS_PNG}/${info.project.name}-achf-${name}.png` }); };
+  const card = crew(page).getByTestId(`crew-${fr.name}`);
+  await expect(card.getByRole('list', { name: 'Achievements today' }).getByRole('listitem')).toHaveCount(2, { timeout: 20_000 });
+  await card.getByRole('list', { name: 'Achievements today' }).evaluate((e) => e.scrollIntoView({ block: 'center' }));
+  await check(page, info, found, 'achf-feed', [], '.ach-chips');
+  await png('feed');
+
+  await card.getByRole('button', { name: `@${fr.name}`, exact: true }).click();
+  const fp = page.getByRole('region', { name: `@${fr.name}`, exact: true });
+  await expect(fp.locator('.fp-ach')).toContainText('Gold · Bodyweight · Pull-up');
+  await check(page, info, found, 'achf-page', [], '.fp-ach');
+  await expect(fp.locator('.fp-stats [data-tile="achievements"]')).toContainText('Newest: Bodyweight · Gold, today');
+  await png('page');
+  await fp.locator('.fp-stats [data-tile="achievements"]').evaluate((e) => e.scrollIntoView({ block: 'center' }));
+  await check(page, info, found, 'achf-tile', [], '.fp-stats');
+  await png('tile');
+  await fp.locator('.fp-stats [data-tile="achievements"]').click();
+  await expect(page.getByRole('dialog', { name: 'Achievements' })).toContainText('counted from their own start');
+  await check(page, info, found, 'achf-sheet', [], '.fp-stats');
+  await png('sheet');
+  await page.getByRole('dialog').locator('.st-sh-body').evaluate((b) => { b.scrollTop = b.scrollHeight; });
+  await check(page, info, found, 'achf-sheet-end', [], '.fp-stats');
+  await png('sheet-end');
+  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+
+  // Yours, signed in: a family's levels end with the switch to show its group.
+  await goto(page, 'Stats');
+  await page.locator('[data-tile="achievements"]').click();
+  await page.getByRole('dialog', { name: 'Achievements' }).getByRole('region', { name: 'Showing up' }).getByRole('button', { name: /^Goal weeks/ }).click();
+  const g = page.getByRole('dialog', { name: 'Goal weeks' });
+  await expect(g.getByRole('switch', { name: 'Show Showing up to friends' })).toHaveAttribute('aria-checked', 'true');
+  await g.locator('.st-sh-body').evaluate((b) => { b.scrollTop = b.scrollHeight; });
+  await check(page, info, found, 'achf-share', [], 'main');
+  await png('share');
+  await g.getByRole('switch', { name: 'Show Showing up to friends' }).click();
+  await expect(g.getByRole('switch', { name: 'Show Showing up to friends' })).toHaveAttribute('aria-checked', 'false');
+  await check(page, info, found, 'achf-share-off', [], 'main');
+  await png('share-off');
+  clean(found);
+});
+
 // ---- IA A5 and A8 (owner, 2026-10-21): Stats › Body and its Weight sheet; a lift's Lift settings fold. ----
 
 test('Stats › Body: weigh-ins only, sets without weigh-ins, both and the Weight sheet; a lift’s Lift settings folded and open', async ({ page }, info) => {

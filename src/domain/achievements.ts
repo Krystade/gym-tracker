@@ -590,3 +590,44 @@ export function unlockText(u: Unlock): string {
   }
 }
 export const tierWord = (t: Tier) => t[0].toUpperCase() + t.slice(1);
+
+// ---- What friends see (plan §7, owner Q2–Q6 as recommended): the highest level of each family, per lift for a per-lift one, of
+// the groups you show, in your Compare summary (domain/compare `ach`). No counts, no values beyond the level, no tracks.
+
+/** One shared achievement: family id, level index, the day reached, the lift for a per-lift one. */
+export interface SharedAch { i: string; l: number; d: string; n?: string }
+/** At most this many in a summary (the rules hold it to the same). */
+export const MAX_SHARED = 32;
+const NAME_MAX = 60;
+
+/** Your achievements as friends get them: groups in `hidden` left out; the highest level of each, newest first. */
+export function shareOf(a: Achievements, hidden: readonly string[] = []): SharedAch[] {
+  const top = new Map<string, Unlock>();
+  for (const u of a.unlocks) {
+    if (hidden.includes(DEF.get(u.id)!.group)) continue;
+    const k = `${u.id}:${u.lift ? liftKey(u.lift) : ''}`, t = top.get(k);
+    if (!t || u.level > t.level || (u.level === t.level && u.date > t.date)) top.set(k, u);
+  }
+  return [...top.values()]
+    .sort((x, y) => y.date.localeCompare(x.date) || y.level - x.level || x.id.localeCompare(y.id) || (x.lift ?? '').localeCompare(y.lift ?? ''))
+    .slice(0, MAX_SHARED)
+    .map((u) => ({ i: u.id, l: u.level, d: u.date, ...(u.lift && { n: Array.from(u.lift).slice(0, NAME_MAX).join('') }) }));
+}
+
+/**
+ * A friend's shared achievements as unlocks, read as untrusted: an unknown family, a level it hasn't, a lift on a family that
+ * isn't per lift (or none on one that is), or a bad day is dropped. Value 0: friends never get the number.
+ */
+export function unlocksOf(xs: readonly SharedAch[]): Unlock[] {
+  const out: Unlock[] = [];
+  for (const x of xs.slice(0, MAX_SHARED)) {
+    const d = typeof x?.i === 'string' ? DEF.get(x.i) : undefined;
+    if (x.n !== undefined && (typeof x.n !== 'string' || !x.n.trim() || Array.from(x.n).length > NAME_MAX)) continue;
+    if (!d || typeof x.d !== 'string' || !Number.isInteger(x.l) || x.l < 0 || x.l >= d.levels.length || !/^\d{4}-\d{2}-\d{2}$/.test(x.d) || !!d.perLift !== !!x.n) continue;
+    out.push({ id: x.i, level: x.l, tier: d.levels[x.l].tier, date: x.d, value: 0, ...(x.n && { lift: x.n }) });
+  }
+  return out;
+}
+
+/** For a friend's feed card and page: silver and up only (owner Q6), so a new friend's first bronzes don't fill the feed. */
+export const featured = (us: readonly Unlock[]): Unlock[] => us.filter((u) => TIERS.indexOf(u.tier) >= TIERS.indexOf('silver'));

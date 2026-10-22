@@ -1,3 +1,4 @@
+import { MAX_SHARED, type SharedAch } from './achievements';
 import { addDays, weeklySummary } from './analytics';
 import { isWorking } from './crew';
 import { e1rmChange, weekStreak } from './feed';
@@ -51,6 +52,11 @@ export interface Summary {
   /** Weeks in a row at it. */ streak: number;
   r: Record<CompareRange, RangeSummary>;
   /** Newest first. */ firsts: First[];
+  /**
+   * Their achievements, the groups they show (domain/achievements shareOf), newest first, at most 32. None: an app from before
+   * them, or one that hasn't read its start day yet.
+   */
+  ach?: SharedAch[];
 }
 /** A summary as read: when it was written (ms; 0 unknown). */
 export interface ReadSummary extends Summary { at: number }
@@ -167,7 +173,7 @@ export function firsts(entries: readonly SetEntry[], today: string): First[] {
 }
 
 /** Your summary, from your whole log, for friends to read. `goal`: your weekly goal (sessions). */
-export function summarize(entries: SetEntry[], today: string, goal: number): Summary {
+export function summarize(entries: SetEntry[], today: string, goal: number, ach?: readonly SharedAch[]): Summary {
   const g = Math.min(7, Math.max(1, Math.round(goal) || 2));
   const byId = new Map(entries.map((e) => [e.id, e]));
   const prDays = [...prIds(entries)].map((id) => byId.get(id)!.date).filter((d) => d <= today);
@@ -176,7 +182,7 @@ export function summarize(entries: SetEntry[], today: string, goal: number): Sum
   const weeks = firstDay ? Math.min(1001, Math.ceil((daysBetween(firstDay, today) + 1) / 7) + 1) : 1;
   const streak = Math.min(1000, weekStreak(entries, today, g, weeks).current);
   const r = Object.fromEntries(COMPARE_RANGES.map((k) => [k, rangeSummary(entries, k, today, g, prDays, perDay, firstDay)])) as Record<CompareRange, RangeSummary>;
-  return { v: 1, day: today, goal: g, streak, r, firsts: firsts(entries, today) };
+  return { v: 1, day: today, goal: g, streak, r, firsts: firsts(entries, today), ...(ach && { ach: ach.slice(0, MAX_SHARED).map((x) => ({ ...x })) }) };
 }
 
 /** What changed, for deciding whether to write it again: everything but when. */
@@ -225,7 +231,12 @@ export function parseSummary(x: unknown): ReadSummary | null {
   }).map((f) => ({ n: f.n, w: f.w, d: f.d }));
   const t = o.at as { toMillis?: () => number } | number | undefined;
   const at = typeof t === 'number' ? t : typeof t?.toMillis === 'function' ? t.toMillis() : 0;
-  return { v: 1, day: o.day, goal: o.goal, streak: o.streak, r, firsts, at };
+  // Achievements: kept as sent, each entry's shape checked (achievements unlocksOf checks each against the families).
+  const ach = Array.isArray(o.ach) ? o.ach.slice(0, MAX_SHARED).filter((a): a is SharedAch => {
+    const q = a as Record<string, unknown> | null;
+    return !!q && typeof q === 'object' && typeof q.i === 'string' && isInt(q.l, 0, 4) && isDay(q.d) && (q.n === undefined || nameOk(q.n));
+  }).map((a) => ({ i: a.i, l: a.l, d: a.d, ...(a.n !== undefined && { n: a.n }) })) : undefined;
+  return { v: 1, day: o.day, goal: o.goal, streak: o.streak, r, firsts, ...(ach && { ach }), at };
 }
 
 // ---- Setting people side by side ----

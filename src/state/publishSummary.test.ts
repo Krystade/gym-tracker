@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fakeFirestore } from '../cloud/fakeFirestore';
 import { PUBLISH_MS } from '../cloud/summary';
+import { defaultProfile, type Profile } from '../domain/profile';
 import type { SetEntry } from '../domain/types';
 import { hashOf, publishSummary, type PublishSource } from './publishSummary';
 
@@ -8,9 +9,12 @@ import { hashOf, publishSummary, type PublishSource } from './publishSummary';
 const set = (date: string, weight: number, n: number): SetEntry => ({ id: `t|${date}|bench|${n}`, date, seq: n, exercise: 'Bench Press', setNo: 1, weight, reps: 5, flags: [], source: 't' });
 const T = Date.parse('2026-10-21T18:00:00');
 
-function phone(sets: SetEntry[], goal = 3, tombstones: string[] = []) {
+function phone(sets: SetEntry[], goal = 3, tombstones: string[] = [], since: string | undefined = undefined, extra: Partial<Profile> = {}) {
   const log = { sets, tombstones: new Set(tombstones) };
-  const src: PublishSource = { getSyncSnapshot: async () => log, getProfile: async () => ({ weeklyGoal: goal }) };
+  const src: PublishSource = {
+    getSyncSnapshot: async () => log, getProfile: async () => ({ ...defaultProfile(), weeklyGoal: goal, ...extra }),
+    getAchStart: async () => since, getProgram: async () => undefined, getDayPlans: async () => [],
+  };
   return { src, log };
 }
 let account = 0;
@@ -30,7 +34,7 @@ describe('publishSummary: your summary, from this phone, when it changed and at 
     const uid = `u${++account}`, w = fakeFirestore(), p = phone([set('2026-10-01', 135, 1)]);
     await publishSummary(w.cloud, uid, p.src, T);
     let reads = 0;
-    const counted: PublishSource = { getSyncSnapshot: async () => { reads++; return p.log; }, getProfile: p.src.getProfile };
+    const counted: PublishSource = { ...p.src, getSyncSnapshot: async () => { reads++; return p.log; } };
     delete w.docs[`users/${uid}/summary/compare`];
     expect(await publishSummary(w.cloud, uid, counted, T + PUBLISH_MS)).toBe(false);
     expect(reads).toBe(1);
@@ -65,5 +69,25 @@ describe('publishSummary: your summary, from this phone, when it changed and at 
   it('the hash tells summaries apart', () => {
     expect(hashOf('a')).not.toBe(hashOf('b'));
     expect(hashOf('{"v":1}')).toBe(hashOf('{"v":1}'));
+  });
+  it('achievements go with it from the start day on, the highest of each, and a group kept from friends stays out', async () => {
+    const uid = `u${++account}`, w = fakeFirestore();
+    // Before any start day: none, and the summary is as an app from before them sends it.
+    await publishSummary(w.cloud, uid, phone([set('2026-10-01', 135, 1)]).src, T);
+    expect(w.docs[`users/${uid}/summary/compare`]).not.toHaveProperty('ach');
+    // Counting from Oct 20: a first session, plates at 135 then 225 (the highest only), the Oct 1 set before it counts nothing.
+    const log = [set('2026-10-01', 135, 1), set('2026-10-20', 135, 2), set('2026-10-21', 225, 3)];
+    const two = `u${++account}`;
+    await publishSummary(w.cloud, two, phone(log, 3, [], '2026-10-20').src, T);
+    expect(w.docs[`users/${two}/summary/compare`].ach).toEqual([
+      { i: 'plates', l: 1, d: '2026-10-21', n: 'Bench Press' },
+      { i: 'prs', l: 0, d: '2026-10-21' },
+      { i: 'comeback', l: 0, d: '2026-10-20' }, // 19 days after Oct 1
+      { i: 'sessions', l: 0, d: '2026-10-20' },
+    ]);
+    // Milestones and Getting stronger kept from friends: plates and PRs go, the rest stay.
+    const three = `u${++account}`;
+    await publishSummary(w.cloud, three, phone(log, 3, [], '2026-10-20', { achHidden: ['milestones', 'stronger'] }).src, T);
+    expect(w.docs[`users/${three}/summary/compare`].ach).toEqual([{ i: 'comeback', l: 0, d: '2026-10-20' }, { i: 'sessions', l: 0, d: '2026-10-20' }]);
   });
 });

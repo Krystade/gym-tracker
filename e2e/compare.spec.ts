@@ -44,7 +44,8 @@ async function crew(request: APIRequestContext) {
 test('opening Compare reads one document a friend, their summary, and never their sets; a friend without one shows as not updated yet', async ({ browser, request }) => {
   test.setTimeout(120_000);
   const { me, ana, ben, cal } = await crew(request);
-  const page = await signedIn(browser, me, T);
+  let all: string[] = [];
+  const page = await signedIn(browser, me, T, async (p) => { all = watch(p); });
   const feed = page.getByRole('region', { name: 'Crew' });
   await expect(feed.getByTestId(`crew-${ana.name}`)).toBeVisible({ timeout: 20_000 });
   // Friends' own reads (their lines, the news) settle first; what's counted is what opening Compare costs.
@@ -59,7 +60,10 @@ test('opening Compare reads one document a friend, their summary, and never thei
   await expect(c.getByRole('list', { name: 'Not updated yet' })).toContainText(`@${cal.name}`);
   await expect(c.getByRole('list', { name: 'Not updated yet' })).toContainText('Not updated yet');
   await page.waitForTimeout(1500);
-  for (const f of [ana, ben, cal]) expect(asked(seen, f), `reads of @${f.name}`).toEqual([`users/${f.uid}/summary/compare`]);
+  // Friends read each one's summary once, for the achievement chips on their cards (kept 5 minutes); Compare reads it from there.
+  const sums = (f: Seeded) => asked(all, f).filter((d) => d.endsWith('/summary/compare'));
+  for (const f of [ana, ben, cal]) expect(sums(f), `summary reads of @${f.name}`).toEqual([`users/${f.uid}/summary/compare`]);
+  for (const f of [ana, ben, cal]) expect(asked(seen, f), `reads of @${f.name} opening Compare`).toEqual([]);
   // Nothing of anyone's sets: no month, no index, no meta, no query of a friend's.
   expect(anythingElse(seen, [ana, ben, cal])).toEqual([]);
 
@@ -81,7 +85,8 @@ test('opening Compare reads one document a friend, their summary, and never thei
   await lines.getByRole('button', { name: new RegExp(`@${ana.name}`) }).click();
   await expect(lines.getByRole('button', { name: new RegExp(`@${ana.name}`) })).toHaveAttribute('aria-pressed', 'true');
   await expect(c.getByRole('img', { name: /^Strength change from each person’s own start, 12 wk/ })).toBeVisible();
-  for (const f of [ana, ben, cal]) expect(asked(seen, f), `reads of @${f.name}`).toEqual([`users/${f.uid}/summary/compare`]);
+  for (const f of [ana, ben, cal]) expect(asked(seen, f), `reads of @${f.name}`).toEqual([]);
+  for (const f of [ana, ben, cal]) expect(sums(f), `summary reads of @${f.name}`).toHaveLength(1);
   expect(anythingElse(seen, [ana, ben, cal])).toEqual([]);
 
   // Hide ben: gone from every view, kept hidden on this phone, and not read when Compare opens again.
@@ -124,7 +129,15 @@ test('your phone publishes your summary after a sync, in its shape and nothing m
     const r = await request.get(`${DOCS}/users/${me.uid}/summary/compare`, { headers: { Authorization: 'Bearer owner' } });
     doc = r.ok() ? await r.json() : {};
     return Object.keys(doc.fields ?? {}).sort();
-  }, { timeout: 20_000 }).toEqual(['at', 'day', 'firsts', 'goal', 'r', 'streak', 'v']);
+  }, { timeout: 20_000 }).toEqual(['ach', 'at', 'day', 'firsts', 'goal', 'r', 'streak', 'v']);
+  // Achievements count from the day this phone started them, today: none from the weeks of log before it, and each one only
+  // its id, level, day and lift.
+  type Ach = { mapValue: { fields: Record<string, { stringValue?: string }> } };
+  const ach = (doc.fields!.ach as { arrayValue: { values?: Ach[] } }).arrayValue.values ?? [];
+  for (const a of ach) {
+    expect(Object.keys(a.mapValue.fields).filter((k) => !['i', 'l', 'd', 'n'].includes(k))).toEqual([]);
+    expect(a.mapValue.fields.d.stringValue).toBe(T.toLocaleDateString('en-CA'));
+  }
   const text = JSON.stringify(doc);
   for (const word of ['pain', 'elbow', 'twinge', 'note', 'cycle', 'energy', 'reps', 'weight']) expect(text, word).not.toContain(word);
   expect(JSON.stringify(doc.fields!.goal)).toContain('"2"'); // the app's default goal

@@ -241,6 +241,12 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const toMore = (m: MoreAt) => { setTab('more'); setMoreAt(m); window.scrollTo(0, 0); };
   const top = (fn: () => void) => () => { fn(); window.scrollTo(0, 0); };
   const uid = cloud.mine ? cloud.link?.uid : null;
+  // Achievements friends see: a group shown or kept back, in the profile (synced), published with the summary (stage 4).
+  const { profile: rp, save: saveProfile } = rawProfile;
+  const shareAch = useCallback((g: string, on: boolean) => {
+    const was = rp.achHidden ?? [];
+    void saveProfile({ ...rp, achHidden: on ? was.filter((x) => x !== g) : [...new Set([...was, g])] });
+  }, [rp, saveProfile]);
   account.current = { uid: uid ?? null, date };
   const { setMe } = nav;
   useEffect(() => { setMe(uid ?? null); }, [uid, setMe]);
@@ -270,7 +276,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const error = store.error ?? programs.error ?? body.error ?? photos.error ?? gyms.error ?? people.error;
 
   return (
-    <AchProvider since={ach.since} profile={rawProfile.profile} program={programs.program} plans={programs.plans} onOpen={openAch}>
+    <AchProvider since={ach.since} profile={rawProfile.profile} program={programs.program} plans={programs.plans} onOpen={openAch} onShare={uid ? shareAch : undefined}>
       {uid && <NewsReader uid={uid} rev={nav.newsRev} newsAt={newsAt} />}
       {error && <div role="alert" className="banner">{error}</div>}
       <main className="screen">

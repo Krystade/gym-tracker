@@ -181,6 +181,67 @@ export function AchievementsSheet({ a, today, since, onOpen }: { a: Achievements
   );
 }
 
+/** Shown to friends: a switch for the family's group (owner Q3: per group, kept in the profile, so every phone of yours agrees). */
+function ShareRow({ group, shown, onShare }: { group: string; shown: boolean; onShare: (group: string, on: boolean) => void }) {
+  const g = GROUPS.find((x) => x.id === group)!;
+  const names = DEFS.filter((d) => d.group === group).map((d) => d.title.toLowerCase()).join(', ');
+  return (
+    <section className="ach-sec" aria-label="Friends">
+      <h3>Friends</h3>
+      <div className="ach-share">
+        <span className="ach-row-txt"><b>Shown to friends</b><span>{g.title}: {names}</span></span>
+        <button type="button" role="switch" className="switch" aria-checked={shown} aria-label={`Show ${g.title} to friends`} onClick={() => onShare(group, !shown)} />
+      </div>
+      <p className="ach-foot">On their page and, silver and up, beside your session in their feed: the level and the day, never your numbers. Changes reach them within 15 minutes.</p>
+    </section>
+  );
+}
+
+/** A friend's achievement, said as on yours, not a button: their levels aren't yours to open. */
+function ShownRow({ u, today }: { u: Unlock; today: string }) {
+  return (
+    <div className="ach-row">
+      <Medal tier={u.tier} glyph={u.id} size={44} />
+      <span className="ach-row-txt">
+        <b>{DEF.get(u.id)!.title}</b>
+        <span className={`ach-tier t-${u.tier}`}>{tierWord(u.tier)}</span>
+        <span>{unlockText(u)}</span>
+      </span>
+      <span className="ach-when">{achDay(u.date, today)}</span>
+    </div>
+  );
+}
+
+/** A friend's achievements (their Compare summary): the highest of each, by group, the groups they show. */
+export function FriendAchSheet({ us, today, who }: { us: readonly Unlock[]; today: string; who: string }) {
+  const n = (t: Tier) => us.filter((u) => u.tier === t).length;
+  return (
+    <div className="ach">
+      <ul className="ach-tiers" aria-label="Highest by tier">
+        {TIERS.map((t) => <li key={t}><Medal tier={n(t) ? t : 'lock'} size={36} /><b>{n(t)}</b><span>{tierWord(t)}</span></li>)}
+      </ul>
+      {GROUPS.map((g) => {
+        const mine = us.filter((u) => DEF.get(u.id)!.group === g.id);
+        if (!mine.length) return null;
+        return (
+          <section key={g.id} className="ach-sec" aria-label={g.title}>
+            <h3>{g.title}{g.note && <span>{g.note.replace('your', 'their')}</span>}</h3>
+            {mine.map((u) => <ShownRow key={`${u.id}:${u.lift ?? ''}`} u={u} today={today} />)}
+          </section>
+        );
+      })}
+      <p className="ach-foot">The highest level of each, from the groups @{who} shows, counted from their own start. Their numbers stay on their phone.</p>
+    </div>
+  );
+}
+
+/** One achievement as a chip (a friend's feed card, their page): its medal and what it is. */
+export function AchChip({ u }: { u: Unlock }) {
+  return (
+    <span className="ach-chip"><Medal tier={u.tier} glyph={u.id} size={26} />{tierWord(u.tier)} · {DEF.get(u.id)!.title}{u.lift ? ` · ${u.lift}` : ''}</span>
+  );
+}
+
 /** A family's levels: the day each was reached, and how far to the next. */
 function Levels({ d, t, unlocks, today }: { d: Def; t: Track; unlocks: Unlock[]; today: string }) {
   return (
@@ -202,7 +263,10 @@ function Levels({ d, t, unlocks, today }: { d: Def; t: Track; unlocks: Unlock[];
   );
 }
 
-export function AchievementDetail({ a, id, today, since }: { a: Achievements; id: string; today: string; since: string }) {
+export function AchievementDetail({ a, id, today, since, shown, onShare }: {
+  a: Achievements; id: string; today: string; since: string;
+  /** Whether friends see this family's group, and how to change it (your own Stats only). */ shown?: boolean; onShare?: (group: string, on: boolean) => void;
+}) {
   const d = DEF.get(id);
   if (!d) return null;
   const ts = tracksOf(a, d);
@@ -226,6 +290,7 @@ export function AchievementDetail({ a, id, today, since }: { a: Achievements; id
             <Levels d={d} t={ts[0]} unlocks={a.unlocks.filter((u) => u.id === id)} today={today} />
           </section>
         )}
+      {onShare && <ShareRow group={d.group} shown={shown !== false} onShare={onShare} />}
       <Foot since={since} today={today} />
     </div>
   );

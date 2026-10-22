@@ -25,6 +25,11 @@ service cloud.firestore {
     function nameOk(s) { return s.matches('(?s)^.{1,60}$'); }
     function liftOk(l) { return l.keys().hasOnly(['n', 's']) && nameOk(l.n) && l.s is list && l.s.size() == 13; }
     function firstOk(f) { return f.keys().hasOnly(['n', 'w', 'd']) && nameOk(f.n) && f.w >= 0 && f.w <= 2000 && isDay(f.d); }
+    // An achievement (domain/achievements SharedAch): its family's id, the level, the day, the lift for a per-lift one.
+    function achOk(a) {
+      return a.keys().hasOnly(['i', 'l', 'd', 'n']) && a.i is string && a.i.matches('^[a-z-]{1,20}$')
+        && a.l is int && a.l >= 0 && a.l <= 4 && isDay(a.d) && (!('n' in a) || nameOk(a.n));
+    }
     function rangeOk(x, met) {
       return x.keys().hasOnly(['met', 'vol', 'prs', 'lifts']) && x.met.matches(met)
         && x.vol is list && (x.vol.size() == 0 || x.vol.size() == 13)
@@ -32,13 +37,14 @@ service cloud.firestore {
         && x.lifts is list && x.lifts.size() <= 12 && (x.lifts.size() == 0 || liftOk(x.lifts[0]));
     }
     function summaryOk(d) {
-      return d.keys().hasOnly(['v', 'at', 'day', 'goal', 'streak', 'r', 'firsts'])
+      return d.keys().hasOnly(['v', 'at', 'day', 'goal', 'streak', 'r', 'firsts', 'ach'])
         && d.v == 1 && d.at == request.time && isDay(d.day)
         && d.goal is int && d.goal >= 1 && d.goal <= 7
         && d.streak is int && d.streak >= 0 && d.streak <= 1000
         && d.r.keys().hasOnly(['4w', '12w', '1y'])
         && rangeOk(d.r['4w'], '^[01]{4}$') && rangeOk(d.r['12w'], '^[01]{12}$') && rangeOk(d.r['1y'], '^[01]{52}$')
-        && d.firsts is list && d.firsts.size() <= 8 && (d.firsts.size() == 0 || firstOk(d.firsts[0]));
+        && d.firsts is list && d.firsts.size() <= 8 && (d.firsts.size() == 0 || firstOk(d.firsts[0]))
+        && (!('ach' in d) || (d.ach is list && d.ach.size() <= 32 && (d.ach.size() == 0 || achOk(d.ach[0]))));
     }
 
     // Exact-name lookup only: nobody can list who's here. A name is held by the one profile that goes by it: claimed in the

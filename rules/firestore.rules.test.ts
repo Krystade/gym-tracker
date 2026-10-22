@@ -814,6 +814,13 @@ describe('the compare summary (users/{uid}/summary/compare)', () => {
     await assertSucceeds(write('alice', summary({ goal: 1, streak: 0, firsts: [{ n: 'x'.repeat(60), w: 0, d: '2026-10-03' }] }))); // the bounds themselves
     await assertSucceeds(write('alice', summary({ goal: 7, streak: 1000, r: { '4w': range(4), '12w': { ...range(12), lifts: [{ n: 'Ü'.repeat(60), s: pts(1) }] }, '1y': range(52) }, firsts: [{ n: 'Deadlift', w: 2000, d: '2026-10-03' }] })));
     await assertSucceeds(write('alice', summary({ r: { '4w': { ...range(4), vol: [] }, '12w': range(12), '1y': range(52) }, firsts: [] }))); // no volume yet, no firsts
+    // Achievements (plan §7): optional; 32 at most; levels 0–4; a lift name only as long as a lift's.
+    const ach1 = { i: 'plates', l: 2, d: '2026-10-03', n: 'Deadlift' };
+    await assertSucceeds(write('alice', summary({ ach: [] })));
+    await assertSucceeds(write('alice', summary({ ach: Array.from({ length: 32 }, () => ach1) })));
+    await assertSucceeds(write('alice', summary({ ach: [{ i: 'sessions', l: 0, d: '2026-10-03' }] })));
+    await assertSucceeds(write('alice', summary({ ach: [{ i: 'goal-weeks', l: 4, d: '2026-10-03' }, ach1] })));
+    await assertSucceeds(write('alice', summary({ ach: [{ ...ach1, n: 'x'.repeat(60) }] })));
     const r = summary().r as Record<string, ReturnType<typeof range>>;
     const withRange = (k: string, x: Record<string, unknown>) => summary({ r: { ...r, [k]: { ...r[k], ...x } } });
     const lift = (x: Record<string, unknown>) => withRange('12w', { lifts: [{ n: 'Bench Press', s: pts(1), ...x }] });
@@ -851,6 +858,14 @@ describe('the compare summary (users/{uid}/summary/compare)', () => {
       ['a first with more', first({ reps: 5 })], ['a first with no name', first({ n: '' })], ['a first named past 60', first({ n: 'x'.repeat(61) })],
       ['a first’s weight as text', first({ w: '225' })], ['a first with no date', summary({ firsts: [{ n: 'Bench Press', w: 225 }] })], ['firsts as a map', summary({ firsts: {} })],
       ['a first first off shape', summary({ firsts: [{ n: 'Deadlift', w: 135, d: '2026-10-03', x: 1 }, { n: 'Deadlift', w: 225, d: '2026-10-04' }] })],
+      ['33 achievements', summary({ ach: Array.from({ length: 33 }, () => ach1) })], ['achievements as a map', summary({ ach: {} })],
+      ['an achievement at level 5', summary({ ach: [{ ...ach1, l: 5 }] })], ['an achievement under level 0', summary({ ach: [{ ...ach1, l: -1 }] })],
+      ['an achievement level not whole', summary({ ach: [{ ...ach1, l: 1.5 }] })], ['an achievement not dated', summary({ ach: [{ ...ach1, d: 'Oct 3' }] })],
+      ['an achievement with a value', summary({ ach: [{ ...ach1, v: 315 }] })], ['an achievement with no id', summary({ ach: [{ l: 1, d: '2026-10-03' }] })],
+      ['an achievement id not one', summary({ ach: [{ ...ach1, i: 'Plates!' }] })], ['an achievement id past 20', summary({ ach: [{ ...ach1, i: 'a'.repeat(21) }] })],
+      ['an achievement id as a number', summary({ ach: [{ ...ach1, i: 7 }] })], ['an achievement lift named past 60', summary({ ach: [{ ...ach1, n: 'x'.repeat(61) }] })],
+      ['an achievement lift with no name', summary({ ach: [{ ...ach1, n: '' }] })], ['an achievement with no level', summary({ ach: [{ i: 'plates', d: '2026-10-03' }] })],
+      ['an achievement that isn’t one', summary({ ach: ['plates'] })],
       ['another document', summary(), 'other'],
     ];
     const passed: string[] = [];

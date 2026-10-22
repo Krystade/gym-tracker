@@ -173,6 +173,17 @@ describe('parseSummary: a friend’s, read as untrusted', () => {
     expect(p.firsts).toEqual([{ n: 'Deadlift', w: 315, d: '2026-10-01' }]);
     expect(parseSummary({ ...summary(), r: { ...summary().r, '4w': { ...summary().r['4w'], vol: [1, 'x'] } } })!.r['4w'].vol).toEqual([]);
   });
+  it('achievements: kept when in shape, a bad entry dropped, none from an app before them; at most 32', () => {
+    const good = [{ i: 'plates', l: 2, d: '2026-10-01', n: 'Deadlift' }, { i: 'sessions', l: 1, d: '2026-09-30' }];
+    expect(parseSummary({ ...summary(), ach: good })!.ach).toEqual(good);
+    expect(parseSummary(summary())!).not.toHaveProperty('ach');
+    const bad = [{ i: 'sessions', l: 5, d: '2026-09-30' }, { i: 'sessions', l: 1, d: 'x' }, { i: 3, l: 1, d: '2026-09-30' }, { i: 'plates', l: 1, d: '2026-09-30', n: '' }, null, 'x'];
+    expect(parseSummary({ ...summary(), ach: [...bad, good[1]] })!.ach).toEqual([good[1]]);
+    expect(parseSummary({ ...summary(), ach: Array.from({ length: 40 }, () => good[1]) })!.ach).toHaveLength(32);
+    // summarize passes them through as given, and leaves the field out without them.
+    expect(summarize([], TODAY, 2, good).ach).toEqual(good);
+    expect(summarize([], TODAY, 2)).not.toHaveProperty('ach');
+  });
 });
 
 describe('strength: the mean change over the crew’s shared lifts', () => {

@@ -10,7 +10,9 @@ import { PRESETS, shortAgo, type InboxDoc, type PresetKey } from '../domain/mess
 import { prIds } from '../domain/records';
 import type { SetEntry } from '../domain/types';
 import { useMinute } from '../state/clock';
-import { crewRange, notePing, peekFriendCache, refreshWindow, staleWindow, useFriendCache, useFriendTags } from '../state/friendCache';
+import { crewRange, notePing, peekFriendCache, refreshSummaries, refreshWindow, staleSummaries, staleWindow, useFriendCache, useFriendTags } from '../state/friendCache';
+import { featured, unlocksOf, type Unlock } from '../domain/achievements';
+import { AchChip } from './AchievementsSheet';
 import { getPref, setPref } from '../state/prefs';
 import type { StatusStore } from '../state/useStatus';
 import { Input } from './Field';
@@ -35,6 +37,7 @@ interface Person {
   loading: boolean; error?: string;
   card: Card | null; live: number | null; week: GoalWeek | null; usual: number; today: ReturnType<typeof ringSets>;
   last: { date: string; kinds: string; sets: number } | null;
+  /** A friend's achievements reached today, silver and up (their Compare summary; owner Q6). */ ach?: Unlock[];
 }
 
 export const clock = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -65,6 +68,9 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
   const load = useCallback(async (force: boolean) => {
     if (!friends?.length) return;
     const now = Date.now(), kept = peekFriendCache(uid)?.windows ?? {};
+    // Their Compare summaries, for today's achievement chips: one read each when over 5 minutes old (the cache Compare keeps).
+    const sums = force ? friends.map((f) => f.uid) : staleSummaries(peekFriendCache(uid), friends.map((f) => f.uid), now);
+    if (sums.length) void loadCloud().then((c) => refreshSummaries(c, uid, sums)).catch(() => {});
     const need = friends.filter((f) => force || staleWindow(kept[f.uid], from, today, now));
     if (!need.length) return;
     const fail = (f: Friend, e: unknown) => {
@@ -100,12 +106,14 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
     const theirs = (friends ?? []).map((f) => {
       const w = windows?.[f.uid], error = w ? undefined : errors[f.uid];
       const sets = (w?.win.sets ?? []).filter((x) => x.date >= from && x.date <= today);
-      return build({ id: f.uid, me: false, friend: f, label: label(f.uid, f.name, f.dn), lead: tags[f.uid] || f.dn, handle: f.dn || f.name, verified: verified[f.uid] != null, status: w?.win.status ?? '', loading: !w && !error, error },
-        sets, w ? friendPrs(w.win) : new Set(), w?.win.goal ?? null);
+      const sum = cache?.summaries?.[f.uid]?.doc;
+      const ach = sum?.ach ? featured(unlocksOf(sum.ach)).filter((u) => u.date === today) : undefined;
+      return { ...build({ id: f.uid, me: false, friend: f, label: label(f.uid, f.name, f.dn), lead: tags[f.uid] || f.dn, handle: f.dn || f.name, verified: verified[f.uid] != null, status: w?.win.status ?? '', loading: !w && !error, error },
+        sets, w ? friendPrs(w.win) : new Set(), w?.win.goal ?? null), ...(ach?.length && { ach }) };
     });
     return [me, ...theirs];
     // `minute`: live and today's cards move on with the clock.
-  }, [entries, friends, windows, errors, status.status, from, today, goal, myName, myPrs, minute, label, verified, tags]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [entries, friends, windows, cache?.summaries, errors, status.status, from, today, goal, myName, myPrs, minute, label, verified, tags]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rail = [people[0], ...people.slice(1).sort((a, b) => goalShare(b) - goalShare(a) || a.label.localeCompare(b.label))];
   const trained = people.filter((p) => p.card);
@@ -247,6 +255,7 @@ function SessionCard({ p, now, news, onOpen, onMessage, sending, burst, error, s
       </div>
       {total > 0 && <div className="fd-split" aria-hidden="true">{Object.entries(c.kinds).map(([k, n]) => <i key={k} style={{ flex: n, background: kindColour(k as never) }} />)}</div>}
       {p.week?.metToday && <span className="fd-goalrib"><Icon name="trophy" size={16} sw={2} />Weekly goal hit · {p.week.sessions} of {p.week.goal}</span>}
+      {p.ach && <ul className="ach-chips" aria-label="Achievements today">{p.ach.map((u) => <li key={`${u.id}:${u.lift ?? ''}`}><AchChip u={u} /></li>)}</ul>}
       <ul className="fd-lifts">
         {shown.map((l) => (
           <li key={l.key} className={fresh(seen.current!.lifts.get(l.key)) ? 'new' : undefined}>

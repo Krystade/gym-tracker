@@ -29,16 +29,23 @@ export type AchStart = ReturnType<typeof useAchStart>;
 interface Ctx {
   since: string | null; profile: Profile; program: Program | null; plans: readonly DayPlan[];
   /** Opens Stats at a family's levels (a line tapped on Today). */ onOpen?: (id: string) => void;
+  /** Shows or keeps a group from friends: only for the person whose account publishes the summary. */ onShare?: (group: string, on: boolean) => void;
 }
 const AchCtx = createContext<Ctx | null>(null);
 
-export function AchProvider({ since, profile, program, plans, onOpen, children }: Ctx & { children: ReactNode }) {
-  const v = useMemo(() => ({ since, profile, program, plans, onOpen }), [since, profile, program, plans, onOpen]);
+export function AchProvider({ since, profile, program, plans, onOpen, onShare, children }: Ctx & { children: ReactNode }) {
+  const v = useMemo(() => ({ since, profile, program, plans, onOpen, onShare }), [since, profile, program, plans, onOpen, onShare]);
   return <AchCtx.Provider value={v}>{children}</AchCtx.Provider>;
 }
 
 /** Opens Stats at a family's levels; undefined outside a person's screens. */
 export const useAchOpen = (): ((id: string) => void) | undefined => useContext(AchCtx)?.onOpen;
+
+/** What friends see of your achievements: the groups kept from them, and the switch (none: not this phone's account). */
+export function useAchShare(): { hidden: readonly string[]; onShare?: (group: string, on: boolean) => void } {
+  const c = useContext(AchCtx);
+  return useMemo(() => ({ hidden: c?.profile.achHidden ?? [], onShare: c?.onShare }), [c]);
+}
 
 /** The start day, or null before it is read (and outside a person's screens). */
 export const useAchSince = (): string | null => useContext(AchCtx)?.since ?? null;

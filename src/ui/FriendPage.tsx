@@ -7,7 +7,9 @@ import { friendPrs, goalWeek, liveSince, ringSets, progressRows, sessionCard, us
 import type { PresetKey } from '../domain/messages';
 import type { SetEntry } from '../domain/types';
 import { useMinute } from '../state/clock';
-import { crewRange, refreshWindow, staleWindow, useFriendCache } from '../state/friendCache';
+import { crewRange, peekFriendCache, refreshSummaries, refreshWindow, staleSummaries, staleWindow, useFriendCache } from '../state/friendCache';
+import { featured, TIERS, unlocksOf } from '../domain/achievements';
+import { AchChip } from './AchievementsSheet';
 import type { GymsStore } from '../state/useGyms';
 import { clock, kindsFromCard, ReactButton, subText, topText, useReactions } from './Feed';
 import { Screens, type FriendTab } from './FriendView';
@@ -57,7 +59,17 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep,
 }) {
   const { from } = crewRange(today);
   const minute = useMinute();
-  const w = useFriendCache(uid)?.windows[friend.uid];
+  const cache = useFriendCache(uid);
+  const w = cache?.windows[friend.uid];
+  // Their achievements, from their Compare summary: one read when it's over 5 minutes old (the same read and cache as Compare).
+  const sum = cache?.summaries?.[friend.uid]?.doc;
+  const ach = useMemo(() => (sum?.ach ? unlocksOf(sum.ach) : undefined), [sum]);
+  useEffect(() => {
+    if (!staleSummaries(peekFriendCache(uid), [friend.uid], Date.now()).length) return;
+    void loadCloud().then((c) => refreshSummaries(c, uid, [friend.uid])).catch(() => {});
+  }, [uid, friend.uid]);
+  // The newest silver and up in the last 7 days, beside their week (owner Q6); the higher tier of a day's.
+  const newest = useMemo(() => featured(ach ?? []).filter((u) => u.date > addDays(today, -7)).sort((a, b) => b.date.localeCompare(a.date) || TIERS.indexOf(b.tier) - TIERS.indexOf(a.tier))[0], [ach, today]);
   const [error, setError] = useState<string | null>(null);
   // Their line as Friends keeps it, read again only when stale (the same rule, and the same read, as the list).
   useEffect(() => {
@@ -105,6 +117,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep,
             {v.prsWeek > 0 && <li><span className="fd-pr">PR</span>{v.prsWeek} this week</li>}
           </ul>
         )}
+        {newest && <p className="fp-ach"><AchChip u={newest} /></p>}
       </div>
       <div className="fp-actions" role="group" aria-label={`React to @${friend.name}`}>
         {REACTIONS.map((k) => <ReactButton key={k} k={k} name={friend.name} burst={r.burst?.uid === friend.uid && r.burst.k === k} sent={false} disabled={!!r.sending} onClick={() => void r.react(friend, k)} />)}
@@ -119,7 +132,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep,
       {error ? <p role="alert" className="warn">{error}</p> : !v ? <p className="muted">Loading…</p> : (<>
         {v.card && <SessionBox c={v.card} today={today} now={now} />}
         <Shared name={friend.name} rows={v.shared} />
-        <FriendStats who={friend.name} entries={line!.sets} goal={line!.goal} prs={line!.prs} today={today} />
+        <FriendStats who={friend.name} entries={line!.sets} goal={line!.goal} prs={line!.prs} today={today} ach={ach} />
       </>)}
       {/* Their whole log, where the tiles above are 8 weeks: said so, or "Stats" reads as the tiles again (IA A7). */}
       <div className="fp-links" role="group" aria-labelledby="fp-whole">

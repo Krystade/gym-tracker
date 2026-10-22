@@ -52,3 +52,12 @@
 .ach-line-sub { color: var(--text-2); }
 .ach-line-go { flex: none; color: var(--text-3); }
 
+
+/* Shown to friends: the group's switch (your own detail). */
+.ach-share { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 0; }
+.ach-share .switch { min-height: 44px; }
+/* A chip: a friend's achievement beside their session (feed) and on their page. */
+.ach-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 32px; padding: 3px 12px 3px 3px; border-radius: 16px; background: var(--fill);
+  font-size: var(--fs-sub); font-weight: 600; line-height: 20px; overflow-wrap: anywhere; }
+.ach-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.fp-ach { display: flex; justify-content: center; margin: 10px 0 0; }

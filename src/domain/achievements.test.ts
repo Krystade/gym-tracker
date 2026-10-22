@@ -3,7 +3,7 @@ import { addDays } from './analytics';
 import { defaultProfile, type Profile } from './profile';
 import type { DayPlan, Program } from './program';
 import type { Flag, SetEntry } from './types';
-import { achievements, achievementsOf, amount, closest, DEFS, familySteps, gained, highest, platesAt, weekCount, STRENGTH, unlockedOn, unlockKey, unlockText, type Context } from './achievements';
+import { achievements, achievementsOf, amount, closest, DEFS, familySteps, gained, highest, platesAt, weekCount, STRENGTH, unlockedOn, unlockKey, unlockText, shareOf, unlocksOf, featured, MAX_SHARED, type Context } from './achievements';
 import { synthLog } from './achievements.sample';
 
 // Synthetic sets only.
@@ -345,5 +345,37 @@ describe('reading it', () => {
     expect([amount('plates', 2), amount('stronger', 25), amount('best-run', 4), amount('sessions', 1), amount('useful-sets', 2000)]).toEqual(['225 lb', '25%', '4 weeks in a row', '1 session', '2,000 sets']);
     expect(unlockText({ id: 'plates', level: 1, tier: 'silver', date: day(0), value: 2, lift: 'Bench Press' })).toBe('Bench Press: 225 lb, 2 plates a side');
     expect(unlockText({ id: 'sessions', level: 0, tier: 'starter', date: day(0), value: 1 })).toBe('Your first session');
+  });
+});
+
+describe('shared with friends: shareOf, unlocksOf, featured', () => {
+  const log = [...Array.from({ length: 12 }, (_, i) => set(day(i * 2), 'Bench Press', 135 + 10 * i, 5)), set(day(30), 'Deadlift', 315, 3), set(day(40), 'Deadlift', 225, 3)];
+  const a = achievementsOf(log, ctx());
+  it('the highest level of each family, per lift for a per-lift one, newest first; hidden groups left out', () => {
+    const sh = shareOf(a);
+    const plates = sh.filter((x) => x.i === 'plates');
+    expect(plates).toEqual([{ i: 'plates', l: 2, d: day(30), n: 'Deadlift' }, { i: 'plates', l: 1, d: day(18), n: 'Bench Press' }]);
+    expect(sh.filter((x) => x.i === 'sessions')).toEqual([{ i: 'sessions', l: 1, d: day(18) }]);
+    expect(sh.map((x) => x.d)).toEqual([...sh.map((x) => x.d)].sort().reverse());
+    expect(shareOf(a, ['milestones']).some((x) => x.i === 'plates')).toBe(false);
+    expect(shareOf(a, ['milestones']).some((x) => x.i === 'sessions')).toBe(true);
+  });
+  it('a repeat family goes once (its count stays on the phone)', () => {
+    const away = [set(day(0), 'Cable Curl', 30, 10), set(day(20), 'Cable Curl', 30, 10), set(day(40), 'Cable Curl', 30, 10)];
+    expect(shareOf(achievementsOf(away, ctx())).filter((x) => x.i === 'comeback')).toEqual([{ i: 'comeback', l: 0, d: day(20) }]);
+  });
+  it('at most 32', () => {
+    const many = Array.from({ length: 40 }, (_, i) => set(day(i), ['Bench Press', 'Barbell Squat', 'Deadlift', 'Overhead Press', 'Barbell Row'][i % 5], 135, 5));
+    expect(shareOf(achievementsOf(many, ctx())).length).toBeLessThanOrEqual(MAX_SHARED);
+  });
+  it('read back as unlocks with their tier; anything not in shape dropped', () => {
+    const back = unlocksOf(shareOf(a));
+    expect(back.find((u) => u.id === 'plates' && u.lift === 'Deadlift')).toMatchObject({ tier: 'gold', level: 2, value: 0 });
+    expect(unlocksOf([{ i: 'nope', l: 0, d: day(0) }, { i: 'sessions', l: 9, d: day(0) }, { i: 'sessions', l: 0, d: 'x' },
+      { i: 'plates', l: 0, d: day(0) }, { i: 'sessions', l: 0, d: day(0), n: 'Bench Press' }, { i: 'sessions', l: -1, d: day(0) }])).toEqual([]);
+  });
+  it('featured: silver and up', () => {
+    expect(featured(unlocksOf([{ i: 'sessions', l: 1, d: day(0) }, { i: 'sessions', l: 2, d: day(1) }, { i: 'plates', l: 3, d: day(2), n: 'Deadlift' }])).map((u) => u.tier))
+      .toEqual(['silver', 'platinum']);
   });
 });

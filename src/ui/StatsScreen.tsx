@@ -30,9 +30,9 @@ import { StatsTile } from './StatsTile';
 import { lastOf } from './StatsCoreSheets';
 import { MuscleWeeks, SECTIONS, useTiles, WeekHero, WeekSheet, type TileModel } from './StatsTiles';
 import { Icon } from './icons';
-import { AchievementDetail } from './AchievementsSheet';
-import { DEF } from '../domain/achievements';
-import { useAchievements, useAchSince } from '../state/useAchievements';
+import { achDay, AchievementDetail, AchShelf, FriendAchSheet } from './AchievementsSheet';
+import { DEF, TIERS, tierWord, type Unlock } from '../domain/achievements';
+import { useAchievements, useAchShare, useAchSince } from '../state/useAchievements';
 import './stats.css';
 
 // Stats v2 (plan §6): the week up top, one range for every tile, then sections of tiles two to a row. A tile opens its sheet.
@@ -103,7 +103,7 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
   // His rest setting per lift, for the next session's timer (and none set: undefined).
   const kept = useMemo(() => (settings ? (ex: string) => settings.get(ex).rest : undefined), [settings]);
   // Your achievements: lifetime, from the day this profile started counting (never on a friend's Stats).
-  const since = useAchSince();
+  const since = useAchSince(), share = useAchShare();
   const achAll = useAchievements(entries, today);
   const ach = useMemo(() => (owner && since && achAll ? { a: achAll, since, onOpen: (id: string) => setOpen(`${ACH}${id}`) } : undefined), [owner, since, achAll]);
   const tiles = useTiles({
@@ -191,7 +191,7 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
       {achId && ach && (
         <StatsSheet key={achId} title={DEF.get(achId)!.title} onClose={() => setOpen(null)}
           link={<button type="button" className="st-link st-back" onClick={() => setOpen('achievements')}><Icon name="chev-left" size={18} sw={2} />Achievements</button>}>
-          <AchievementDetail a={ach.a} id={achId} today={today} since={ach.since} />
+          <AchievementDetail a={ach.a} id={achId} today={today} since={ach.since} shown={!share.hidden.includes(DEF.get(achId)!.group)} onShare={share.onShare} />
         </StatsSheet>
       )}
     </>
@@ -204,10 +204,14 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
  * phone wrote), so it reads nothing. One range, those 8 weeks. Their week is the page's own head (ring, streak, sessions, PRs),
  * so there's no week tile; tiles that line can't fill, and the owner's own (energy), are left out (statsLayout forViewer).
  */
-export function FriendStats({ who, entries, goal, prs, today }: { who: string; entries: SetEntry[]; goal: number; prs: ReadonlySet<string>; today: string }) {
+export function FriendStats({ who, entries, goal, prs, today, ach }: {
+  who: string; entries: SetEntry[]; goal: number; prs: ReadonlySet<string>; today: string;
+  /** Their achievements, from their Compare summary (the groups they show): a wide tile first in Progress. */ ach?: readonly Unlock[];
+}) {
   const profile = useMemo(() => ({ ...defaultProfile(), weeklyGoal: goal }), [goal]);
   const win = useMemo(() => ({ prs }), [prs]);
-  const tiles = useTiles({ entries, profile, today, range: WINDOW_RANGE, who, window: win });
+  const base = useTiles({ entries, profile, today, range: WINDOW_RANGE, who, window: win });
+  const tiles = useMemo(() => (ach?.length ? [friendAchTile(ach, today, who), ...base] : base), [ach, today, who, base]);
   // News to the front of its section, as on yours: fixed while the page is open.
   const [front] = useState(() => tiles.filter((t) => t.news).map((t) => t.id));
   const [open, setOpen] = useState<string | null>(null);
@@ -230,4 +234,15 @@ export function FriendStats({ who, entries, goal, prs, today }: { who: string; e
       {opened && <StatsSheet title={opened.title ?? opened.label} link={opened.link} onClose={() => setOpen(null)}>{opened.sheet()}</StatsSheet>}
     </section>
   );
+}
+
+/** A friend's Achievements tile: how many they show, their medals newest first, the newest said. Lifetime: the 8 weeks don't apply. */
+function friendAchTile(us: readonly Unlock[], today: string, who: string): TileModel {
+  const newest = [...us].sort((a, b) => b.date.localeCompare(a.date) || TIERS.indexOf(b.tier) - TIERS.indexOf(a.tier))[0];
+  const a = { unlocks: [...us], tracks: [], counts: {}, hidden: [] };
+  return {
+    id: 'achievements', section: 'progress', label: 'Achievements', value: String(us.length), unit: 'shown', wide: true, vizHeight: 40,
+    ctx: <>Newest: {DEF.get(newest.id)!.title} · {tierWord(newest.tier)}, {achDay(newest.date, today).replace(/^Today$/, 'today')}</>,
+    viz: (w) => <AchShelf a={a} w={w} />, sheet: () => <FriendAchSheet us={us} today={today} who={who} />,
+  };
 }

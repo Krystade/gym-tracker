@@ -50,6 +50,8 @@ test('a set that unlocks something says so under its card, and a tap opens that 
   await lines(card).getByRole('button', { name: /Silver · Plates/ }).click();
   const plates = page.getByRole('dialog', { name: 'Plates' });
   await expect(plates.getByRole('region', { name: 'Bench Press' })).toContainText('225 lb');
+  // No account, no friends: no switch for showing them (stage 4).
+  await expect(plates.getByRole('switch')).toHaveCount(0);
   await plates.getByRole('button', { name: 'Achievements' }).click();
   await expect(page.getByRole('dialog', { name: 'Achievements' }).getByRole('region', { name: 'New today' })).toContainText('Your first session');
   // The tile says what today brought, and leads Progress.
