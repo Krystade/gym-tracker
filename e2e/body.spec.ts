@@ -13,9 +13,10 @@ test('weigh in, import MyFitnessPal, see the trend, export body CSV', async ({ p
   await page.clock.install({ time: new Date('2026-09-20T12:00:00') });
   await page.goto('/');
   const weigh = page.getByRole('group', { name: 'Weigh-in' });
-  await weigh.getByRole('textbox', { name: 'Weigh-in (lb)' }).fill('183.4');
+  // With the fixture's weigh-ins, the trend gains about 0.28 % a week: lean gain (0.25–0.5, domain/body rateBand).
+  await weigh.getByRole('textbox', { name: 'Weigh-in (lb)' }).fill('184.5');
   await weigh.getByRole('button', { name: 'Save weight' }).click();
-  await expect(weigh).toContainText('183.4 lb');
+  await expect(weigh).toContainText('184.5 lb');
 
   await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles([fx('mfp-weight.sample.csv'), fx('mfp-nutrition.sample.csv')]);

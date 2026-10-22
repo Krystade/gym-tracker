@@ -141,12 +141,17 @@ export function rate(points: { date: string; trend: number }[], days = 28): { lb
   return { lbPerWeek, pctPerWeek: (lbPerWeek / my) * 100 };
 }
 
-/** Context bands, % of body weight a week: lean gain 0.25–0.5 (Iraki 2019), cutting 0.5–1 (Helms 2014), with some slack. */
+/**
+ * Context bands, % of body weight a week: lean gain 0.25–0.5 (Iraki 2019), cutting 0.5–1 (Helms 2014), as the weight sheet says
+ * them; each band starts where the sheet's does, and runs 0.1 past its far end before it's "fast". Between the two: maintaining.
+ */
+export const LEAN_GAIN_FROM = 0.25;
+export const CUTTING_FROM = 0.5;
 export function rateBand(pct: number): { label: string; tone: 'ok' | 'warn' } {
   if (pct > 0.6) return { label: 'Fast gain', tone: 'warn' };
-  if (pct >= 0.15) return { label: 'Lean gain', tone: 'ok' };
+  if (pct >= LEAN_GAIN_FROM) return { label: 'Lean gain', tone: 'ok' };
   if (pct <= -1.1) return { label: 'Fast cut', tone: 'warn' };
-  if (pct <= -0.15) return { label: 'Cutting', tone: 'ok' };
+  if (pct <= -CUTTING_FROM) return { label: 'Cutting', tone: 'ok' };
   return { label: 'Maintaining', tone: 'ok' };
 }
 

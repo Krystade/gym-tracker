@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { detectCsv, diffBody, mergeBody, parseBodyFile, proteinCheck, rate, rateBand, stampDay, toBodyCsv, trend, weightSummary, type BodyDay } from './body';
+import { CUTTING_FROM, detectCsv, diffBody, LEAN_GAIN_FROM, mergeBody, parseBodyFile, proteinCheck, rate, rateBand, stampDay, toBodyCsv, trend, weightSummary, type BodyDay } from './body';
 import { CSV_HEADER } from './csv';
 
 const fx = (n: string) => readFileSync(path.join(import.meta.dirname, '..', '..', 'e2e', 'fixtures', n), 'utf8');
@@ -84,6 +84,24 @@ describe('trend and rate', () => {
     expect(rateBand(-0.7)).toEqual({ label: 'Cutting', tone: 'ok' });
     expect(rateBand(-1.4)).toEqual({ label: 'Fast cut', tone: 'warn' });
   });
+  it('each band starts where the weight sheet says it does: lean gain at 0.25 %/wk, cutting at 0.5 %/wk', () => {
+    // The sheet's words, so a change to either side shows here.
+    const sheet = readFileSync(new URL('../ui/WeightSheet.tsx', import.meta.url), 'utf8');
+    expect(sheet).toContain(`lean gain about ${LEAN_GAIN_FROM}–0.5`);
+    expect(sheet).toContain(`cutting about ${CUTTING_FROM}–1`);
+    expect(rateBand(0.25).label).toBe('Lean gain');
+    expect(rateBand(0.24).label).toBe('Maintaining');
+    expect(rateBand(0.2).label).toBe('Maintaining');
+    expect(rateBand(-0.5).label).toBe('Cutting');
+    expect(rateBand(-0.49).label).toBe('Maintaining');
+    expect(rateBand(-0.3).label).toBe('Maintaining');
+    expect(rateBand(-0.16).label).toBe('Maintaining');
+    // The far ends, with their 0.1 of slack.
+    expect(rateBand(0.6).label).toBe('Lean gain');
+    expect(rateBand(0.61).label).toBe('Fast gain');
+    expect(rateBand(-1.09).label).toBe('Cutting');
+    expect(rateBand(-1.1).label).toBe('Fast cut');
+  });
 });
 
 describe('weightSummary: Stats › Body’s weight tile', () => {
@@ -93,14 +111,17 @@ describe('weightSummary: Stats › Body’s weight tile', () => {
     expect(weightSummary([{ date: '2026-10-22', weight: 180 }], '2026-07-30', '2026-10-21')).toBeNull();
   });
   it('reads the trend, its 4-week rate and band, and the weigh-ins in range', () => {
-    const days = series('2026-07-01', 113, (i) => 190 - (0.7 * i) / 7);
+    const days = series('2026-07-01', 113, (i) => 190 - (1.2 * i) / 7);
     const s = weightSummary(days, '2026-09-24', '2026-10-21')!;
     expect(s.last.date).toBe('2026-10-21');
     expect(s.count).toBe(113);
     expect(s.points[0].date).toBe('2026-09-24');
     expect(s.points).toHaveLength(28);
-    expect(s.rate!.lbPerWeek).toBeCloseTo(-0.7, 1);
+    expect(s.rate!.lbPerWeek).toBeCloseTo(-1.2, 1);
+    expect(s.rate!.pctPerWeek).toBeLessThan(-CUTTING_FROM);
     expect(s.band).toEqual({ label: 'Cutting', tone: 'ok' });
+    // 0.7 lb a week off about 180 lb is under 0.4 %: maintaining, by the sheet's bands.
+    expect(weightSummary(series('2026-07-01', 113, (i) => 190 - (0.7 * i) / 7), '2026-09-24', '2026-10-21')!.band!.label).toBe('Maintaining');
   });
   it('has no rate or band under two weeks of weigh-ins', () => {
     const s = weightSummary(series('2026-10-12', 10, () => 180), '2026-07-30', '2026-10-21')!;
