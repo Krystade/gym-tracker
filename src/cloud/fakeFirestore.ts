@@ -59,7 +59,7 @@ export function fakeFirestore(docs: Record<string, Doc> = {}) {
       return b;
     },
     runTransaction: async (_db: unknown, fn: (tx: unknown) => Promise<unknown>) =>
-      fn({ get: async (r: { path: string }) => { bill(r.path, 1); return snap(r.path); }, set, delete: (r: { path: string }) => { delete docs[r.path]; } }),
+      fn({ get: async (r: { path: string }) => { bill(r.path, 1); return snap(r.path); }, set, update: (r: { path: string }, data: Doc) => { docs[r.path] = { ...docs[r.path], ...data }; }, delete: (r: { path: string }) => { delete docs[r.path]; } }),
   };
   return {
     cloud: { F, db: {} } as unknown as Cloud, docs, log,

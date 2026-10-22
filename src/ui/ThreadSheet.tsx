@@ -30,6 +30,8 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   const known = cache?.lists?.friends.find((f) => f.uid === friend.uid);
   const [fetchedName, setName] = useState(friend.name ?? '');
   const name = fetchedName || known?.name || '';
+  const [fetchedDn, setDn] = useState<string | undefined>(undefined);
+  const dn = known?.dn ?? fetchedDn;
   const [fetched, setState] = useState<{ friend: boolean; muted: boolean } | null>(null);
   const state = fetched ?? (known ? { friend: true, muted: !!known.muted } : null);
   // Nothing kept and the read failed, or blocked just now: an empty thread rather than Loading.
@@ -64,7 +66,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
     try {
       const c = await loadCloud();
       const [s] = await Promise.all([first ? friendState(c, me, friend.uid) : Promise.resolve(null), refreshThread(c, me, friend.uid)]);
-      if (s) { setName(s.name); setState({ friend: s.friend, muted: s.muted }); }
+      if (s) { setName(s.name); setDn(s.dn); setState({ friend: s.friend, muted: s.muted }); }
       // Everything they sent is read now; the dots go at once, and the badge follows the news read again.
       if (!s || s.friend) await markRead(c, me, friend.uid).then(() => patchFriendCache(me, (x) => readLocally(x, friend.uid))).catch(() => {});
       changed.current();
@@ -90,7 +92,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   }, [onClose]);
 
   const label = useFriendLabel(me);
-  const who = name ? label(friend.uid, name) : 'them';
+  const who = name ? label(friend.uid, name, dn) : 'them';
   /** One send at a time, and the buttons rest for the rules' 2 s after it. */
   const send = async (f: () => Promise<unknown>, done: string) => {
     setBusy(true); setMsg(null);
@@ -121,8 +123,8 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
       <div className="sheet-backdrop" aria-hidden="true" onClick={onClose} />
       <section className="sheet thread-sheet" role="dialog" aria-modal="true" aria-label={`Messages with ${who}`}>
         <header className="sheet-head">
-          <span className="avatar" aria-hidden="true">{initials(name || '?')}</span>
-          <h2>{name ? <FriendName me={me} friend={{ uid: friend.uid, name }} /> : who}</h2>
+          <span className="avatar" aria-hidden="true">{initials(dn || name || '?')}</span>
+          <h2>{name ? <FriendName me={me} friend={{ uid: friend.uid, name, dn }} /> : who}</h2>
           {state?.friend && (
             <button className="mini icon" aria-pressed={state.muted} aria-label={state.muted ? `Unmute ${who}` : `Mute ${who}`} disabled={busy} onClick={mute}><Icon name={state.muted ? 'bell-off' : 'bell'} /></button>
           )}

@@ -11,5 +11,5 @@
     "noUnusedParameters": true,
     "types": ["@cloudflare/workers-types", "@cloudflare/vitest-plugin/types"]
   },
-  "include": ["src", "test", "../src/push/payload.ts"]
+  "include": ["src", "test", "../src/push/payload.ts", "../src/domain/displayName.ts"]
 }

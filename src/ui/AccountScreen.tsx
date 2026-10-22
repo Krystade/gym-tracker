@@ -8,6 +8,7 @@ import { hydrateFriendCache, patchFriendCache, refreshLists, useFriendCache } fr
 import { useReplaced } from '../state/useReplaced';
 import { AccountCard } from './AccountCard';
 import { ChangeUsername } from './ChangeUsername';
+import { DisplayNameCard, SeenAsCard } from './DisplayNameCard';
 import { ReplacedList } from './ReplacedList';
 
 /**
@@ -29,7 +30,10 @@ export function AccountScreen({ cloud, people, store, body, onOpenFriends }: {
 
 type Msg = { ok: boolean; text: string } | null;
 
-/** Your username as friends find you, from what the phone kept of Friends and read again on opening. */
+/**
+ * Your display name, your username as friends find you, and how others see you (social S1): from what the phone kept of Friends,
+ * read again on opening. The display name waits for a username: it shows beside one.
+ */
 function UsernameCard({ uid, onOpenFriends }: { uid: string; onOpenFriends: () => void }) {
   const lists = useFriendCache(uid)?.lists;
   const [failed, setFailed] = useState<string | null>(null);
@@ -53,7 +57,8 @@ function UsernameCard({ uid, onOpenFriends }: { uid: string; onOpenFriends: () =
     finally { setBusy(false); }
   }, [uid]);
   const me = lists?.me;
-  return (
+  return (<>
+    {lists && me && <DisplayNameCard uid={uid} lists={{ ...lists, me }} />}
     <section className="card" aria-labelledby="username-h">
       <h2 id="username-h">Username</h2>
       {me ? <ChangeUsername uid={uid} me={me} changedAt={lists?.changedAt} busy={busy} act={act} setMe={setMe} />
@@ -65,5 +70,6 @@ function UsernameCard({ uid, onOpenFriends }: { uid: string; onOpenFriends: () =
         : <p className="muted small">Loading…</p>}
       {msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? 'muted small' : 'warn'}>{msg.text}</p>}
     </section>
-  );
+    {lists && me && <SeenAsCard uid={uid} lists={{ ...lists, me }} />}
+  </>);
 }

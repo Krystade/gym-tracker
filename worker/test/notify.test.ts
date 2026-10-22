@@ -226,4 +226,19 @@ describe('POST /notify: who it is from, for the phone to put its own tag beside 
     expect(n.body).toBe('A friend wants to be friends');
     expect(n.data).toEqual({ kind: 'request', route: 'friends', from: odd.a });
   });
+  it('carries their display name as `dn` when the app allows it, the words still the username’s; one it would refuse, none', async () => {
+    const { world, a, b, read } = await pair();
+    world.put(`users/${a}`, { username: 'alice', displayName: 'Alice K.' }).put(`users/${b}/requests/${a}`, { username: 'alice', sent: 1 });
+    await call(a, 'POST', '/notify', { kind: 'request', to: b });
+    const n = (await read()).notification;
+    expect(n.body).toBe('alice wants to be friends');
+    expect(n.data).toEqual({ kind: 'request', route: 'friends', from: a, name: 'alice', dn: 'Alice K.' });
+
+    for (const [i, bad] of ['Admin', 'Alice ✓', 'see www.x.com', 'alice'].entries()) {
+      const p = await pair();
+      p.world.put(`users/${p.a}`, { username: 'alice', displayName: bad }).put(`users/${p.b}/requests/${p.a}`, { username: 'alice', sent: 1 });
+      await call(p.a, 'POST', '/notify', { kind: 'request', to: p.b });
+      expect((await p.read()).notification.data, `${i}`).toEqual({ kind: 'request', route: 'friends', from: p.a, name: 'alice' });
+    }
+  });
 });

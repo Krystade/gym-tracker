@@ -48,7 +48,8 @@
 .fd-who-text { min-width: 0; }
 .fd-name-line { display: flex; align-items: center; gap: 0 8px; min-width: 0; flex-wrap: wrap; }
 /* A 44px tap on a 22px line: padding out to 44, the same back off as margin, so the line keeps its height. */
-.fd-name { flex: none; min-height: 0; font-size: var(--fs-body); line-height: 22px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; padding: 11px 0; margin: -11px 0; }
+/* A long name (a display name and the @username beside it) wraps rather than being cut (social S1). */
+.fd-name { flex: 0 1 auto; min-width: 0; min-height: 0; font-size: var(--fs-body); line-height: 22px; max-width: 100%; overflow-wrap: anywhere; display: block; padding: 11px 0; margin: -11px 0; }
 .fd-name-line .crew-muted { margin-left: -2px; }
 /* Beside the name when both fit, else on its own line under it: never squeezed to nothing by a long name. */
 .fd-status { min-width: 0; max-width: 100%; font-size: var(--fs-sm); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -105,7 +106,7 @@
 .fp-live { margin-top: 6px; }
 /* A friend's History, Lifts or Stats: "@name’s stats", a 20-character name and all, wraps inside the screen. */
 .who-title { font-size: var(--fs-xl); line-height: 28px; overflow-wrap: anywhere; }
-.fp-hero h1 { margin: 8px 0 0; font-size: var(--fs-xl); line-height: 28px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.fp-hero h1 { margin: 8px 0 0; font-size: var(--fs-xl); line-height: 28px; max-width: 100%; overflow-wrap: anywhere; }
 .fp-status { margin: 2px 0 0; color: var(--text-2); font-size: var(--fs-sub); }
 .fp-chips { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .fp-chips li { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: var(--r-pill); background: var(--fill); font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }

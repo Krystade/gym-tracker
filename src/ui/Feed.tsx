@@ -10,13 +10,13 @@ import { PRESETS, shortAgo, type InboxDoc, type PresetKey } from '../domain/mess
 import { prIds } from '../domain/records';
 import type { SetEntry } from '../domain/types';
 import { useMinute } from '../state/clock';
-import { crewRange, notePing, peekFriendCache, refreshWindow, staleWindow, useFriendCache } from '../state/friendCache';
+import { crewRange, notePing, peekFriendCache, refreshWindow, staleWindow, useFriendCache, useFriendTags } from '../state/friendCache';
 import { getPref, setPref } from '../state/prefs';
 import type { StatusStore } from '../state/useStatus';
 import { Input } from './Field';
 import { Icon, initials } from './icons';
 import { Latest, MessageButton } from './MessageButton';
-import { Formerly, useFriendLabel } from './FriendName';
+import { Formerly, Glued, useFriendLabel, useVerified, Verified } from './FriendName';
 import { kindColour, Ring } from './Ring';
 
 // Friends, told as today's stories (round 18, direction A "Feed"): a ring per person filling with today's sets, a card per
@@ -29,7 +29,9 @@ const BURST = 7; // emoji that rise from a reaction
 const SHOWN_LIFTS = 3;
 
 interface Person {
-  id: string; me: boolean; friend?: Friend; label: string; handle: string; status: string;
+  id: string; me: boolean; friend?: Friend; label: string; /** Whose initials the avatar shows. */ handle: string; status: string;
+  /** The app's owner verified them: the ✓ after their name. */ verified?: boolean;
+  /** What leads their name: your tag, else their display name (none: the @username alone). */ lead?: string;
   loading: boolean; error?: string;
   card: Card | null; live: number | null; week: GoalWeek | null; usual: number; today: ReturnType<typeof ringSets>;
   last: { date: string; kinds: string; sets: number } | null;
@@ -55,6 +57,8 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
   const [errors, setErrors] = useState<Record<string, string>>({});
   // Your private tag beside their @username ("Sam (gym) · @sam_k"), as the names round keeps it.
   const label = useFriendLabel(uid);
+  const verified = useVerified(uid);
+  const tags = useFriendTags(uid);
 
   // Each friend's line as the phone kept it, read again quietly when 5 minutes old or for a new day. A failed read shows only
   // where nothing was kept; a kept line stays as it was.
@@ -96,12 +100,12 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
     const theirs = (friends ?? []).map((f) => {
       const w = windows?.[f.uid], error = w ? undefined : errors[f.uid];
       const sets = (w?.win.sets ?? []).filter((x) => x.date >= from && x.date <= today);
-      return build({ id: f.uid, me: false, friend: f, label: label(f.uid, f.name), handle: f.name, status: w?.win.status ?? '', loading: !w && !error, error },
+      return build({ id: f.uid, me: false, friend: f, label: label(f.uid, f.name, f.dn), lead: tags[f.uid] || f.dn, handle: f.dn || f.name, verified: verified[f.uid] != null, status: w?.win.status ?? '', loading: !w && !error, error },
         sets, w ? friendPrs(w.win) : new Set(), w?.win.goal ?? null);
     });
     return [me, ...theirs];
     // `minute`: live and today's cards move on with the clock.
-  }, [entries, friends, windows, errors, status.status, from, today, goal, myName, myPrs, minute, label]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [entries, friends, windows, errors, status.status, from, today, goal, myName, myPrs, minute, label, verified, tags]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rail = [people[0], ...people.slice(1).sort((a, b) => goalShare(b) - goalShare(a) || a.label.localeCompare(b.label))];
   const trained = people.filter((p) => p.card);
@@ -189,6 +193,16 @@ function RailPerson({ p, draw, delay, onOpen }: { p: Person; draw: boolean; dela
   );
 }
 
+/**
+ * A name on a card or row: the label ("Sam K. · @sam_k"), with the ✓ after the lead when the owner verified them, drawn only (the
+ * name is a button: tapped, it opens their page, where the ✓ says what it means).
+ */
+function Named({ p }: { p: Person }) {
+  if (!p.friend || !p.verified) return <>{p.label}</>;
+  const mark = <Verified name={p.friend.name} tap={false} />;
+  return p.lead ? <><Glued text={p.lead} after={mark} /> · @{p.friend.name}</> : <Glued text={`@${p.friend.name}`} after={mark} />;
+}
+
 export const topText = (l: CardLift) => (l.seconds != null ? fmtClock(l.seconds) : `${fmtAdded(l.weight)} × ${l.reps ?? '?'}${l.hold ? 's' : ''}`);
 /** Beside the top set: "best of 3 sets" unless every set was it ("all 3 sets"), so one 55 × 10 never reads as three. */
 export const subText = (l: CardLift) => (l.seconds != null ? (l.miles != null ? `${fmtMiles(l.miles)} mi` : '') : setsNote(l));
@@ -222,7 +236,7 @@ function SessionCard({ p, now, news, onOpen, onMessage, sending, burst, error, s
         <span className={`${p.me ? 'avatar me' : 'avatar'}${c.live ? ' pulse' : ''}`} aria-hidden="true">{initials(p.handle)}</span>
         <div className="fd-who-text">
           <div className="fd-name-line">
-            <button className="link fd-name" onClick={onOpen}>{p.label}</button>
+            <button className="link fd-name" onClick={onOpen}><Named p={p} /></button>
             {p.friend && <Formerly friend={p.friend} />}
             {p.friend?.muted && <span className="crew-muted" role="img" aria-label="Muted"><Icon name="bell-off" size={15} /></span>}
             {p.status && !p.me && <span className="fd-status">{p.status}</span>}
@@ -325,10 +339,10 @@ function EarlierRow({ p, today, news, onOpen, onMessage }: { p: Person; today: s
     : `${sessionLabel(p.last.date, today)} · ${p.last.kinds}${p.last.sets ? ` · ${p.last.sets} sets` : ''}`;
   return (
     <li className="fd-row" data-testid={`crew-${f.name}`}>
-      <span className={`avatar${gone != null && gone >= 7 ? ' faded' : ''}`} aria-hidden="true">{initials(f.name)}</span>
+      <span className={`avatar${gone != null && gone >= 7 ? ' faded' : ''}`} aria-hidden="true">{initials(p.handle)}</span>
       <div className="fd-who-text">
         <div className="fd-name-line">
-          <button className="link fd-name" onClick={onOpen}>{p.label}</button>
+          <button className="link fd-name" onClick={onOpen}><Named p={p} /></button>
           <Formerly friend={f} />
           {f.muted && <span className="crew-muted" role="img" aria-label="Muted"><Icon name="bell-off" size={15} /></span>}
           {p.status && <span className="fd-status">{p.status}</span>}

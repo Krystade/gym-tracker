@@ -21,10 +21,11 @@ export interface PushNote {
   navigate: string;
   app_badge?: string;
   /**
-   * `from`, `name`: a friend's push, its sender's uid and username (as the Worker read it from their profile), so the phone can
-   * show its own private tag for them beside the name (sw-push, domain/friendNames tagNote). Never in other pushes.
+   * `from`, `name`, `dn`: a friend's push, its sender's uid, username and display name (as the Worker read them from their
+   * profile), so the phone can lead with its own private tag for them, else their display name, beside the username (sw-push,
+   * domain/friendNames tagNote). Never in other pushes.
    */
-  data: { kind: Kind; route: Route; from?: string; name?: string };
+  data: { kind: Kind; route: Route; from?: string; name?: string; dn?: string };
 }
 
 /**
@@ -193,16 +194,16 @@ export const withMore = (note: { title: string; body: string }, more: number) =>
  * The payload for one push. `appUrl`: the app's start URL (its scope), so `navigate` is absolute and in scope.
  * `route` overrides the kind's landing place (a friend's pushes open that friend); `badge` is the app icon's count.
  */
-export function buildPayload(kind: Kind, note: { title: string; body: string }, appUrl: string, opts: { route?: Route; badge?: number; from?: string; name?: string } = {}): PushPayload {
+export function buildPayload(kind: Kind, note: { title: string; body: string }, appUrl: string, opts: { route?: Route; badge?: number; from?: string; name?: string; dn?: string } = {}): PushPayload {
   const route = opts.route ?? ROUTE[kind];
   return { web_push: 8030, notification: {
     title: note.title, body: note.body, lang: 'en', navigate: new URL(`#open=${route}`, appUrl).href,
     ...(opts.badge != null && { app_badge: String(opts.badge) }),
-    data: { kind, route, ...(opts.from && { from: opts.from }), ...(opts.name && { name: opts.name }) } }, mutable: true };
+    data: { kind, route, ...(opts.from && { from: opts.from }), ...(opts.name && { name: opts.name }), ...(opts.dn && { dn: opts.dn }) } }, mutable: true };
 }
 
 /** What the service worker shows for whatever arrived: a broken payload still shows something (iOS revokes push after 3 silent ones). */
-export function noteOf(raw: unknown): { title: string; body: string; lang?: string; badge?: number; data: { kind?: string; route?: string; from?: string; name?: string } } {
+export function noteOf(raw: unknown): { title: string; body: string; lang?: string; badge?: number; data: { kind?: string; route?: string; from?: string; name?: string; dn?: string } } {
   const n = (raw && typeof raw === 'object' && 'notification' in raw ? (raw as { notification: unknown }).notification : raw) as Partial<PushNote> | null;
   const str = (v: unknown) => (typeof v === 'string' ? v : '');
   const data = n && typeof n.data === 'object' && n.data ? n.data : {};
@@ -216,6 +217,7 @@ export function noteOf(raw: unknown): { title: string; body: string; lang?: stri
       kind: str((data as { kind?: unknown }).kind) || undefined, route: str((data as { route?: unknown }).route) || undefined,
       ...(str((data as { from?: unknown }).from) && { from: str((data as { from?: unknown }).from) }),
       ...(str((data as { name?: unknown }).name) && { name: str((data as { name?: unknown }).name) }),
+      ...(str((data as { dn?: unknown }).dn) && { dn: str((data as { dn?: unknown }).dn) }),
     },
   };
 }

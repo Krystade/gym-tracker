@@ -1,37 +1,98 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { cleanTag, formerlyOf, MAX_TAG, tagged } from '../domain/friendNames';
-import { setFriendTag, useFriendCacheSelect, useFriendTags } from '../state/friendCache';
+import { setFriendTag, useFriendCacheSelect, useFriendTags, type FriendCache } from '../state/friendCache';
 import { Input } from './Field';
+import { StatsSheet } from './StatsSheet';
 import './friendNames.css';
 
-// A friend as you know them, wherever they show: your private tag beside their @username, and "formerly @old" for 30 days
-// after they change it (domain/friendNames). Tags are yours alone, kept by uid on your account (cloud/tags).
+// A friend as you know them, wherever they show: in bold your private tag, else the display name they chose (social S1), else
+// their @username; the @username beside it in grey whenever something else leads, so it's never hidden (two people can both be
+// "Mara R.", only one is @mara_lifts); "formerly @old" for 30 days after they change it (domain/friendNames); and the ✓ after
+// the name when the app's owner verified them (social S2). Tags are yours alone, kept by uid on your account (cloud/tags).
 
-export interface Named { uid: string; name: string; prev?: string; changedAt?: number }
+export interface Named { uid: string; name: string; /** Their display name (domain/displayName), when they set one. */ dn?: string; prev?: string; changedAt?: number }
 
-/** "Sam (gym) · @sam_k" or "@sam_k", for text: a heading, a label, a line read out. */
-export function useFriendLabel(me: string | null | undefined): (uid: string, name: string) => string {
+const same = (a: Record<string, string | number>, b: Record<string, string | number>) => {
+  const ka = Object.keys(a);
+  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
+};
+const NONE: Record<string, never> = {};
+const pickDns = (c: FriendCache | undefined): Record<string, string> => {
+  const fs = c?.lists?.friends.filter((f) => f.dn);
+  return fs?.length ? Object.fromEntries(fs.map((f) => [f.uid, f.dn!])) : NONE;
+};
+const pickVerified = (c: FriendCache | undefined): Record<string, number> => c?.lists?.verified ?? NONE;
+/** Who the app's owner verified, by uid (config/verified), as your lists last read it. */
+export const useVerified = (me: string | null | undefined) => useFriendCacheSelect(me, pickVerified, same);
+
+/** "Sam (gym) · @sam_k", "Sam K. · @sam_k" or "@sam_k", for text: a heading, a label, a line read out. */
+export function useFriendLabel(me: string | null | undefined): (uid: string, name: string, dn?: string) => string {
   const tags = useFriendTags(me);
-  return useCallback((uid: string, name: string) => tagged(name, tags[uid]), [tags]);
+  const dns = useFriendCacheSelect(me, pickDns, same);
+  return useCallback((uid: string, name: string, dn?: string) => tagged(name, tags[uid] || dn || dns[uid]), [tags, dns]);
 }
 
-/** A friend as your friends list last read them (their name now, what it was), over what a screen was handed; by uid. */
+/** A friend as your friends list last read them (their name now, what it was, their display name), over what a screen was handed; by uid. */
 function useNamed(me: string | null | undefined, friend: Named): Named {
   const known = useFriendCacheSelect(me, (c) => c?.lists?.friends.find((f) => f.uid === friend.uid));
-  return known ? { ...friend, name: known.name, prev: known.prev, changedAt: known.changedAt } : friend;
+  return known ? { ...friend, name: known.name, dn: known.dn, prev: known.prev, changedAt: known.changedAt } : friend;
 }
 
-/** Your tag in bold and their @username beside it (just the @username without a tag); "formerly @old" after it unless `bare`. */
-export function FriendName({ me, friend: given, bare }: { me: string | null | undefined; friend: Named; bare?: boolean }) {
+/**
+ * In bold your tag, else their display name, with their @username beside it in grey; just the @username when neither; the ✓
+ * after the name when verified; "formerly @old" after it all unless `bare`. `inButton`: the name sits inside a button (Today's
+ * banner, a Compare row), so the ✓ is drawn there but isn't a button of its own.
+ */
+export function FriendName({ me, friend: given, bare, inButton }: { me: string | null | undefined; friend: Named; bare?: boolean; inButton?: boolean }) {
   const friend = useNamed(me, given);
-  const tag = useFriendTags(me)[friend.uid];
+  const lead = useFriendTags(me)[friend.uid] || friend.dn;
+  const check = useVerified(me)[friend.uid] != null && <Verified name={friend.name} tap={!inButton} />;
   return (
     <span className="fname">
-      {tag ? <><span className="ftag">{tag}</span> <span className="fuser">@{friend.name}</span></> : <>@{friend.name}</>}
+      {lead ? <><span className="ftag"><Glued text={lead} after={check} /></span> <span className="fuser">@{friend.name}</span></> : <Glued text={`@${friend.name}`} after={check} />}
       {!bare && <Formerly friend={friend} />}
     </span>
   );
+}
+
+const graphemes = (s: string) =>
+  typeof Intl.Segmenter === 'function' ? [...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(s)].map((x) => x.segment) : [...s];
+/**
+ * `text` with `after` (the ✓) held to its last character, so a line never breaks between a name and its ✓: a long name wraps
+ * before its last word, and the ✓ goes with it.
+ */
+export function Glued({ text, after }: { text: string; after: ReactNode }) {
+  if (!after) return <>{text}</>;
+  const g = graphemes(text), last = g.pop() ?? '';
+  return <>{g.join('')}<span className="vglue">{last}{after}</span></>;
+}
+
+/** The ✓ itself: drawn, never text, so no name can carry one (domain/displayName refuses everything like it). */
+export function CheckMark() {
+  return (
+    <svg className="vglyph" viewBox="0 0 20 20" aria-hidden="true">
+      <circle cx="10" cy="10" r="10" />
+      <path d="M5.6 10.3l2.9 2.9 5.9-6" />
+    </svg>
+  );
+}
+
+/**
+ * The ✓ after a verified person's name. Tapped, a sheet says what it means: the app's owner confirmed this is the real @x
+ * (owner, 2026-10-22). `tap` false: drawn only (the name is inside a button).
+ */
+export function Verified({ name, tap = true }: { name: string; tap?: boolean }) {
+  const [open, setOpen] = useState(false);
+  if (!tap) return <span className="vcheck" role="img" aria-label="verified"><CheckMark /></span>;
+  return (<>
+    <button type="button" className="vcheck" aria-label="Verified" onClick={(e) => { e.stopPropagation(); setOpen(true); }}><CheckMark /></button>
+    {open && (
+      <StatsSheet title="Verified" onClose={() => setOpen(false)}>
+        <p className="vsheet"><span className="vcheck" aria-hidden="true"><CheckMark /></span><span>Verified by the app’s owner: this is the real @{name}.</span></p>
+      </StatsSheet>
+    )}
+  </>);
 }
 
 /** "formerly @old", for 30 days after they changed their username; nothing otherwise. */

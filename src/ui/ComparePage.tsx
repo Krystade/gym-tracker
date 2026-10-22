@@ -10,7 +10,7 @@ import type { SetEntry } from '../domain/types';
 import { addDays } from '../domain/analytics';
 import { peekFriendCache, refreshLists, refreshSummaries, staleSummaries, useFriendCache, useFriendTags } from '../state/friendCache';
 import { getPref, setPref } from '../state/prefs';
-import { Formerly, useFriendLabel } from './FriendName';
+import { Formerly, Glued, useFriendLabel, useVerified, Verified } from './FriendName';
 import { Icon, initials } from './icons';
 import { StatsSheet } from './StatsSheet';
 import './compare.css';
@@ -85,7 +85,7 @@ export function ComparePage({ uid, myName, entries, today, goal, onBack, onView,
       const k = cache?.summaries?.[f.uid];
       const doc = k?.doc ?? null;
       return {
-        uid: f.uid, me: false, friend: f, name: label(f.uid, f.name), tag: tags[f.uid] || `@${f.name}`, colour: colours.get(f.uid) ?? YOU_COLOUR,
+        uid: f.uid, me: false, friend: f, name: label(f.uid, f.name, f.dn), tag: tags[f.uid] || f.dn || `@${f.name}`, colour: colours.get(f.uid) ?? YOU_COLOUR,
         s: doc, state: !k ? 'loading' : doc ? 'ok' : 'none', ...(doc && doc.day < addDays(today, -2) && { asOf: doc.day }),
       };
     }),
@@ -140,7 +140,7 @@ export function ComparePage({ uid, myName, entries, today, goal, onBack, onView,
               return (
                 <li key={f.uid}>
                   <button className="cmp-pick" aria-pressed={on} onClick={() => save('compare:hidden', setHidden)(on ? [...hidden, f.uid] : hidden.filter((x) => x !== f.uid))}>
-                    <span className="avatar cmp-av" style={{ '--pc': colours.get(f.uid) } as CSSProperties} aria-hidden="true">{initials(f.name)}</span>
+                    <span className="avatar cmp-av" style={{ '--pc': colours.get(f.uid) } as CSSProperties} aria-hidden="true">{initials(f.dn || f.name)}</span>
                     <span className="cmp-nm"><Name r={{ uid: f.uid, me: false, friend: f }} me={uid} /></span>
                     <span className="cmp-check" aria-hidden="true">{on && <Icon name="check" size={18} sw={2.25} />}</span>
                   </button>
@@ -155,16 +155,20 @@ export function ComparePage({ uid, myName, entries, today, goal, onBack, onView,
 }
 
 function Avatar({ r, myName }: { r: Row; myName?: string }) {
-  return <span className={`avatar cmp-av${r.me ? ' me' : ''}`} style={{ '--pc': r.colour } as CSSProperties} aria-hidden="true">{initials(r.me ? myName || 'You' : r.friend!.name)}</span>;
+  return <span className={`avatar cmp-av${r.me ? ' me' : ''}`} style={{ '--pc': r.colour } as CSSProperties} aria-hidden="true">{initials(r.me ? myName || 'You' : r.friend!.dn || r.friend!.name)}</span>;
 }
 
-/** Your tag for them over their @username, and "formerly" for 30 days; "You" for you. */
+/**
+ * Your tag for them, else their display name, over their @username (the @username alone when neither), the ✓ after it when
+ * verified (drawn only: every name here is inside a button), and "formerly" for 30 days; "You" for you.
+ */
 function Name({ r, me }: { r: Pick<Row, 'uid' | 'me' | 'friend'>; me: string }) {
-  const tag = useFriendTags(me)[r.uid];
+  const lead = useFriendTags(me)[r.uid] || r.friend?.dn;
+  const v = useVerified(me)[r.uid] != null;
   if (r.me || !r.friend) return <span className="cmp-tg">You</span>;
   return (<>
-    <span className="cmp-tg">{tag || `@${r.friend.name}`}</span>
-    {tag && <span className="cmp-us">@{r.friend.name}</span>}
+    <span className="cmp-tg"><Glued text={lead || `@${r.friend.name}`} after={v && <Verified name={r.friend.name} tap={false} />} /></span>
+    {lead && <span className="cmp-us">@{r.friend.name}</span>}
     <span className="cmp-was"><Formerly friend={r.friend} /></span>
   </>);
 }

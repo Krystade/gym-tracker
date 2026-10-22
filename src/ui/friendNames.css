@@ -16,3 +16,36 @@
 .name-form > p { margin: 0; }
 .viewing-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .crew-who > .fwas { color: var(--muted); font-size: var(--fs-sm); margin-top: -8px; }
+/* A display name leads like a tag does (social S1); a long one wraps rather than being cut, so the @username beside it always shows. */
+.fname { overflow-wrap: anywhere; }
+/* The ✓ (social S2): drawn after the name, its own element. As a button it's 44×44 to tap, with margins that take the box back
+   off the line, so it sits 4px from the words either side and never makes the line taller. */
+.vcheck { --vs: min(1.05em, 22px); display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; flex: none; font-size: inherit; line-height: 0; }
+button.vcheck {
+  width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; border-radius: 50%; background: none; color: inherit;
+  margin: calc((var(--vs) - 44px) / 2) calc((var(--vs) - 44px) / 2 + 4px);
+}
+span.vcheck { margin: 0 0 0 4px; }
+/* A name's last character and its ✓, held on one line (ui/FriendName Glued). */
+.vglue { white-space: nowrap; }
+/* A thread's head: the name, and the @username under it, smaller, so the two share the narrow space beside its buttons. */
+.sheet-head .fname .fuser { display: block; font-size: var(--fs-sm); line-height: 18px; font-weight: 400; overflow-wrap: anywhere; }
+.vglyph { width: var(--vs); height: var(--vs); display: block; }
+.vglyph circle { fill: var(--accent); }
+.vglyph path { fill: none; stroke: var(--accent-ink); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+/* Its sheet: the ✓ and what it means, one line. */
+.vsheet { display: flex; align-items: center; gap: 12px; margin: 4px 0 8px; font-size: var(--fs-body); line-height: 24px; }
+.vsheet .vcheck { --vs: 28px; margin: 0; }
+/* More › Account: your display name, and how others see you (mockup 06). */
+.dn-form { margin-top: 4px; }
+.dn-form > p { margin: 0; }
+.seen-row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 14px; margin: 4px 0 10px; background: var(--fill); border-radius: var(--r-group); }
+.seen-row .avatar { width: 40px; height: 40px; }
+.seen-name { min-width: 0; font-size: var(--fs-body); line-height: 24px; }
+.seen-name .ftag { font-weight: 700; }
+/* The owner's switch for someone's ✓: a friend's page, and your own preview. */
+.vtoggle { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
+.vtoggle .mini { flex: none; border-radius: var(--r-pill); }
+.vtoggle .mini[aria-pressed='true'] { color: var(--accent-text); }
+.vtoggle > span { flex: 1 1 180px; min-width: 0; }
+.vtoggle > p { flex-basis: 100%; margin: 0; }

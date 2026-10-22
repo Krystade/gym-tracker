@@ -13,6 +13,7 @@ import { clock, kindsFromCard, ReactButton, subText, topText, useReactions } fro
 import { Screens, type FriendTab } from './FriendView';
 import { Icon, initials } from './icons';
 import { FriendName, FriendTagEditor } from './FriendName';
+import { VerifyToggle } from './DisplayNameCard';
 import { kindColour, Ring } from './Ring';
 import { FriendStats } from './StatsScreen';
 
@@ -92,7 +93,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep,
       <div className="fp-hero">
         <span className={`fp-ring${v?.live != null ? ' pulse' : ''}`}>
           {v && <Ring segs={v.ring} total={v.usual} size={92} width={4.5} draw merge />}
-          <span className="avatar" aria-hidden="true">{initials(friend.name)}</span>
+          <span className="avatar" aria-hidden="true">{initials(friend.dn || friend.name)}</span>
         </span>
         {v?.live != null && <span className="fd-live fp-live">LIVE</span>}
         <h1><FriendName me={uid} friend={friend} /></h1>
@@ -125,7 +126,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep,
         <span id="fp-whole" className="fp-links-k">Whole log</span>
         {(['history', 'lifts', 'stats'] as const).map((t) => <button key={t} onClick={() => onDeep(t)}>{t[0].toUpperCase() + t.slice(1)}</button>)}
       </div>
-      <div className="fp-tag"><FriendTagEditor me={uid} friend={friend} /></div>
+      <div className="fp-tag"><FriendTagEditor me={uid} friend={friend} /><VerifyToggle me={uid} uid={friend.uid} name={friend.name} /></div>
     </section>
   );
 }

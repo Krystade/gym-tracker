@@ -6,6 +6,10 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function me(uid) { return signedIn() && request.auth.uid == uid; }
     function friendOf(uid) { return signedIn() && exists(/databases/$(db)/documents/users/$(uid)/friends/$(request.auth.uid)); }
+    // The app's owner (social S2): the one account that grants the ✓ (config/verified below). Room for a second moderator: one
+    // more uid in this list (owner, 2026-10-22); the app holds the same list (src/cloud/owner.ts, a test checks they agree).
+    function OWNERS() { return ['FKCm35XFmSZyVtn3XdtO9TBJmOw2']; }
+    function owner() { return signedIn() && request.auth.uid in OWNERS(); }
     function blocked(uid, them) { return exists(/databases/$(db)/documents/users/$(uid)/blocked/$(them)); }
     function liveInvite(uid, token) {
       return token is string && exists(/databases/$(db)/documents/users/$(uid)/invites/$(token))
@@ -42,6 +46,14 @@ service cloud.firestore {
     function nameDoc(n) { return /databases/$(db)/documents/usernames/$(n); }
     function profileDoc(uid) { return /databases/$(db)/documents/users/$(uid); }
     function holdsAfter(uid, n) { return n is string && existsAfter(nameDoc(n)) && getAfter(nameDoc(n)).data.uid == uid; }
+    // The ✓ (social S2): uids the owner has confirmed are who they say, each with when. Anyone signed in reads it (one read, kept
+    // on the phone); only the owner writes it.
+    match /config/verified {
+      allow get: if signedIn();
+      allow create, update: if owner() && request.resource.data.keys().hasOnly(['uids']) && request.resource.data.uids is map;
+      allow delete: if owner();
+    }
+
     match /usernames/{name} {
       allow get: if signedIn();
       allow list: if false;
@@ -52,23 +64,54 @@ service cloud.firestore {
         && (!existsAfter(profileDoc(request.auth.uid)) || getAfter(profileDoc(request.auth.uid)).data.username != name);
     }
 
+    // A display name (social S1): free text shown beside the @username, never instead of it. 1 to 60 UTF-16 units (the app holds
+    // it to 30 characters as a person counts them), no control, invisible or direction-flipping characters, no @, no link, no
+    // space at either end, and nothing drawn like the ✓. The app checks the same class (domain/displayName; a test checks they
+    // agree). Joiners (U+200C, U+200D) stay: emoji like 🏋️‍♀️ and some scripts are built with them.
+    function dnOk(s) {
+      return s is string && s.size() >= 1 && s.size() <= 60
+        && s.matches('[^@\\x{0}-\\x{1f}\\x{7f}-\\x{9f}\\x{ad}\\x{61c}\\x{200b}\\x{200e}\\x{200f}\\x{2028}-\\x{202e}\\x{2060}-\\x{2064}\\x{2066}-\\x{2069}\\x{feff}\\x{ae}\\x{2122}\\x{221a}\\x{2611}\\x{2705}\\x{2713}\\x{2714}\\x{1f535}\\x{1f5f8}]+')
+        && !s.matches('(?s)( .*|.* )')
+        && !s.matches('(?is).*(://|www[.]).*');
+    }
+    // No display name set: the old shape, the display name the username itself (every profile before S1, and an older app's writes).
+    function plainName(d) { return d.displayName == d.username; }
+    // The username part of a profile's change: untouched, or a change as below (the new name held and the old one released in
+    // the same write, `prev` the old one, the server's time, at most once a day).
+    function usernameMove(uid, n, o) {
+      return !n.diff(o).affectedKeys().hasAny(['username', 'prev', 'changedAt'])
+        || (n.username != o.username && holdsAfter(uid, n.username) && !existsAfter(nameDoc(o.username))
+          && n.prev == o.username && n.changedAt == request.time
+          && (!('changedAt' in o) || request.time > o.changedAt + duration.value(1, 'd')));
+    }
+    // The display name part: untouched; the old shape following a change of username; an older app's change of username, which
+    // writes the old shape whole (a display name set goes with its time, but not within a day of setting it); or a change of its
+    // own (set, changed or cleared back to the old shape) at the server's time, at most once a day.
+    function displayMove(n, o) {
+      let ch = n.diff(o).affectedKeys();
+      return (plainName(n) || dnOk(n.displayName))
+        && (!ch.hasAny(['displayName', 'nameAt'])
+          || (plainName(n) && plainName(o) && !ch.hasAny(['nameAt']))
+          || (plainName(n) && n.username != o.username && !('nameAt' in n)
+            && (!('nameAt' in o) || request.time > o.nameAt + duration.value(1, 'd')))
+          || (ch.hasAny(['displayName']) && n.nameAt == request.time
+            && (!('nameAt' in o) || request.time > o.nameAt + duration.value(1, 'd'))));
+    }
+
     match /users/{uid} {
-      // Name only, so a request can say who it's from; `prev` and `changedAt` say what it was ("formerly @…" for 30 days).
+      // Name only, so a request can say who it's from; `prev` and `changedAt` say what it was ("formerly @…" for 30 days); the
+      // display name and when it last changed (`nameAt`); when the account first had a profile (`createdAt`, the server's time,
+      // kept for the board's day-old gate; an older app writes none, and a profile without one may add it once, as now).
       allow get: if signedIn();
-      // A first name: one you hold.
-      allow create: if me(uid) && request.resource.data.keys().hasOnly(['username', 'displayName'])
-        && request.resource.data.displayName == request.resource.data.username && holdsAfter(uid, request.resource.data.username);
-      // A change: the new name held and the old one released in the same write, `prev` the old one, the server's time, and
-      // at most once a day.
-      allow update: if me(uid) && request.resource.data.keys().hasOnly(['username', 'displayName', 'prev', 'changedAt'])
-        && request.resource.data.displayName == request.resource.data.username
-        && ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']))
-          || (request.resource.data.username != resource.data.username
-            && holdsAfter(uid, request.resource.data.username)
-            && !existsAfter(nameDoc(resource.data.username))
-            && request.resource.data.prev == resource.data.username
-            && request.resource.data.changedAt == request.time
-            && (!('changedAt' in resource.data) || request.time > resource.data.changedAt + duration.value(1, 'd'))));
+      // A first name: one you hold, no display name yet.
+      allow create: if me(uid) && request.resource.data.keys().hasOnly(['username', 'displayName', 'createdAt'])
+        && request.resource.data.displayName == request.resource.data.username && holdsAfter(uid, request.resource.data.username)
+        && (!('createdAt' in request.resource.data) || request.resource.data.createdAt == request.time);
+      allow update: if me(uid)
+        && request.resource.data.keys().hasOnly(['username', 'displayName', 'prev', 'changedAt', 'nameAt', 'createdAt'])
+        && usernameMove(uid, request.resource.data, resource.data)
+        && displayMove(request.resource.data, resource.data)
+        && (!('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.get('createdAt', request.time));
       allow delete: if me(uid);
 
       match /months/{m} { allow read: if me(uid) || friendOf(uid); allow write: if me(uid); }

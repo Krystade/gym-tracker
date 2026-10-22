@@ -68,4 +68,17 @@ describe('tagNote', () => {
   it('matches the whole name only, not inside a longer one', () => {
     expect(tagNote({ title: 'Friend request', body: 'sam_kk wants to be friends' }, 'request', 'sam_k', 'Sam').body).toBe('sam_kk wants to be friends');
   });
+  it('no tag: their display name leads instead; your tag wins over it', () => {
+    expect(tagNote({ title: 'sam_k', body: '💪' }, 'ping', 'sam_k', undefined, 'Sam K.')).toEqual({ title: 'Sam K. · @sam_k', body: '💪' });
+    expect(tagNote({ title: 'sam_k', body: '💪' }, 'ping', 'sam_k', 'Sam (gym)', 'Sam K.')).toEqual({ title: 'Sam (gym) · @sam_k', body: '💪' });
+    expect(tagNote({ title: 'Friend request', body: 'sam_k wants to be friends' }, 'request', 'sam_k', '', 'Sam K.').body).toBe('Sam K. · @sam_k wants to be friends');
+  });
+  it('a display name never shows without the @username: too long for the title, the @username leads the body; too long for the body, as it came', () => {
+    const dn = 'Samantha Kowalczyk-Brown';
+    expect(tagNote({ title: 'sam_kowalczyk', body: '💪' }, 'ping', 'sam_kowalczyk', undefined, dn)).toEqual({ title: dn, body: '@sam_kowalczyk · 💪' });
+    const long = { title: 'Gym shared', body: `sam_kowalczyk sent you a gym: ${'G'.repeat(40)}` };
+    expect(tagNote(long, 'gym', 'sam_kowalczyk', undefined, dn)).toBe(long);
+    // Your own tag may stand alone where both don't fit.
+    expect(tagNote(long, 'gym', 'sam_kowalczyk', dn).body).toBe(`${dn} sent you a gym: ${'G'.repeat(40)}`);
+  });
 });

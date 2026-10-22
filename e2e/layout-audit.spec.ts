@@ -2,9 +2,9 @@ import { expect, test, type APIRequestContext, type Browser, type Locator, type 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { addFriend, goto, openProgram } from './nav';
-import { audit, check, clean, notched, renderCheck, TOP } from './layout';
+import { audit, check, clean, lines, notched, renderCheck, TOP } from './layout';
 import { deloadLog, SIM_LIFTS, simDay } from '../src/domain/learn/deloadSim.sample';
-import { account, befriend, iso, log, ping, put, rand, session, signedIn, Ts, type Seeded } from './seed';
+import { account, befriend, iso, log, named, ownerAccount, ping, put, rand, session, signedIn, Ts, verify, type Seeded } from './seed';
 import { convertedRows, pasteRows, toCsv as dupesCsv, TWINS } from './fixtures/dupes';
 import { friendLog, publish, summaryOf } from './fixtures/compare';
 import { sixWeeks, WED } from './fixtures/today';
@@ -140,6 +140,96 @@ test('Friends: the feed, a friend’s page and its 8-week board, a thread', asyn
   await page.getByRole('region', { name: `@${live.name}`, exact: true }).getByRole('button', { name: 'Stats', exact: true }).click();
   await expect(page.getByRole('heading', { name: `@${live.name}’s stats`, level: 1 })).toBeVisible();
   await check(page, info, found, 'friend-stats');
+  clean(found);
+});
+
+// ---- Display names and the ✓ (social S1, S2): at the 30-character cap beside a 20-character @username, everywhere they show ----
+
+test('Display names and the ✓: the feed, a request, the ✓’s sheet, a friend’s page, a thread, Compare, Account, the owner’s switch', async ({ browser, request }, info) => {
+  test.setTimeout(240_000);
+  // You, verified, with a display name at the cap and an emoji in it; Medal, verified, 30 characters with an accent; Jo, short and
+  // training today; a stranger, verified, asking to be friends. All usernames at the 20-character cap.
+  const [me, medal, jo, stranger] = await Promise.all([long('me'), long('medal'), long('jo'), long('ask')].map((n) => account(request, n)));
+  await Promise.all([
+    named(request, me, 'Alexandra Montgomery-Okafor 🏋️‍♀️'), named(request, medal, 'Maximiliana Rodríguez-Castillo'),
+    named(request, jo, 'Jo'), named(request, stranger, 'Sam K.'),
+  ]);
+  for (const v of [me, medal, stranger]) await verify(request, v);
+  await log(request, me, friendLog(0, T, { rate: 2 }));
+  await publish(request, medal, summaryOf(friendLog(1, T, {}), T, 3));
+  await log(request, jo, session(at(0, 17, 30), [['Barbell Squat', [[225, 5], [245, 3]]], ['Bench Press', [[185, 5]]]]), { goal: 3 });
+  await befriend(request, me, medal);
+  await befriend(request, me, jo);
+  await put(request, `users/${me.uid}/requests/${stranger.uid}`, { username: stranger.name, sent: Date.now() });
+
+  const page = await open(browser, me);
+  const found: string[] = [];
+  /** The render check's stricter rules over `scope`, beside the audit `check` already ran for `state`. */
+  const strictly = async (state: string, scope: string) => { found.push(...lines(await renderCheck(page, scope)).map((l) => `${state}: ${l}`)); };
+  const M = `Maximiliana Rodríguez-Castillo · @${medal.name}`;
+  const medalName = (p: Page) => crew(p).getByTestId(`crew-${medal.name}`).locator('.fd-name');
+
+  // The feed: Jo's card today, Medal's row with the ✓ after a name that wraps.
+  await expect(medalName(page)).toHaveText(M, { timeout: 20_000 });
+  await expect(crew(page).getByTestId(`crew-${jo.name}`)).toContainText('Barbell Squat');
+  await check(page, info, found, 'names-feed');
+  await strictly('names-feed', '.fd-name-line');
+  // A request from someone verified, by display name with the @username beside it.
+  const reqs = page.getByRole('region', { name: 'Requests' });
+  await reqs.scrollIntoViewIfNeeded();
+  await expect(reqs).toContainText(`Sam K. @${stranger.name} wants to be friends`);
+  await check(page, info, found, 'names-request');
+  await strictly('names-request', '.friend-list');
+
+  // Medal's page: the long name and the ✓ in the heading; not the owner, so no switch.
+  await medalName(page).click();
+  const fp = page.getByRole('region', { name: `@${medal.name}`, exact: true });
+  await expect(fp.getByRole('heading', { level: 1 }).getByRole('button', { name: 'Verified' })).toBeVisible();
+  await check(page, info, found, 'names-friend-page');
+  await strictly('names-friend-page', '.fp-hero');
+  // The ✓'s sheet, from the heading.
+  await fp.getByRole('heading', { level: 1 }).getByRole('button', { name: 'Verified' }).click();
+  await expect(page.getByRole('dialog', { name: 'Verified' })).toContainText(`this is the real @${medal.name}.`);
+  await check(page, info, found, 'names-verified-sheet', [], 'main');
+  await page.getByRole('dialog', { name: 'Verified' }).getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  // Their thread: the name wraps in its head beside the buttons.
+  await fp.getByRole('button', { name: /^Message @/ }).click();
+  const sheet = page.getByRole('dialog', { name: `Messages with ${M}` });
+  await expect(sheet.getByRole('heading', { level: 2 })).toContainText('Maximiliana');
+  await check(page, info, found, 'names-thread');
+  await strictly('names-thread', '.thread-sheet .sheet-head');
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await page.locator('.fp-back').click();
+
+  // Compare: the display names lead, the ✓ drawn after them (every name there is inside a button).
+  await crew(page).getByRole('button', { name: /^Compare/ }).click();
+  const c = page.getByRole('region', { name: 'Compare' });
+  await expect(c.locator('.cmp-tg', { hasText: 'Maximiliana' }).first()).toBeVisible({ timeout: 20_000 });
+  await check(page, info, found, 'names-compare', [], '.cmp');
+
+  // Account: your display name, its card, how others see you; then a refused one as typed.
+  await goto(page, 'Account');
+  const card = page.getByRole('region', { name: 'Display name' });
+  await expect(card.getByRole('textbox', { name: 'Display name' })).toHaveValue('Alexandra Montgomery-Okafor 🏋️‍♀️');
+  await expect(page.getByRole('region', { name: 'How others see you' }).getByRole('button', { name: 'Verified' })).toBeVisible();
+  await check(page, info, found, 'names-account', [], 'main');
+  await card.getByRole('textbox', { name: 'Display name' }).fill('Admin ✓ @everyone');
+  await expect(card.getByRole('status')).toHaveText('No @: your @username already shows beside it.');
+  await check(page, info, found, 'names-account-refused', [], 'main');
+
+  // The owner (the uid firestore.rules names, an emulator account): the switch on Medal's page and on their own Account.
+  const owner = await ownerAccount(request);
+  await befriend(request, owner, medal);
+  const po = await open(browser, owner);
+  await medalName(po).click();
+  const op = po.getByRole('region', { name: `@${medal.name}`, exact: true });
+  await expect(op.getByRole('button', { name: 'Remove the ✓' })).toBeVisible();
+  await op.locator('.fp-tag').scrollIntoViewIfNeeded();
+  await check(po, info, found, 'names-owner-friend-page', [], '.fp-tag');
+  await goto(po, 'Account');
+  await expect(po.getByRole('region', { name: 'How others see you' }).getByRole('button', { name: /Give the ✓|Remove the ✓/ })).toBeVisible();
+  await check(po, info, found, 'names-owner-account', [], 'main');
   clean(found);
 });
 

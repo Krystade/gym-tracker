@@ -1,6 +1,7 @@
 import { expect, type APIRequestContext, type Browser, type Page } from '@playwright/test';
 import { goto } from './nav';
 import { DOCS, EMU_HOST, emu } from './emu';
+import { OWNERS } from '../src/cloud/owner';
 
 // Synthetic accounts put straight into the local emulators as an admin (rules don't apply), so a screen can be shown with a
 // full crew in seconds instead of logging every set through the UI. Synthetic users and numbers only.
@@ -37,6 +38,35 @@ export async function account(request: APIRequestContext, name = `u${rand()}`): 
   const res = await request.post(AUTH, { data: { email, password: PASSWORD, returnSecureToken: true } });
   expect(res.ok(), await res.text()).toBe(true);
   const uid = (await res.json()).localId as string;
+  await put(request, `users/${uid}`, { username: name, displayName: name });
+  await put(request, `usernames/${name}`, { uid });
+  return { uid, name, email };
+}
+
+/** Their display name (social S1), as the app would write it: beside the username, never instead of it. */
+export async function named(request: APIRequestContext, who: Seeded, dn: string) {
+  await put(request, `users/${who.uid}`, { username: who.name, displayName: dn });
+}
+
+/** The ✓ for them (social S2), added to config/verified alone: other tests' entries in it stay. */
+export async function verify(request: APIRequestContext, who: Seeded) {
+  const res = await request.patch(`${EMU}/config/verified?updateMask.fieldPaths=${encodeURIComponent(`uids.\`${who.uid}\``)}`, {
+    headers: { Authorization: 'Bearer owner' }, data: { fields: { uids: { mapValue: { fields: { [who.uid]: { timestampValue: new Date().toISOString() } } } } } },
+  });
+  expect(res.ok(), `config/verified: ${await res.text()}`).toBe(true);
+}
+
+/**
+ * The app's owner (src/cloud/owner, the uid firestore.rules OWNERS() names), as an emulator account: the one account whose uid
+ * isn't random, made once per run (every test that asks shares it, under one synthetic username).
+ */
+export async function ownerAccount(request: APIRequestContext): Promise<Seeded> {
+  const uid = OWNERS[0], email = 'site-owner@test.local', name = 'site_owner';
+  const res = await request.post(AUTH, { headers: { Authorization: 'Bearer owner' }, data: { localId: uid, email, password: PASSWORD } });
+  if (!res.ok()) {
+    const t = await res.text();
+    expect(t, 'the owner’s emulator account').toMatch(/DUPLICATE_LOCAL_ID|EMAIL_EXISTS/);
+  }
   await put(request, `users/${uid}`, { username: name, displayName: name });
   await put(request, `usernames/${name}`, { uid });
   return { uid, name, email };

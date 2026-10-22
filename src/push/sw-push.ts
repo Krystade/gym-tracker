@@ -38,8 +38,8 @@ const TAGS_WAIT_MS = 500;
 const FRIEND_KINDS = new Set(['request', 'accepted', 'gym', 'ping', 'message']);
 type Note = ReturnType<typeof noteOf>;
 /**
- * A friend's push with your tag for them beside their name. Who it's from is in its data (`from`, `name`); from a Worker
- * before that, a ping or message still names them in its title and lands on them (`friend.<uid>`).
+ * A friend's push with your tag for them, else their display name (`dn`), beside their name. Who it's from is in its data
+ * (`from`, `name`); from a Worker before that, a ping or message still names them in its title and lands on them (`friend.<uid>`).
  */
 async function tagged(n: Note, d: SwDeps): Promise<Note> {
   const k = n.data.kind;
@@ -47,7 +47,7 @@ async function tagged(n: Note, d: SwDeps): Promise<Note> {
   const name = n.data.name ?? (k === 'ping' || k === 'message' ? n.title : undefined);
   if (!d.tags || !from || !name) return n;
   const tags = await Promise.race([d.tags().catch(() => undefined), new Promise<undefined>((r) => setTimeout(r, TAGS_WAIT_MS))]);
-  return tagNote(n, k, name, tags?.[from]);
+  return tagNote(n, k, name, tags?.[from], n.data.dn);
 }
 
 export function onPush(e: PushEventLike, d: SwDeps): void {

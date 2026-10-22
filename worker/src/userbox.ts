@@ -151,7 +151,7 @@ export class UserBox extends DurableObject<Env> {
     if (now - rate.hour >= 3600_000) Object.assign(rate, { hour: now, n: 0 });
     if (rate.n >= PER_HOUR) return 'limit';
     if (now - rate.last < HOLD_MS) { rate.held++; await st.put(key, rate); return 'held'; }
-    await this.send(p.kind, withMore(p.note, rate.held), undefined, { route: p.route, topic: await friendTopic(p.from), badge: unread, from: p.from, name: p.name });
+    await this.send(p.kind, withMore(p.note, rate.held), undefined, { route: p.route, topic: await friendTopic(p.from), badge: unread, from: p.from, name: p.name, dn: p.dn });
     Object.assign(rate, { last: now, held: 0, n: rate.n + 1 });
     await st.put(key, rate);
     if (p.daily) await st.put(`daily:${p.daily}`, now);
@@ -224,11 +224,11 @@ export class UserBox extends DurableObject<Env> {
   }
 
   /** Sends one kind to the given devices (all by default), keeping each device's last result. Logs kind, status and time only. */
-  private async send(kind: Kind, note: { title: string; body: string }, ids?: string[], opts: { route?: Route; topic?: string; badge?: number; from?: string; name?: string } = {}): Promise<Record<string, number>> {
+  private async send(kind: Kind, note: { title: string; body: string }, ids?: string[], opts: { route?: Route; topic?: string; badge?: number; from?: string; name?: string; dn?: string } = {}): Promise<Record<string, number>> {
     const key = parseVapid(this.env.VAPID_PRIVATE_JWK);
     const out: Record<string, number> = {};
     if (!key) { console.log(JSON.stringify({ kind, error: 'no VAPID key' })); return out; }
-    const payload = buildPayload(kind, note, this.env.APP_URL, { route: opts.route, badge: opts.badge, from: opts.from, name: opts.name });
+    const payload = buildPayload(kind, note, this.env.APP_URL, { route: opts.route, badge: opts.badge, from: opts.from, name: opts.name, dn: opts.dn });
     const delivery = { ...DELIVERY[kind], ...(opts.topic && { topic: opts.topic }) };
     const all = await this.devices();
     for (const d of Object.values(all)) {

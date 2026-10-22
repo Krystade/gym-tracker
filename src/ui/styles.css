@@ -776,7 +776,9 @@ p + .sync-form, p + .field { margin-top: 12px; }
 .friend-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; border-top: 1px solid var(--line); }
 .friend-list li:first-child { border-top: 0; }
 .friend-list .link { padding: 0; min-height: 44px; font-size: var(--fs-md); }
-.friend-actions { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
+/* The buttons keep their width; the words beside them wrap (a request from a display name and a 20-character @username). */
+.friend-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.friend-list li > span:first-child { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .friend-list .link { flex: none; }
 /* Air between the card's forms: the invite link's Cancel/Share row isn't the paste field's. */
 .sub > .sync-form + .sync-form, .sub > .sync-form + button { margin-top: 16px; }
@@ -935,7 +937,7 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .sheet::before { content: ''; flex: none; align-self: center; width: 36px; height: 5px; border-radius: 3px; background: var(--fill-2); }
 .sheet-head { display: flex; align-items: center; gap: 4px; }
 .sheet-head .avatar { width: 40px; height: 40px; margin-right: 8px; }
-.sheet-head h2 { flex: 1; margin: 0; font-size: var(--fs-body); line-height: 22px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-head h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--fs-body); line-height: 22px; font-weight: 600; overflow-wrap: anywhere; }
 .mini.icon { min-width: 44px; padding: 0; background: none; color: var(--text-2); }
 .mini.icon[aria-pressed='true'] { color: var(--accent-text); }
 .sheet-menu { display: flex; flex-wrap: wrap; gap: 8px; }

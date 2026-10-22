@@ -1,4 +1,5 @@
 import { acceptedNote, gymNote, messageNote, pingNote, requestNote, type FriendKind, type Route } from '../../src/push/payload';
+import { displayOf } from '../../src/domain/displayName';
 import type { Env } from './env';
 import { getDoc, type Doc } from './firestore';
 
@@ -28,6 +29,8 @@ export interface FriendPush {
   daily?: string;
   /** The sender's username, when their profile has a proper one: the phone puts its own tag for them beside it. */
   name?: string;
+  /** Their display name, when they set one the app allows (social S1): the phone leads with it, the username beside it. */
+  dn?: string;
 }
 
 type Env4 = Pick<Env, 'AUTH_EMULATOR' | 'FIREBASE_PROJECT' | 'FIRESTORE_EMULATOR'>;
@@ -35,11 +38,16 @@ type Env4 = Pick<Env, 'AUTH_EMULATOR' | 'FIREBASE_PROJECT' | 'FIRESTORE_EMULATOR
 const fresh = (d: Doc, now: number) => d.createTime > now - FRESH_MS && d.createTime < now + SKEW_MS;
 const exists = (d: Doc | null | 'denied'): d is Doc => d != null && d !== 'denied';
 
-/** The sender's username from their own profile (any signed-in person may read a profile's name); null without a proper one. */
-async function usernameOf(env: Env4, token: string, uid: string): Promise<string | null> {
+/**
+ * The sender's username from their own profile (any signed-in person may read a profile's name), and their display name when
+ * it's one the app allows (domain/displayName displayOf: one written round the app is dropped); null without a proper username.
+ */
+async function profileOf(env: Env4, token: string, uid: string): Promise<{ name: string; dn?: string } | null> {
   const d = await getDoc(env, token, ['users', uid]);
   const n = exists(d) ? d.fields.username : null;
-  return typeof n === 'string' && /^[a-z0-9_]{3,20}$/.test(n) ? n : null;
+  if (!exists(d) || typeof n !== 'string' || !/^[a-z0-9_]{3,20}$/.test(n)) return null;
+  const dn = displayOf(n, d.fields.displayName);
+  return { name: n, ...(dn && { dn }) };
 }
 
 /** `to` counts the sender as a friend: only their friends may read `users/{to}/meta/*`, so an absent one answers 404, not 403. */
@@ -59,10 +67,13 @@ async function friendOf(env: Env4, token: string, to: string): Promise<void> {
  */
 export async function check(env: Env4, token: string, me: string, c: Claim, now: number): Promise<FriendPush> {
   if (c.to === me) throw new Refused('self');
-  /** The sender's name for the words ("A friend" without a proper one), and carried as `name` only when it is one. */
+  /**
+   * The sender's username for the words ("A friend" without a proper one), and carried as `name` only when it is one, with their
+   * display name as `dn`: the words stay the username's, and the phone puts the display name (or your tag) before it (sw-push).
+   */
   const sender = async () => {
-    const n = await usernameOf(env, token, me);
-    return { said: n ?? 'A friend', ...(n && { name: n }) };
+    const p = await profileOf(env, token, me);
+    return { said: p?.name ?? 'A friend', ...(p && { name: p.name }), ...(p?.dn && { dn: p.dn }) };
   };
   switch (c.kind) {
     case 'request': {

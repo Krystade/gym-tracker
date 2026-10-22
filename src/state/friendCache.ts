@@ -2,7 +2,8 @@ import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { deleteFriendCaches, getFriendCache, putFriendCache } from '../db/db';
 import { loadCloud, type Cloud } from '../cloud/firebase';
 import {
-  friendNews, listBlocked, listFriends, listRequests, listSent, listSentGyms, listThread, liveInvite, myProfile, readFriendWindow, readInbox, threadOf,
+  ensureCreatedAt, friendNews, listBlocked, listFriends, listRequests, listSent, listSentGyms, listThread, liveInvite, myProfile, readFriendWindow, readInbox,
+  readVerified, setVerified, threadOf,
   type Friend, type FriendNews, type FriendWindow, type Request, type SentGym, type WindowBasis,
 } from '../cloud/friends';
 import { addDays } from '../domain/analytics';
@@ -30,6 +31,8 @@ export interface Lists {
   at: number;
   /** Your username; null: none chosen yet. */ me: string | null;
   /** When you last changed it (ms): it changes at most once a day. */ changedAt?: number;
+  /** Your display name (none: not set) and when you last changed it (ms): at most once a day (domain/displayName). */ dn?: string; nameAt?: number;
+  /** Who the app's owner verified (the ✓), by uid: when (ms). None: never read (an older version kept these lists). */ verified?: Record<string, number>;
   friends: Friend[]; requests: Request[]; invite: (Invite & { expires: number }) | null; sentGyms: SentGym[]; blocked: Friend[];
 }
 /** `basis`: the times in their index it was read at, so the next read fetches only what changed (cloud/friends readFriendWindow). */
@@ -170,6 +173,13 @@ export async function setFriendTag(c: Cloud, uid: string, friend: string, tag: s
   return tags;
 }
 
+/** The owner gives or removes someone's ✓ (cloud/friends setVerified), then reads who has it again, for every screen showing one. */
+export async function setVerifiedHere(c: Cloud, uid: string, who: string, on: boolean): Promise<void> {
+  await setVerified(c, who, on);
+  const verified = await readVerified(c);
+  await patchFriendCache(uid, (x) => (x.lists ? { ...x, lists: { ...x.lists, verified } } : x));
+}
+
 /** Signed out or the account deleted: no friend's anything stays on the phone. */
 export async function forgetFriendCaches(): Promise<void> {
   mirrorTags({});
@@ -247,14 +257,24 @@ function once<T>(key: string, f: () => Promise<T>, join: boolean): Promise<T> {
 /** Your username, friends, requests, invite link, gyms sent to you and who you blocked. */
 export function refreshLists(c: Cloud, uid: string, join = false): Promise<Lists> {
   return once(`lists:${uid}`, async () => {
-    const [p, friends, requests, invite, sentGyms, blocked, tags] = await Promise.all([
+    const [p, friends, requests, invite, sentGyms, blocked, tags, verified] = await Promise.all([
       myProfile(c, uid), listFriends(c, uid), listRequests(c, uid), liveInvite(c, uid), listSentGyms(c, uid), listBlocked(c, uid).catch(() => []),
       readTags(c, uid).catch(() => undefined), // unread: the tags kept stay
+      readVerified(c).catch(() => undefined), // unread: the ✓s kept stay
     ]);
-    const lists: Lists = { at: Date.now(), me: p?.name ?? null, ...(p?.changedAt != null && { changedAt: p.changedAt }), friends, requests, invite, sentGyms, blocked };
-    const next = await patchFriendCache(uid, (x) => ({ ...pruneTo(x, friends.map((f) => f.uid)), lists, tags: tags ?? x.tags }));
+    // A profile from before createdAt gets one (the board's day-old gate counts from it); a failure waits for the next read.
+    if (p && p.createdAt == null) void ensureCreatedAt(c, uid, p).catch(() => {});
+    const lists: Lists = {
+      at: Date.now(), me: p?.name ?? null, ...(p?.changedAt != null && { changedAt: p.changedAt }),
+      ...(p?.dn && { dn: p.dn }), ...(p?.nameAt != null && { nameAt: p.nameAt }),
+      friends, requests, invite, sentGyms, blocked,
+    };
+    const next = await patchFriendCache(uid, (x) => {
+      const v = verified ?? x.lists?.verified;
+      return { ...pruneTo(x, friends.map((f) => f.uid)), lists: { ...lists, ...(v && { verified: v }) }, tags: tags ?? x.tags };
+    });
     if (tags) mirrorTags(next.tags);
-    return lists;
+    return next.lists ?? lists;
   }, join);
 }
 

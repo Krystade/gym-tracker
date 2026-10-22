@@ -5,6 +5,7 @@ import { cleanStatus } from '../domain/crew';
 import { defaultProfile } from '../domain/profile';
 import { newToken, type Invite } from '../domain/invite';
 import { CHANGE_GAP_MS, nextChangeAt } from '../domain/friendNames';
+import { cleanDisplayName, displayNameError, displayOf, NAME_GAP_MS, nextNameAt } from '../domain/displayName';
 import type { SetEntry } from '../domain/types';
 import { notifyFriend } from '../push/client';
 import type { Cloud } from './firebase';
@@ -15,22 +16,29 @@ import type { Cloud } from './firebase';
 // there never fails the write.
 
 export interface Friend {
-  uid: string; name: string; /** You muted their pushes (only you know). */ muted?: boolean;
+  uid: string; name: string; /** Their display name, when they've set one (domain/displayName): shown beside the @username. */ dn?: string;
+  /** You muted their pushes (only you know). */ muted?: boolean;
   /** Their username before their last change, and when that was (ms): "formerly @prev" shows for 30 days (domain/friendNames). */
   prev?: string; changedAt?: number;
   /** When you became friends (ms), where known: Compare gives each friend a colour in this order (domain/compare personColours). */ since?: number;
 }
-export interface Request { uid: string; name: string }
+export interface Request { uid: string; name: string; dn?: string }
 const WEEK = 7 * 864e5;
 const fail = (text: string) => Object.assign(new Error(text), { plain: true });
 
-/** A profile as anyone signed in reads it: the name, and what it was before its last change and when. */
-export interface Profile { name: string; prev?: string; changedAt?: number }
+/**
+ * A profile as anyone signed in reads it: the name, what it was before its last change and when; the display name (none: the old
+ * shape, the username itself) and when it last changed; when the account first had a profile (none: one from before it).
+ */
+export interface Profile { name: string; prev?: string; changedAt?: number; dn?: string; nameAt?: number; createdAt?: number }
 const millis = (v: unknown) => (v as { toMillis?(): number } | null | undefined)?.toMillis?.();
 function profileFrom(d: Record<string, unknown> | undefined): Profile | null {
   if (typeof d?.username !== 'string') return null;
-  const changedAt = millis(d.changedAt);
-  return { name: d.username, ...(typeof d.prev === 'string' && { prev: d.prev }), ...(changedAt != null && { changedAt }) };
+  const changedAt = millis(d.changedAt), nameAt = millis(d.nameAt), createdAt = millis(d.createdAt), dn = displayOf(d.username, d.displayName);
+  return {
+    name: d.username, ...(typeof d.prev === 'string' && { prev: d.prev }), ...(changedAt != null && { changedAt }),
+    ...(dn && { dn }), ...(nameAt != null && { nameAt }), ...(createdAt != null && { createdAt }),
+  };
 }
 export async function myProfile({ F, db }: Cloud, uid: string): Promise<Profile | null> {
   return profileFrom((await F.getDoc(F.doc(db, `users/${uid}`))).data());
@@ -62,13 +70,70 @@ export async function claimUsername({ F, db }: Cloud, uid: string, name: string)
       }
       if (!taken.exists()) tx.set(ref, { uid });
       if (p) tx.delete(F.doc(db, `usernames/${p.name}`));
-      tx.set(meRef, p ? { username: name, displayName: name, prev: p.name, changedAt: F.serverTimestamp() } : { username: name, displayName: name });
+      // A change updates the profile in place, so a display name and the times beside it stay; with none set (the old shape, the
+      // display name the username itself) it follows the new name.
+      if (p) tx.update(meRef, { username: name, prev: p.name, changedAt: F.serverTimestamp(), ...(me.data()?.displayName === p.name && { displayName: name }) });
+      else tx.set(meRef, { username: name, displayName: name, createdAt: F.serverTimestamp() });
     });
   } catch (e) {
     // A change the rules refused: the once-a-day rule by the server's clock (the rest the transaction checked itself).
     if (soonest != null && (e as { code?: string }).code === 'permission-denied') throw fail(ONCE_A_DAY(soonest));
     throw e;
   }
+}
+
+const NAME_ONCE_A_DAY = (at: number) => `You can change your display name once a day. Try again after ${new Date(at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}.`;
+/**
+ * Sets your display name, or clears it ('' : the old shape, the username itself). Cleaned and checked as the form does
+ * (domain/displayName); at most once a day by the server's clock (firestore.rules: nameAt is the server's time, a day apart).
+ * Returns the name as kept ('' for none). The same name again writes nothing.
+ */
+export async function setDisplayName(c: Cloud, uid: string, raw: string): Promise<string> {
+  const { F, db } = c;
+  const dn = cleanDisplayName(raw);
+  const bad = displayNameError(dn);
+  if (bad) throw fail(bad);
+  const p = await myProfile(c, uid);
+  if (!p) throw fail('Choose a username first.');
+  if ((p.dn ?? '') === dn || (!p.dn && dn === p.name)) return p.dn ?? '';
+  const next = nextNameAt(p.nameAt, Date.now());
+  if (next != null) throw fail(NAME_ONCE_A_DAY(next));
+  try {
+    await F.updateDoc(F.doc(db, `users/${uid}`), { displayName: dn || p.name, nameAt: F.serverTimestamp() });
+  } catch (e) {
+    // The rules refused: by the server's clock it's within the day (the rest was checked here).
+    if ((e as { code?: string }).code === 'permission-denied' && p.nameAt != null) throw fail(NAME_ONCE_A_DAY(p.nameAt + NAME_GAP_MS));
+    throw e;
+  }
+  return dn === p.name ? '' : dn;
+}
+/**
+ * A profile from before `createdAt` (social S1) gets one, the server's time now (firestore.rules let it be added once, never
+ * moved): the board's day-old gate counts from it. Nothing to do once it's there.
+ */
+export async function ensureCreatedAt({ F, db }: Cloud, uid: string, p: Profile | null): Promise<void> {
+  if (p && p.createdAt == null) await F.updateDoc(F.doc(db, `users/${uid}`), { createdAt: F.serverTimestamp() });
+}
+
+/**
+ * Who the app's owner has verified (the ✓, social S2): uid → when (ms). One document, `config/verified`, anyone signed in reads and
+ * only an owner writes (firestore.rules OWNERS, cloud/owner). Keyed by uid, so a changed username keeps it (owner, 2026-10-22).
+ */
+export async function readVerified({ F, db }: Cloud): Promise<Record<string, number>> {
+  const uids = (await F.getDoc(F.doc(db, 'config/verified'))).data()?.uids;
+  if (!uids || typeof uids !== 'object') return {};
+  return Object.fromEntries(Object.entries(uids as Record<string, unknown>).map(([k, v]) => [k, millis(v) ?? 0]));
+}
+/** The owner grants or removes someone's ✓: read and rewritten whole in one transaction, so two changes can't undo each other. */
+export async function setVerified({ F, db }: Cloud, uid: string, on: boolean): Promise<void> {
+  await F.runTransaction(db, async (tx) => {
+    const ref = F.doc(db, 'config/verified');
+    const uids = { ...((await tx.get(ref)).data()?.uids as Record<string, unknown> | undefined) };
+    if (on === uid in uids) return;
+    if (on) uids[uid] = F.serverTimestamp();
+    else delete uids[uid];
+    tx.set(ref, { uids });
+  });
 }
 
 /** Your one live invite: making a new one ends the old. */
@@ -137,7 +202,10 @@ export async function sendRequest(c: Cloud, me: string, myName: string, to: stri
 /** Each by its sender's name now (read from their profile by uid), not the one the request was sent under. */
 export async function listRequests(c: Cloud, me: string): Promise<Request[]> {
   const docs = (await c.F.getDocs(c.F.collection(c.db, `users/${me}/requests`))).docs;
-  return Promise.all(docs.map(async (d) => ({ uid: d.id, name: (await myProfile(c, d.id))?.name ?? (d.data().username as string | undefined) ?? 'someone' })));
+  return Promise.all(docs.map(async (d) => {
+    const p = await myProfile(c, d.id);
+    return { uid: d.id, name: p?.name ?? (d.data().username as string | undefined) ?? 'someone', ...(p?.dn && { dn: p.dn }) };
+  }));
 }
 /** Their request is what lets you into their list; it goes in the same write. */
 export async function acceptRequest({ F, db }: Cloud, me: string, from: string, now = Date.now()): Promise<void> {
@@ -155,9 +223,12 @@ export async function declineRequest({ F, db }: Cloud, me: string, from: string)
 export async function listFriends(c: Cloud, me: string): Promise<Friend[]> {
   const docs = (await c.F.getDocs(c.F.collection(c.db, `users/${me}/friends`))).docs;
   const out = await Promise.all(docs.map(async (d) => {
-    const { name, ...was } = (await myProfile(c, d.id)) ?? { name: 'someone' };
+    const { name, dn, prev, changedAt } = (await myProfile(c, d.id)) ?? { name: 'someone' };
     const since = d.data().since;
-    return { uid: d.id, name, ...was, ...(d.data().muted === true && { muted: true }), ...(typeof since === 'number' && { since }) };
+    return {
+      uid: d.id, name, ...(dn && { dn }), ...(prev && { prev }), ...(changedAt != null && { changedAt }),
+      ...(d.data().muted === true && { muted: true }), ...(typeof since === 'number' && { since }),
+    };
   }));
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -457,8 +528,8 @@ export async function friendNews(c: Cloud, me: string, now = Date.now(), known?:
   };
 }
 
-/** For a thread opened from a notification, by uid alone: their name, whether they're still a friend, whether muted. */
-export async function friendState(c: Cloud, me: string, uid: string): Promise<{ name: string; friend: boolean; muted: boolean }> {
-  const [name, d] = await Promise.all([nameOf(c, uid), c.F.getDoc(c.F.doc(c.db, `users/${me}/friends/${uid}`))]);
-  return { name, friend: d.exists(), muted: d.data()?.muted === true };
+/** For a thread opened from a notification, by uid alone: their name (and display name), whether they're still a friend, whether muted. */
+export async function friendState(c: Cloud, me: string, uid: string): Promise<{ name: string; dn?: string; friend: boolean; muted: boolean }> {
+  const [p, d] = await Promise.all([myProfile(c, uid), c.F.getDoc(c.F.doc(c.db, `users/${me}/friends/${uid}`))]);
+  return { name: p?.name ?? 'someone', ...(p?.dn && { dn: p.dn }), friend: d.exists(), muted: d.data()?.muted === true };
 }

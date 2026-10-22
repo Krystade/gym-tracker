@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, doc, documentId, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
+import { collection, deleteDoc, deleteField, doc, documentId, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
 
 // Synthetic users: alice owns the data, bob is her friend, eve is a stranger.
 let env: RulesTestEnvironment;
@@ -20,9 +20,20 @@ const accept = (who: string, owner: string, token: string, used = token) => {
   return b.commit();
 };
 
+/**
+ * The rules as they ship, but for the owners' list: deployed it names the app's owner; here it names two synthetic accounts,
+ * `root` and `second` (the room left for a second moderator), so these tests sign in as them. Anything but that list is as is.
+ */
+const OWNERS_FN = /function OWNERS\(\) \{ return \[[^\]]*\]; \}/;
+function rulesUnderTest(): string {
+  const rules = readFileSync('firestore.rules', 'utf8');
+  if ((rules.match(new RegExp(OWNERS_FN, 'g')) ?? []).length !== 1) throw new Error('firestore.rules: expected one OWNERS() list to stand synthetic owners in for');
+  return rules.replace(OWNERS_FN, "function OWNERS() { return ['root', 'second']; }");
+}
+
 beforeAll(async () => {
   // RULES_PROJECT: a project of their own, to run against an emulator already serving the app's (its rules and data stay put).
-  env = await initializeTestEnvironment({ projectId: PROJECT, firestore: { rules: readFileSync('firestore.rules', 'utf8'), host: HOST, port: Number(PORT) } });
+  env = await initializeTestEnvironment({ projectId: PROJECT, firestore: { rules: rulesUnderTest(), host: HOST, port: Number(PORT) } });
 });
 afterAll(() => env.cleanup());
 beforeEach(async () => {
@@ -219,6 +230,213 @@ describe('usernames and profiles', () => {
   it('deleting the account takes the name with the profile, in one write', async () => {
     const db = as('alice');
     await assertSucceeds(writeBatch(db).delete(doc(db, 'usernames/alice')).delete(doc(db, 'users/alice')).commit());
+  });
+});
+
+// Social S1 (plan §4): a display name beside the @username, set by its owner at the server's time, once a day.
+describe('display names', () => {
+  const DAY = 86_400_000;
+  const ago = (ms: number) => Timestamp.fromMillis(Date.now() - ms);
+  /** Dana: a profile of the old shape (no display name), holding her name. */
+  const seedDana = (extra: Record<string, unknown> = {}) => seed(async (db) => {
+    await setDoc(doc(db, 'usernames/dana'), { uid: 'dana' });
+    await setDoc(doc(db, 'users/dana'), { username: 'dana', displayName: 'dana', ...extra });
+  });
+  /** A display name as the app sets it: the name and the server's time, nothing else. */
+  const setName = (uid: string, name: string, at: unknown = serverTimestamp()) => updateDoc(doc(as(uid), `users/${uid}`), { displayName: name, nameAt: at });
+  /** A change of username as the app now makes it: the new name claimed, the old released, the profile updated in place. */
+  const rename = (uid: string, from: string, to: string) => {
+    const db = as(uid);
+    return writeBatch(db).set(doc(db, `usernames/${to}`), { uid }).delete(doc(db, `usernames/${from}`))
+      .update(doc(db, `users/${uid}`), { username: to, prev: from, changedAt: serverTimestamp() }).commit();
+  };
+  /** The same as an app from before display names makes it: the whole profile written in the old shape. */
+  const oldRename = (uid: string, from: string, to: string) => {
+    const db = as(uid);
+    return writeBatch(db).set(doc(db, `usernames/${to}`), { uid }).delete(doc(db, `usernames/${from}`))
+      .set(doc(db, `users/${uid}`), { username: to, displayName: to, prev: from, changedAt: serverTimestamp() }).commit();
+  };
+  const read = async (uid: string) => (await getDoc(doc(as(uid), `users/${uid}`))).data()!;
+
+  it('its owner sets one, and changes it a day later; a friend and a stranger both read it', async () => {
+    await seedDana();
+    await assertSucceeds(setName('dana', 'Dana K.'));
+    expect(await read('dana')).toMatchObject({ username: 'dana', displayName: 'Dana K.' });
+    await assertSucceeds(getDoc(doc(as('bob'), 'users/dana')));
+    expect((await getDoc(doc(as('eve'), 'users/dana'))).data()?.displayName).toBe('Dana K.');
+    await assertFails(getDoc(doc(as(null), 'users/dana')));
+    await seedDana({ displayName: 'Dana K.', nameAt: ago(DAY + 60_000) });
+    await assertSucceeds(setName('dana', 'Dana 🏋️‍♀️'));
+  });
+  it('takes 60 UTF-16 units at most, emoji and joiners included', async () => {
+    for (const name of ['D', 'x'.repeat(60), '💪'.repeat(30), 'Ana 🏋️‍♀️ García', 'Ünal Ç.', '李小龙', 'میر‌آبادی']) {
+      await seedDana();
+      await assertSucceeds(setName('dana', name)).catch((e) => { throw new Error(`${JSON.stringify(name)}: ${e}`); });
+    }
+  });
+  it('refuses an @, anything drawn like the ✓, controls, invisible and direction-flipping characters, links, edge spaces, and past 60 units', async () => {
+    const bad: [string, string][] = [
+      ['an @', 'Dana @dana_real'], ['an @ alone', '@'],
+      ['✓', 'Dana ✓'], ['✔', 'Dana ✔'], ['✔️', 'Dana ✔️'], ['☑', 'Dana ☑'], ['☑️', 'Dana ☑️'], ['✅', 'Dana ✅'], ['🗸', 'Dana 🗸'], ['√', 'Dana √'],
+      ['🔵', 'Dana 🔵'], ['®', 'Dana®'], ['™', 'Dana™'],
+      ['right-to-left override', 'Dana\u202eoof'], ['left-to-right override', '\u202dDana'], ['an isolate', 'Dana\u2066x\u2069'], ['a zero-width space', 'Da\u200bna'],
+      ['a left-to-right mark', 'Dana\u200e'], ['a word joiner', 'Da\u2060na'], ['a byte-order mark', '\ufeffDana'], ['an Arabic letter mark', 'Dana\u061c'], ['a soft hyphen', 'Da\u00adna'],
+      ['a line break', 'Dana\nK.'], ['a tab', 'Dana\tK.'], ['a null', 'Dana\u0000'], ['a C1 control', 'Dana\u0085'], ['a line separator', 'Dana\u2028K.'],
+      ['a link', 'https://x'], ['a link mid-name', 'Dana see http://evil.example'], ['www.', 'Dana www.example.com'], ['WWW.', 'WWW.EXAMPLE'],
+      ['61 units', 'x'.repeat(61)], ['31 emoji', '💪'.repeat(31)], ['empty', ''], ['a space first', ' Dana'], ['a space last', 'Dana '], ['only a space', ' '],
+    ];
+    const passed: string[] = [];
+    for (const [why, name] of bad) {
+      await seedDana();
+      await assertFails(setName('dana', name)).catch(() => passed.push(why));
+    }
+    expect(passed).toEqual([]);
+    expect((await read('dana')).displayName).toBe('dana');
+  });
+  it('is not text a link could hide in, nor anything but a string', async () => {
+    await seedDana();
+    await assertFails(setName('dana', 42 as unknown as string));
+    await assertFails(setName('dana', ['Dana'] as unknown as string));
+    await assertFails(updateDoc(doc(as('dana'), 'users/dana'), { displayName: 'Dana', nameAt: serverTimestamp(), bio: 'hi' }));
+  });
+  it('once a day, by the server’s clock: a second change within the day is refused, clearing it included', async () => {
+    await seedDana();
+    await assertSucceeds(setName('dana', 'Dana K.'));
+    await assertFails(setName('dana', 'Dana R.'));
+    await assertFails(setName('dana', 'dana')); // back to none counts as a change
+    await assertFails(updateDoc(doc(as('dana'), 'users/dana'), { displayName: 'dana' })); // and isn't free without the time
+    await seedDana({ displayName: 'Dana K.', nameAt: ago(DAY - 60_000) });
+    await assertFails(setName('dana', 'Dana R.'));
+    await seedDana({ displayName: 'Dana K.', nameAt: ago(DAY + 60_000) });
+    await assertSucceeds(setName('dana', 'dana')); // cleared, a day on
+    expect(await read('dana')).toMatchObject({ displayName: 'dana' });
+  });
+  it('only with the server’s time beside it, never the phone’s, and the time never moves on its own', async () => {
+    await seedDana();
+    await assertFails(setName('dana', 'Dana K.', Timestamp.now()));
+    await assertFails(setName('dana', 'Dana K.', ago(3 * DAY)));
+    await assertFails(updateDoc(doc(as('dana'), 'users/dana'), { displayName: 'Dana K.' })); // no time at all
+    await seedDana({ displayName: 'Dana K.', nameAt: ago(2 * DAY) });
+    await assertFails(updateDoc(doc(as('dana'), 'users/dana'), { nameAt: serverTimestamp() })); // the time alone
+    await assertFails(updateDoc(doc(as('dana'), 'users/dana'), { nameAt: deleteField() })); // nor taken away
+    const kept = (await read('dana')).nameAt as Timestamp;
+    await assertSucceeds(updateDoc(doc(as('dana'), 'users/dana'), { displayName: 'Dana K.', nameAt: kept })); // the same, unchanged
+  });
+  it('only its owner sets it', async () => {
+    await seedDana();
+    await assertFails(updateDoc(doc(as('eve'), 'users/dana'), { displayName: 'Hacked', nameAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as('bob'), 'users/alice'), { displayName: 'Hacked', nameAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as(null), 'users/dana'), { displayName: 'Hacked', nameAt: serverTimestamp() }));
+  });
+  it('a first profile has none (the old shape), whatever the app', async () => {
+    const db = as('fay');
+    await assertFails(writeBatch(db).set(doc(db, 'usernames/fay'), { uid: 'fay' }).set(doc(db, 'users/fay'), { username: 'fay', displayName: 'Fay K.' }).commit());
+    await assertFails(writeBatch(db).set(doc(db, 'usernames/fay'), { uid: 'fay' }).set(doc(db, 'users/fay'), { username: 'fay', displayName: 'fay', nameAt: serverTimestamp() }).commit());
+    await assertSucceeds(writeBatch(db).set(doc(db, 'usernames/fay'), { uid: 'fay' }).set(doc(db, 'users/fay'), { username: 'fay', displayName: 'fay' }).commit());
+  });
+  it('a change of username keeps it (the app now updates the profile in place); with none set, the old shape follows the name', async () => {
+    await seedDana({ displayName: 'Dana K.', nameAt: ago(2 * DAY), createdAt: ago(9 * DAY) });
+    await assertSucceeds(rename('dana', 'dana', 'dana_k'));
+    expect(await read('dana')).toMatchObject({ username: 'dana_k', displayName: 'Dana K.', prev: 'dana' });
+    // None set: the old shape moves to the new name in the same update.
+    await seedDana();
+    const db = as('dana');
+    await assertSucceeds(writeBatch(db).set(doc(db, 'usernames/dana_z'), { uid: 'dana' }).delete(doc(db, 'usernames/dana'))
+      .update(doc(db, 'users/dana'), { username: 'dana_z', displayName: 'dana_z', prev: 'dana', changedAt: serverTimestamp() }).commit());
+    expect(await read('dana')).toMatchObject({ username: 'dana_z', displayName: 'dana_z' });
+    // A change of username can't carry a new display name in with it, set within the day: that goes by the once-a-day rule.
+    await seed((x) => setDoc(doc(x, 'users/dana'), { username: 'dana_z', displayName: 'dana_z', prev: 'dana', changedAt: ago(2 * DAY), nameAt: Timestamp.now() }));
+    await assertFails(writeBatch(db).set(doc(db, 'usernames/dana_y'), { uid: 'dana' }).delete(doc(db, 'usernames/dana_z'))
+      .update(doc(db, 'users/dana'), { username: 'dana_y', displayName: 'Dana Y.', prev: 'dana_z', changedAt: serverTimestamp() }).commit());
+  });
+  it('an app from before display names still changes a username (the old shape written whole); a display name set goes with it, but not within its day', async () => {
+    await seedDana();
+    await assertSucceeds(oldRename('dana', 'dana', 'dana_k'));
+    expect(await read('dana')).toEqual({ username: 'dana_k', displayName: 'dana_k', prev: 'dana', changedAt: expect.anything() });
+    await seedDana({ displayName: 'Dana K.', nameAt: ago(DAY + 60_000), createdAt: ago(9 * DAY) });
+    await assertSucceeds(oldRename('dana', 'dana', 'dana_m'));
+    expect(await read('dana')).toMatchObject({ username: 'dana_m', displayName: 'dana_m' });
+    // Within the day of setting it: refused, or renaming would be a way round once a day.
+    await seedDana({ displayName: 'Dana K.', nameAt: ago(60_000) });
+    await assertFails(oldRename('dana', 'dana', 'dana_n'));
+    // An old app's write can't take away the time of a name it leaves in place.
+    await seedDana({ displayName: 'Dana K.', nameAt: ago(2 * DAY) });
+    const db = as('dana');
+    await assertFails(writeBatch(db).set(doc(db, 'usernames/dana_p'), { uid: 'dana' }).delete(doc(db, 'usernames/dana'))
+      .set(doc(db, 'users/dana'), { username: 'dana_p', displayName: 'Dana K.', prev: 'dana', changedAt: serverTimestamp() }).commit());
+    // The same write with the time left in place goes: an older app never writes one, but nothing is lost by it.
+    await assertSucceeds(writeBatch(db).set(doc(db, 'usernames/dana_q'), { uid: 'dana' }).delete(doc(db, 'usernames/dana'))
+      .update(doc(db, 'users/dana'), { username: 'dana_q', prev: 'dana', changedAt: serverTimestamp() }).commit());
+  });
+  it('the username part is as strict as before: no `prev` or `changedAt` moved without a change of name', async () => {
+    await seedDana({ displayName: 'Dana K.', nameAt: ago(2 * DAY), prev: 'old', changedAt: ago(5 * DAY) });
+    await assertFails(updateDoc(doc(as('dana'), 'users/dana'), { prev: 'someone' }));
+    await assertFails(updateDoc(doc(as('dana'), 'users/dana'), { changedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as('dana'), 'users/dana'), { displayName: 'Dana R.', nameAt: serverTimestamp(), changedAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(as('dana'), 'users/dana'), { displayName: 'Dana R.', nameAt: serverTimestamp() }));
+  });
+  it('createdAt: the server’s time, on the first profile or added once to one without; never moved after', async () => {
+    const db = as('gil');
+    await assertFails(writeBatch(db).set(doc(db, 'usernames/gil'), { uid: 'gil' }).set(doc(db, 'users/gil'), { username: 'gil', displayName: 'gil', createdAt: ago(9 * DAY) }).commit());
+    await assertSucceeds(writeBatch(db).set(doc(db, 'usernames/gil'), { uid: 'gil' }).set(doc(db, 'users/gil'), { username: 'gil', displayName: 'gil', createdAt: serverTimestamp() }).commit());
+    expect(Math.abs(((await getDoc(doc(db, 'users/gil'))).data()!.createdAt as Timestamp).toMillis() - Date.now())).toBeLessThan(60_000);
+    // Once set, never moved: not back, and not on to now (an hour on, so now is another time than the one kept).
+    await seed((x) => updateDoc(doc(x, 'users/gil'), { createdAt: ago(3_600_000) }));
+    await assertFails(updateDoc(doc(db, 'users/gil'), { createdAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(db, 'users/gil'), { createdAt: ago(9 * DAY) }));
+    // An account from before it: added once, as now; never backdated.
+    await seedDana();
+    await assertFails(updateDoc(doc(as('dana'), 'users/dana'), { createdAt: ago(9 * DAY) }));
+    await assertFails(updateDoc(doc(as('eve'), 'users/dana'), { createdAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(as('dana'), 'users/dana'), { createdAt: serverTimestamp() }));
+    const kept = (await read('dana')).createdAt as Timestamp;
+    await assertSucceeds(setName('dana', 'Dana K.')); // other changes leave it be
+    expect(((await read('dana')).createdAt as Timestamp).toMillis()).toBe(kept.toMillis());
+  });
+});
+
+// Social S2 (plan §2, §4): the ✓, one document only the owner writes. These rules stand `root` and `second` in for the owners.
+describe('the ✓ (config/verified)', () => {
+  const ref = (uid: string | null) => doc(as(uid), 'config/verified');
+  it('anyone signed in reads it; someone signed out can’t', async () => {
+    await seed((db) => setDoc(doc(db, 'config/verified'), { uids: { bob: Timestamp.now() } }));
+    expect((await assertSucceeds(getDoc(ref('eve')))).data()?.uids).toHaveProperty('bob');
+    await assertSucceeds(getDoc(ref('bob')));
+    await assertFails(getDoc(ref(null)));
+  });
+  it('the owner grants it, adds to it and takes it away; so can a second owner in the list', async () => {
+    await assertSucceeds(setDoc(ref('root'), { uids: { bob: serverTimestamp() } }));
+    await assertSucceeds(updateDoc(ref('root'), { 'uids.alice': serverTimestamp() }));
+    await assertSucceeds(updateDoc(ref('second'), { 'uids.bob': deleteField() }));
+    expect(Object.keys((await getDoc(ref('eve'))).data()!.uids)).toEqual(['alice']);
+    await assertSucceeds(deleteDoc(ref('second')));
+    await assertSucceeds(setDoc(ref('root'), { uids: {} }));
+  });
+  it('nobody else writes it: not to grant themselves, not to take one away, not to delete it', async () => {
+    for (const who of ['alice', 'bob', 'eve']) {
+      await assertFails(setDoc(ref(who), { uids: { [who]: serverTimestamp() } }));
+    }
+    await assertFails(setDoc(ref(null), { uids: { eve: serverTimestamp() } }));
+    await seed((db) => setDoc(doc(db, 'config/verified'), { uids: { bob: Timestamp.now() } }));
+    await assertFails(updateDoc(ref('eve'), { 'uids.eve': serverTimestamp() }));
+    await assertFails(updateDoc(ref('alice'), { 'uids.bob': deleteField() }));
+    await assertFails(setDoc(ref('bob'), { uids: { bob: Timestamp.now() } }, { merge: true }));
+    await assertFails(deleteDoc(ref('eve')));
+    expect(Object.keys((await getDoc(ref('eve'))).data()!.uids)).toEqual(['bob']);
+  });
+  it('holds only the map of uids, even from the owner; and there is no other config to write', async () => {
+    await assertFails(setDoc(ref('root'), { uids: { bob: serverTimestamp() }, note: 'x' }));
+    await assertFails(setDoc(ref('root'), { uids: ['bob'] }));
+    await assertFails(setDoc(ref('root'), { bob: serverTimestamp() }));
+    await assertFails(setDoc(doc(as('root'), 'config/other'), { uids: {} }));
+    await assertFails(getDoc(doc(as('root'), 'config/other')));
+    await assertFails(getDocs(collection(as('eve'), 'config')));
+  });
+  it('the owners are no key to anyone’s log, private settings or names', async () => {
+    await assertFails(getDoc(doc(as('root'), 'users/alice/months/2026-10')));
+    await assertFails(getDoc(doc(as('root'), 'users/alice/private/tags')));
+    await assertFails(updateDoc(doc(as('root'), 'users/alice'), { displayName: 'Owned', nameAt: serverTimestamp() }));
+    await assertFails(getDocs(collection(as('root'), 'usernames')));
   });
 });
 

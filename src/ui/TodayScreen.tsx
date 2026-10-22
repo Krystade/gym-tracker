@@ -345,7 +345,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       {date === today && morning && <ReadyCard input={readyIn} morning={morning} body={body} worked={worked} sys={sys} slots={todaySlots} onOpenLift={onOpen} />}
       {news && onOpenNews && (
         <button className="today-news" onClick={() => onOpenNews({ uid: news.uid, name: news.name })}>
-          <Icon name="message" size={22} /><span><FriendName me={me} friend={news} bare /> {news.text}</span><span className="small reply">tap to reply</span>
+          <Icon name="message" size={22} /><span><FriendName me={me} friend={news} bare inButton /> {news.text}</span><span className="small reply">tap to reply</span>
         </button>
       )}
       {date < today && <p className="card note-card past-day"><span>Logging to a past day</span><button className="mini" style={{ whiteSpace: 'nowrap' }} onClick={() => onDay(today)}>Back to today</button></p>}

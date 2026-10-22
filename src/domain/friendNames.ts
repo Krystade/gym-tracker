@@ -34,22 +34,25 @@ export function nextChangeAt(changedAt: number | undefined, now: number): number
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * A friend's push as the phone shows it, with your tag for its sender. A ping's or message's title is their name; the
- * other kinds say it in the body ("sam_k wants to be friends"), and only that first whole-word mention changes.
+ * A friend's push as the phone shows it, led by your tag for its sender, else the display name they chose (`dn`, social S1).
+ * A ping's or message's title is their name; the other kinds say it in the body ("sam_k wants to be friends"), and only that
+ * first whole-word mention changes.
  */
-export function tagNote<N extends { title: string; body: string }>(note: N, kind: string | undefined, name: string | undefined, tag: string | undefined): N {
-  if (!tag || !name) return note;
-  // A title is one line on the lock screen (push/payload MAX_TITLE): a long tag and name put the tag there and the @name first
-  // in the body; a body is about two lines (MAX_BODY), so a long one names them by the tag alone.
+export function tagNote<N extends { title: string; body: string }>(note: N, kind: string | undefined, name: string | undefined, tag: string | undefined, dn?: string): N {
+  const lead = tag || dn;
+  if (!lead || !name) return note;
+  // A title is one line on the lock screen (push/payload MAX_TITLE): a long lead and name put the lead there and the @name first
+  // in the body. A body is about two lines (MAX_BODY): a long one names them by your tag alone, but never by a display name
+  // alone (theirs to choose, so it only ever shows with the @username): that push stays as it came.
   if (kind === 'ping' || kind === 'message') {
     if (note.title !== name) return note;
-    const t = tagged(name, tag);
-    return graphemes(t).length <= MAX_TITLE ? { ...note, title: t } : { ...note, title: tag, body: `@${name} · ${note.body}` };
+    const t = tagged(name, lead);
+    return graphemes(t).length <= MAX_TITLE ? { ...note, title: t } : { ...note, title: lead, body: `@${name} · ${note.body}` };
   }
   if (kind !== 'request' && kind !== 'accepted' && kind !== 'gym') return note;
   const re = new RegExp(`(^|[^a-z0-9_])${esc(name)}(?![a-z0-9_])`);
   if (!re.test(note.body)) return note;
   const by = (who: string) => note.body.replace(re, (_m, pre: string) => `${pre}${who}`);
-  const full = by(tagged(name, tag));
-  return { ...note, body: graphemes(full).length <= MAX_BODY ? full : by(tag) };
+  const full = by(tagged(name, lead));
+  return graphemes(full).length <= MAX_BODY ? { ...note, body: full } : tag ? { ...note, body: by(tag) } : note;
 }
