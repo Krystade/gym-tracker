@@ -299,10 +299,13 @@ export interface Week {
   met: boolean;
 }
 
+/** A set that makes its day one of the week's training days: any lift set but a warm-up (cardio alone doesn't). */
+export const weekDaySet = (e: SetEntry): boolean => !e.flags.includes('warmup') && !isCardioEntry(e);
+
 export function weekOf(entries: readonly SetEntry[], goal: number, today: string): Week {
   const start = weekStart(today);
   const ds = new Set<string>();
-  for (const e of entries) if (e.date >= start && e.date < today && !e.flags.includes('warmup') && !isCardioEntry(e)) ds.add(e.date);
+  for (const e of entries) if (e.date >= start && e.date < today && weekDaySet(e)) ds.add(e.date);
   const done = ds.size, needed = Math.max(0, goal - done), daysLeft = 7 - days(start, today);
   const slack = daysLeft - needed;
   return { goal, done, needed, daysLeft, slack, tight: needed > 0 && slack <= 0, met: goal > 0 && needed === 0 };

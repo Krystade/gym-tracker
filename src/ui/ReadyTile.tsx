@@ -12,7 +12,7 @@ import { BodyMap } from './body/BodyMap';
 import { recoveryTone, recoveryTones, TONE_WORD } from './body/regions';
 import type { Muscle } from '../domain/muscles';
 import { WeighIn } from './WeighIn';
-import { readyNow, stripView, tileView, whyView, type Planned, type ReadyInput, type StripView, type TileView, type WhyView } from './readyView';
+import { readyNow, stripView, tileView, whyView, type Planned, type ReadyInput, type StripDay, type StripView, type TileView, type WhyView } from './readyView';
 import './ready.css';
 
 /**
@@ -52,7 +52,7 @@ export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpe
   const live = worked && (open || why);
   const r = useMemo(() => (live ? readyNow(input) : morning), [live, input, morning]);
   const t = tileView(r);
-  const strip = stripView(r);
+  const strip = stripView(r, input.entries);
   if (!open) {
     const energy = body.days.find((d) => d.date === input.today)?.energy;
     return (
@@ -119,9 +119,15 @@ export function ReadyTile({ t, onWhy, onFold }: { t: TileView; onWhy: () => void
   );
 }
 
+/** What a day's mark says, for a screen reader. */
+const said = (d: StripDay) => (d.mark === 'done' ? 'done' : d.mark === 'missed' || d.mark === 'rest' ? 'rest' : d.mark === 'optional' ? 'optional' : d.session ?? 'train');
+/** A day's mark: a tick on a day he went. */
+const Mark = ({ d }: { d: StripDay }) => <i className="ws-mark" aria-hidden="true">{d.mark === 'done' && <Icon name="check" size={10} sw={3.5} />}</i>;
+
 /**
- * The week in one line inside Ready (IA A1): a mark for each day from today, and how far the goal is ("1 of 2"). A tap opens the
- * full strip in place, each training day's session and each rest day's reason.
+ * The week in one line inside Ready (IA A1): a mark for each day of the week (item 12: the days he went before today ticked),
+ * today's highlighted, and how far the goal is ("1 of 2"). A tap opens the full strip in place, each training day's session and
+ * each rest day's reason.
  */
 export function WeekRow({ s }: { s: StripView }) {
   const [open, setOpen] = useState(false);
@@ -131,11 +137,11 @@ export function WeekRow({ s }: { s: StripView }) {
         <span className="chip-label">Week</span>
         {open ? <span className="rw-goal-l">{s.goal}</span> : (
           <ol className="rw-days" aria-hidden="true" style={{ '--n': s.days.length } as CSSProperties}>
-            {s.days.map((d) => <li key={d.date} data-mark={d.mark}><i className="ws-mark" /><span>{d.label}</span></li>)}
+            {s.days.map((d) => <li key={d.date} data-mark={d.mark} data-today={d.today || undefined}><Mark d={d} /><span>{d.short}</span></li>)}
           </ol>
         )}
         <span className="rw-goal">{open ? null : s.count}<Icon name="chev-down" size={16} sw={2} className={open ? 'flip' : undefined} /></span>
-        {!open && <span className="sr-only">{s.goal}: {s.days.map((d) => `${d.label} ${d.mark === 'rest' ? 'rest' : d.mark === 'optional' ? 'optional' : d.session ?? 'train'}`).join(', ')}</span>}
+        {!open && <span className="sr-only">{s.goal}: {s.days.map((d) => `${d.label} ${said(d)}`).join(', ')}</span>}
       </button>
       {open && <WeekStrip s={s} inTile />}
     </div>
@@ -148,9 +154,9 @@ export function WeekStrip({ s, inTile = false }: { s: StripView; /** Inside Read
       {!inTile && <div className="ws-head"><h2>Week plan</h2><span>{s.goal}</span></div>}
       <ol className="ws-days" style={{ '--n': s.days.length } as CSSProperties}>
         {s.days.map((d) => (
-          <li key={d.date} data-mark={d.mark} aria-label={`${d.label}: ${d.mark === 'rest' ? 'rest' : d.mark === 'optional' ? 'optional' : d.session ?? 'train'}${d.mark === 'light' ? ', light' : ''}`}>
+          <li key={d.date} data-mark={d.mark} data-today={d.today || undefined} aria-label={`${d.label}: ${said(d)}${d.mark === 'light' ? ', light' : ''}`}>
             <span className="ws-day">{d.label}</span>
-            <i className="ws-mark" aria-hidden="true" />
+            <Mark d={d} />
             <span className="ws-s">{d.session ?? ''}</span>
           </li>
         ))}

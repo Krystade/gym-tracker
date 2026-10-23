@@ -141,6 +141,25 @@ describe('the READY tile, the week strip and the Why sheet, rendered', () => {
     expect(html).not.toContain('ws-why');
   });
 
+  it('the Week row is the whole week from its start: the days he went done, today highlighted, the plan after it (owner, item 12)', () => {
+    const THU = addD(MON, 3);
+    const entries = [...base, ...session(MON, 'Bench Press', 4, 10, false), ...session(addD(MON, 2), 'Leg Press', 4, 10, false)];
+    const i = input({ goal: 3, today: THU, entries });
+    const r = readyNow(i), s = stripView(r, i.entries)!;
+    expect(s.days.map((d) => d.date)).toEqual([0, 1, 2, 3, 4, 5, 6].map((n) => addD(MON, n)));
+    expect(s.days.map((d) => d.label)).toEqual(['Mon', 'Tue', 'Wed', 'Today', 'Fri', 'Sat', 'Sun']);
+    expect(s.days.map((d) => d.short).join('')).toBe('MTWTFSS');
+    expect(s.days.slice(0, 3).map((d) => d.mark)).toEqual(['done', 'missed', 'done']);
+    expect(s.days.map((d) => !!d.today)).toEqual([false, false, false, true, false, false, false]);
+    // From today on, the plan as before.
+    expect(s.days.slice(3).map((d) => d.mark)).toEqual(r.plan!.days.map((_, k) => stripView(r)!.days[k].mark));
+    const html = renderToStaticMarkup(h(WeekRow, { s }));
+    expect(html.match(/class="ws-mark"/g)).toHaveLength(7);
+    expect(html.match(/data-today="true"/g)).toHaveLength(1);
+    expect(text(html)).toContain('Mon done');
+    expect(text(html)).toContain('Tue rest');
+  });
+
   it('the goal met: the strip marks today optional, never rest', () => {
     const goalMet = rendered().filter((x) => x.t.verdict.startsWith('Goal met'));
     expect(goalMet.length).toBeGreaterThan(0);

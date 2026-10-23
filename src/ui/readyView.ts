@@ -7,7 +7,8 @@ import type { Systemic } from '../domain/learn/deload';
 import { dayLabel, readinessModel, type Readiness, type SessionReady } from '../domain/learn/readiness';
 import { P_FRESH } from '../domain/learn/recovery';
 import { readinessPlanned, slotVolume, type PlanDay, type WeekPlan } from '../domain/learn/schedule';
-import { weeklyMuscleSets, weekStart } from '../domain/analytics';
+import { addDays, weeklyMuscleSets, weekStart } from '../domain/analytics';
+import { weekDaySet } from '../domain/learn/readiness';
 import { targetFor } from '../domain/profile';
 
 // Readiness S4: what the READY tile, the week strip and the Why sheet say, from learn/schedule.readinessPlanned. Pure, so every
@@ -116,8 +117,12 @@ export interface StripDay {
   date: string;
   /** "Today", else the weekday ("Thu"). */
   label: string;
-  mark: 'train' | 'light' | 'rest' | 'optional';
+  /** The weekday's letter ("T"), for the one-line row: 7 names don't fit 320 px beside the count. */
+  short: string;
+  /** From today on, the plan's; before it, whether he trained that day (`done`) or not (`missed`). */
+  mark: 'train' | 'light' | 'rest' | 'optional' | 'done' | 'missed';
   session: string | null;
+  today?: boolean;
 }
 export interface StripView {
   days: StripDay[];
@@ -132,16 +137,28 @@ export interface StripView {
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const weekday = (d: string) => WD[new Date(`${d}T00:00:00Z`).getUTCDay()];
 
-export function stripView(r: Planned): StripView | null {
+/**
+ * The week from its start (owner, item 12: "the full week including previous days I went"): the days before today from the log
+ * (`entries`), a training day as the week's count reads one, then the plan from today. Without `entries`, the plan's days alone.
+ */
+export function stripView(r: Planned, entries?: readonly SetEntry[]): StripView | null {
   const p = r.plan;
   if (!p || !p.days.length) return null;
   const goalMet = r.verdict.why === 'goal-met';
-  const days: StripDay[] = p.days.map((d: PlanDay, i) => ({
-    date: d.date, label: i === 0 ? 'Today' : weekday(d.date),
+  const today = p.days[0].date;
+  const past: StripDay[] = [];
+  if (entries) {
+    const went = new Set<string>();
+    const from = weekStart(today);
+    for (const e of entries) if (e.date >= from && e.date < today && weekDaySet(e)) went.add(e.date);
+    for (let d = from; d < today; d = addDays(d, 1)) past.push({ date: d, label: weekday(d), short: weekday(d)[0], mark: went.has(d) ? 'done' : 'missed', session: null });
+  }
+  const days: StripDay[] = [...past, ...p.days.map((d: PlanDay, i): StripDay => ({
+    date: d.date, label: i === 0 ? 'Today' : weekday(d.date), short: weekday(d.date)[0], today: i === 0,
     // The goal met: today is an extra, optional (owner S4), whatever the plan rests it for.
     mark: i === 0 && goalMet && !d.train ? 'optional' : d.train ? (d.light ? 'light' : 'train') : 'rest',
     session: d.train ? d.session?.name ?? null : null,
-  }));
+  }))];
   const reasons: { days: string[]; label: string }[] = [];
   p.days.forEach((d, i) => {
     if (d.train || !d.rest) return;

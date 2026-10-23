@@ -643,6 +643,26 @@ test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded
     if ((await row.getAttribute('aria-expanded')) === 'false') await row.click();
     await expect(strip).toBeVisible();
   };
+  // Item 12: the folded Week row holds the whole week, 7 days, on one line at 375 and 320 px, inside the row and clear of its count.
+  const oneLine = async () => {
+    const row = tile.getByRole('button', { name: /^Week/ });
+    if ((await row.getAttribute('aria-expanded')) === 'true') await row.click();
+    for (const width of [375, 320]) {
+      await page.setViewportSize({ width, height: 812 });
+      const m = await row.evaluate((b) => {
+        const r = b.getBoundingClientRect(), days = [...b.querySelectorAll('.rw-days > li')].map((li) => li.getBoundingClientRect());
+        const goal = b.querySelector('.rw-goal')!.getBoundingClientRect();
+        return { n: days.length, tops: new Set(days.map((d) => Math.round(d.top))).size, h: r.height, left: Math.min(...days.map((d) => d.left)) - r.left,
+          gap: goal.left - Math.max(...days.map((d) => d.right)), over: b.scrollWidth - b.clientWidth };
+      });
+      expect(m, `Week row at ${width}`).toMatchObject({ n: 7, tops: 1, over: 0 });
+      expect(m.h, `Week row at ${width}`).toBeLessThanOrEqual(52);
+      expect(m.left, `Week row at ${width}`).toBeGreaterThanOrEqual(0);
+      expect(m.gap, `Week row at ${width}`).toBeGreaterThanOrEqual(2);
+      await png(`week-row-${width}`);
+    }
+    await page.setViewportSize({ width: 375, height: 812 });
+  };
 
   // A new user: a calm line, no number (never a 0), the Energy chips in the tile.
   await phone(page);
@@ -663,9 +683,14 @@ test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded
   await expect(tile).toContainText(/\d+ of \d+ sets at full strength/);
   await expect(strip).toHaveCount(0); // folded to the Week row
   await look('ready-go-week-row');
+  await oneLine();
   await openWeek();
-  await expect(strip.getByRole('listitem').first()).toContainText('Today');
-  await expect(strip.locator('.ws-days > li')).toHaveCount(6); // Tuesday to Sunday
+  // The whole week from Monday (item 12): Monday not trained this week, today Tuesday highlighted.
+  await expect(strip.locator('.ws-days > li')).toHaveCount(7);
+  await expect(strip.locator('.ws-days > li').first()).toHaveAttribute('data-mark', 'missed');
+  await expect(strip.locator('.ws-days > li[data-today]')).toHaveCount(1);
+  await expect(strip.locator('.ws-days > li').nth(1)).toHaveAttribute('data-today', 'true');
+  await expect(strip.locator('.ws-days > li').nth(1)).toContainText('Today');
   // Today's plan is the week plan's session for today (owner Q3), whichever day that is.
   const planned = (await tile.locator('.ready-line b').first().textContent())!;
   await expect(page.getByRole('region', { name: 'Today’s plan' })).toContainText(planned);
@@ -691,7 +716,7 @@ test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded
   await goal(6);
   await expect(tile.locator('.ready-verdict')).toHaveText('Go today · tight week');
   await openWeek();
-  await expect(strip.locator('.ws-days > li')).toHaveCount(6);
+  await expect(strip.locator('.ws-days > li')).toHaveCount(7);
   await expect(strip.locator('.ws-days > li[data-mark=rest]')).toHaveCount(0);
   await look('ready-tight');
   await goal(2);
@@ -715,9 +740,13 @@ test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded
   await at(add(DAY0, 1));
   await expect(tile.locator('.ready-verdict')).toHaveText('Goal met · extra session optional');
   await openWeek();
-  await expect(strip.locator('.ws-days > li').first()).toHaveAttribute('data-mark', 'optional');
+  await expect(strip.locator('.ws-days > li[data-today]')).toHaveAttribute('data-mark', 'optional');
+  // Tuesday's session, ticked done; Monday, not trained.
+  await expect(strip.locator('.ws-days > li').nth(1)).toHaveAttribute('data-mark', 'done');
+  await expect(strip.locator('.ws-days > li').first()).toHaveAttribute('data-mark', 'missed');
   await expect(strip.locator('.ws-why')).toContainText('Goal met');
   await look('ready-goal-met');
+  await oneLine();
 
   // Eight days on from the last session: a layoff, always Go, said calmly.
   await at(add(DAY0, 8));

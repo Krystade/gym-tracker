@@ -33,9 +33,12 @@
 /* One line: Week, a mark a day from today with its name under it, "1 of 2" and the chevron. A tap opens the strip. */
 .rw-row { width: 100%; grid-template-columns: var(--rl) minmax(0, 1fr) auto; gap: 0 8px; padding: 4px 0 0; border-radius: 0; background: none; color: var(--text); text-align: left; font-weight: 400; }
 .rw-days { list-style: none; margin: 0; padding: 0; display: flex; justify-content: space-between; gap: 2px; min-width: 0; }
-.rw-days li { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.rw-days li { flex: none; min-width: 14px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .rw-days li span { font-size: 11px; line-height: 14px; color: var(--text-2); white-space: nowrap; }
-.rw-days li:first-child span { color: var(--text); font-weight: 600; }
+.rw-days li[data-today] span { color: var(--text); font-weight: 600; }
+/* Item 12: today in the whole week, a pill under its name. */
+.rw-days li[data-today] span { min-width: 18px; margin: 0 -2px; padding: 0 2px; border-radius: 7px; background: var(--fill-2); text-align: center; }
+.ws-days li[data-today] .ws-day { margin: 0 -4px; padding: 0 4px; border-radius: 7px; background: var(--fill-2); }
 .rw-goal { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sub); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rw-goal .ic { color: var(--text-3); }
 .rw-goal .flip { rotate: 180deg; }
@@ -60,12 +63,15 @@
 .ws-days { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(var(--n, 7), minmax(0, 1fr)); gap: 4px; }
 .ws-days li { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
 .ws-day { font-size: var(--fs-xs); line-height: 16px; color: var(--text-2); }
-.ws-days li:first-child .ws-day { color: var(--text); font-weight: 600; }
+.ws-days li[data-today] .ws-day { color: var(--text); font-weight: 600; }
 .ws-mark { display: block; width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box; }
 li[data-mark='train'] > .ws-mark { background: var(--accent); }
 li[data-mark='light'] > .ws-mark { background: color-mix(in oklab, var(--accent) 45%, var(--surface)); border: 2px solid var(--accent); }
 li[data-mark='rest'] > .ws-mark { border: 2px solid var(--fill-2); }
 li[data-mark='optional'] > .ws-mark { border: 2px dashed var(--accent); }
+/* Before today (item 12): a day he went, ticked; one he didn't, a small dot. */
+li[data-mark='done'] > .ws-mark { display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); }
+li[data-mark='missed'] > .ws-mark { width: 6px; height: 6px; margin: 4px; background: var(--fill-2); }
 .ws-s { min-height: 14px; max-width: 100%; font-size: 11px; line-height: 14px; color: var(--text-2); text-align: center; overflow-wrap: anywhere; }
 .ws-why { list-style: none; margin: 10px 0 0; padding: 8px 0 0; border-top: 1px solid var(--hairline); display: grid; gap: 4px; }
 .ws-why li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; font-size: var(--fs-sm); line-height: 18px; }
