@@ -126,6 +126,35 @@ describe('readFriendWindow', () => {
     expect(r.goal).toBe(2);
   });
 
+  it('keeps the day their achievements count from, from the same settings read (Together counts from it); none or a bad one is null', async () => {
+    const w = world();
+    w.docs['users/b/meta/profile'] = { items: { status: JSON.stringify('cut'), achievements: JSON.stringify('2026-10-22') } };
+    const r = await readFriendWindow(w.cloud, 'b', FROM, TO);
+    expect(w.log.filter((l) => l.path === 'users/b/meta/profile')).toHaveLength(1);
+    expect(r.start).toBe('2026-10-22');
+    // Not changed since: kept with the window, no read.
+    w.take();
+    expect((await readFriendWindow(w.cloud, 'b', FROM, TO, { from: FROM, win: r, basis: r.basis })).start).toBe('2026-10-22');
+    expect(w.log).toEqual([{ path: 'users/b/meta/index', n: 1 }]);
+    for (const bad of [undefined, JSON.stringify('soon'), JSON.stringify(20261022), '{not json']) {
+      w.docs['users/b/meta/profile'] = { items: { ...(bad !== undefined && { achievements: bad }) } };
+      expect((await readFriendWindow(w.cloud, 'b', FROM, TO)).start).toBeNull();
+    }
+  });
+
+  it('a window kept by an older version, with no start, reads their settings once more for it; a null start is kept', async () => {
+    const w = world();
+    const first = await readFriendWindow(w.cloud, 'b', FROM, TO);
+    expect(first.start).toBeNull();
+    w.take();
+    await readFriendWindow(w.cloud, 'b', FROM, TO, { from: FROM, win: first, basis: first.basis });
+    expect(w.log).toEqual([{ path: 'users/b/meta/index', n: 1 }]);
+    const { start: _none, ...old } = first;
+    w.take();
+    await readFriendWindow(w.cloud, 'b', FROM, TO, { from: FROM, win: old, basis: first.basis });
+    expect(w.log).toEqual([{ path: 'users/b/meta/index', n: 1 }, { path: 'users/b/meta/profile', n: 1 }]);
+  });
+
   it('keeps the PR ids each month’s document carries, per month, through a read that skips the month', async () => {
     const w = world();
     w.docs['users/b/months/2026-10'] = { sets: [set('2026-10-16'), set('2026-10-18')], prs: ['app|2026-10-18|squat|1'] };

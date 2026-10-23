@@ -66,9 +66,13 @@ describe('showing up', () => {
   });
   it('plan done and cardio stay off the sheet until the log can earn them', () => {
     const log = [set(day(0), 'Bench Press', 135, 8)];
-    expect(achievements(log, ctx()).hidden).toEqual(['plan-days', 'cardio']);
+    // Together needs a friend (signed in): off the sheet without one, as every one of its families.
+    const TOGETHER = ['trained-together', 'gym-crew', 'same-week', 'crew-streak', 'crew-day', 'full-house'];
+    expect(achievements(log, ctx()).hidden).toEqual(['plan-days', 'cardio', ...TOGETHER]);
     const program = { key: 'program', days: [], perSession: 12, createdAt: '' } as Program;
-    expect(achievements([...log, set(day(1), 'Treadmill', 0, null, ['cardio'], { cardio: { seconds: 60 } })], ctx({ program })).hidden).toEqual([]);
+    const friend = { uid: 'f', start: WHOLE, goal: 2, sets: [], from: day(0) };
+    expect(achievements([...log, set(day(1), 'Treadmill', 0, null, ['cardio'], { cardio: { seconds: 60 } })], ctx({ program, together: { friends: [friend], ledger: {} } })).hidden).toEqual([]);
+    expect(achievements(log, ctx({ together: { friends: [], ledger: {} } })).hidden).toEqual(['plan-days', 'cardio', ...TOGETHER]);
   });
 });
 
@@ -285,7 +289,8 @@ describe('rules that hold for any log (synthetic, 2 years)', () => {
     const tiers = Object.fromEntries(Object.keys(defaultProfile().tiers).map((m) => [m, 4])) as Profile['tiers'];
     Object.assign(tiers, { Chest: 3, Quads: 3, Lats: 3, Triceps: 3, Biceps: 3, Hamstrings: 3 });
     const a = achievements(log, ctx({ today: '2026-10-20', profile: { ...defaultProfile(), weeklyGoal: 3, tiers } }));
-    const none = DEFS.filter((d) => d.id !== 'plan-days' && !a.unlocks.some((u) => u.id === d.id)).map((d) => d.id);
+    // Together needs friends' logs: its families are earned in together.test.
+    const none = DEFS.filter((d) => d.id !== 'plan-days' && d.group !== 'together' && !a.unlocks.some((u) => u.id === d.id)).map((d) => d.id);
     expect(none).toEqual([]);
   });
   it('fast enough after a set: 2 years under 150 ms here', () => {

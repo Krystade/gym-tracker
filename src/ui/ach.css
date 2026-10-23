@@ -61,3 +61,13 @@
   font-size: var(--fs-sub); font-weight: 600; line-height: 20px; overflow-wrap: anywhere; }
 .ach-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
 .fp-ach { display: flex; justify-content: center; margin: 10px 0 0; }
+
+/* Together: who you trained with (only you see it), and Full house's week of rings. */
+.ach-with { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 0; }
+.ach-with .avatar { flex: none; }
+.ach-rings { display: flex; flex-wrap: wrap; gap: 14px; margin: 4px 0 0; padding: 0; list-style: none; }
+.ach-rings li { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 48px; }
+.ach-rings text { font-size: 12px; font-weight: 600; fill: var(--text-2); }
+.ach-rings li.met text { fill: var(--ok); }
+.ach-ring-n { font-size: var(--fs-sm); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.ach-rings li.met .ach-ring-n { color: var(--ok); }

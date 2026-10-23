@@ -13,6 +13,9 @@ import { useMinute } from '../state/clock';
 import { crewRange, notePing, peekFriendCache, refreshSummaries, refreshWindow, staleSummaries, staleWindow, useFriendCache, useFriendTags } from '../state/friendCache';
 import { featured, unlocksOf, type Unlock } from '../domain/achievements';
 import { AchChip } from './AchievementsSheet';
+import { togetherDay } from '../domain/together';
+import { useAchSince } from '../state/useAchievements';
+import { sideOf } from '../state/useTogether';
 import { getPref, setPref } from '../state/prefs';
 import type { StatusStore } from '../state/useStatus';
 import { Input } from './Field';
@@ -38,6 +41,7 @@ interface Person {
   card: Card | null; live: number | null; week: GoalWeek | null; usual: number; today: ReturnType<typeof ringSets>;
   last: { date: string; kinds: string; sets: number } | null;
   /** A friend's achievements reached today, silver and up (their Compare summary; owner Q6). */ ach?: Unlock[];
+  /** You trained together today (domain/together), as only you see it: "You and @ana at Iron Den, 6:10–7:05 PM". */ together?: string;
 }
 
 export const clock = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -57,6 +61,7 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
   const minute = useMinute(); // "live" ends 20 minutes after a set, and ages move on, with no read
   const cache = useFriendCache(uid);
   const windows = cache?.windows;
+  const since = useAchSince();
   const [errors, setErrors] = useState<Record<string, string>>({});
   // Your private tag beside their @username ("Sam (gym) · @sam_k"), as the names round keeps it.
   const label = useFriendLabel(uid);
@@ -108,12 +113,14 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
       const sets = (w?.win.sets ?? []).filter((x) => x.date >= from && x.date <= today);
       const sum = cache?.summaries?.[f.uid]?.doc;
       const ach = sum?.ach ? featured(unlocksOf(sum.ach)).filter((u) => u.date === today) : undefined;
+      const met = w ? togetherDay(entries, since, sideOf(f.uid, w, cache?.summaries?.[f.uid]), today) : null;
+      const together = met ? `You and @${f.name} at ${met.gym}, ${clock(met.from)}–${clock(met.to)}` : undefined;
       return { ...build({ id: f.uid, me: false, friend: f, label: label(f.uid, f.name, f.dn), lead: tags[f.uid] || f.dn, handle: f.dn || f.name, verified: verified[f.uid] != null, status: w?.win.status ?? '', loading: !w && !error, error },
-        sets, w ? friendPrs(w.win) : new Set(), w?.win.goal ?? null), ...(ach?.length && { ach }) };
+        sets, w ? friendPrs(w.win) : new Set(), w?.win.goal ?? null), ...(ach?.length && { ach }), ...(together && { together }) };
     });
     return [me, ...theirs];
     // `minute`: live and today's cards move on with the clock.
-  }, [entries, friends, windows, cache?.summaries, errors, status.status, from, today, goal, myName, myPrs, minute, label, verified, tags]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [entries, friends, windows, cache?.summaries, errors, status.status, from, today, goal, myName, myPrs, minute, label, verified, tags, since]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rail = [people[0], ...people.slice(1).sort((a, b) => goalShare(b) - goalShare(a) || a.label.localeCompare(b.label))];
   const trained = people.filter((p) => p.card);
@@ -255,6 +262,7 @@ function SessionCard({ p, now, news, onOpen, onMessage, sending, burst, error, s
       </div>
       {total > 0 && <div className="fd-split" aria-hidden="true">{Object.entries(c.kinds).map(([k, n]) => <i key={k} style={{ flex: n, background: kindColour(k as never) }} />)}</div>}
       {p.week?.metToday && <span className="fd-goalrib"><Icon name="trophy" size={16} sw={2} />Weekly goal hit · {p.week.sessions} of {p.week.goal}</span>}
+      {p.together && <span className="fd-together"><Icon name="friends" size={16} sw={2} />Trained together · {p.together}</span>}
       {p.ach && <ul className="ach-chips" aria-label="Achievements today">{p.ach.map((u) => <li key={`${u.id}:${u.lift ?? ''}`}><AchChip u={u} /></li>)}</ul>}
       <ul className="fd-lifts">
         {shown.map((l) => (

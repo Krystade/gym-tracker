@@ -1,5 +1,8 @@
-import { amount, DEF, DEFS, GROUPS, closest, highest, plateLoad, tierWord, TIERS, unlockedOn, unlockText, type Achievements, type Def, type Tier, type Track, type Unlock } from '../domain/achievements';
-import { Icon } from './icons';
+import { amount, DEF, DEFS, GROUPS, closest, highest, plateLoad, PRIVATE_GROUP, tierWord, TIERS, unlockedOn, unlockText, type Achievements, type Def, type Tier, type Track, type Unlock } from '../domain/achievements';
+import { weekRings, withList, type TogetherId } from '../domain/together';
+import type { SetEntry } from '../domain/types';
+import { useTogetherNames, useTogetherSeen } from '../state/useAchievements';
+import { Icon, initials } from './icons';
 import { Medal, TIER_COLOUR } from './Medal';
 import './ach.css';
 
@@ -56,6 +59,7 @@ export function AchShelf({ a, w }: { a: Achievements; w: number }) {
  * status: the PR line is that.
  */
 export function AchLines({ us, onOpen }: { us: readonly Unlock[] | null; onOpen?: (id: string) => void }) {
+  const names = useTogetherNames();
   return (
     <div className="ach-lines" aria-live="polite">
       {us?.map((u) => (
@@ -63,7 +67,7 @@ export function AchLines({ us, onOpen }: { us: readonly Unlock[] | null; onOpen?
           <Medal tier={u.tier} glyph={u.id} size={36} />
           <span className="ach-line-txt">
             <span><span className={`ach-tier t-${u.tier}`}>{tierWord(u.tier)}</span> · <b>{DEF.get(u.id)!.title}</b></span>
-            <span className="ach-line-sub">{unlockText(u)}</span>
+            <span className="ach-line-sub">{unlockText(u, names?.name)}</span>
           </span>
           {onOpen && <Icon name="chev-right" size={18} sw={2} className="ach-line-go" />}
         </button>
@@ -113,13 +117,14 @@ function FamilyRow({ t, onOpen }: { t: Track; onOpen: (id: string) => void }) {
 
 /** An unlock: its medal, tier and what it means. */
 export function UnlockRow({ u, today, onOpen }: { u: Unlock; today?: string; onOpen?: (id: string) => void }) {
+  const names = useTogetherNames();
   return (
     <button type="button" className="ach-row" onClick={() => onOpen?.(u.id)}>
       <Medal tier={u.tier} glyph={u.id} size={44} />
       <span className="ach-row-txt">
         <b>{DEF.get(u.id)!.title}</b>
         <span className={`ach-tier t-${u.tier}`}>{tierWord(u.tier)}</span>
-        <span>{unlockText(u)}</span>
+        <span>{unlockText(u, names?.name)}</span>
       </span>
       {today && <span className="ach-when">{achDay(u.date, today)}</span>}
     </button>
@@ -131,6 +136,16 @@ const tracksOf = (a: Achievements, d: Def): Track[] => {
   const ts = a.tracks.filter((t) => t.id === d.id);
   return ts.length ? ts : [{ id: d.id, value: 0, level: -1, next: d.levels[0].at }];
 };
+
+/** Together's foot: counted from the later of the two starts, from sets logged as they happened (owner 2026-10-22). */
+function TogetherFoot() {
+  return (
+    <p className="ach-foot">
+      Counting from the later of your start and each friend's. A set entered afterwards doesn't count, and nothing is taken away
+      if a friend later deletes theirs. Worked out on your phone from both logs; only you see these.
+    </p>
+  );
+}
 
 /** Counting from the start: said once at the foot of the sheet and of each detail. */
 function Foot({ since, today }: { since: string; today: string }) {
@@ -177,6 +192,7 @@ export function AchievementsSheet({ a, today, since, onOpen }: { a: Achievements
         );
       })}
       <Foot since={since} today={today} />
+      {DEFS.some((d) => d.group === PRIVATE_GROUP && !a.hidden.includes(d.id)) && <p className="ach-foot">Together: only you see these, never shared with anyone, whatever the switches say.</p>}
     </div>
   );
 }
@@ -263,8 +279,66 @@ function Levels({ d, t, unlocks, today }: { d: Def; t: Track; unlocks: Unlock[];
   );
 }
 
-export function AchievementDetail({ a, id, today, since, shown, onShare }: {
+/** "With": each friend a Together family counted you with, most first (only on your phone). */
+function WithList({ id, entries, today }: { id: TogetherId; entries: readonly SetEntry[]; today: string }) {
+  const t = useTogetherSeen(entries, today);
+  if (!t) return null;
+  const rows = withList(t.seen, id);
+  if (!rows.length) return null;
+  const unit = id === 'same-week' || id === 'crew-streak' || id === 'full-house' ? ['week', 'weeks'] : id === 'crew-day' ? ['day', 'days'] : ['session', 'sessions'];
+  return (
+    <section className="ach-sec" aria-label="With">
+      <h3>With<span>only you see this</span></h3>
+      {rows.map((r) => {
+        const name = t.together.names.name(r.uid);
+        return (
+          <div key={r.uid} className="ach-with">
+            <span className="avatar" aria-hidden="true">{name.startsWith('@') ? initials(t.together.names.handle(r.uid)) : '?'}</span>
+            <span className="ach-row-txt">
+              <b>{name}</b>
+              <span>{r.n} {unit[r.n === 1 ? 0 : 1]} · last {achDay(r.last, today).replace(/^T/, 't')}{r.gym ? `, ${r.gym}` : ''}</span>
+            </span>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+/** Full house's week so far: you and each friend, a ring against each one's own goal, green once met. */
+function HouseRings({ entries, today }: { entries: readonly SetEntry[]; today: string }) {
+  const t = useTogetherSeen(entries, today);
+  if (!t) return null;
+  const rings = weekRings(entries, t.since, t.goal, t.together.ctx.friends, today);
+  const met = rings.slice(1).filter((r) => r.met).length;
+  return (
+    <section className="ach-sec" aria-label="This week">
+      <h3>This week<span>{rings[0].met ? `${met} ${met === 1 ? 'friend' : 'friends'} so far` : 'your goal first'}</span></h3>
+      <ul className="ach-rings">
+        {rings.map((r) => {
+          const who = r.uid ? t.together.names.name(r.uid) : 'You';
+          const f = Math.min(1, r.sessions / r.goal), c = 2 * Math.PI * 19;
+          return (
+            <li key={r.uid ?? ''} className={r.met ? 'met' : undefined}>
+              <svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true">
+                <circle cx="24" cy="24" r="19" fill="none" stroke="var(--fill-2)" strokeWidth="4" />
+                {f > 0 && <circle cx="24" cy="24" r="19" fill="none" stroke={r.met ? 'var(--ok)' : 'var(--text-2)'} strokeWidth="4" strokeLinecap="round"
+                  strokeDasharray={`${f * c} ${c}`} transform="rotate(-90 24 24)" />}
+                <text x="24" y="28.5" textAnchor="middle">{r.uid ? (who.startsWith('@') ? initials(t.together.names.handle(r.uid)) : '?') : 'You'}</text>
+              </svg>
+              <span className="ach-ring-n">{r.sessions}/{r.goal}</span>
+              <span className="sr-only">{who}: {r.sessions} of {r.goal}{r.met ? ', goal met' : ''}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+export function AchievementDetail({ a, id, today, since, shown, onShare, entries }: {
   a: Achievements; id: string; today: string; since: string;
+  /** Your log (Together's With list and rings; none: they're left out). */ entries?: readonly SetEntry[];
   /** Whether friends see this family's group, and how to change it (your own Stats only). */ shown?: boolean; onShare?: (group: string, on: boolean) => void;
 }) {
   const d = DEF.get(id);
@@ -290,8 +364,10 @@ export function AchievementDetail({ a, id, today, since, shown, onShare }: {
             <Levels d={d} t={ts[0]} unlocks={a.unlocks.filter((u) => u.id === id)} today={today} />
           </section>
         )}
-      {onShare && <ShareRow group={d.group} shown={shown !== false} onShare={onShare} />}
-      <Foot since={since} today={today} />
+      {d.group === PRIVATE_GROUP && entries && id === 'full-house' && <HouseRings entries={entries} today={today} />}
+      {d.group === PRIVATE_GROUP && entries && <WithList id={id as TogetherId} entries={entries} today={today} />}
+      {onShare && d.group !== PRIVATE_GROUP && <ShareRow group={d.group} shown={shown !== false} onShare={onShare} />}
+      {d.group === PRIVATE_GROUP ? <TogetherFoot /> : <Foot since={since} today={today} />}
     </div>
   );
 }

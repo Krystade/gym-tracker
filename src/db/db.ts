@@ -14,6 +14,7 @@ import type { TagPrefs } from '../domain/tags';
 import type { CycleDay } from '../domain/cycle';
 import { replacements, stillTaken, type Replaced, type Taken } from '../domain/replaced';
 import { cleanStatus } from '../domain/crew';
+import { decodeLedger, encodeLedger, hasNew, mergeLedgers, type StoredLedger } from '../domain/together';
 
 const STORE = 'sets';
 /** The first profile: it keeps the original database, so existing data needs no migration. */
@@ -225,6 +226,41 @@ export async function startAchievements(today: string): Promise<string> {
   await tx.done;
   return had ?? today;
 }
+
+/**
+ * Together's ledger (domain/together): what friends' windows showed, kept so nothing earned goes when a window moves on. For
+ * one account (`uid`): another account signed in on this profile starts with none. `rev` moves with each local change;
+ * `synced`, the rev and time the account's copy (users/{uid}/private/together) was last merged with (cloud/together).
+ */
+export interface TogetherRow { key: 'together'; uid: string; ledger: StoredLedger; rev: number; synced?: { rev: number; at: number } }
+const NO_TOGETHER = (uid: string): TogetherRow => ({ key: 'together', uid, ledger: { v: 1, f: {} }, rev: 0 });
+const togetherRow = (r: unknown, uid: string): TogetherRow => {
+  const x = r as TogetherRow | undefined;
+  return x && x.uid === uid && typeof x.rev === 'number' ? { ...x, ledger: encodeLedger(decodeLedger(x.ledger)) } : NO_TOGETHER(uid);
+};
+export const getTogether = async (uid: string): Promise<TogetherRow> => togetherRow(await (await db()).get('config', 'together'), uid);
+/** What windows show now, into the ledger: true if it held anything new (then it waits for the next sync to go up). */
+export async function addTogether(uid: string, add: StoredLedger): Promise<boolean> {
+  const tx = (await db()).transaction('config', 'readwrite');
+  const row = togetherRow(await tx.store.get('together'), uid), had = decodeLedger(row.ledger), more = decodeLedger(add);
+  const changed = hasNew(had, more);
+  if (changed) await tx.store.put({ ...row, ledger: encodeLedger(mergeLedgers(had, more)), rev: row.rev + 1 } satisfies TogetherRow);
+  await tx.done;
+  return changed;
+}
+/**
+ * The account's copy merged in: `pulled` (the union, when the account's had something this phone hadn't) joins what's here
+ * now, and the rev the sync started from is marked synced, unless the ledger moved meanwhile (then the next sync goes again).
+ */
+export async function finishTogetherSync(uid: string, rev: number, pulled: StoredLedger | null, at: number): Promise<void> {
+  const tx = (await db()).transaction('config', 'readwrite');
+  const row = togetherRow(await tx.store.get('together'), uid);
+  const ledger = pulled ? encodeLedger(mergeLedgers(decodeLedger(row.ledger), decodeLedger(pulled))) : row.ledger;
+  await tx.store.put({ ...row, ledger, synced: row.rev === rev ? { rev, at } : row.synced } satisfies TogetherRow);
+  await tx.done;
+}
+/** Signed out: the ledger names friends' accounts, so it goes with them (the account keeps its copy). */
+export const clearTogether = async (): Promise<void> => { await (await db()).delete('config', 'together'); };
 
 export const getProfile = async (): Promise<Profile | undefined> => (await db()).get('profile', 'profile');
 export const putProfile = async (p: Profile): Promise<void> => { await (await db()).put('profile', p); };
@@ -499,7 +535,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 
 // Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
 const PER_PROFILE = {
-  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, deleteSetsWithTombstones, restoreSet, restoreSets, renameLift, putMany, getAllSettings, putSettings, deleteSettings, getTags, putTags, getStatus, putStatus, getAchStart, startAchievements, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan, deleteDayPlan,
+  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, deleteSetsWithTombstones, restoreSet, restoreSets, renameLift, putMany, getAllSettings, putSettings, deleteSettings, getTags, putTags, getStatus, putStatus, getAchStart, startAchievements, getTogether, addTogether, finishTogetherSync, clearTogether, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan, deleteDayPlan,
   getBody, putBody, putBodyMany, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, getTombstoneTimes, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
   getReplaced, putReplaced, deleteReplaced, pruneReplaced, getSyncSnapshot, applySynced, applySyncedMeta,
 };

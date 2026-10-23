@@ -17,6 +17,7 @@ import { ProfileDbProvider } from '../state/profileDb';
 import { useFittedProfile } from '../state/useFittedProfile';
 import { useStatus } from '../state/useStatus';
 import { AchProvider, useAchStart } from '../state/useAchievements';
+import { useTogether } from '../state/useTogether';
 import { achievementsOf } from '../domain/achievements';
 import type { SetEntry } from '../domain/types';
 import { useBox, useOwnBox, type Box } from '../state/box';
@@ -255,12 +256,14 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   // An achievement's line tapped on a lift card: Stats, at that family's levels.
   const [achAt, setAchAt] = useState<string | null>(null);
   const openAch = useCallback((id: string) => { setExercise(null); setTab('stats'); setAchAt(id); window.scrollTo(0, 0); }, [setExercise, setTab]);
+  // Together (plan §10): your friends' windows as Friends keeps them, and the ledger of what they showed. Signed in only.
+  const together = useTogether(uid, store.entries, date, ach.since, rawProfile.profile.weeklyGoal);
   // Push: the reminder and recap numbers, for the person whose account this is (signed out: this phone's subscription goes).
-  // Achievements for the recap's count (the screens read theirs through AchProvider).
+  // Achievements for the recap's count (the screens read theirs through AchProvider): a count only, Together's included.
   const achOf = useMemo(() => {
     const since = ach.since;
-    return since ? (es: SetEntry[], d: string) => achievementsOf(es, { profile: rawProfile.profile, today: d, since, program: programs.program, plans: programs.plans }) : null;
-  }, [ach.since, rawProfile.profile, programs.program, programs.plans]);
+    return since ? (es: SetEntry[], d: string) => achievementsOf(es, { profile: rawProfile.profile, today: d, since, program: programs.program, plans: programs.plans, ...(together && { together: together.ctx }) }) : null;
+  }, [ach.since, rawProfile.profile, programs.program, programs.plans, together]);
   usePushSync(store.entries, programs.program, programs.plans, date, cloud.link === null ? false : cloud.mine ? true : null, rawProfile.profile.weeklyGoal, achOf);
   // A record tapped on a lift's screen: History opens at its day.
   const [historyAt, setHistoryAt] = useState<string | null>(null);
@@ -278,7 +281,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const error = store.error ?? programs.error ?? body.error ?? photos.error ?? gyms.error ?? people.error;
 
   return (
-    <AchProvider since={ach.since} profile={rawProfile.profile} program={programs.program} plans={programs.plans} onOpen={openAch} onShare={uid ? shareAch : undefined}>
+    <AchProvider since={ach.since} profile={rawProfile.profile} program={programs.program} plans={programs.plans} together={together} onOpen={openAch} onShare={uid ? shareAch : undefined}>
       {uid && <NewsReader uid={uid} rev={nav.newsRev} newsAt={newsAt} />}
       {error && <div role="alert" className="banner">{error}</div>}
       <main className="screen">

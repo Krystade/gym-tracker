@@ -1,9 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { achievementsOf, gained, highest, type Achievements, type Unlock } from '../domain/achievements';
+import { achievementsOf, gained, highest, togetherOf, type Achievements, type Context, type Unlock } from '../domain/achievements';
 import type { Profile } from '../domain/profile';
 import type { DayPlan, Program } from '../domain/program';
 import type { SetEntry } from '../domain/types';
 import { useDb } from './profileDb';
+import type { Seen } from '../domain/together';
+import type { Together, TogetherNames } from './useTogether';
 
 // Achievements for the person whose screens these are (domain/achievements). The day they count from is kept once, the first time
 // this build opens a profile (owner 2026-10-21: everyone starts from 0), and synced as the earliest of the phones'. Everything
@@ -28,13 +30,14 @@ export type AchStart = ReturnType<typeof useAchStart>;
 
 interface Ctx {
   since: string | null; profile: Profile; program: Program | null; plans: readonly DayPlan[];
+  /** Your friends' windows and the ledger, and how each friend is said (state/useTogether): signed in only. */ together?: Together;
   /** Opens Stats at a family's levels (a line tapped on Today). */ onOpen?: (id: string) => void;
   /** Shows or keeps a group from friends: only for the person whose account publishes the summary. */ onShare?: (group: string, on: boolean) => void;
 }
 const AchCtx = createContext<Ctx | null>(null);
 
-export function AchProvider({ since, profile, program, plans, onOpen, onShare, children }: Ctx & { children: ReactNode }) {
-  const v = useMemo(() => ({ since, profile, program, plans, onOpen, onShare }), [since, profile, program, plans, onOpen, onShare]);
+export function AchProvider({ since, profile, program, plans, together, onOpen, onShare, children }: Ctx & { children: ReactNode }) {
+  const v = useMemo(() => ({ since, profile, program, plans, together, onOpen, onShare }), [since, profile, program, plans, together, onOpen, onShare]);
   return <AchCtx.Provider value={v}>{children}</AchCtx.Provider>;
 }
 
@@ -50,17 +53,35 @@ export function useAchShare(): { hidden: readonly string[]; onShare?: (group: st
 /** The start day, or null before it is read (and outside a person's screens). */
 export const useAchSince = (): string | null => useContext(AchCtx)?.since ?? null;
 
+const contextOf = (c: Ctx & { since: string }, today: string): Context =>
+  ({ profile: c.profile, today, since: c.since, program: c.program, plans: c.plans, ...(c.together && { together: c.together.ctx }) });
+
 /** Achievements for this log on `today`; null until the start day is read, and outside a person's screens. */
 export function useAchievements(entries: readonly SetEntry[], today: string): Achievements | null {
   const c = useContext(AchCtx);
-  return useMemo(() => (c?.since ? achievementsOf(entries, { profile: c.profile, today, since: c.since, program: c.program, plans: c.plans }) : null),
-    [c, entries, today]);
+  return useMemo(() => (c?.since ? achievementsOf(entries, contextOf({ ...c, since: c.since }, today)) : null), [c, entries, today]);
 }
 
 /** The context as a function: for working out achievements off the render (a set just saved). */
 export function useAchContext(): ((entries: readonly SetEntry[], today: string) => Achievements) | null {
   const c = useContext(AchCtx);
-  return useMemo(() => (c?.since ? (entries: readonly SetEntry[], today: string) => achievementsOf(entries, { profile: c.profile, today, since: c.since!, program: c.program, plans: c.plans }) : null), [c]);
+  return useMemo(() => (c?.since ? (entries: readonly SetEntry[], today: string) => achievementsOf(entries, contextOf({ ...c, since: c.since! }, today)) : null), [c]);
+}
+
+/** How a friend is said in a Together line ("@ana_lifts", "a former friend"); outside a signed-in person's screens, none. */
+export const useTogetherNames = (): TogetherNames | undefined => useContext(AchCtx)?.together?.names;
+
+/**
+ * What counts toward Together on `today` (domain/together), for a family's "With" list and Full house's rings: null signed
+ * out, or before the start day is read. Only ever on your own phone.
+ */
+export function useTogetherSeen(entries: readonly SetEntry[], today: string): { seen: Seen; together: Together; since: string; goal: number } | null {
+  const c = useContext(AchCtx);
+  return useMemo(() => {
+    if (!c?.since || !c.together) return null;
+    const seen = togetherOf(entries, contextOf({ ...c, since: c.since }, today));
+    return seen && { seen, together: c.together, since: c.since, goal: c.profile.weeklyGoal };
+  }, [c, entries, today]);
 }
 
 /** How long a card's lines stay (plan §6: about 30 s), unless the next set clears them first. */

@@ -283,6 +283,11 @@ export interface FriendWindow {
   sets: SetEntry[]; status: string;
   /** Their sessions-a-week goal, from the settings read that brings the status (none: a window kept by an older version). */
   goal?: number;
+  /**
+   * The day their achievements count from (their synced `achievements` item), from the same read: Together counts from the
+   * later of theirs and yours (domain/together). Null: they haven't started (an older app). None: a window kept by an older version.
+   */
+  start?: string | null;
   /** Per month, the PR set ids their phone wrote into that month's document (cloud/sync); a month written by an older app isn't here. */
   prs?: Record<string, string[]>;
 }
@@ -301,11 +306,12 @@ export async function readFriendWindow(c: Cloud, uid: string, from: string, to: 
   // The kept window holds every set of its months from its own `from` on: enough, unless this one starts earlier.
   const kept = prev?.basis && prev.from <= from ? { ...prev, basis: prev.basis } : null;
   const need = want.filter((m) => kept?.basis.months[m] !== times[m]);
-  // Their goal came with the status from a newer version only: a window kept without it reads their settings once more.
-  const keptGoal = kept?.win.goal;
+  // Their goal and start came with the status from a newer version only: a window kept without them reads their settings once more.
+  const keptGoal = kept?.win.goal, keptStart = kept?.win.start;
   const [months, bits] = await Promise.all([
     readMonths(c, uid, need, want),
-    metaAt !== undefined && kept?.basis.meta === metaAt && keptGoal !== undefined ? { status: kept.win.status, goal: keptGoal } : readSettingsBits(c, uid),
+    metaAt !== undefined && kept?.basis.meta === metaAt && keptGoal !== undefined && keptStart !== undefined
+      ? { status: kept.win.status, goal: keptGoal, start: keptStart } : readSettingsBits(c, uid),
   ]);
   const sets = want.flatMap((m) => months.get(m)?.sets ?? kept?.win.sets.filter((s) => monthOf(s.date) === m) ?? []).filter((s) => s.date >= from);
   const prs: Record<string, string[]> = {};
@@ -313,7 +319,7 @@ export async function readFriendWindow(c: Cloud, uid: string, from: string, to: 
     const p = months.has(m) ? months.get(m)!.prs : kept?.win.prs?.[m];
     if (p) prs[m] = p;
   }
-  return { sets, status: bits.status, goal: bits.goal, prs, basis: { months: Object.fromEntries(want.map((m) => [m, times[m]])), ...(metaAt !== undefined && { meta: metaAt }) } };
+  return { sets, status: bits.status, goal: bits.goal, start: bits.start, prs, basis: { months: Object.fromEntries(want.map((m) => [m, times[m]])), ...(metaAt !== undefined && { meta: metaAt }) } };
 }
 /** A month as a friend's window keeps it: its sets, and the PR ids its document carries (none: an older app wrote it). */
 interface MonthRead { sets: SetEntry[]; prs?: string[] }
@@ -329,16 +335,23 @@ async function readMonths({ F, db }: Cloud, uid: string, need: string[], want: s
   }
   return out;
 }
-/** From their settings document, only the status phrase and the sessions-a-week goal (2, the app's default, when unset or odd). */
-async function readSettingsBits({ F, db }: Cloud, uid: string): Promise<{ status: string; goal: number }> {
+/**
+ * From their settings document, only the status phrase, the sessions-a-week goal (2, the app's default, when unset or odd) and
+ * the day their achievements count from (null: none, or not a day).
+ */
+async function readSettingsBits({ F, db }: Cloud, uid: string): Promise<{ status: string; goal: number; start: string | null }> {
   const items = (await F.getDoc(F.doc(db, `users/${uid}/meta/profile`))).data()?.items as Record<string, string> | undefined;
-  let status = '', goal = defaultProfile().weeklyGoal;
+  let status = '', goal = defaultProfile().weeklyGoal, start: string | null = null;
+  try {
+    const v = items?.achievements ? JSON.parse(items.achievements) as unknown : null;
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) start = v;
+  } catch { /* not a day */ }
   try { status = items?.status ? cleanStatus(JSON.parse(items.status)) : ''; } catch { /* not a phrase */ }
   try {
     const g = items?.profile ? (JSON.parse(items.profile) as { weeklyGoal?: unknown } | null)?.weeklyGoal : undefined;
     if (typeof g === 'number' && Number.isInteger(g) && g >= 1 && g <= 7) goal = g;
   } catch { /* not a profile */ }
-  return { status, goal };
+  return { status, goal, start };
 }
 
 /** A gym a friend sent you, waiting under Friends until you add it or dismiss it. */

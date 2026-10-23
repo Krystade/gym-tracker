@@ -11,6 +11,7 @@ import { daySets, e1rm, liftIndex, sameExercise } from './stats';
 import { fitTargets, setYield, weeklyBudget } from './targets';
 import type { SetEntry } from './types';
 import { addedLoad, bodyShare } from './learn/bodyweight';
+import { effective, togetherSteps, TOGETHER_IDS, type Seen, type TogetherCtx } from './together';
 
 // Achievements (.superpowers/redesign/achievements/plan.md): facts about a log, never stored as earned. Like records
 // (domain/records), each is worked out from the sets, the stored profile and the day plans, so an edit, a delete, a rename or a
@@ -30,14 +31,18 @@ import { addedLoad, bodyShare } from './learn/bodyweight';
 
 export type Tier = 'starter' | 'bronze' | 'silver' | 'gold' | 'platinum';
 export const TIERS: readonly Tier[] = ['starter', 'bronze', 'silver', 'gold', 'platinum'];
-export type Group = 'showing' | 'stronger' | 'muscle' | 'milestones' | 'explore';
+export type Group = 'showing' | 'stronger' | 'muscle' | 'milestones' | 'explore' | 'together';
 export const GROUPS: readonly { id: Group; title: string; note?: string }[] = [
   { id: 'showing', title: 'Showing up' },
   { id: 'stronger', title: 'Getting stronger', note: 'against your own start' },
   { id: 'muscle', title: 'Building muscle' },
   { id: 'milestones', title: 'Milestones' },
   { id: 'explore', title: 'Exploring' },
+  // You and your friends (plan §10, domain/together): only on your phone, never shared (owner Q6).
+  { id: 'together', title: 'Together', note: 'you and your friends' },
 ];
+/** The group only you see: it names who you trained with, so it never leaves your phone (no summary, no feed chip). */
+export const PRIVATE_GROUP: Group = 'together';
 export interface Level { tier: Tier; at: number }
 export interface Def {
   id: string; group: Group; title: string;
@@ -46,7 +51,7 @@ export interface Def {
   levels: readonly Level[];
   /** Earned again and again: one level, a count beside it. */ repeat?: true;
   /** One per lift (plates, bodyweight). */ perLift?: true;
-  /** Only shown once the log can earn it: a program, or a cardio set. */ needs?: 'program' | 'cardio';
+  /** Only shown once the log can earn it: a program, a cardio set, or a friend (signed in). */ needs?: 'program' | 'cardio' | 'friends';
 }
 
 const L = (...xs: [Tier, number][]): Level[] => xs.map(([tier, at]) => ({ tier, at }));
@@ -73,13 +78,23 @@ export const DEFS: readonly Def[] = [
   { id: 'new-lifts', group: 'explore', title: 'Lifts tried', unit: 'lifts', how: 'Different lifts with a working set', levels: L(['bronze', 10], ['silver', 25], ['gold', 45], ['platinum', 70]) },
   { id: 'patterns', group: 'explore', title: 'All six patterns', unit: 'weeks', how: 'A week with a horizontal and a vertical press and pull, a squat and a hinge', levels: L(['bronze', 1]), repeat: true },
   { id: 'cardio', group: 'explore', title: 'Cardio minutes', unit: 'minutes', how: 'Minutes on the cardio machines', levels: L(['bronze', 60], ['silver', 300], ['gold', 1000], ['platinum', 3000]), needs: 'cardio' },
+  // Together (plan §10; owner 2026-10-22: these six, the tier pacing as is, revisited after 3 months of real data)
+  { id: 'trained-together', group: 'together', title: 'Trained together', unit: 'sessions', how: 'Sessions you and a friend logged at a gym of the same name, at the same time, each as you trained', levels: L(['starter', 1], ['bronze', 5], ['silver', 20], ['gold', 60], ['platinum', 150]), needs: 'friends' },
+  { id: 'gym-crew', group: 'together', title: 'Gym crew', unit: 'sessions', how: 'Sessions together with two friends or more at once, each as for Trained together', levels: L(['bronze', 1], ['silver', 5], ['gold', 20], ['platinum', 50]), needs: 'friends' },
+  { id: 'same-week', group: 'together', title: 'Same week', unit: 'weeks', how: 'Weeks you and a friend both met your own weekly goals', levels: L(['bronze', 1], ['silver', 4], ['gold', 12], ['platinum', 40]), needs: 'friends' },
+  { id: 'crew-streak', group: 'together', title: 'Crew streak', unit: 'weeks in a row', how: 'Your longest run of weeks you met your goal with a friend at theirs. A best ever: a missed week never takes it away', levels: L(['bronze', 4], ['silver', 12], ['gold', 26], ['platinum', 52]), needs: 'friends' },
+  { id: 'crew-day', group: 'together', title: 'Crew day', unit: 'days', how: 'Days you and two friends or more all trained, anywhere', levels: L(['bronze', 1], ['silver', 10], ['gold', 40], ['platinum', 100]), needs: 'friends' },
+  { id: 'full-house', group: 'together', title: 'Full house', unit: 'friends', how: 'The most friends who met their own weekly goal in a week you met yours. Each against their own goal', levels: L(['bronze', 2], ['silver', 3], ['gold', 5], ['platinum', 8]), needs: 'friends' },
 ];
 export const DEF: ReadonlyMap<string, Def> = new Map(DEFS.map((d) => [d.id, d]));
 /** The families that never count a pain- or light-flagged set (owner, 2026-10-21: kept). */
 export const STRENGTH: readonly string[] = ['prs', 'stronger', 'moved-up', 'plates', 'bodyweight'];
 
-/** An unlock: the level reached, the day it was reached, the lift for a per-lift one, and the value then. */
-export interface Unlock { id: string; level: number; tier: Tier; date: string; value: number; lift?: string }
+/**
+ * An unlock: the level reached, the day it was reached, the lift for a per-lift one, and the value then. A Together one: the
+ * friends it was with (uids) and the gym, when the window still shows it. Neither ever leaves the phone (shareOf).
+ */
+export interface Unlock { id: string; level: number; tier: Tier; date: string; value: number; lift?: string; with?: string[]; gym?: string }
 /** Where a family (per lift, for plates and bodyweight) stands: its value, the highest level reached (−1 none), the next level's number. */
 export interface Track { id: string; value: number; level: number; next: number | null; lift?: string }
 export interface Context {
@@ -90,6 +105,8 @@ export interface Context {
   since: string;
   plans?: readonly DayPlan[];
   program?: Program | null;
+  /** Your friends' windows and the ledger (domain/together): the Together families. None: signed out, or a friend's log. */
+  together?: TogetherCtx;
 }
 
 // ---- What counts ----
@@ -103,8 +120,8 @@ const lifted = (e: SetEntry) => !e.flags.includes('warmup') && !isCardioEntry(e)
 const earns = (e: SetEntry) => lifted(e) && e.reps != null && e.reps >= 1 && !e.flags.some((f) => f === 'partial' || f === 'hold' || f === 'pain' || f === 'light');
 const goalOf = (p: Context['profile']) => Math.min(7, Math.max(1, Math.round(p.weeklyGoal) || 2));
 
-/** A value that only goes up, as dated steps: the day it first reached each value. */
-export type Steps = { date: string; value: number; lift?: string }[];
+/** A value that only goes up, as dated steps: the day it first reached each value (and, for Together, who with). */
+export type Steps = { date: string; value: number; lift?: string; with?: string[]; gym?: string }[];
 
 /** The days with a working lift set, oldest first: the sessions Stats and the weekly goal count (domain/analytics). */
 function sessionDays(entries: readonly SetEntry[]): string[] {
@@ -431,7 +448,7 @@ function crossings(def: Def, steps: Steps): Unlock[] {
     xs.sort((a, b) => a.date.localeCompare(b.date) || a.value - b.value);
     def.levels.forEach((lv, level) => {
       const hit = xs.find((x) => x.value >= lv.at);
-      if (hit) out.push({ id: def.id, level, tier: lv.tier, date: hit.date, value: hit.value, ...(hit.lift && { lift: hit.lift }) });
+      if (hit) out.push({ id: def.id, level, tier: lv.tier, date: hit.date, value: hit.value, ...(hit.lift && { lift: hit.lift }), ...(hit.with && { with: hit.with }), ...(hit.gym && { gym: hit.gym }) });
     });
   }
   return out;
@@ -454,6 +471,7 @@ export function familySteps(entries: readonly SetEntry[], ctx: Context): Record<
   const met = goalWeekDays(sessions, goalOf(ctx.profile));
   const weeks = weekDays(post);
   const fit = fitter(all, ctx);
+  const seen = togetherOf(entries, ctx), tog = seen ? togetherSteps(seen) : null;
   return {
     'sessions': cumulative(sessions),
     'goal-weeks': cumulative(met.map((m) => m.date)),
@@ -472,7 +490,23 @@ export function familySteps(entries: readonly SetEntry[], ctx: Context): Record<
     'new-lifts': newLiftSteps(post),
     'patterns': patternWeeks(post),
     'cardio': cardioSteps(post),
+    ...Object.fromEntries(TOGETHER_IDS.map((id) => [id, tog?.[id] ?? []])),
   };
+}
+
+/**
+ * What counts toward Together (domain/together effective): your log, your start and goal, your friends' windows and the ledger.
+ * Worked out once per log, context and day. Null with no friends' data (signed out, or a friend's log).
+ */
+const TOG = new WeakMap<readonly SetEntry[], { n: number; ctx: Context; v: Seen }>();
+export function togetherOf(entries: readonly SetEntry[], ctx: Context): Seen | null {
+  const t = ctx.together;
+  if (!t) return null;
+  const hit = TOG.get(entries);
+  if (hit && hit.n === entries.length && hit.ctx.together === t && hit.ctx.today === ctx.today && hit.ctx.since === ctx.since && goalOf(hit.ctx.profile) === goalOf(ctx.profile)) return hit.v;
+  const v = effective(entries, ctx.since, goalOf(ctx.profile), t, ctx.today);
+  TOG.set(entries, { n: entries.length, ctx, v });
+  return v;
 }
 
 const levelOf = (def: Def, value: number) => def.levels.reduce((a, lv, i) => (value >= lv.at ? i : a), -1);
@@ -494,7 +528,8 @@ export function achievements(entries: readonly SetEntry[], ctx: Context): Achiev
       tracks.push(...[...best].sort(([a, x], [b, y]) => y - x || a.localeCompare(b)).map(([lift, v]) => track(def, v, lift)));
     } else tracks.push(track(def, value));
     if (def.repeat) counts[def.id] = value;
-    if (!value && ((def.needs === 'program' && !ctx.program) || (def.needs === 'cardio' && !entries.some(isCardioEntry)))) hidden.push(def.id);
+    if (!value && ((def.needs === 'program' && !ctx.program) || (def.needs === 'cardio' && !entries.some(isCardioEntry))
+      || (def.needs === 'friends' && !ctx.together?.friends.length))) hidden.push(def.id);
   }
   unlocks.sort((a, b) => a.date.localeCompare(b.date) || TIERS.indexOf(a.tier) - TIERS.indexOf(b.tier) || a.id.localeCompare(b.id));
   return { unlocks, tracks, counts, hidden };
@@ -509,7 +544,7 @@ const MEMO = new WeakMap<readonly SetEntry[], { n: number; f: number; ctx: Conte
 export function achievementsOf(entries: readonly SetEntry[], ctx: Context): Achievements {
   const hit = MEMO.get(entries);
   if (hit && hit.n === entries.length && hit.f === liftFactsVersion() && hit.ctx.today === ctx.today && hit.ctx.since === ctx.since
-    && hit.ctx.profile === ctx.profile && hit.ctx.program === ctx.program && hit.ctx.plans === ctx.plans) return hit.v;
+    && hit.ctx.profile === ctx.profile && hit.ctx.program === ctx.program && hit.ctx.plans === ctx.plans && hit.ctx.together === ctx.together) return hit.v;
   const v = achievements(entries, ctx);
   MEMO.set(entries, { n: entries.length, f: liftFactsVersion(), ctx, v });
   return v;
@@ -568,13 +603,35 @@ export function amount(id: string, n: number): string {
     case 'bodyweight': return `${n} in a set`;
     case 'new-lifts': return plural(n, 'lift');
     case 'cardio': return `${n.toLocaleString('en-US')} min`;
+    case 'trained-together': return plural(n, 'session');
+    case 'gym-crew': return `${plural(n, 'session')} with 2+ friends`;
+    case 'same-week': return plural(n, 'week');
+    case 'crew-streak': return `${plural(n, 'week')} in a row`;
+    case 'crew-day': return plural(n, 'day');
+    case 'full-house': return plural(n, 'friend');
     default: return String(n);
   }
 }
-/** What an unlock means, in one line: "50 PRs", "Bench Press: 225 lb, 2 plates a side", "A session after 14+ days away". */
-export function unlockText(u: Unlock): string {
+/** "@ana", "@ana and @sam", "@ana, @sam and @kai", "@ana, @sam and 2 more". */
+export function andList(xs: readonly string[]): string {
+  if (xs.length <= 2) return xs.join(' and ');
+  if (xs.length === 3) return `${xs[0]}, ${xs[1]} and ${xs[2]}`;
+  return `${xs[0]}, ${xs[1]} and ${xs.length - 2} more`;
+}
+/**
+ * What an unlock means, in one line: "50 PRs", "Bench Press: 225 lb, 2 plates a side", "A session after 14+ days away". A
+ * Together one names who with (`name`: a friend's uid as said, "@ana_lifts" or "a former friend"), on your phone only.
+ */
+export function unlockText(u: Unlock, name: (uid: string) => string = () => 'a friend'): string {
   const at = DEF.get(u.id)!.levels[u.level].at;
+  const who = andList((u.with ?? []).map(name));
   switch (u.id) {
+    case 'trained-together': return at === 1 && who ? `First session together: ${who}${u.gym ? `, ${u.gym}` : ''}` : `${amount(u.id, at)} together`;
+    case 'gym-crew': return at === 1 && who ? `A session with ${who}${u.gym ? `, ${u.gym}` : ''}` : amount(u.id, at);
+    case 'same-week': return at === 1 && who ? `You and ${who} both met your goals` : `${amount(u.id, at)} at goal with a friend`;
+    case 'crew-streak': return `${amount(u.id, at)} at goal with a friend`;
+    case 'crew-day': return at === 1 && who ? `You, ${who} all trained` : `${amount(u.id, at)} with two friends training`;
+    case 'full-house': return (u.with?.length ?? 0) === at ? `${who} at goal in a week you met yours` : `${amount(u.id, at)} at goal in a week you met yours`;
     case 'sessions': return at === 1 ? 'Your first session' : amount(u.id, at);
     case 'goal-weeks': return at === 1 ? 'Your first goal week' : `${amount(u.id, at)} at your goal`;
     case 'prs': return at === 1 ? 'Your first PR' : amount(u.id, at);
@@ -604,7 +661,8 @@ const NAME_MAX = 60;
 export function shareOf(a: Achievements, hidden: readonly string[] = []): SharedAch[] {
   const top = new Map<string, Unlock>();
   for (const u of a.unlocks) {
-    if (hidden.includes(DEF.get(u.id)!.group)) continue;
+    const g = DEF.get(u.id)!.group;
+    if (g === PRIVATE_GROUP || hidden.includes(g)) continue; // Together: never shared, whatever the switches say
     const k = `${u.id}:${u.lift ? liftKey(u.lift) : ''}`, t = top.get(k);
     if (!t || u.level > t.level || (u.level === t.level && u.date > t.date)) top.set(k, u);
   }
@@ -623,7 +681,7 @@ export function unlocksOf(xs: readonly SharedAch[]): Unlock[] {
   for (const x of xs.slice(0, MAX_SHARED)) {
     const d = typeof x?.i === 'string' ? DEF.get(x.i) : undefined;
     if (x.n !== undefined && (typeof x.n !== 'string' || !x.n.trim() || Array.from(x.n).length > NAME_MAX)) continue;
-    if (!d || typeof x.d !== 'string' || !Number.isInteger(x.l) || x.l < 0 || x.l >= d.levels.length || !/^\d{4}-\d{2}-\d{2}$/.test(x.d) || !!d.perLift !== !!x.n) continue;
+    if (!d || d.group === PRIVATE_GROUP || typeof x.d !== 'string' || !Number.isInteger(x.l) || x.l < 0 || x.l >= d.levels.length || !/^\d{4}-\d{2}-\d{2}$/.test(x.d) || !!d.perLift !== !!x.n) continue;
     out.push({ id: x.i, level: x.l, tier: d.levels[x.l].tier, date: x.d, value: 0, ...(x.n && { lift: x.n }) });
   }
   return out;

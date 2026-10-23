@@ -709,6 +709,21 @@ describe('private (cycle phase)', () => {
     await assertFails(setDoc(doc(as('eve'), 'users/alice/private/cycle'), cycle));
   });
 });
+describe('Together ledger (private/together)', () => {
+  const ledger = { v: 1, p: { bob: { o: '2026-11-02', t: 'AQ' } }, updatedAt: 1 };
+  it('the owner can read and write it', async () => {
+    await assertSucceeds(setDoc(doc(as('alice'), 'users/alice/private/together'), ledger));
+    await assertSucceeds(getDoc(doc(as('alice'), 'users/alice/private/together')));
+  });
+  it('the friend it names cannot read it or write it; a third friend, a stranger or someone signed out neither', async () => {
+    await seed((db) => setDoc(doc(db, 'users/alice/private/together'), ledger));
+    for (const who of ['bob', 'carol', 'eve', null]) {
+      await assertFails(getDoc(doc(as(who), 'users/alice/private/together')));
+      await assertFails(setDoc(doc(as(who), 'users/alice/private/together'), ledger));
+    }
+    await assertFails(getDocs(collection(as('bob'), 'users/alice/private')));
+  });
+});
 describe('Crew status phrase (in the synced settings)', () => {
   const settings = (status: string) => ({ items: { status: JSON.stringify(status) }, updatedAt: 1 });
   it('is yours to set; a friend can read it but not write it; a stranger can do neither', async () => {

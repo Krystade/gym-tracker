@@ -35,6 +35,12 @@ const GLYPH: Record<string, ReactNode> = {
   'new-lifts': <><circle cx="12" cy="12" r="8" /><path d="M15.5 8.5l-2 5-5 2 2-5z" /></>,
   'patterns': <><path d="M12 3.5l7.4 4.2v8.6L12 20.5l-7.4-4.2V7.7z" /><path d="M12 3.5v17M4.6 7.7l14.8 8.6M19.4 7.7L4.6 16.3" /></>,
   'cardio': <path d="M3.5 12h4l2-4 3 8 2.2-5 1.3 1H20.5" />,
+  'trained-together': <><circle cx="8.5" cy="8" r="2.6" /><circle cx="15.5" cy="8" r="2.6" /><path d="M3.5 19c0-3 2.2-5.2 5-5.2s5 2.2 5 5.2M10.5 19c0-3 2.2-5.2 5-5.2s5 2.2 5 5.2" /></>,
+  'gym-crew': <><circle cx="12" cy="7" r="2.4" /><circle cx="5.5" cy="10" r="2" /><circle cx="18.5" cy="10" r="2" /><path d="M7.5 19c0-2.6 2-4.6 4.5-4.6s4.5 2 4.5 4.6M2.5 18c0-2 1.3-3.6 3-3.6M21.5 18c0-2-1.3-3.6-3-3.6" /></>,
+  'same-week': <><rect x="3.5" y="5.5" width="17" height="13" rx="2.5" /><path d="M3.5 10h17" /><circle cx="9" cy="14.5" r="1.6" /><circle cx="15" cy="14.5" r="1.6" /></>,
+  'crew-streak': <><path d="M9 3.5c1 2.5 4 4 4 7.5a4 4 0 0 1-8 0c0-1.7.8-2.8 1.8-3.6.2 1.3.8 2.2 1.7 2.5 0-2.2.1-4.2.5-6.4z" /><path d="M15.5 8c.8 2 3.3 3.2 3.3 6a3.3 3.3 0 0 1-6.6 0" /></>,
+  'crew-day': <><circle cx="12" cy="12" r="8" /><path d="M12 7.5V12l3 2" /><circle cx="12" cy="12" r=".8" fill="currentColor" /></>,
+  'full-house': <><path d="M4 11.5L12 5l8 6.5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /><path d="M9 15.5l2 2 4-4" /></>,
 };
 
 /** A medal, `size` px square. No glyph: a plain coin (the sheet's tier counts). Decorative: its tier is said beside it. */

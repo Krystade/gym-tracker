@@ -5,6 +5,8 @@ import { cloudError, loadCloud } from '../cloud/firebase';
 import { deleteCloudData, phoneApply, syncCloud } from '../cloud/sync';
 import { readMeta } from '../cloud/meta';
 import { syncCycle } from '../cloud/cycle';
+import { syncTogether } from '../cloud/together';
+import { togetherChanged } from './useTogether';
 import { cycleChanged, onCycleChange } from './useCycle';
 import type { SetsStore } from './useSets';
 import type { BodyStore } from './useBody';
@@ -74,6 +76,8 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
       // Cycle phase, to its own private document. Refused until the rules that allow it are deployed: noted, and the rest goes on.
       // Days brought in, or the account's setting taken by a phone that never set it, both change what Today and More show.
       await syncCycle(c, l.uid, db).then((r) => { if (r.pulled || r.trackingAdopted) cycleChanged('pulled'); }, (e) => console.warn('Cycle sync skipped:', e));
+      // Together's ledger, to its own private document (cloud/together): read when it changed here or a day on, written when new.
+      await syncTogether(c, l.uid, db).then((pulled) => { if (pulled) togetherChanged(); }, (e) => console.warn('Together sync skipped:', e));
       // Compare: your summary for friends, when it changed, at most every 15 minutes (state/publishSummary). When the phone is
       // idle, not in the moment after a set; refused or offline, the sync still counts.
       whenIdle(() => void publishSummary(c, l.uid, db).catch((e) => console.warn('Compare summary skipped:', e)));
@@ -131,9 +135,11 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
     try { const { auth, A } = await loadCloud(); await A.signOut(auth); } catch { /* signed out locally either way */ }
     await deleteCloudLink();
     await forgetFriendCaches(); // friends' lines and threads kept for Friends: not on the phone once signed out
+    await db.clearTogether().catch(() => {}); // and the ledger that names them (the account keeps its copy)
+    togetherChanged();
     setLink(null);
     setStatus({ kind: 'idle' });
-  }, []);
+  }, [db]);
 
   const resetPassword = useCallback(async (email: string) => {
     if (!email.trim()) { setStatus({ kind: 'error', text: 'Type your email first.' }); return; }
@@ -158,11 +164,13 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
       await c.A.deleteUser(user);
       await deleteCloudLink();
       await forgetFriendCaches();
+      await db.clearTogether().catch(() => {});
+      togetherChanged();
       setLink(null);
       setStatus({ kind: 'done', text: 'Account deleted. Your log is still on this phone.' });
       return true;
     } catch (e) { setStatus({ kind: 'error', text: cloudError(e) }); return false; }
-  }, [link]);
+  }, [link, db]);
 
   return { link, mine, statusBox, lastSyncBox, enter, signOut, resetPassword, deleteAccount, run };
 }

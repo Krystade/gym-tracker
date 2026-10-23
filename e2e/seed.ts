@@ -82,7 +82,9 @@ export async function befriend(request: APIRequestContext, a: Seeded, b: Seeded,
   await put(request, `users/${b.uid}/friends/${a.uid}`, { since: now, via: 'request' });
 }
 
-export interface Set0 { id: string; date: string; seq: number; loggedAt: string; exercise: string; setNo: number; weight: number; reps: number | null; flags: string[]; source: string }
+export interface Set0 { id: string; date: string; seq: number; loggedAt: string; exercise: string; setNo: number; weight: number; reps: number | null; flags: string[]; source: string; gym?: string }
+/** Sets at a gym (the name the phone saves with each set). */
+export const atGym = (gym: string, sets: Set0[]): Set0[] => sets.map((x) => ({ ...x, gym }));
 /** A session: each lift's sets, one every `gap` minutes from `start`. */
 export function session(start: Date, lifts: [string, [number, number][]][], gap = 3): Set0[] {
   const out: Set0[] = [];
@@ -98,7 +100,7 @@ export function session(start: Date, lifts: [string, [number, number][]][], gap 
 }
 
 /** Their log into their month documents (with the PR ids a phone writes there), their goal and status into their settings. */
-export async function log(request: APIRequestContext, who: Seeded, sets: Set0[], opts: { goal?: number; status?: string; prs?: Record<string, string[]> } = {}) {
+export async function log(request: APIRequestContext, who: Seeded, sets: Set0[], opts: { goal?: number; status?: string; prs?: Record<string, string[]>; /** Their achievements start day. */ since?: string } = {}) {
   const months = new Map<string, Set0[]>();
   for (const s of sets) months.set(s.date.slice(0, 7), [...(months.get(s.date.slice(0, 7)) ?? []), s]);
   const at = Date.now();
@@ -106,6 +108,7 @@ export async function log(request: APIRequestContext, who: Seeded, sets: Set0[],
   const items: Record<string, string> = {};
   if (opts.goal) items.profile = JSON.stringify({ weeklyGoal: opts.goal });
   if (opts.status) items.status = JSON.stringify(opts.status);
+  if (opts.since) items.achievements = JSON.stringify(opts.since);
   if (Object.keys(items).length) await put(request, `users/${who.uid}/meta/profile`, { items, updatedAt: at });
   await put(request, `users/${who.uid}/meta/index`, { months: Object.fromEntries([...months.keys()].map((m) => [m, at])), ...(Object.keys(items).length && { meta: at }) });
 }

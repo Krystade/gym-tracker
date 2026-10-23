@@ -4,7 +4,7 @@ import path from 'node:path';
 import { addFriend, goto, openProgram } from './nav';
 import { audit, check, clean, lines, notched, renderCheck, TOP } from './layout';
 import { deloadLog, SIM_LIFTS, simDay } from '../src/domain/learn/deloadSim.sample';
-import { account, befriend, boardPost, iso, log, named, onBoard, ownerAccount, ping, put, rand, session, signedIn, Ts, verify, type Seeded } from './seed';
+import { account, atGym, befriend, boardPost, iso, log, named, onBoard, ownerAccount, ping, put, rand, session, signedIn, Ts, verify, type Seeded } from './seed';
 import { convertedRows, pasteRows, toCsv as dupesCsv, TWINS } from './fixtures/dupes';
 import { friendLog, publish, summaryOf } from './fixtures/compare';
 import { sixWeeks, WED } from './fixtures/today';
@@ -1110,6 +1110,55 @@ test('Achievements with friends: a chip on a friend’s session, their page’s 
   await expect(g.getByRole('switch', { name: 'Show Showing up to friends' })).toHaveAttribute('aria-checked', 'false');
   await check(page, info, found, 'achf-share-off', [], 'main');
   await png('share-off');
+  clean(found);
+});
+
+test('Together: the line on a friend’s session, the group in your sheet, Trained together’s With list, Full house’s rings', async ({ browser, request }, info) => {
+  test.setTimeout(180_000);
+  const found: string[] = [];
+  const [me, f1, f2, f3] = await Promise.all([long('me'), long('medal'), long('live'), long('rest')].map((n) => account(request, n)));
+  const gym = 'The Iron Den Strength Club Downtown';
+  const bench = (d: number, m: number) => atGym(gym, session(at(d, 17, m), [['Bench Press', Array.from({ length: 10 }, (): [number, number] => [135, 8])]]));
+  const since = iso(at(20, 12));
+  await Promise.all([
+    log(request, me, [...bench(1, 0), ...bench(0, 0)], { since }),
+    log(request, f1, [...bench(1, 4), ...bench(0, 4)], { since, goal: 2 }),
+    log(request, f2, [...bench(1, 8), ...bench(0, 8)], { since, goal: 2 }),
+    log(request, f3, atGym('Gold Barn', session(at(0, 7), [['Barbell Squat', [[185, 5]]]])), { since, goal: 3 }),
+  ]);
+  await Promise.all([f1, f2, f3].map((f) => befriend(request, me, f)));
+  const page = await open(browser, me);
+  const png = async (name: string) => { if (process.env.STATS_PNG) await page.screenshot({ path: `${process.env.STATS_PNG}/${info.project.name}-tog-${name}.png` }); };
+  const line = crew(page).getByTestId(`crew-${f1.name}`).locator('.fd-together');
+  await expect(line).toContainText(`You and @${f1.name} at ${gym}`, { timeout: 20_000 });
+  await expect(crew(page).locator('.fd-together')).toHaveCount(2);
+  await line.evaluate((e) => e.scrollIntoView({ block: 'center' }));
+  await check(page, info, found, 'tog-feed', [], '.fd-together');
+  await png('feed');
+
+  await goto(page, 'Stats');
+  await page.locator('[data-tile="achievements"]').click();
+  const sheet = page.getByRole('dialog', { name: 'Achievements' });
+  await expect(sheet.getByRole('region', { name: 'Together' })).toContainText('Gym crew');
+  await check(page, info, found, 'tog-sheet', [], 'main');
+  await png('sheet');
+  await sheet.getByRole('region', { name: 'Together' }).evaluate((e) => e.scrollIntoView({ block: 'start' }));
+  await check(page, info, found, 'tog-group', [], 'main');
+  await png('group');
+  await sheet.getByRole('region', { name: 'Together' }).getByRole('button', { name: /^Trained together/ }).click();
+  const tt = page.getByRole('dialog', { name: 'Trained together' });
+  await expect(tt.getByRole('region', { name: 'With' })).toContainText('2 sessions · last today');
+  await check(page, info, found, 'tog-with', [], 'main');
+  await png('with');
+  await tt.locator('.st-sh-body').evaluate((b) => { b.scrollTop = b.scrollHeight; });
+  await check(page, info, found, 'tog-with-end', [], 'main');
+  await png('with-end');
+  await tt.getByRole('button', { name: 'Achievements' }).click();
+  await page.getByRole('dialog', { name: 'Achievements' }).getByRole('region', { name: 'Together' }).getByRole('button', { name: /^Full house/ }).click();
+  const fh = page.getByRole('dialog', { name: 'Full house' });
+  await expect(fh.getByRole('region', { name: 'This week' })).toContainText('2 friends so far');
+  await check(page, info, found, 'tog-house', [], 'main');
+  await png('house');
   clean(found);
 });
 

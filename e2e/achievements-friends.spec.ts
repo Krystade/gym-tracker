@@ -2,7 +2,7 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '@
 import { DOCS, FIRESTORE } from './emu';
 import { publish, summaryOf } from './fixtures/compare';
 import { goto } from './nav';
-import { account, befriend, iso, log, session, signedIn, type Seeded } from './seed';
+import { account, atGym, befriend, iso, log, session, signedIn, type Seeded } from './seed';
 
 // Achievements with friends (plan stages 4-5, owner Q2-Q11): what a friend shows, from their Compare summary, on their page and,
 // silver and up on the day, beside their session in your feed; and a group you keep back, gone from yours. Synthetic only.
@@ -159,4 +159,65 @@ test('a group kept back: its switch in a family’s levels, and it leaves your s
   // The next publish, 15 minutes on: Plates gone, Sessions still there.
   await page.clock.runFor(15 * 60_000);
   await published(['sessions']);
+});
+
+/** The account's Together ledger as the emulator has it: the friends it counts sessions together with (null: none written). */
+async function ledgerOf(request: APIRequestContext, who: Seeded): Promise<string[] | null> {
+  const r = await request.get(`${DOCS}/users/${who.uid}/private/together`, { headers: { Authorization: 'Bearer owner' } });
+  if (!r.ok()) return null;
+  const doc = await r.json() as { fields?: { f?: { mapValue: { fields?: Record<string, { mapValue: { fields: Record<string, unknown> } }> } } } };
+  return Object.entries(doc.fields?.f?.mapValue.fields ?? {}).filter(([, v]) => v.mapValue.fields.t).map(([k]) => k).sort();
+}
+
+test('trained together: the line on their card, the family and who with on yours, the ledger private; a third friend sees none of it', async ({ browser, request }) => {
+  test.setTimeout(180_000);
+  const [me, fr, c] = await Promise.all(['me', 'fr', 'cc'].map((n) => account(request, `${n}${Math.random().toString(36).slice(2, 8)}`)));
+  const bench = (): [string, [number, number][]][] => [['Bench Press', Array.from({ length: 10 }, (): [number, number] => [135, 8])]];
+  await Promise.all([
+    log(request, me, atGym('Iron Den', session(at(0, 17, 0), bench())), { since: day(5) }),
+    log(request, fr, atGym('iron den ', session(at(0, 17, 5), bench())), { since: day(5), goal: 2 }),
+    // Signing in, a phone takes the settings it finds (a goal seeded alone isn't a profile it can store: friends' only).
+    // C trains today too, at another gym, the same hour: a friend of both, with them never.
+    log(request, c, atGym('Gold Barn', session(at(0, 17, 0), bench())), { since: day(5) }),
+  ]);
+  await Promise.all([befriend(request, me, fr), befriend(request, me, c), befriend(request, fr, c)]);
+
+  const page = await signedIn(browser, me, T);
+  const card = crew(page).getByTestId(`crew-${fr.name}`);
+  await expect(card.locator('.fd-together')).toHaveText(new RegExp(`^Trained together · You and @${fr.name} at Iron Den, 5:00.?PM–5:32.?PM$`), { timeout: 20_000 });
+  await expect(crew(page).getByTestId(`crew-${c.name}`)).toContainText('Bench Press');
+  await expect(crew(page).locator('.fd-together')).toHaveCount(1);
+
+  // Stats: the Together group, its first level, and who with: only on this phone.
+  await goto(page, 'Stats');
+  await page.locator('[data-tile="achievements"]').click();
+  const sheet = page.getByRole('dialog', { name: 'Achievements' });
+  const group = sheet.getByRole('region', { name: 'Together' });
+  await expect(group).toContainText('Trained together');
+  await expect(sheet.getByRole('region', { name: 'New today' })).toContainText(`First session together: @${fr.name}, Iron Den`);
+  await group.getByRole('button', { name: /^Trained together/ }).click();
+  const detail = page.getByRole('dialog', { name: 'Trained together' });
+  const withs = detail.getByRole('region', { name: 'With' });
+  await expect(withs).toContainText(`@${fr.name}`);
+  await expect(withs).toContainText('1 session · last today, Iron Den');
+  await expect(withs).not.toContainText(c.name);
+  await expect(detail.getByRole('switch')).toHaveCount(0); // never shown to friends: no switch
+  await expect(detail).toContainText('only you see these');
+
+  // The ledger goes up with the sync, into the private document (C there too, for the day you both trained, never together); the summary friends read carries none of it.
+  await expect.poll(async () => { await page.clock.runFor(60_000); return ledgerOf(request, me); }, { timeout: 90_000 }).toEqual([fr.uid]);
+  await page.clock.runFor(15 * 60_000);
+  await expect.poll(async () => { await page.clock.runFor(30_000); return sharedOf(request, me); }, { timeout: 60_000 }).not.toBeNull();
+  expect((await sharedOf(request, me))!.filter((x) => /together|crew|same-week|full-house/.test(x))).toEqual([]);
+
+  // C, a friend of both: no Together line on either card, and nothing of theirs in C's.
+  const pc = await signedIn(browser, c, T);
+  await expect(crew(pc).getByTestId(`crew-${me.name}`)).toContainText('Bench Press', { timeout: 20_000 });
+  await expect(crew(pc).getByTestId(`crew-${fr.name}`)).toContainText('Bench Press', { timeout: 20_000 });
+  await expect(crew(pc).locator('.fd-together')).toHaveCount(0);
+  await goto(pc, 'Stats');
+  await pc.locator('[data-tile="achievements"]').click();
+  await expect(pc.getByRole('dialog', { name: 'Achievements' }).getByRole('region', { name: 'Together' })).not.toContainText(/@/);
+  await pc.context().close();
+  await page.context().close();
 });

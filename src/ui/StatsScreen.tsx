@@ -191,7 +191,7 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
       {achId && ach && (
         <StatsSheet key={achId} title={DEF.get(achId)!.title} onClose={() => setOpen(null)}
           link={<button type="button" className="st-link st-back" onClick={() => setOpen('achievements')}><Icon name="chev-left" size={18} sw={2} />Achievements</button>}>
-          <AchievementDetail a={ach.a} id={achId} today={today} since={ach.since} shown={!share.hidden.includes(DEF.get(achId)!.group)} onShare={share.onShare} />
+          <AchievementDetail a={ach.a} id={achId} entries={entries} today={today} since={ach.since} shown={!share.hidden.includes(DEF.get(achId)!.group)} onShare={share.onShare} />
         </StatsSheet>
       )}
     </>
