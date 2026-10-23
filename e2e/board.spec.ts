@@ -60,6 +60,8 @@ test('opening the board reads a page, your gate document and your notice (22); a
   await expect(board(page).locator('.bd-list > li')).toHaveCount(20, { timeout: 20_000 });
   await page.waitForLoadState('networkidle');
   const cold = await stop();
+  const shown = await board(page).locator('.bd-list > li[data-post]').evaluateAll((els) => els.map((e) => e.getAttribute('data-post')));
+  expect(shown).toHaveLength(20);
   console.log(`board reads: cold open ${cold.total}`);
   expect(cold.total).toBe(22);
   expect(cold.docs.sort()).toEqual(['gate', 'notice']);
@@ -70,7 +72,9 @@ test('opening the board reads a page, your gate document and your notice (22); a
   await page.clock.fastForward('01:01');
   stop = boardReads(page);
   await toBoard(page);
-  await expect(board(page).locator('.bd-list > li')).toHaveCount(20);
+  // Every post the cold open showed, still shown; another test's post from that minute lands on top as well (the board is the run's).
+  for (const id of shown) await expect(card(page, id!)).toBeVisible();
+  expect(await board(page).locator('.bd-list > li').count()).toBeGreaterThanOrEqual(20);
   await page.waitForLoadState('networkidle');
   const again = await stop();
   console.log(`board reads: reopened with nothing new ${again.total}`);
