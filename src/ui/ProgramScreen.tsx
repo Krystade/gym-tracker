@@ -106,7 +106,7 @@ export function ProgramScreen({ programs, profile, entries, body = [], gyms, uid
   const builder = (
     <>
       <section className={frame}>
-        <p className="muted small">Built from your priorities: each set goes to the priority muscle furthest below this block’s aim, using the lifts you actually do. Full-body days: every day trains your priority muscles, with a different lift for a muscle where you have one.</p>
+        <p className="muted small">Built from your priorities: each set goes to the priority muscle furthest below this block’s aim, then toward its range, using the lifts you actually do. Full-body days: every day trains your priority muscles, with a different lift for a muscle where you have one.</p>
         {mode === 'minutes' && <p className="muted small" aria-label="How minutes are sized">{sizedBy === 'pace' ? 'Minutes are at your own pace: a day takes you about that long.' : 'Minutes are at the timer’s rests until 2 days are timed; then at your own pace.'}</p>}
         <div className="settings-grid two">
           <label>Days per week<Input aria-label="Days per week" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} /></label>
@@ -152,6 +152,7 @@ export function ProgramScreen({ programs, profile, entries, body = [], gyms, uid
       {over.length > 0 && <p className="warn small" role="status">{over.map((x) => `${x.name} ≈ ${dayMinutes(x)} min`).join(', ')}: over your {budget}. Train fewer days a week or allow more minutes, then rebuild.</p>}
       {bare ? <p className="warn small">No gear ticked at {gym.name}: only bodyweight lifts are used.</p>
         : p?.unavailable?.length ? <p className="warn small">Nothing at this gym trains: {p.unavailable.join(', ')}.</p> : null}
+      {p?.short && !p.edited && <p className="warn small" role="status" aria-label="Fewer sets than asked">{shortLine(p)}</p>}
       {p?.cardioUnavailable && <p className="warn small">Cardio has a weekly goal, but no cardio machine is ticked at this gym.</p>}
       {p && p.days.map((day, di) => { const L = lengths(day); return (
         <section className="card" key={day.name}>
@@ -202,6 +203,16 @@ export function ProgramScreen({ programs, profile, entries, body = [], gyms, uid
       {p && <details className="card builder"><summary>Rebuild program</summary>{builder}</details>}
     </>
   );
+}
+
+/** "18 of 20 sets a session: every priority muscle is at the top of its range" (round 28: why a build stopped short). */
+export function shortLine(p: Program): string {
+  const lifted = p.days.map((d) => d.slots.reduce((a, x) => a + (x.minutes == null ? x.sets : 0), 0));
+  const lo = Math.min(...lifted), hi = Math.max(...lifted);
+  const head = p.minutes != null ? `Days are under your ${p.minutes} min` : `${lo === hi ? lo : `${lo}–${hi}`} of ${p.perSession} sets a session`;
+  const why = p.short!.why === 'tops' ? 'every priority muscle is at the top of its range'
+    : `every other priority muscle is at the top of its range, and no lift here has room for more ${p.short!.muscles.join(', ')}`;
+  return `${head}: ${why}.`;
 }
 
 const fmtN = (n: number) => (Math.abs(n - Math.round(n)) < 0.05 ? String(Math.round(n)) : n.toFixed(1));

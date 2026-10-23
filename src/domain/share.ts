@@ -38,5 +38,5 @@ export function copyGym(g: Omit<Gym, 'id'>, mine: Gym[]): Gym {
   const taken = new Set(mine.map((x) => x.name.toLowerCase()));
   let name = g.name, n = 2;
   while (taken.has(name.toLowerCase())) name = `${g.name} (${n++})`;
-  return { id: `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, equipment: [...g.equipment], exclude: [...g.exclude], include: [...g.include] };
+  return { id: `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, equipment: [...g.equipment], exclude: [...g.exclude], include: [...g.include], ...(g.plates && { plates: [...g.plates] }) };
 }

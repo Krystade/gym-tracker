@@ -9,7 +9,7 @@ import { Stepper } from './Stepper';
 import { Icon } from './icons';
 import { BUILT_IN, type TagPrefs } from '../domain/tags';
 import { TagEditor } from './TagEditor';
-import { fmtPerSide } from '../domain/plates';
+import { fmtPerSide, PLATE_SIZES } from '../domain/plates';
 import { useMinute } from '../state/clock';
 import { Input } from './Field';
 import { bodyShare } from '../domain/learn/bodyweight';
@@ -26,7 +26,9 @@ interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; not
  * `when`: the set may have been done earlier — `always` shows the time field (a past day), otherwise "Did this earlier?" opens it.
  * `suggest` is asked when the field opens, so it reflects the clock then. An empty field means unknown.
  */
-export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day, hold: holdLift, heaviest = 0, tagPrefs, onTagPrefs, nextReps, weightStep = 5 }: {
+export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day, hold: holdLift, heaviest = 0, tagPrefs, onTagPrefs, nextReps, weightStep = 5, plates = PLATE_SIZES }: {
+  /** The plate sizes at this gym, for the per-side line. */
+  plates?: readonly number[];
   /** An empty weight (null) is for a lift with nothing to suggest from. */
   exercise: string; initial: Omit<SetFormValue, 'weight'> & { weight: number | null }; submitLabel: string;
   /** The heaviest working weight logged for this lift: over twice it asks once before saving. */
@@ -152,7 +154,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
         <Stepper label="Weight" value={weight} onChange={(v) => { setLoud(true); touch(setWeight)(v); }} step={weightStep} mode="decimal" min={body ? -Infinity : 0} />
         <Stepper label={unit} value={reps} onChange={touch(setReps)} step={hold ? 5 : 1} mode="numeric" />
       </div>
-      {!problem && fmtPerSide(w, exercise) && <p className="small muted plates" aria-label="Per side">{fmtPerSide(w, exercise)}</p>}
+      {!problem && fmtPerSide(w, exercise, plates) && <p className="small muted plates" aria-label="Per side">{fmtPerSide(w, exercise, plates)}</p>}
       {!problem && body && w !== 0 && <p className="small muted plates" aria-label="Load">{w < 0 ? `BW − ${fmtWeight(-w)} lb: help` : `BW + ${fmtWeight(w)} lb`}</p>}
       {problem && <p role="status" className={quiet ? 'small muted' : 'small err'}>{problem}</p>}
       {!problem && typo && asked === w && <p role="status" className="small err">{weight} lb is {Math.round(w / heaviest)}× your best: tap {submitLabel.split(' ·')[0]} again to keep it</p>}

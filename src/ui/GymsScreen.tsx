@@ -9,6 +9,8 @@ import { cloudError, loadCloud } from '../cloud/firebase';
 import { listFriends, myUsername, sendGym, type Friend } from '../cloud/friends';
 import { Input, TextArea } from './Field';
 import { FriendName } from './FriendName';
+import { PLATE_SIZES, platesOf } from '../domain/plates';
+import { fmtWeight } from '../domain/format';
 
 const newGym = (n: number): Gym => ({ id: `g${Date.now().toString(36)}`, name: n ? `Gym ${n + 1}` : 'My gym', equipment: [], exclude: [], include: [], gearVersion: GEAR_VERSION });
 const ALL_GEAR = EQUIPMENT_GROUPS.flatMap(([, items]) => items);
@@ -154,6 +156,16 @@ export function GymsScreen({ gyms, logged, fresh, uid, backLabel = '‹ Back', o
         </fieldset>
         );
       })}
+      {/* Round 28 (owner): the per-side line loads only the plates this gym has; 35s on by default. */}
+      <section className="card">
+        <h2>Plates</h2>
+        <p className="muted small">The plates here (lb), for a bar lift’s “a side” line.</p>
+        <div className="chips" role="group" aria-label="Plates here" style={{ gap: 6 }}>
+          {PLATE_SIZES.map((p) => { const on = platesOf(g).includes(p); return (
+            <button key={p} type="button" className="chip" aria-pressed={on} aria-label={`${fmtWeight(p)} lb plates`}
+              onClick={() => update((x) => ({ ...x, plates: on ? platesOf(x).filter((y) => y !== p) : PLATE_SIZES.filter((y) => y === p || platesOf(x).includes(y)) }))}>{fmtWeight(p)}</button>); })}
+        </div>
+      </section>
       <section className="card">
         <h2>Exercises here</h2>
         <p className="muted small">Exclude a lift the gear can’t really do (a weak cable stack, a broken machine). Add lifts that need nothing listed above, or that aren’t in the app’s list.</p>

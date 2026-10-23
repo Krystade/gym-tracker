@@ -29,7 +29,9 @@ export const EQUIPMENT_GROUPS: [string, Equipment[]][] = [
  * `gearVersion`: the gear list the gym was last checked against (see GEAR_VERSION). Older gyms haven't been asked about the gear
  * added since, so it counts as maybe there.
  */
-export interface Gym { id: string; name: string; equipment: Equipment[]; exclude: string[]; include: string[]; gearVersion?: number }
+export interface Gym { id: string; name: string; equipment: Equipment[]; exclude: string[]; include: string[]; gearVersion?: number;
+  /** The plate sizes here (lb), for the per-side line; unset = plates.PLATE_SIZES, 35s included. */
+  plates?: number[] }
 
 /** The gear list's version: 2 added NEW_GEAR (round 15). A gym without one predates it. */
 export const GEAR_VERSION = 2;

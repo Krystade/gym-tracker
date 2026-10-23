@@ -17,7 +17,9 @@ export interface ProgramDay { name: string; slots: Slot[] }
  * `aims`: the weekly sets each muscle was planned at (owner, 2026-10-20: learn/volume planAims), and `block` the day those were
  * read, which starts its 3-week block (programUpdateDue).
  */
-export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string; aims?: Partial<Record<Muscle, number>>; block?: string; /** Minutes per session it was built for; unset when built by sets. */ minutes?: number; /** Set once its days were hand-edited; a rebuild drops it. */ edited?: boolean; newToYou?: string[]; unavailable?: Muscle[]; /** Cardio has a weekly goal but this gym has no cardio machine. */ cardioUnavailable?: boolean }
+export interface Program { key: 'program'; days: ProgramDay[]; perSession: number; createdAt: string; aims?: Partial<Record<Muscle, number>>; block?: string; /** Minutes per session it was built for; unset when built by sets. */ minutes?: number; /** Set once its days were hand-edited; a rebuild drops it. */ edited?: boolean; newToYou?: string[]; unavailable?: Muscle[]; /** Cardio has a weekly goal but this gym has no cardio machine. */ cardioUnavailable?: boolean;
+  /** Why the days hold fewer sets than asked: every muscle at its range's top, or these still short with no lift here that has room. */
+  short?: { why: 'tops' } | { why: 'lifts'; muscles: Muscle[] } }
 /** What happened to the program on one date: which day was run, and what was skipped or swapped. */
 /** `slots` is the day as planned when the session was logged, so later program edits don't rewrite history. */
 /** `quick`: a one-off Quick day built for this many minutes; its `slots` are the day, and it doesn't move the rotation. */
@@ -109,11 +111,15 @@ function bestTier(ex: string, p: Profile): Tier {
 
 /**
  * `opts.aims`: each muscle's weekly sets to plan at, [lower, upper] (learn/volume planAims: a +20 % step from his own volume,
- * owner 2026-10-20); a muscle without one is planned at its priority's range.
+ * owner 2026-10-20); a muscle without one is planned at its priority's range. The aims order the fill, they don't cap it (owner,
+ * 2026-10-22: 3 days of 20 gave days of 8): once every aim is met, the sets left go toward each range the same way, up to its top.
  */
 export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days: number; perSession: number; aims?: Partial<Record<Muscle, [number, number]>> }, now: Date, ctx: BuildContext = {}): Program {
   const { days, perSession } = opts;
-  const goalFor = (m: Muscle): [number, number] => opts.aims?.[m] ?? profile.targets[profile.tiers[m]];
+  const range = (m: Muscle): [number, number] => profile.targets[profile.tiers[m]];
+  const goalFor = (m: Muscle): [number, number] => opts.aims?.[m] ?? range(m);
+  // The goals in fill order: the aim's lower and upper, then the range's (never below the aim: an aim above the range is his own volume).
+  const goals = (m: Muscle): number[] => { const [a, b] = goalFor(m), [lo, hi] = range(m); return [a, b, Math.max(lo, b), Math.max(hi, b)]; };
   const today = localDate(now);
   const achieved = zero();
   const weekly = new Map<string, number>();
@@ -127,8 +133,8 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   // Greedy, a pair of sets at a time: the muscle furthest below its tier's lower target *as a fraction of it*,
   // weighted by tier, goes next; once every lower target is met, the same toward the upper targets. Using the
   // fraction (not the raw gap) keeps priority 1's big targets from starving every other tier.
-  const score = (m: Muscle, bound: 0 | 1) => {
-    const goal = goalFor(m)[bound];
+  const score = (m: Muscle, bound: number) => {
+    const goal = goals(m)[bound];
     return goal > 0 ? (TIER_WEIGHT[profile.tiers[m]] * (goal - achieved[m])) / goal : 0;
   };
   // Whole pairs per day, so an odd sets-per-session never pushes a day over it.
@@ -137,7 +143,7 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   const lowBudget = (profile.lowShare ?? DEFAULT_LOW_SHARE) * days * dayCap;
   let low = 0;
   const isLow = (m: Muscle) => profile.tiers[m] >= 3;
-  const prioritiesShort = () => MUSCLES.some((m) => !isLow(m) && !saturated.has(m) && achieved[m] < goalFor(m)[1]);
+  const prioritiesShort = () => MUSCLES.some((m) => !isLow(m) && !saturated.has(m) && achieved[m] < goals(m)[3]);
   const perDay = Array.from({ length: days }, () => new Map<string, number>());
   const totals = Array(days).fill(0) as number[];
   const room = (ex: string, d: number) => (perDay[d].get(ex) ?? 0) + UNIT <= MAX_SETS_PER_DAY;
@@ -154,8 +160,8 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
     const open = MUSCLES.filter((m) => !saturated.has(m));
     // Over the low-priority budget, priority 3–4 muscles wait — re-checked every pair, so they come back once priorities are covered.
     const capped = low + UNIT > lowBudget && prioritiesShort();
-    const below = (bound: 0 | 1) => open.filter((m) => score(m, bound) > 0 && !(capped && isLow(m))).sort((a, b) => score(b, bound) - score(a, bound));
-    const m = below(0)[0] ?? below(1)[0];
+    const below = (bound: number) => open.filter((m) => score(m, bound) > 0 && !(capped && isLow(m))).sort((a, b) => score(b, bound) - score(a, bound));
+    const m = below(0)[0] ?? below(1)[0] ?? below(2)[0] ?? below(3)[0];
     if (!m) break;
     // The pair goes on the day with the fewest sets for m (then the lightest) that has room and a lift for m with room,
     // so each muscle spreads over the days with its best lifts split between them; none means this muscle is done.
@@ -170,6 +176,9 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
     for (const [mm, f] of Object.entries(muscleVector(ex) ?? {}) as [Muscle, number][]) achieved[mm] += f * UNIT;
   }
 
+  // Short of what was asked: say why (every muscle at its top, or some still short with no lift here that has room).
+  const stuck = MUSCLES.filter((m) => saturated.has(m) && !missing.includes(m) && score(m, 3) > 0);
+  const short: Program['short'] = totals.some((t) => t < dayCap) ? (stuck.length ? { why: 'lifts', muscles: stuck } : { why: 'tops' }) : undefined;
   const order = [...weekly.keys()].sort((a, b) => bestTier(a, profile) - bestTier(b, profile) || weekly.get(b)! - weekly.get(a)!);
   const newToYou = order.filter((ex) => !isKnown(ex) && perDay.some((d) => d.has(ex)));
   // Cardio: the priority's weekly minutes in slots of about 25, on the days with the fewest lifting sets, each last in its day.
@@ -184,6 +193,7 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
     key: 'program', perSession, createdAt: now.toISOString(), newToYou, unavailable,
     ...(opts.aims && { block: today, aims: Object.fromEntries(Object.entries(opts.aims).map(([m, [lo]]) => [m, lo])) }),
     ...(goal > 0 && !cardioMachine && { cardioUnavailable: true }),
+    ...(short && { short }),
     days: perDay.map((m, i) => ({
       name: `Day ${String.fromCharCode(65 + i)}`,
       slots: [

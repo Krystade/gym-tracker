@@ -1,3 +1,4 @@
+import { platesOf } from '../domain/plates';
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { Profile } from '../domain/profile';
 import { planToRecord, quickDay } from '../domain/program';
@@ -389,7 +390,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
         onOpen={() => { markFinished(owner, lastUnseen, { seen: true }); setFinishRev((n) => n + 1); onOpenDay?.(lastUnseen); }} />}
       {cards.length === 0 && <p className="muted">{date < today ? 'Nothing logged that day.' : 'Nothing logged yet today.'}</p>}
       {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} today={today} store={store} settings={settings} onOpen={onOpen}
-        plannedSets={plannedSets(programs.program, plan, n)} plannedMinutes={plannedMinutes(programs.program, plan, n)} gym={gyms.active?.name} who={who} left={hasPlan ? left : []} onGo={goTo}
+        plannedSets={plannedSets(programs.program, plan, n)} plannedMinutes={plannedMinutes(programs.program, plan, n)} gym={gyms.active?.name} plates={platesOf(gyms.active)} who={who} left={hasPlan ? left : []} onGo={goTo}
         swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
         openReq={openReq && sameExercise(openReq.to, n) ? openReq : null}
         supersetWith={groupOf(n)?.lifts.filter((x) => !sameExercise(x, n))} onNotSuperset={() => { const g = groupOf(n); if (g) dismiss(g); }}

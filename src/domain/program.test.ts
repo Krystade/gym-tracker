@@ -393,14 +393,16 @@ describe('round 15: a larger catalog, the same program pool', () => {
 
 describe('owner decisions 2026-10-20: plan at the aim, P4 excluded, blocks', () => {
   const sets = (p: Program, m: Muscle) => programVolume(p)[m];
-  it('plans a muscle at its aim, not its range: an aim below the range gets about the aim', () => {
+  // Round 28 (owner, 2026-10-22): the aims order the fill and no longer cap it; a session only big enough for the aims gets them first.
+  it('plans each muscle to its aim first: a session with room for little more than the aims gets each aim', () => {
     const prof = withTiers({ Chest: 1, Lats: 1, Biceps: 2 }, 3);
-    const band = buildProgram(prof, [], { days: 3, perSession: 16 }, NOW);
-    const aimed = buildProgram(prof, [], { days: 3, perSession: 16, aims: { Chest: [7, 7], Lats: [7, 7], Biceps: [4, 4] } }, NOW);
-    expect(sets(band, 'Chest')).toBeGreaterThanOrEqual(12);
-    expect(sets(aimed, 'Chest')).toBeGreaterThanOrEqual(7);
-    expect(sets(aimed, 'Chest')).toBeLessThan(10);
-    expect(sets(aimed, 'Biceps')).toBeLessThan(sets(band, 'Biceps'));
+    const band = buildProgram(prof, [], { days: 3, perSession: 6 }, NOW);
+    const aimed = buildProgram(prof, [], { days: 3, perSession: 6, aims: { Chest: [7, 7], Lats: [7, 7], Biceps: [4, 4] } }, NOW);
+    expect(sets(aimed, 'Chest')).toBeGreaterThanOrEqual(6);
+    expect(sets(aimed, 'Lats')).toBeGreaterThanOrEqual(6);
+    expect(sets(aimed, 'Biceps')).toBeGreaterThanOrEqual(4);
+    // At its range, priority 1's bigger targets take the sets first.
+    expect(sets(band, 'Chest') + sets(band, 'Lats')).toBeGreaterThan(sets(aimed, 'Chest') + sets(aimed, 'Lats') - 2);
     expect(aimed.aims).toMatchObject({ Chest: 7, Lats: 7, Biceps: 4 });
     expect(aimed.block).toBe(NOW.toISOString().slice(0, 10));
     expect(band.aims).toBeUndefined();
@@ -437,10 +439,50 @@ describe('owner decisions 2026-10-20: plan at the aim, P4 excluded, blocks', () 
     const same = rebuildLike({ days: 3, perSession: 14 }, prof, [], NOW, {}, undefined, () => 0);
     expect(same.days.length).toBe(3);
     expect(volumeDiffers(a, same)).toBe(false);
-    const lower = rebuildLike({ days: 3, perSession: 14 }, prof, [], NOW, {}, { Chest: [6, 6], Lats: [6, 6] }, () => 0);
+    // A smaller session at the aims: the aims take what there is.
+    const lower = rebuildLike({ days: 3, perSession: 8 }, prof, [], NOW, {}, { Chest: [6, 6], Lats: [6, 6] }, () => 0);
     expect(volumeDiffers(a, lower)).toBe(true);
     const timed = rebuildLike({ days: 2, perSession: 14, minutes: 40 }, prof, [], NOW, {}, undefined, (d) => d.slots.reduce((n, s) => n + s.sets, 0) * 4);
     expect(timed.minutes).toBe(40);
     expect(Math.max(...timed.days.map((d) => d.slots.reduce((n, s) => n + s.sets, 0)))).toBeLessThanOrEqual(10); // 4 min a set
+  });
+});
+
+describe('round 28: the aim orders the fill, the session size sets the total', () => {
+  const placed = (p: Program, d: number) => p.days[d].slots.reduce((a, x) => a + (x.minutes == null ? x.sets : 0), 0);
+  // Two priority 1s and three priority 2s planned at a +20 % step well short of their ranges, the rest priority 3.
+  const prof = withTiers({ Biceps: 1, Abs: 1, Chest: 2, 'Side Delts': 2, 'Mid-Back': 2 }, 3);
+  const aims = { Biceps: [6, 6], Abs: [6, 6], Chest: [4, 4], 'Side Delts': [4, 4], 'Mid-Back': [4, 4] } as Partial<Record<Muscle, [number, number]>>;
+  for (const m of MUSCLES) if (!aims[m]) aims[m] = [2, 2];
+  it('3 days × 20 sets gives about 20 a day, not the aims’ 8 or so', () => {
+    const p = buildProgram({ ...prof, lowShare: 0.1 }, [], { days: 3, perSession: 20, aims }, NOW);
+    for (const d of [0, 1, 2]) expect(placed(p, d), `day ${d}`).toBeGreaterThanOrEqual(18);
+    expect(p.short).toBeUndefined();
+  });
+  it('the aims still go first: a session too small for more gets the aims before any range', () => {
+    const p = buildProgram({ ...prof, lowShare: 0.1 }, [], { days: 2, perSession: 8, aims }, NOW);
+    const v = programVolume(p);
+    for (const m of ['Biceps', 'Abs'] as Muscle[]) expect(v[m], m).toBeGreaterThanOrEqual(4);
+  });
+  it('the extra sets go toward each range by priority, never past a range’s top', () => {
+    const p = buildProgram({ ...prof, lowShare: 0.1 }, [], { days: 3, perSession: 20, aims }, NOW);
+    const v = programVolume(p);
+    expect(v.Biceps).toBeGreaterThan(6);
+    expect(v.Biceps).toBeGreaterThan(v.Calves);
+    // Direct sets of a muscle never pass its range's top by more than the pair that crossed it.
+    for (const m of MUSCLES) {
+      const direct = p.days.flatMap((d) => d.slots).filter((sl) => muscleVector(sl.exercise)?.[m] === 1).reduce((a, sl) => a + sl.sets, 0);
+      expect(direct, m).toBeLessThanOrEqual(prof.targets[prof.tiers[m]][1] + 2);
+    }
+  });
+  it('stops at the tops and says why when every muscle is full', () => {
+    // Only Biceps and Abs trained (everything else excluded): 2 muscles can't take 3 × 20.
+    const only = withTiers({ Biceps: 1, Abs: 1 }, 4);
+    const p = buildProgram(only, [], { days: 3, perSession: 20, aims: { Biceps: [6, 6], Abs: [6, 6] } }, NOW);
+    expect(p.short).toEqual({ why: 'tops' });
+  });
+  it('by minutes: the days fill toward the minutes, not the aims', () => {
+    const p = rebuildLike({ days: 3, perSession: 14, minutes: 60 }, { ...prof, lowShare: 0.1 }, [], NOW, {}, aims, (d) => d.slots.reduce((n, s) => n + s.sets, 0) * 3);
+    for (const d of [0, 1, 2]) expect(placed(p, d), `day ${d}`).toBeGreaterThanOrEqual(18); // 3 min a set: 20 sets in 60
   });
 });

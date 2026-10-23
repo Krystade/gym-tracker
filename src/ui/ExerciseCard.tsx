@@ -24,7 +24,7 @@ import { addDays } from '../domain/analytics';
 import { bodyShare } from '../domain/learn/bodyweight';
 import { gearOf } from '../domain/equipment';
 import { prSetIds } from '../domain/summary';
-import { fmtPerSide } from '../domain/plates';
+import { fmtPerSide, PLATE_SIZES } from '../domain/plates';
 import { isCardio } from '../domain/cardio';
 import { CardioCard } from './CardioCard';
 import { FoldLine } from './FoldLine';
@@ -44,9 +44,11 @@ export function ExerciseCard({ plannedMinutes, ...p }: CardProps) {
     : <LiftCard {...p} />;
 }
 
-function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = null, who, swappedFrom, left = [], onGo,
+function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, plates = PLATE_SIZES, openReq = null, who, swappedFrom, left = [], onGo,
   supersetWith, onNotSuperset, switchAfter, roundAfter, onSwitch, aside, restDelta, light = false, completesPlan, onPlanDone, plannedOf, onLiftAfter, onTouch }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
+  /** The plate sizes at this gym, for the per-side line. */
+  plates?: readonly number[];
   /** The plan sent you to this card: open it if it's folded. Each request once (a render of the card's own keeps it). */
   openReq?: object | null;
   /** Named on Add set when several people share the phone. */
@@ -261,7 +263,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
         <p className="target" aria-label="Target">
           {/* The "?" stands where the target's glyph was, as on the rest bar: why this target, line by line (WhyWeight). */}
           <button type="button" className="why-btn" aria-label="Why this weight" aria-haspopup="dialog" onClick={() => setWhy(true)}><Icon name="help" size={22} /></button>
-          <span>{targetText}{fmtPerSide(sug.weight ?? 0, exercise) && <span className="target-warm muted">{fmtPerSide(sug.weight ?? 0, exercise)}</span>}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}{sug.why && <span className="target-warm muted target-why">{sug.why}</span>}</span>
+          <span>{targetText}{fmtPerSide(sug.weight ?? 0, exercise, plates) && <span className="target-warm muted">{fmtPerSide(sug.weight ?? 0, exercise, plates)}</span>}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}{sug.why && <span className="target-warm muted target-why">{sug.why}</span>}</span>
         </p>
       )}
       {why && <WhyWeightSheet exercise={exercise} target={targetText} s={sug} today={realToday} onClose={() => setWhy(false)} />}
@@ -291,7 +293,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       {editing ? (
         <div ref={editBox} className="edit-box">
         <p className="edit-title">Editing set {today.findIndex((x) => x.id === editing.id) + 1}</p>
-        <SetForm key={editing.id} exercise={exercise} hold={hold} initial={editing} submitLabel="Save" tagPrefs={settings.tags} onTagPrefs={settings.saveTags}
+        <SetForm key={editing.id} exercise={exercise} plates={plates} hold={hold} initial={editing} submitLabel="Save" tagPrefs={settings.tags} onTagPrefs={settings.saveTags}
           onCancel={() => setEditing(null)}
           onDelete={async () => {
             const no = today.findIndex((x) => x.id === editing.id) + 1; // the number on the row, not the entry order
@@ -318,7 +320,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
           }} />
         </div>
       ) : (
-        <SetForm key="new" exercise={exercise} hold={hold} initial={initial} submitLabel={who ? `Add set · ${who}` : 'Add set'} onSubmit={addSet} keepDraft day={date} heaviest={heaviest} weightStep={weightStep}
+        <SetForm key="new" exercise={exercise} plates={plates} hold={hold} initial={initial} submitLabel={who ? `Add set · ${who}` : 'Add set'} onSubmit={addSet} keepDraft day={date} heaviest={heaviest} weightStep={weightStep}
           nextReps={(v) => (v.flags.includes('warmup') ? undefined : aim(working.length + 1, v.weight))}
           tagPrefs={settings.tags} onTagPrefs={settings.saveTags}
           when={{ suggest: suggestWhen, always: date < realToday, max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined }} />
