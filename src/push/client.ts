@@ -148,6 +148,15 @@ export function notifyFriend(kind: 'request' | 'accepted' | 'gym' | 'inbox' | 'r
   void api('POST', '/notify', { kind, to, ...(id && { id }) }).catch(() => {});
 }
 
+/**
+ * You ran into one of the app's limits (domain/limits): the Worker checks it in Firestore with your token and tells the owner, by
+ * push and email, at most once a day for each. `to`: the friend, for the per-friend message limit.
+ */
+export function notifyLimit(id: 'board' | 'report' | 'social' | 'send' | 'global', to?: string): void {
+  if (!WORKER_REACHABLE) return;
+  void api('POST', '/notify', { kind: 'limit', to: to ?? 'owner', id }).catch(() => {});
+}
+
 /** The friends muted on the account, as Friends last read them: a change goes to the Worker with the prefs. */
 export function syncMuted(muted: string[]): void {
   const l = load(), next = [...muted].sort();

@@ -24,6 +24,8 @@
     "bindings": [{ "name": "USERS", "class_name": "UserBox" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["UserBox"] }],
+  // Every 15 minutes: is the app's counter for the day full (src/index.ts watchDay)? The free plan allows 5 cron triggers.
+  "triggers": { "crons": ["*/15 * * * *"] },
   // Per account, approximate and per location: 60 calls a minute across every route, and 10 a minute to /notify.
   "ratelimits": [
     { "name": "LIMIT", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } },

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, deleteField, doc, documentId, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
+import { collection, deleteDoc, deleteField, doc, documentId, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, updateDoc, where, writeBatch, type Firestore, type WriteBatch } from 'firebase/firestore';
 
 // Synthetic users: alice owns the data, bob is her friend, eve is a stranger.
 let env: RulesTestEnvironment;
@@ -11,6 +11,21 @@ const [HOST, PORT] = (process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8080').s
 const as = (uid: string | null) => (uid ? env.authenticatedContext(uid) : env.unauthenticatedContext()).firestore() as unknown as Firestore;
 const seed = (f: (db: Firestore) => Promise<unknown>) => env.withSecurityRulesDisabled(async (c) => { await f(c.firestore() as unknown as Firestore); });
 const later = () => Timestamp.fromMillis(Date.now() + 86_400_000);
+/** Today's id for the app's daily counter, as firestore.rules work it out: UTC days since 1970. */
+const dayId = (ms = Date.now()) => String(Math.floor(ms / 86_400_000));
+/** Your social counter moved and the app's daily counter up one, in batch `b`, as the app does with each social write (r28). */
+async function counters(db: Firestore, uid: string, b: WriteBatch) {
+  const r = (await getDoc(doc(db, `socialRate/${uid}`))).data() as { win: Timestamp; n: number } | undefined;
+  b.set(doc(db, `socialRate/${uid}`), r ? { at: serverTimestamp(), win: r.win, n: r.n + 1 } : { at: serverTimestamp(), win: serverTimestamp(), n: 1 });
+  b.set(doc(db, `limits/${dayId()}`), { n: increment(1) }, { merge: true });
+  return b;
+}
+/** A social write (a request, a gym, an invite) with its counters, as the app makes it. */
+const social = async (uid: string, put: (db: Firestore, b: WriteBatch) => unknown) => {
+  const db = as(uid), b = writeBatch(db);
+  put(db, b);
+  return (await counters(db, uid, b)).commit();
+};
 /** Accepting an invite, as the app does it: both friend documents, and the invite used up, in one write. */
 const accept = (who: string, owner: string, token: string, used = token) => {
   const db = as(who), b = writeBatch(db);
@@ -122,7 +137,7 @@ describe('requests', () => {
   it('a request lets the person you asked add you back', async () => {
     // eve asks alice; alice accepts: her own list, then eve's, which eve's request allows.
     await seed((db) => setDoc(doc(db, 'users/eve'), { username: 'eve', displayName: 'Eve' }));
-    await assertSucceeds(setDoc(doc(as('eve'), 'users/alice/requests/eve'), { username: 'eve', sent: 1 }));
+    await assertSucceeds(social('eve', (db, b) => b.set(doc(db, 'users/alice/requests/eve'), { username: 'eve', sent: 1 })));
     await assertSucceeds(setDoc(doc(as('alice'), 'users/alice/friends/eve'), { since: 1 }));
     await assertSucceeds(setDoc(doc(as('alice'), 'users/eve/friends/alice'), { since: 1 }));
   });
@@ -131,8 +146,8 @@ describe('requests', () => {
     await assertFails(setDoc(doc(as('alice'), 'users/eve/friends/alice'), { since: 1 }));
   });
   it('you send requests only as yourself, never to yourself, and a stranger cannot read them', async () => {
-    await assertFails(setDoc(doc(as('eve'), 'users/alice/requests/bob'), { username: 'bob', sent: 1 }));
-    await assertFails(setDoc(doc(as('alice'), 'users/alice/requests/alice'), { username: 'alice', sent: 1 }));
+    await assertFails(social('eve', (db, b) => b.set(doc(db, 'users/alice/requests/bob'), { username: 'bob', sent: 1 })));
+    await assertFails(social('alice', (db, b) => b.set(doc(db, 'users/alice/requests/alice'), { username: 'alice', sent: 1 })));
     await seed((db) => setDoc(doc(db, 'users/alice/requests/bob'), { username: 'bob', sent: 1 }));
     await assertFails(getDoc(doc(as('eve'), 'users/alice/requests/bob')));
     await assertSucceeds(getDoc(doc(as('bob'), 'users/alice/requests/bob')));
@@ -454,22 +469,22 @@ describe('gyms sent to a friend', () => {
   const gym = { name: 'Home', equipment: ['barbell'], exclude: [], include: [] };
   const sent = (from: string) => ({ from, fromName: from, gym, sent: 1 });
   it('a friend can send you one; you read it and clear it', async () => {
-    await assertSucceeds(setDoc(doc(as('bob'), 'users/alice/gymInbox/g1'), sent('bob')));
+    await assertSucceeds(social('bob', (db, b) => b.set(doc(db, 'users/alice/gymInbox/g1'), sent('bob'))));
     await assertSucceeds(getDocs(collection(as('alice'), 'users/alice/gymInbox')));
     await assertSucceeds(deleteDoc(doc(as('alice'), 'users/alice/gymInbox/g1')));
   });
   it('a stranger cannot send one, nor read yours', async () => {
-    await assertFails(setDoc(doc(as('eve'), 'users/alice/gymInbox/g1'), sent('eve')));
+    await assertFails(social('eve', (db, b) => b.set(doc(db, 'users/alice/gymInbox/g1'), sent('eve'))));
     await seed((db) => setDoc(doc(db, 'users/alice/gymInbox/g2'), sent('bob')));
     await assertFails(getDoc(doc(as('eve'), 'users/alice/gymInbox/g2')));
     await assertFails(deleteDoc(doc(as('eve'), 'users/alice/gymInbox/g2')));
   });
   it('a friend cannot send as someone else, add other fields, or read your inbox', async () => {
-    await assertFails(setDoc(doc(as('bob'), 'users/alice/gymInbox/g1'), sent('carol')));
-    await assertFails(setDoc(doc(as('bob'), 'users/alice/gymInbox/g1'), { ...sent('bob'), months: {} }));
+    await assertFails(social('bob', (db, b) => b.set(doc(db, 'users/alice/gymInbox/g1'), sent('carol'))));
+    await assertFails(social('bob', (db, b) => b.set(doc(db, 'users/alice/gymInbox/g1'), { ...sent('bob'), months: {} })));
     await seed((db) => setDoc(doc(db, 'users/alice/gymInbox/g2'), sent('bob')));
     await assertFails(getDocs(collection(as('bob'), 'users/alice/gymInbox')));
-    await assertFails(setDoc(doc(as('bob'), 'users/alice/gymInbox/g2'), { ...sent('bob'), sent: 2 })); // no rewriting one already there
+    await assertFails(social('bob', (db, b) => b.set(doc(db, 'users/alice/gymInbox/g2'), { ...sent('bob'), sent: 2 }))); // no rewriting one already there
   });
 });
 
@@ -537,11 +552,11 @@ describe('the push Worker’s reads over REST', () => {
 describe('pings and messages (inbox), with the sender’s counter (sendRate)', () => {
   type Rate = { at: Timestamp; win: Timestamp; n: number };
   /** One send, as the app makes it: the inbox document and the sender's counter in one write. */
-  const send = (from: string, to: string, data: Record<string, unknown>, rate: Partial<Record<keyof Rate, unknown>> = {}, id = `m${Math.random().toString(36).slice(2, 8)}`) => {
+  const send = async (from: string, to: string, data: Record<string, unknown>, rate: Partial<Record<keyof Rate, unknown>> = {}, id = `m${Math.random().toString(36).slice(2, 8)}`) => {
     const db = as(from), b = writeBatch(db);
     b.set(doc(db, `users/${to}/inbox/${id}`), { from, at: serverTimestamp(), ...data });
     b.set(doc(db, `users/${from}/sendRate/${to}`), { at: serverTimestamp(), win: serverTimestamp(), n: 1, ...rate });
-    return b.commit();
+    return (await counters(db, from, b)).commit();
   };
   const ping = (e = 'strong') => ({ kind: 'p', e });
   const msg = (t: string) => ({ kind: 'm', t });
@@ -660,7 +675,7 @@ describe('blocking', () => {
     await assertSucceeds(deleteDoc(doc(as('alice'), 'users/alice/blocked/eve')));
   });
   it('someone blocked can’t ask again, use an invite, or answer an old request', async () => {
-    await assertFails(setDoc(doc(as('eve'), 'users/alice/requests/eve'), { username: 'eve', sent: 1 }));
+    await assertFails(social('eve', (db, b) => b.set(doc(db, 'users/alice/requests/eve'), { username: 'eve', sent: 1 })));
     await seed((db) => setDoc(doc(db, 'users/alice/invites/tok123'), { created: 1, expires: later() }));
     await assertFails(accept('eve', 'alice', 'tok123'));
     await seed((db) => setDoc(doc(db, 'users/eve/requests/alice'), { username: 'alice', sent: 1 }));
@@ -681,7 +696,7 @@ describe('blocking', () => {
     b.set(doc(db, 'users/alice/blocked/bob'), { at: serverTimestamp() });
     await assertSucceeds(b.commit());
     await assertFails(getDoc(doc(as('bob'), 'users/alice/months/2026-10')));
-    await assertFails(setDoc(doc(as('bob'), 'users/alice/requests/bob'), { username: 'bob', sent: 1 }));
+    await assertFails(social('bob', (db, b) => b.set(doc(db, 'users/alice/requests/bob'), { username: 'bob', sent: 1 })));
     const bob = as('bob');
     await assertFails(writeBatch(bob).set(doc(bob, 'users/alice/inbox/z'), { from: 'bob', kind: 'p', e: 'fire', at: serverTimestamp() })
       .set(doc(bob, 'users/bob/sendRate/alice'), { at: serverTimestamp(), win: serverTimestamp(), n: 1 }).commit());
@@ -796,7 +811,7 @@ describe('the compare summary (users/{uid}/summary/compare)', () => {
       await setDoc(doc(db, path('eve')), { ...summary(), at: Timestamp.now() });
     });
     await seeded('alice');
-    await assertSucceeds(setDoc(doc(as('eve'), 'users/alice/requests/eve'), { username: 'eve', sent: 1 }));
+    await assertSucceeds(social('eve', (db, b) => b.set(doc(db, 'users/alice/requests/eve'), { username: 'eve', sent: 1 })));
     await assertFails(getDoc(doc(as('eve'), path('alice'))));
     await assertFails(getDoc(doc(as('alice'), path('eve'))));
     // Putting her on your own list (anyone can name anyone there) doesn't get you hers: only her list naming you does.
@@ -916,7 +931,7 @@ describe('the paths from before Compare are as they were', () => {
 });
 
 // ---- The board (social S3 + S4, plan §4) ----
-// Members pass the gate: a day-old profile, the one-time acceptance in their private/board, a verified email (the token's). Mara
+// Members pass the gate: a day-old profile, the one-time acceptance in their private/board (no verified email since r28). Mara
 // has a display name; Theo, Sam and Lena go by their usernames. Eve is a stranger who never joined. `root` is an owner.
 describe('the board (social S3, S4)', () => {
   const DAY = 86_400_000;
@@ -937,6 +952,7 @@ describe('the board (social S3, S4)', () => {
     const db = o.db ?? V(uid, o.verified ?? true), b = writeBatch(db);
     b.set(doc(db, `board/${o.id ?? pid()}`), { uid, name: DN[uid] ?? uid, user: uid, t: 'Deload week, then heavy.', at: serverTimestamp(), reports: 0, likes: 0, ...data });
     if (o.rate !== null) b.set(doc(db, `boardRate/${uid}`), { at: serverTimestamp(), win: serverTimestamp(), n: 1, ...o.rate });
+    b.set(doc(db, `limits/${dayId()}`), { n: increment(1) }, { merge: true });
     return b.commit();
   };
   /** A post already there, written as an admin. */
@@ -951,12 +967,12 @@ describe('the board (social S3, S4)', () => {
     return b.commit();
   };
   /** A 💪 as the app gives it (or takes it back): your like document and the post's count, in one write. */
-  const like = (who: string, id: string, o: { by?: number; doc?: boolean; as?: string } = {}) => {
+  const like = async (who: string, id: string, o: { by?: number; doc?: boolean; as?: string } = {}) => {
     const db = V(who), b = writeBatch(db), by = o.by ?? 1;
     const ref = doc(db, `board/${id}/likes/${o.as ?? who}`);
     if (o.doc !== false) { if (by > 0) b.set(ref, {}); else b.delete(ref); }
     if (by) b.update(doc(db, `board/${id}`), { likes: increment(by) });
-    return b.commit();
+    return (await counters(db, who, b)).commit();
   };
   const page = (db: Firestore, after?: Timestamp) =>
     getDocs(query(collection(db, 'board'), where('at', '>', ago(30 * DAY)), orderBy('at', 'desc'), ...(after ? [startAfter(after)] : []), limit(20)));
@@ -1078,10 +1094,10 @@ describe('the board (social S3, S4)', () => {
   });
 
   // Negatives: the gate
-  it('a post is refused signed out, with the email not verified, without the acceptance, under a day old, or banned', async () => {
+  it('a post is refused signed out, without the acceptance, under a day old, or banned; an unverified email is no bar', async () => {
     await assertFails(post('mara', {}, { db: V(null) }));
-    await assertFails(post('mara', {}, { verified: false }));
-    await assertFails(post('mara', {}, { db: as('mara') })); // a token without the claim at all
+    await assertSucceeds(post('mara', {}, { verified: false })); // owner, 2026-10-22
+    await assertSucceeds(post('theo', {}, { db: as('theo') })); // a token without the claim at all
     await member('eve', { ok: null });
     await assertFails(post('eve')); // never accepted
     await member('eve', { ok: false });
@@ -1190,7 +1206,6 @@ describe('the board (social S3, S4)', () => {
     await seedPost('p1', 'mara');
     await assertFails(report('theo', 'p1', { why: 'boring' }));
     await assertFails(report('eve', 'p1')); // never joined the board
-    await assertFails(report('theo', 'p1', { verified: false }));
     await assertFails(report('theo', 'p1', { rate: null })); // without the counter
     const t = V('theo');
     await assertFails(writeBatch(t).set(doc(t, 'board/p1/reports/lena'), { why: 'spam', at: serverTimestamp() }).update(doc(t, 'board/p1'), { reports: increment(1) })
@@ -1289,12 +1304,12 @@ describe('the board (social S3, S4)', () => {
 
   // Friend requests: anyone, or invite only
   it('a profile set to invite only refuses requests; anyone (or a profile from before the setting) takes them', async () => {
-    const ask = () => setDoc(doc(as('eve'), 'users/mara/requests/eve'), { username: 'eve', sent: 1 });
+    const ask = () => social('eve', (db, b) => b.set(doc(db, 'users/mara/requests/eve'), { username: 'eve', sent: 1 }));
     await assertSucceeds(ask()); // no setting: anyone
     await seed((db) => deleteDoc(doc(db, 'users/mara/requests/eve')));
     await assertSucceeds(updateDoc(doc(V('mara'), 'users/mara'), { reqs: 'invite' }));
     await assertFails(ask());
-    await assertFails(setDoc(doc(as('eve'), 'users/nobody/requests/eve'), { username: 'eve', sent: 1 })); // no profile at all
+    await assertFails(social('eve', (db, b) => b.set(doc(db, 'users/nobody/requests/eve'), { username: 'eve', sent: 1 }))); // no profile at all
     await assertSucceeds(updateDoc(doc(V('mara'), 'users/mara'), { reqs: 'any' }));
     await assertSucceeds(ask());
     // Only these two, and only your own; an invite link still works with invite only.
@@ -1314,5 +1329,183 @@ describe('the board (social S3, S4)', () => {
     await assertSucceeds(b.commit());
     await assertSucceeds(updateDoc(doc(V('theo'), 'users/theo'), { displayName: 'Theo K.', nameAt: serverTimestamp() }));
     expect((await getDoc(doc(V('eve'), 'users/theo'))).data()).toMatchObject({ username: 'theo_k', displayName: 'Theo K.', reqs: 'invite' });
+  });
+});
+
+// Limits (r28, plan .superpowers/security/rate-limits.md): the app's counter for the day, your social counter, the owner's
+// switches, and the sync documents' names and sizes. Bob is Alice's friend, so his gyms and pings to her are social writes.
+describe('limits (r28)', () => {
+  const DAY = 86_400_000;
+  const ago = (ms: number) => Timestamp.fromMillis(Date.now() - ms);
+  const today = () => doc(as(null), `limits/${dayId()}`);
+  const setDay = (n: number, id = dayId()) => seed((db) => setDoc(doc(db, `limits/${id}`), { n }));
+  const setRate = (uid: string, r: { at: Timestamp; win: Timestamp; n: number }) => seed((db) => setDoc(doc(db, `socialRate/${uid}`), r));
+  const gym = { name: 'Home', equipment: ['barbell'], exclude: [], include: [] };
+  const gymTo = (from: string, to: string) => social(from, (db, b) => b.set(doc(db, `users/${to}/gymInbox/g${Math.random().toString(36).slice(2, 8)}`), { from, fromName: from, gym, sent: 1 }));
+  const ping = async (from: string, to: string, withCounters = true) => {
+    const db = as(from), b = writeBatch(db);
+    b.set(doc(db, `users/${to}/inbox/m${Math.random().toString(36).slice(2, 8)}`), { from, kind: 'p', e: 'fire', at: serverTimestamp() });
+    b.set(doc(db, `users/${from}/sendRate/${to}`), { at: serverTimestamp(), win: serverTimestamp(), n: 1 });
+    return (withCounters ? await counters(db, from, b) : b).commit();
+  };
+  const ask = (from: string, to: string, username = from) => social(from, (db, b) => b.set(doc(db, `users/${to}/requests/${from}`), { username, sent: 1 }));
+  const sw = (x: Record<string, unknown>) => setDoc(doc(as('root'), 'config/switches'), { ...x, at: serverTimestamp() });
+  beforeEach(() => seed((db) => setDoc(doc(db, 'users/eve'), { username: 'eve', displayName: 'Eve' })));
+
+  it('the day’s counter: the 2,000th social write of the day goes in, the next is refused for everyone, and a new day starts at 1', async () => {
+    await setDay(1999);
+    await assertSucceeds(gymTo('bob', 'alice'));
+    expect((await getDoc(today())).data()?.n).toBe(2000); // anyone reads it, signed out too (the Worker's cron)
+    await assertFails(gymTo('bob', 'alice'));
+    await assertFails(ask('eve', 'alice'));
+    await setDay(1999);
+    await assertSucceeds(ask('eve', 'alice')); // the same write, one under the cap
+    // Yesterday's full counter is yesterday's: today's starts again at 1.
+    await seed((db) => deleteDoc(doc(db, `limits/${dayId()}`)));
+    await setDay(2000, dayId(Date.now() - DAY));
+    await assertSucceeds(gymTo('bob', 'alice'));
+    expect((await getDoc(today())).data()?.n).toBe(1);
+  });
+  it('a post moves the day’s counter too, and is refused once it’s full', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'users/alice'), { username: 'alice', displayName: 'Alice', createdAt: ago(2 * DAY) });
+      await setDoc(doc(db, 'users/alice/private/board'), { ok: true, at: ago(DAY) });
+    });
+    const post = (count = true) => {
+      const db = as('alice'), b = writeBatch(db);
+      b.set(doc(db, `board/p${Math.random().toString(36).slice(2, 8)}`), { uid: 'alice', name: 'Alice', user: 'alice', t: 'Heavy day.', at: serverTimestamp(), reports: 0, likes: 0 });
+      b.set(doc(db, 'boardRate/alice'), { at: serverTimestamp(), win: serverTimestamp(), n: 1 });
+      if (count) b.set(doc(db, `limits/${dayId()}`), { n: increment(1) }, { merge: true });
+      return b.commit();
+    };
+    await assertFails(post(false)); // without the day's counter
+    await setDay(2000);
+    await assertFails(post());
+    await setDay(1999);
+    await assertSucceeds(post());
+  });
+  it('nobody moves the day’s counter alone, by two, on another day, or back; only an owner clears one', async () => {
+    await setDay(5);
+    await assertFails(setDoc(doc(as('alice'), `limits/${dayId()}`), { n: increment(1) }, { merge: true })); // no counter of yours with it
+    const moved = async (uid: string, f: (db: Firestore, b: WriteBatch) => void) => {
+      const db = as(uid), b = writeBatch(db);
+      const r = (await getDoc(doc(db, `socialRate/${uid}`))).data() as { win: Timestamp; n: number } | undefined;
+      b.set(doc(db, `socialRate/${uid}`), r ? { at: serverTimestamp(), win: r.win, n: r.n + 1 } : { at: serverTimestamp(), win: serverTimestamp(), n: 1 });
+      f(db, b);
+      return b.commit();
+    };
+    await assertFails(moved('alice', (db, b) => b.set(doc(db, `limits/${dayId()}`), { n: increment(2) }, { merge: true })));
+    await assertFails(moved('alice', (db, b) => b.set(doc(db, `limits/${dayId()}`), { n: 1 })));
+    await assertFails(moved('alice', (db, b) => b.set(doc(db, `limits/${dayId(Date.now() - DAY)}`), { n: increment(1) }, { merge: true })));
+    await assertFails(moved('alice', (db, b) => b.set(doc(db, `limits/${dayId()}`), { n: increment(1), x: 1 }, { merge: true })));
+    // With a counter of your own moved beside it: allowed, and counted there (300 a day).
+    await assertSucceeds(moved('alice', (db, b) => b.set(doc(db, `limits/${dayId()}`), { n: increment(1) }, { merge: true })));
+    await assertFails(deleteDoc(doc(as('alice'), `limits/${dayId()}`)));
+    await assertFails(getDocs(collection(as('alice'), 'limits')));
+    await assertSucceeds(getDocs(collection(as('root'), 'limits')));
+    await assertSucceeds(deleteDoc(doc(as('root'), `limits/${dayId()}`)));
+  });
+  it('your social counter: the 300th of your day goes in, the next is refused, and a new day starts at 1', async () => {
+    await setRate('bob', { at: ago(5000), win: ago(3_600_000), n: 299 });
+    await assertSucceeds(gymTo('bob', 'alice'));
+    await assertFails(gymTo('bob', 'alice'));
+    await assertFails(ping('bob', 'alice'));
+    const fresh = () => {
+      const db = as('bob'), b = writeBatch(db);
+      b.set(doc(db, `users/alice/gymInbox/n${Math.random().toString(36).slice(2, 8)}`), { from: 'bob', fromName: 'bob', gym, sent: 1 });
+      b.set(doc(db, 'socialRate/bob'), { at: serverTimestamp(), win: serverTimestamp(), n: 1 });
+      b.set(doc(db, `limits/${dayId()}`), { n: increment(1) }, { merge: true });
+      return b.commit();
+    };
+    await assertFails(fresh()); // starting again inside the day
+    await setRate('bob', { at: ago(5000), win: ago(DAY + 1000), n: 300 });
+    await assertSucceeds(fresh());
+    // Only yours: nobody starts, moves or reads someone else's.
+    await assertFails(setDoc(doc(as('eve'), 'socialRate/bob'), { at: serverTimestamp(), win: serverTimestamp(), n: 1 }));
+    await assertFails(getDoc(doc(as('eve'), 'socialRate/bob')));
+  });
+  it('every social write moves your counter: a ping, a gym, a request, an invite, a 💪 given or taken back', async () => {
+    await assertFails(ping('bob', 'alice', false));
+    await assertSucceeds(ping('bob', 'alice'));
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/gymInbox/g1'), { from: 'bob', fromName: 'bob', gym, sent: 1 }));
+    await assertSucceeds(social('bob', (d, b) => b.set(doc(d, 'users/alice/gymInbox/g1'), { from: 'bob', fromName: 'bob', gym, sent: 1 })));
+    await assertFails(setDoc(doc(as('eve'), 'users/alice/requests/eve'), { username: 'eve', sent: 1 }));
+    await assertSucceeds(ask('eve', 'alice'));
+    await assertFails(setDoc(doc(as('alice'), 'users/alice/invites/tok12345'), { created: Timestamp.now(), expires: later() }));
+    await assertSucceeds(social('alice', (d, b) => b.set(doc(d, 'users/alice/invites/tok12345'), { created: Timestamp.now(), expires: later() })));
+    await seed((d) => setDoc(doc(d, 'board/p1'), { uid: 'eve', name: 'eve', user: 'eve', t: 'x', at: Timestamp.now(), reports: 0, likes: 0 }));
+    const a = as('alice');
+    await assertFails(writeBatch(a).set(doc(a, 'board/p1/likes/alice'), {}).update(doc(a, 'board/p1'), { likes: increment(1) }).commit());
+    await assertSucceeds(social('alice', (d, b) => { b.set(doc(d, 'board/p1/likes/alice'), {}); b.update(doc(d, 'board/p1'), { likes: increment(1) }); }));
+    await assertFails(writeBatch(a).delete(doc(a, 'board/p1/likes/alice')).update(doc(a, 'board/p1'), { likes: increment(-1) }).commit());
+    await assertSucceeds(social('alice', (d, b) => { b.delete(doc(d, 'board/p1/likes/alice')); b.update(doc(d, 'board/p1'), { likes: increment(-1) }); }));
+  });
+  it('the owner’s switches close the board, requests and messages for everyone; reading stays open; only an owner sets them', async () => {
+    await assertFails(setDoc(doc(as('alice'), 'config/switches'), { board: true, at: serverTimestamp() }));
+    await assertFails(setDoc(doc(as('root'), 'config/switches'), { board: 'yes', at: serverTimestamp() }));
+    await assertFails(setDoc(doc(as('root'), 'config/switches'), { board: true, at: serverTimestamp(), other: true }));
+    await seed((d) => setDoc(doc(d, 'board/p1'), { uid: 'eve', name: 'eve', user: 'eve', t: 'x', at: Timestamp.now(), reports: 0, likes: 0 }));
+    const likeIt = () => social('alice', (d, b) => { b.set(doc(d, 'board/p1/likes/alice'), {}); b.update(doc(d, 'board/p1'), { likes: increment(1) }); });
+    await assertSucceeds(sw({ board: true, requests: true, messages: true }));
+    await assertSucceeds(getDoc(doc(as('eve'), 'config/switches')));
+    await assertFails(likeIt());
+    await assertFails(ask('eve', 'alice'));
+    await assertFails(gymTo('bob', 'alice'));
+    await assertFails(ping('bob', 'alice'));
+    await assertSucceeds(getDoc(doc(as('bob'), 'board/p1')));
+    await assertSucceeds(getDoc(doc(as('alice'), 'users/alice/months/2026-10')));
+    await assertSucceeds(sw({ board: false, requests: false, messages: false }));
+    await assertSucceeds(likeIt());
+    await assertSucceeds(ask('eve', 'alice'));
+    await assertSucceeds(gymTo('bob', 'alice'));
+    await assertSucceeds(ping('bob', 'alice'));
+    await assertFails(deleteDoc(doc(as('alice'), 'config/switches')));
+    await assertSucceeds(deleteDoc(doc(as('root'), 'config/switches')));
+  });
+  it('a month: a month’s id, its keys, and up to 5,000 sets and 100 body days', async () => {
+    const m = (id: string, x: Record<string, unknown> = {}) => setDoc(doc(as('alice'), `users/alice/months/${id}`), { sets: [], body: [], deleted: {}, updatedAt: 2, prs: [], ...x });
+    await assertSucceeds(m('2026-11'));
+    await assertSucceeds(m('1999-01'));
+    for (const id of ['2026-13', '2026-00', 'junk', '2026-1', '1850-01', 'plans-2026']) await assertFails(m(id));
+    await assertFails(m('2026-11', { extra: 'x'.repeat(100) }));
+    await assertFails(m('2026-11', { sets: 'x' }));
+    await assertSucceeds(m('2026-11', { sets: Array.from({ length: 5000 }, (_, i) => i) }));
+    await assertFails(m('2026-11', { sets: Array.from({ length: 5001 }, (_, i) => i) }));
+    await assertSucceeds(m('2026-11', { body: Array.from({ length: 100 }, (_, i) => i) }));
+    await assertFails(m('2026-11', { body: Array.from({ length: 101 }, (_, i) => i) }));
+    await assertFails(m('2026-11', { prs: Array.from({ length: 5001 }, (_, i) => i) }));
+    await assertSucceeds(deleteDoc(doc(as('alice'), 'users/alice/months/2026-11')));
+  });
+  it('settings: the index, the settings document and a plan archive a year, in their shapes; nothing else', async () => {
+    const put = (id: string, x: Record<string, unknown>) => setDoc(doc(as('alice'), `users/alice/meta/${id}`), x);
+    await assertSucceeds(put('index', { months: { '2026-10': 1 }, meta: 1 }));
+    await assertSucceeds(setDoc(doc(as('alice'), 'users/alice/meta/index'), { meta: 2 }, { merge: true }));
+    await assertFails(put('index', { months: {}, junk: 1 }));
+    await assertSucceeds(put('profile', { items: { profile: '{}' }, updatedAt: 1, plansFrom: '2026-07-01' }));
+    await assertFails(put('profile', { items: { profile: '{}' }, updatedAt: 1, junk: 'x' }));
+    await assertFails(put('profile', { items: Object.fromEntries(Array.from({ length: 5001 }, (_, i) => [`k${i}`, '1'])), updatedAt: 1 }));
+    await assertSucceeds(put('plans-2025', { items: { 'day:2025-01-01': '{}' }, updatedAt: 1 }));
+    await assertFails(put('plans-1850', { items: {}, updatedAt: 1 }));
+    await assertFails(put('anything', { items: {}, updatedAt: 1 }));
+  });
+  it('private: board, cycle, tags and together only, the board’s lists 200 at most; your own list in its keys; a request’s name short', async () => {
+    const put = (id: string, x: Record<string, unknown>) => setDoc(doc(as('alice'), `users/alice/private/${id}`), x);
+    await assertFails(put('anything', { x: 1 }));
+    await assertSucceeds(put('board', { hidden: Array.from({ length: 200 }, (_, i) => `p${i}`) }));
+    await assertFails(put('board', { hidden: Array.from({ length: 201 }, (_, i) => `p${i}`) }));
+    await assertFails(put('board', { ok: true, junk: 1 }));
+    await assertSucceeds(setDoc(doc(as('alice'), 'users/alice/friends/zed'), { since: 1, via: 'invite' }));
+    await assertFails(setDoc(doc(as('alice'), 'users/alice/friends/zoe'), { since: 1, junk: 'x' }));
+    await assertFails(ask('eve', 'alice', 'e'.repeat(61)));
+    await assertSucceeds(ask('eve', 'alice', 'e'.repeat(60)));
+  });
+  it('an invite: a token-like id, about a week long, counted', async () => {
+    const inv = (id: string, expires: Timestamp, x: Record<string, unknown> = {}) => social('alice', (d, b) => b.set(doc(d, `users/alice/invites/${id}`), { created: Timestamp.now(), expires, ...x }));
+    await assertSucceeds(inv('tok12345', Timestamp.fromMillis(Date.now() + 7 * DAY)));
+    await assertFails(inv('tok12346', Timestamp.fromMillis(Date.now() + 9 * DAY)));
+    await assertFails(inv('x', later()));
+    await assertFails(inv('tok12347', later(), { note: 'x' }));
+    await assertFails(updateDoc(doc(as('alice'), 'users/alice/invites/tok12345'), { expires: later() }));
+    await assertSucceeds(deleteDoc(doc(as('alice'), 'users/alice/invites/tok12345')));
   });
 });

@@ -28,6 +28,12 @@ export interface Status {
 }
 
 export const MAX_DEVICES = 5;
+/**
+ * POST /notify calls one account may make a day (r28): each reads Firestore as them (up to four reads), so this holds what one
+ * account can spend of the free plan's 50,000 reads a day through the Worker. Well over a real day: every /notify follows a
+ * write the rules already count (300 social a day, 5 posts, 20 reports) or an accepted request.
+ */
+export const NOTIFY_PER_DAY = 400;
 export const STALE_MS = 30 * 864e5;
 const DAY = 864e5;
 
@@ -144,6 +150,7 @@ export class UserBox extends DurableObject<Env> {
     const prefs = await this.prefs();
     // The owner's board reports (social S4) ring whatever the friend switches say and whoever reported, once a day at most.
     if (p.kind === 'report') return this.reportPush(p, now);
+    if (p.kind === 'limit') return this.limitPush(p, now);
     if (!on(ACTIVITY_KINDS.includes(p.kind as ActivityKind) ? prefs.kinds.activity : prefs.kinds.friends)) return 'off';
     if (prefs.muted?.includes(p.from)) return 'muted';
     if (!Object.keys(await this.devices()).length) return 'no device';
@@ -167,6 +174,30 @@ export class UserBox extends DurableObject<Env> {
     await this.send(p.kind, p.note, undefined, { route: p.route });
     await st.put(`daily:${p.daily}`, now);
     return 'sent';
+  }
+
+  /**
+   * A limit reached (r28), to the owner: once a day per `daily` whether or not a phone is subscribed, so the Worker's email
+   * (sent on 'sent' or 'no device') goes once too.
+   */
+  private async limitPush(p: FriendPush, now: number): Promise<Outcome> {
+    const st = this.ctx.storage;
+    if (now - ((await st.get<number>(`daily:${p.daily}`)) ?? -DAY) < DAY) return 'daily';
+    await st.put(`daily:${p.daily}`, now);
+    if (!Object.keys(await this.devices()).length) return 'no device';
+    await this.send(p.kind, p.note, undefined, { route: p.route });
+    return 'sent';
+  }
+
+  /** One more `what` today from this account, `max` a day (exact: one call at a time); false past it. */
+  async spend(what: string, max: number): Promise<boolean> {
+    const now = this.now(), st = this.ctx.storage, k = `spend:${what}`;
+    const s = (await st.get<{ win: number; n: number }>(k)) ?? { win: now, n: 0 };
+    if (now - s.win >= DAY) Object.assign(s, { win: now, n: 0 });
+    if (s.n >= max) return false;
+    s.n++;
+    await st.put(k, s);
+    return true;
   }
 
   /** The true unread count, from the app: the next friend push's badge counts on from it. */

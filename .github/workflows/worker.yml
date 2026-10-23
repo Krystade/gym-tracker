@@ -4,7 +4,7 @@ name: Deploy push Worker
 on:
   push:
     branches: [main]
-    paths: ['worker/**', 'src/push/payload.ts', 'src/domain/displayName.ts', '.github/workflows/worker.yml']
+    paths: ['worker/**', 'src/push/payload.ts', 'src/domain/displayName.ts', 'src/domain/limits.ts', 'src/cloud/owner.ts', '.github/workflows/worker.yml']
   workflow_dispatch:
 permissions:
   contents: read

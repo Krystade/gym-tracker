@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ACCOUNT_AGE_MS, CONTENT_RULES, HIDE_AT, POST_DAYS_MS, cleanPost, gateSteps, heldByReports, maskEmail, mergePosts, nextPostAt, personalWarning,
+  ACCOUNT_AGE_MS, CONTENT_RULES, HIDE_AT, POST_DAYS_MS, cleanPost, gateSteps, heldByReports, mergePosts, nextPostAt, personalWarning,
   postAgo, postError, postOf, rateNext, reviewOrder, rowsOf, shownCount, tally, toggleIn, type Filters, type Post,
 } from './board';
 
@@ -80,17 +80,13 @@ describe('reading the board', () => {
     expect(postAgo(NOW - 5 * 3600_000, NOW)).toBe('5h');
     expect(postAgo(Date.parse('2026-10-20T07:13:00Z'), NOW)).toBe('Oct 20');
   });
-  it('a masked email', () => {
-    expect(maskEmail('jack@example.com')).toBe('j•••@example.com');
-    expect(maskEmail(null)).toBe('your email');
-  });
 });
 
 describe('the gate', () => {
-  const ok = { username: 'me', emailVerified: true, accepted: true, createdAt: NOW - ACCOUNT_AGE_MS - 1, banned: false };
+  const ok = { username: 'me', accepted: true, createdAt: NOW - ACCOUNT_AGE_MS - 1, banned: false };
   it('open past every step; each one missing, in order; banned is all there is', () => {
     expect(gateSteps(ok, NOW)).toEqual([]);
-    expect(gateSteps({ ...ok, username: null, emailVerified: false, accepted: false, createdAt: undefined }, NOW)).toEqual(['username', 'email', 'accept', 'age']);
+    expect(gateSteps({ ...ok, username: null, accepted: false, createdAt: undefined }, NOW)).toEqual(['username', 'accept', 'age']);
     expect(gateSteps({ ...ok, createdAt: NOW - ACCOUNT_AGE_MS }, NOW)).toEqual(['age']);
     expect(gateSteps({ ...ok, banned: true, username: null }, NOW)).toEqual(['banned']);
   });

@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Page, type Request } from '@playwright/test';
 import { goto } from './nav';
 import { EMU_HOST, emu } from './emu';
-import { account, boardPost, emailVerified, onBoard, ownerAccount, put, rand, signedIn, Ts, type Seeded } from './seed';
+import { account, boardPost, onBoard, ownerAccount, put, rand, signedIn, Ts, type Seeded } from './seed';
 
 // The board (social S3, S4) against the local Auth and Firestore emulators and this worktree's firestore.rules: what it costs to
 // open, the gate's refusals, a post held after 3 reports, the owner removing one. Synthetic users and posts only. The board is
@@ -104,7 +104,7 @@ async function bare(request: APIRequestContext): Promise<Seeded> {
   return { uid: (await res.json()).localId as string, name: '', email };
 }
 
-test('the gate refuses until each step is met: a username, a verified email, the rules, a day-old account; and a ban', async ({ browser, request }) => {
+test('the gate refuses until each step is met: a username, the rules, a day-old account (no verified email); and a ban', async ({ browser, request }) => {
   test.setTimeout(240_000);
   const gate = (page: Page) => page.getByRole('region', { name: 'Join the board' });
 
@@ -116,36 +116,21 @@ test('the gate refuses until each step is met: a username, a verified email, the
   await expect(gate(p0)).toContainText('Posting opens once you’ve chosen a username.');
   await p0.context().close();
 
-  // Unverified, never accepted, an old enough account: the rules to accept, then the email.
+  // An email never verified, never accepted, an old enough account: the rules to accept, and nothing more (owner, 2026-10-22).
   const a = await account(request);
   await put(request, `users/${a.uid}`, { username: a.name, displayName: a.name, createdAt: new Ts(Date.now() - 2 * 864e5) });
   const pa = await signedIn(browser, a, new Date());
   await toBoard(pa);
   const g = gate(pa);
   await expect(g).toContainText('Be decent. No harassment, threats, hate or pile-ons.');
-  await expect(g).toContainText('Email verified · not yet');
-  await expect(g).toContainText(`We’ll send a link to ${a.email[0]}•••@test.local.`);
+  await expect(g).not.toContainText('Email');
+  await expect(g.getByRole('button', { name: /link/i })).toHaveCount(0);
   const join = g.getByRole('button', { name: 'Join the board' });
   await expect(join).toBeDisabled();
   await g.getByLabel('I’m 16 or older').check();
   await expect(join).toBeDisabled();
   await g.getByLabel(/I’ll keep to the board’s rules/).check();
   await join.click();
-  await expect(join).toHaveCount(0);
-  await expect(g).toContainText('Posting opens once your email is verified.');
-  // Folded, Post opens the gate again, never the composer.
-  await g.getByRole('button', { name: 'Not now' }).click();
-  await board(pa).getByRole('button', { name: 'Post', exact: true }).click();
-  await expect(gate(pa)).toBeVisible();
-  await expect(pa.getByRole('dialog', { name: 'New post' })).toHaveCount(0);
-  // The link: sent, opened (the emulator marks it), checked.
-  await g.getByRole('button', { name: 'Send link' }).click();
-  await expect(g.getByRole('status')).toHaveText('Sent. Check your inbox (and spam).');
-  await expect(g).toContainText(`We sent a link to ${a.email[0]}•••@test.local. Open it, then come back.`);
-  await g.getByRole('button', { name: 'I’ve opened it' }).click();
-  await expect(g.getByRole('alert')).toHaveText('Not verified yet. Open the link in the email, then try again.');
-  await emailVerified(request, a);
-  await g.getByRole('button', { name: 'I’ve opened it' }).click();
   await expect(gate(pa)).toHaveCount(0);
 
   // Past the gate: the composer, with what it refuses and what it warns of.
@@ -176,7 +161,7 @@ test('the gate refuses until each step is met: a username, a verified email, the
   await expect(sheet.getByRole('alert')).toHaveText(/^That’s 5 posts today\. You can post again /);
   await pa.context().close();
 
-  // Verified and accepted, but the account is new: a day first.
+  // Accepted, but the account is new: a day first. Folded, Post opens the gate again, never the composer.
   const b = await account(request);
   await onBoard(request, b);
   await put(request, `users/${b.uid}`, { username: b.name, displayName: b.name, createdAt: new Ts(Date.now() - 60_000) });
@@ -277,4 +262,36 @@ test('the owner removes a reported post from Board review; its author is told on
   await expect(board(pa).locator('.bd-list, .bd-empty')).toBeVisible({ timeout: 20_000 });
   await expect(board(pa).getByText('removed a post of yours')).toHaveCount(0);
   await pa.context().close();
+});
+
+/**
+ * The owner's switches as this phone reads them, without touching the shared emulator's (other specs post meanwhile): the read
+ * of config/switches answered here, everything else through to the emulator.
+ */
+async function switches(page: Page, sw: Record<string, boolean>) {
+  await page.route(/documents:batchGet/, async (route) => {
+    const body = route.request().postData() ?? '';
+    if (!body.includes('/documents/config/switches')) return route.fallback();
+    const name = JSON.parse(body).documents[0] as string, t = new Date().toISOString();
+    const fields = Object.fromEntries(Object.entries(sw).map(([k, v]) => [k, { booleanValue: v }]));
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify([{ found: { name, fields, createTime: t, updateTime: t }, readTime: t }]) });
+  });
+}
+
+test('the owner closes the board: "Board closed", no Post, posts still read; open, Post is back', async ({ browser, request }) => {
+  const m = await account(request);
+  await onBoard(request, m);
+  await boardPost(request, m, `Still readable ${rand()}`, 5);
+  const page = await signedIn(browser, m, new Date(), (p) => switches(p, { board: true }));
+  await toBoard(page);
+  await expect(board(page).getByRole('status').filter({ hasText: 'Board closed' })).toHaveText('Board closed · the app’s owner closed posting for now. You can still read it.');
+  await expect(board(page).getByRole('button', { name: 'Post', exact: true })).toHaveCount(0);
+  await expect(board(page).locator('.bd-card', { hasText: 'Still readable' })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('board-closed.png') });
+  await page.context().close();
+  const again = await signedIn(browser, m, new Date(), (p) => switches(p, { board: false }));
+  await toBoard(again);
+  await expect(board(again).getByRole('button', { name: 'Post', exact: true })).toBeVisible();
+  await expect(board(again).getByText('Board closed')).toHaveCount(0);
+  await again.context().close();
 });

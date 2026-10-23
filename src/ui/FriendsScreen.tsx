@@ -91,7 +91,7 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
             <button type="button" role="tab" aria-selected={seg === 'friends'} onClick={() => setSeg('friends')}>Friends</button>
             <button type="button" role="tab" aria-selected={seg === 'board'} onClick={() => setSeg('board')}>Board</button>
           </div>
-          {seg === 'board' ? <Board uid={cloud.link.uid} email={cloud.link.email} pulled={pulled} onAccount={() => setSeg('friends')} /> : (<>
+          {seg === 'board' ? <Board uid={cloud.link.uid} pulled={pulled} onAccount={() => setSeg('friends')} /> : (<>
           <Feed uid={cloud.link.uid} myName={myName} friends={friends} entries={entries} goal={goal} today={today} status={status} news={news} pulled={pulled} onOpenFriend={onView} onOpenMine={onOpenMine} onInvite={invite} onMessage={onMessage} onCompare={onCompare} />
           <FriendsCard uid={cloud.link.uid} gyms={gyms} pending={pending} newsRev={newsRev} adding={adding} onAdding={setAdding} onPendingDone={onPendingDone} onChanged={onChanged} />
           </>)}

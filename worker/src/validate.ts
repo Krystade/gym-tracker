@@ -1,6 +1,7 @@
 import { MAX_HURTS, MAX_LABEL, MAX_LIFT, PAIN_REGIONS, type PainRegion } from '../../src/push/payload';
 import type { PainDay } from './pain';
 import type { Claim } from './notify';
+import { LIMIT_IDS, type LimitId } from '../../src/domain/limits';
 import { validZone } from './schedule';
 
 // Every request body is checked here, field by field; anything else is a 400. Nothing from a body is ever logged.
@@ -125,8 +126,9 @@ export const docId = (v: unknown, what: string) => (typeof v === 'string' && /^[
 
 export function claim(v: unknown): Claim {
   const o = obj(v, 'body');
-  if (o.kind !== 'request' && o.kind !== 'accepted' && o.kind !== 'gym' && o.kind !== 'inbox' && o.kind !== 'report') bad('kind');
+  if (o.kind !== 'request' && o.kind !== 'accepted' && o.kind !== 'gym' && o.kind !== 'inbox' && o.kind !== 'report' && o.kind !== 'limit') bad('kind');
   const kind = o.kind as Claim['kind'];
+  if (kind === 'limit') return { kind, to: docId(o.to, 'to'), id: LIMIT_IDS.includes(o.id as LimitId) ? (o.id as string) : bad('id') };
   return { kind, to: docId(o.to, 'to'), ...((kind === 'gym' || kind === 'inbox' || kind === 'report') && { id: docId(o.id, 'id') }) };
 }
 

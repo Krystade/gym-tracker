@@ -4,6 +4,7 @@ import {
 } from '../domain/board';
 import { notifyFriend } from '../push/client';
 import type { Cloud } from './firebase';
+import { countDay, counted, limitHit, whyRefused, withTries } from './limits';
 import { OWNERS } from './owner';
 
 // The board's reads and writes (social S3, S4). firestore.rules decides who may do each; these make only the writes it allows,
@@ -76,37 +77,37 @@ export async function createPost(c: Cloud, uid: string, text: string, now = Date
   if (typeof user !== 'string') throw fail('Choose a username first.');
   const name = typeof p?.displayName === 'string' ? p.displayName : user;
   const rateRef = F.doc(db, `boardRate/${uid}`);
-  const attempt = async (flip: boolean) => {
+  const attempt = async (flip: boolean, off: number) => {
     const r = rateOf((await F.getDoc(rateRef)).data());
     const wait = flip ? null : nextPostAt(r, now);
-    if (wait?.why === 'day') throw fail(`That’s 5 posts today. You can post again ${when(wait.at)}.`);
+    if (wait?.why === 'day') { limitHit('board'); throw fail(`That’s 5 posts today. You can post again ${when(wait.at)}.`); }
     if (wait?.why === 'gap') throw fail(`One post a minute. Try again in ${Math.max(1, Math.ceil((wait.at - now) / 1000))} s.`);
     const next = rateNext(r, now, flip), ts = F.serverTimestamp();
     const ref = F.doc(F.collection(db, 'board'));
     const b = F.writeBatch(db);
     b.set(ref, { uid, name, user, t: text, at: ts, reports: 0, likes: 0 });
     b.set(rateRef, { at: ts, win: next.keep && r ? F.Timestamp.fromMillis(r.win) : ts, n: next.n });
+    countDay(c, b, now + off * DAY_MS);
     await b.commit();
     return { id: ref.id, uid, name, user, t: text, at: now, reports: 0, likes: 0 };
   };
-  try { return await attempt(false); } catch (e) {
-    if (!denied(e)) throw e;
-    try { return await attempt(true); } catch (e2) { throw denied(e2) ? fail('The board refused that post. Try again in a minute.') : e2; }
-  }
+  return withTries(attempt, async () => (await whyRefused(c, 'board', now)) ?? fail('The board refused that post. Try again in a minute.'));
 }
+const DAY_MS = 86_400_000;
 
 /** Your own post, gone (its likes and reports stay with nobody to read them but the owner, who clears them). */
 export async function deletePost({ F, db }: Cloud, id: string): Promise<void> {
   await F.deleteDoc(F.doc(db, `board/${id}`));
 }
 
-/** A 💪 given or taken back: your like document and the post's count, in one write. */
-export async function setLike({ F, db }: Cloud, uid: string, id: string, on: boolean): Promise<void> {
-  const b = F.writeBatch(db);
+/** A 💪 given or taken back: your like document and the post's count, in one write, with your counters (cloud/limits). */
+export async function setLike(c: Cloud, uid: string, id: string, on: boolean): Promise<void> {
+  const { F, db } = c;
   const ref = F.doc(db, `board/${id}/likes/${uid}`);
-  if (on) b.set(ref, {}); else b.delete(ref);
-  b.update(F.doc(db, `board/${id}`), { likes: F.increment(on ? 1 : -1) });
-  await b.commit();
+  await counted(c, uid, 'board', (b) => {
+    if (on) b.set(ref, {}); else b.delete(ref);
+    b.update(F.doc(db, `board/${id}`), { likes: F.increment(on ? 1 : -1) });
+  });
 }
 
 /**
@@ -120,7 +121,7 @@ export async function reportPost(c: Cloud, uid: string, id: string, why: Reason,
   const attempt = async (flip: boolean) => {
     const r = rateOf((await F.getDoc(rateRef)).data());
     const next = rateNext(r, now, flip);
-    if (next.n > REPORTS_A_DAY) throw fail('That’s 20 reports today. The owner will get to them.');
+    if (next.n > REPORTS_A_DAY) { limitHit('report'); throw fail('That’s 20 reports today. The owner will get to them.'); }
     const ts = F.serverTimestamp(), b = F.writeBatch(db);
     b.set(F.doc(db, `board/${id}/reports/${uid}`), { why, at: ts });
     b.update(F.doc(db, `board/${id}`), { reports: F.increment(1) });
@@ -213,26 +214,4 @@ export async function sweepExpired(c: Cloud, now = Date.now()): Promise<number> 
   for (const id of old) await dropPost(c, b, id);
   await b.commit();
   return old.length;
-}
-
-// ---- The email check (the gate's first step) ----
-
-/** Sends the verification link to the account's email; it brings you back to the app. */
-export async function sendVerification({ auth, A }: Cloud): Promise<void> {
-  const u = auth.currentUser;
-  if (!u) throw fail('Sign in first.');
-  const back = typeof location !== 'undefined' ? new URL(import.meta.env.BASE_URL ?? '/', location.origin).href : undefined;
-  try { await A.sendEmailVerification(u, back ? { url: back } : undefined); } catch (e) {
-    // A link back the project doesn't list: the email still says "verified", it just doesn't offer the way back.
-    if ((e as { code?: string }).code === 'auth/unauthorized-continue-uri' || (e as { code?: string }).code === 'auth/invalid-continue-uri') await A.sendEmailVerification(u);
-    else throw e;
-  }
-}
-/** Whether the link was opened: the account read again, and a new token taken, so the rules see the email as verified. */
-export async function checkVerified({ auth }: Cloud): Promise<boolean> {
-  const u = auth.currentUser;
-  if (!u) return false;
-  await u.reload();
-  if (u.emailVerified) await u.getIdToken(true);
-  return u.emailVerified;
 }

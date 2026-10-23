@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { banUser, keepPost, listBanned, listReported, removePost, sweepExpired, unbanUser } from '../cloud/board';
+import { readSwitches, readToday, setSwitch } from '../cloud/limits';
 import { heldByReports, leadOf, reviewOrder, tally, type Review } from '../domain/board';
+import { GLOBAL_PER_DAY, type Switches } from '../domain/limits';
 import { noteGone, patchBoard } from '../state/board';
 import { useVerified } from './FriendName';
 import './board.css';
@@ -19,6 +21,8 @@ export function BoardReview({ uid }: { uid: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
   const verified = Object.keys(useVerified(uid)).length;
+  const [sw, setSw] = useState<Switches | null>(null);
+  const [today, setToday] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -26,6 +30,8 @@ export function BoardReview({ uid }: { uid: string }) {
       await sweepExpired(c).catch(() => 0);
       setItems(reviewOrder(await listReported(c)));
       setBanned(await listBanned(c).catch(() => []));
+      setSw(await readSwitches(c).catch(() => null));
+      setToday(await readToday(c).catch(() => null));
       setErr(null);
     } catch (e) { setErr(cloudError(e)); }
   }, []);
@@ -36,8 +42,20 @@ export function BoardReview({ uid }: { uid: string }) {
     try { setMsg(await f()); await load(); } catch (e) { setErr(cloudError(e)); } finally { setBusy(null); setArmed(null); }
   };
   const held = items?.filter((r) => heldByReports(r.post)).length ?? 0;
+  const SWITCHES: [keyof Switches, string][] = [['board', 'Close the board'], ['requests', 'Close friend requests'], ['messages', 'Close messages and gyms']];
   return (
     <>
+      <section className="card" aria-label="Limits">
+        <div className="rv-head"><span>Today, everyone</span><span className="rv-n">{today == null ? '…' : `${today} of ${GLOBAL_PER_DAY.toLocaleString()}`}</span></div>
+        <p className="muted small">Posts, 💪s, messages, requests, invites and gyms across the app. At {GLOBAL_PER_DAY.toLocaleString()} they stop until 00:00 UTC and you get a push and an email.</p>
+        {SWITCHES.map(([k, label]) => (
+          <div key={k} className="rv-switch">
+            <span>{label}</span>
+            <button type="button" role="switch" className="switch" disabled={!sw || !!busy} aria-checked={!!sw?.[k]} aria-label={label}
+              onClick={() => void act(`sw:${k}`, async () => { await setSwitch(await loadCloud(), k, !sw?.[k]); return `${label.replace('Close ', '')}: ${sw?.[k] ? 'open again' : 'closed for everyone'}.`; })} />
+          </div>
+        ))}
+      </section>
       <p className="rv-sub">{items == null ? 'Loading…' : `${items.length === 1 ? '1 reported post' : `${items.length} reported posts`} · ${held} hidden`}</p>
       {msg && <p className="ok small" role="status">{msg}</p>}
       {err && <p className="warn small" role="alert">{err}</p>}

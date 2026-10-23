@@ -104,15 +104,57 @@ service cloud.firestore {
             && (!('nameAt' in o) || request.time > o.nameAt + duration.value(1, 'd'))));
     }
 
+    // ---- Limits (r28): the owner's switches, your social counter, and the app's daily counter ----
+    // Spark can't bill: past a quota Firestore stops answering until the daily reset. These keep one account, or a few, from
+    // using up the day for everyone. Plan: .superpowers/security/rate-limits.md (local). The numbers are domain/limits'.
+    // The owner's switches (More > Board review): `board`, `requests`, `messages` true closes that for everyone but reading.
+    function switchDoc() { return /databases/$(db)/documents/config/switches; }
+    function closed(k) { return exists(switchDoc()) && get(switchDoc()).data.get(k, false) == true; }
+    // The app's counter for the day (UTC days since 1970): every social write of anyone's moves it by one, 2,000 a day at most.
+    // Anyone may read it (the push Worker's cron does, without an account, to tell the owner when it's full).
+    function dayId() { return string(int(request.time.toMillis() / 86400000)); }
+    function dayDoc() { return /databases/$(db)/documents/limits/$(dayId()); }
+    function globalMoved() {
+      return (!exists(dayDoc()) && getAfter(dayDoc()).data.n == 1) || (exists(dayDoc()) && getAfter(dayDoc()).data.n == get(dayDoc()).data.n + 1);
+    }
+    // Your social counter (socialRate: likes, friend requests, invites, gyms, pings and messages, 300 a day) moved in this write.
+    function socialMoved() { return getAfter(/databases/$(db)/documents/socialRate/$(request.auth.uid)).data.at == request.time; }
+    function counted() { return socialMoved() && globalMoved(); }
+    // Only beside a counter of your own moved in the same write (your social one, or a post's), so nobody moves the day's alone.
+    function ownMoved() {
+      return socialMoved() || getAfter(/databases/$(db)/documents/boardRate/$(request.auth.uid)).data.at == request.time;
+    }
+    match /config/switches {
+      allow get: if signedIn();
+      allow create, update: if owner() && request.resource.data.keys().hasOnly(['board', 'requests', 'messages', 'at'])
+        && request.resource.data.get('board', false) is bool && request.resource.data.get('requests', false) is bool
+        && request.resource.data.get('messages', false) is bool && request.resource.data.at == request.time;
+      allow delete: if owner();
+    }
+    match /limits/{day} {
+      allow get: if true;
+      allow list: if owner();
+      allow create: if signedIn() && day == dayId() && request.resource.data.keys().hasOnly(['n']) && request.resource.data.n == 1 && ownMoved();
+      allow update: if signedIn() && day == dayId() && request.resource.data.keys().hasOnly(['n'])
+        && request.resource.data.n == resource.data.n + 1 && request.resource.data.n <= 2000 && ownMoved();
+      allow delete: if owner();
+    }
+    match /socialRate/{uid} {
+      allow get: if me(uid);
+      allow create: if me(uid) && rateFirst(request.resource.data);
+      allow update: if me(uid) && rateNext(request.resource.data, resource.data, duration.value(0, 's'), 300);
+      allow delete: if me(uid) && (request.time >= resource.data.win + duration.value(1, 'd') || !existsAfter(profileDoc(uid)));
+    }
+
     // ---- The board (social S3, S4): one page of short posts every signed-in person reads ----
     function banned(uid) { return exists(/databases/$(db)/documents/banned/$(uid)); }
     function prof(uid) { return get(profileDoc(uid)).data; }
     function postDoc(id) { return /databases/$(db)/documents/board/$(id); }
-    // To write on the board: a verified email, not banned, the one-time "16 or older, and the board's rules" on your own
-    // private/board (ok), and an account a day old by its profile's createdAt (the server's time; a profile from before S1 gets
-    // one on its next open, so it waits a day from then). Any part missing errors, and an error refuses.
+    // To write on the board: not banned, the one-time "16 or older, and the board's rules" on your own private/board (ok), and an
+    // account a day old by its profile's createdAt (the server's time; a profile from before S1 gets one on its next open, so it
+    // waits a day from then). No verified email (owner, 2026-10-22). Any part missing errors, and an error refuses.
     function boardOk() {
-      return signedIn() && request.auth.token.email_verified == true && !banned(request.auth.uid)
+      return signedIn() && !banned(request.auth.uid)
         && get(/databases/$(db)/documents/users/$(request.auth.uid)/private/board).data.ok == true
         && request.time > prof(request.auth.uid).createdAt + duration.value(1, 'd');
     }
@@ -155,7 +197,7 @@ service cloud.firestore {
     // Posts: anyone signed in reads them (the app asks for the last 30 days, 20 at a time); the author or an owner deletes one.
     match /board/{id} {
       allow get, list: if signedIn();
-      allow create: if boardOk() && postOk(request.resource.data);
+      allow create: if boardOk() && !closed('board') && postOk(request.resource.data) && globalMoved();
       allow update: if signedIn() && (reportMove(id) || likeMove(id) || keepMove());
       allow delete: if signedIn() && (resource.data.uid == request.auth.uid || owner());
       // One report per person per post: made past the gate, as yourself, for one of six reasons, at the server's time, with the
@@ -174,9 +216,9 @@ service cloud.firestore {
       match /likes/{l} {
         allow get: if signedIn();
         allow list: if owner();
-        allow create: if me(l) && !banned(l) && request.resource.data.keys().size() == 0
-          && getAfter(postDoc(id)).data.likes == get(postDoc(id)).data.likes + 1;
-        allow delete: if (me(l) && !banned(l) && existsAfter(postDoc(id)) && getAfter(postDoc(id)).data.likes == get(postDoc(id)).data.likes - 1)
+        allow create: if me(l) && !banned(l) && !closed('board') && request.resource.data.keys().size() == 0
+          && getAfter(postDoc(id)).data.likes == get(postDoc(id)).data.likes + 1 && counted();
+        allow delete: if (me(l) && !banned(l) && existsAfter(postDoc(id)) && getAfter(postDoc(id)).data.likes == get(postDoc(id)).data.likes - 1 && counted())
           || (owner() && !existsAfter(postDoc(id)));
       }
     }
@@ -211,6 +253,17 @@ service cloud.firestore {
       allow delete: if me(uid) || owner();
     }
 
+    function monthOk(d) {
+      return d.keys().hasOnly(['sets', 'body', 'deleted', 'updatedAt', 'prs'])
+        && d.sets is list && d.sets.size() <= 5000 && d.body is list && d.body.size() <= 100
+        && d.deleted is map && d.deleted.size() <= 20000 && (!('prs' in d) || (d.prs is list && d.prs.size() <= 5000));
+    }
+    function metaOk(d, x) {
+      return (d == 'index' && x.keys().hasOnly(['months', 'meta']) && x.get('months', {}).size() <= 2400)
+        || (d == 'profile' && x.keys().hasOnly(['items', 'updatedAt', 'plansFrom']) && x.items is map && x.items.size() <= 5000)
+        || (d.matches('^plans-(19|20)[0-9]{2}$') && x.keys().hasOnly(['items', 'updatedAt']) && x.items is map && x.items.size() <= 400);
+    }
+
     match /users/{uid} {
       // Name only, so a request can say who it's from; `prev` and `changedAt` say what it was ("formerly @…" for 30 days); the
       // display name and when it last changed (`nameAt`); when the account first had a profile (`createdAt`, the server's time,
@@ -229,10 +282,26 @@ service cloud.firestore {
         && (!('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.get('createdAt', request.time));
       allow delete: if me(uid);
 
-      match /months/{m} { allow read: if me(uid) || friendOf(uid); allow write: if me(uid); }
-      match /meta/{d}   { allow read: if me(uid) || friendOf(uid); allow write: if me(uid); }
-      // Yours alone, never a friend's to read: cycle phase (domain/cycle).
-      match /private/{d} { allow read, write: if me(uid); }
+      // The log, one document a month (domain/cloud CloudMonth): a month's id, these keys, and counts far past a real month's
+      // (a heavy month is ~1,500 sets). With the settings below, an account holds a bounded number of documents.
+      match /months/{m} {
+        allow read: if me(uid) || friendOf(uid);
+        allow delete: if me(uid);
+        allow create, update: if me(uid) && m.matches('^(19|20)[0-9]{2}-(0[1-9]|1[0-2])$') && monthOk(request.resource.data);
+      }
+      // Settings (cloud/sync): the index, the settings document and a day-plan archive a year; nothing else.
+      match /meta/{d} {
+        allow read: if me(uid) || friendOf(uid);
+        allow delete: if me(uid);
+        allow create, update: if me(uid) && metaOk(d, request.resource.data);
+      }
+      // Yours alone, never a friend's to read: the board's (gate, hidden, muted), cycle phase, friend tags, trained-together.
+      match /private/{d} {
+        allow read, delete: if me(uid);
+        allow create, update: if me(uid) && d in ['board', 'cycle', 'tags', 'together']
+          && (d != 'board' || (request.resource.data.keys().hasOnly(['ok', 'at', 'hidden', 'muted'])
+            && request.resource.data.get('hidden', []).size() <= 200 && request.resource.data.get('muted', []).size() <= 200));
+      }
       // Compare: what your phone publishes for friends to set side by side (domain/compare summarize), one small document of
       // per-range numbers and no sets. A friend gets it, one read; nobody lists it but you. Only you write it, in its shape, at
       // the server's time.
@@ -248,7 +317,7 @@ service cloud.firestore {
         allow delete: if me(uid) || me(f);
         // Your own list; or the friend adds themselves, holding your invite (used up in the same write: it works once)
         // or answering their request you sent. Never someone you've blocked.
-        allow create: if me(uid)
+        allow create: if (me(uid) && request.resource.data.keys().hasOnly(['since', 'via', 'muted', 'readAt']))
           || (me(f) && !blocked(uid, f) && liveInvite(uid, request.resource.data.via)
               && !existsAfter(/databases/$(db)/documents/users/$(uid)/invites/$(request.resource.data.via)))
           || (me(f) && !blocked(uid, f) && exists(/databases/$(db)/documents/users/$(f)/requests/$(uid)));
@@ -263,8 +332,12 @@ service cloud.firestore {
         allow read, delete: if me(uid);
         allow create, update: if me(uid) && request.resource.data.keys().hasOnly(['at']);
       }
+      // Yours to make (a press of "Make an invite link", counted), a week long at most, and to cancel.
       match /invites/{t} {
-        allow read, write: if me(uid);
+        allow read, delete: if me(uid);
+        allow create: if me(uid) && t.matches('^[A-Za-z0-9_-]{8,64}$') && request.resource.data.keys().hasOnly(['created', 'expires'])
+          && request.resource.data.expires is timestamp && request.resource.data.expires <= request.time + duration.value(8, 'd')
+          && counted();
         allow get: if signedIn();
         // Used up by whoever accepts it, in the write that makes them a friend through it (see friends above).
         allow delete: if signedIn() && resource.data.expires > request.time
@@ -275,14 +348,18 @@ service cloud.firestore {
       // the setting: anyone), who hasn't blocked you. "Invite only" leaves invite links as the way in.
       match /requests/{from} {
         allow create: if me(from) && from != uid && prof(uid).get('reqs', 'any') == 'any' && !blocked(uid, from)
-          && request.resource.data.keys().hasOnly(['username', 'sent']);
+          && request.resource.data.keys().hasOnly(['username', 'sent']) && request.resource.data.username is string
+          && request.resource.data.username.size() <= 60 && !closed('requests') && counted();
         allow read, delete: if me(uid) || me(from);
       }
       // A gym a friend sent you: they create it as themselves, only you read or clear it, nobody rewrites it.
       // Its sender may get that one document back: the push Worker reads it with their token to check the gym is theirs.
       match /gymInbox/{id} {
         allow create: if signedIn() && request.resource.data.from == request.auth.uid && friendOf(uid)
-          && request.resource.data.keys().hasOnly(['from', 'fromName', 'gym', 'sent']);
+          && request.resource.data.keys().hasOnly(['from', 'fromName', 'gym', 'sent']) && request.resource.data.fromName is string
+          && request.resource.data.fromName.size() <= 60 && request.resource.data.gym is map && request.resource.data.gym.size() <= 12
+          && request.resource.data.gym.name is string && request.resource.data.gym.name.size() <= 100
+          && !closed('messages') && counted();
         allow read, delete: if me(uid);
         allow get: if signedIn() && resource.data.from == request.auth.uid;
       }
@@ -295,7 +372,8 @@ service cloud.firestore {
                 && request.resource.data.e in ['strong', 'fire', 'clap', 'gym', 'eyes', 'salute'])
             || (request.resource.data.kind == 'm' && request.resource.data.keys().hasOnly(['from', 'kind', 't', 'at'])
                 && request.resource.data.t is string && request.resource.data.t.size() >= 1 && request.resource.data.t.size() <= 140))
-          && getAfter(/databases/$(db)/documents/users/$(request.auth.uid)/sendRate/$(uid)).data.at == request.time;
+          && getAfter(/databases/$(db)/documents/users/$(request.auth.uid)/sendRate/$(uid)).data.at == request.time
+          && !closed('messages') && counted();
         allow read: if me(uid) || (signedIn() && resource.data.from == request.auth.uid);
         allow delete: if me(uid);
         allow update: if false;

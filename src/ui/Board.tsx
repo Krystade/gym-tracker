@@ -3,12 +3,13 @@ import { createPortal } from 'react-dom';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { isOwner } from '../cloud/owner';
 import {
-  acceptBoard, banUser, checkVerified, createPost, deletePost, removePost, reportPost, saveList, sendVerification, setLike, type Mine,
+  acceptBoard, banUser, createPost, deletePost, removePost, reportPost, saveList, setLike, type Mine,
 } from '../cloud/board';
 import { blockFriend, sendRequest } from '../cloud/friends';
+import { switchesNow } from '../cloud/limits';
 import {
   AGE_FLOOR, CONTENT_RULES, HIDDEN_MAX, MAX_POST, MIN_SHOWN, MUTED_MAX, REASONS, RULES_FOOTER, cleanPost, gateSteps, leadOf,
-  maskEmail, personalWarning, postAgo, postError, postsFrom, rowsOf, shownCount, toggleIn, type Filters, type Post, type Reason,
+  personalWarning, postAgo, postError, postsFrom, rowsOf, shownCount, toggleIn, type Filters, type Post, type Reason,
 } from '../domain/board';
 import { morePosts, noteGone, noteLike, noteMine, notePost, noteSeen, openBoard, patchBoard, useBoard } from '../state/board';
 import { peekFriendCache, refreshLists, useFriendCache, useFriendTags } from '../state/friendCache';
@@ -19,8 +20,8 @@ import { StatsSheet } from './StatsSheet';
 import './board.css';
 
 // The board (social S3, S4): one page everyone signed in reads, newest first, from what this phone kept (state/board) and read
-// again at most once a minute. Posting waits behind the gate (a username, a verified email, "16 or older and the rules", a day-old
-// account). Each post: a 💪, Hide, and ⋯ for the rest (mute, a friend request, report, block; your own: delete; the owner's:
+// again at most once a minute. Posting waits behind the gate (a username, "16 or older and the rules", a day-old account; no
+// verified email since r28), and the owner can close it for everyone (config/switches: "Board closed"). Each post: a 💪, Hide, and ⋯ for the rest (mute, a friend request, report, block; your own: delete; the owner's:
 // remove, ban, the ✓). A post 3 people reported is a line for everyone else until the owner reviews it (More › Board review).
 
 type Msg = { ok: boolean; text: string; undo?: () => void };
@@ -29,12 +30,12 @@ const plain = (e: unknown) => cloudError(e);
 const FOLD_KEY = 'board:folded';
 
 /** `pulled` moves on each pull at the top of Friends: the board is read again whole. */
-export function Board({ uid, email, pulled, onAccount }: { uid: string; email: string | null | undefined; pulled: number; onAccount: () => void }) {
+export function Board({ uid, pulled, onAccount }: { uid: string; pulled: number; onAccount: () => void }) {
   const board = useBoard(uid);
   const cache = useFriendCache(uid);
   const lists = cache?.lists;
   const tags = useFriendTags(uid);
-  const [verified, setVerified] = useState<boolean | null>(null);
+  const [closed, setClosed] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [msg, setMsg] = useState<Msg | null>(null);
   const [gateOpen, setGateOpen] = useState(false);
@@ -58,7 +59,7 @@ export function Board({ uid, email, pulled, onAccount }: { uid: string; email: s
     try {
       const c = await loadCloud();
       await c.auth.authStateReady();
-      setVerified(!!c.auth.currentUser?.emailVerified);
+      void switchesNow(c, force).then((s) => setClosed(s.board), () => {});
       const b = await openBoard(c, uid, { force });
       setNote(null);
       // Hides and mutes can leave a page nearly empty: one more page then, not a screen of nothing.
@@ -85,7 +86,7 @@ export function Board({ uid, email, pulled, onAccount }: { uid: string; email: s
     return () => io.disconnect();
   }, [canMore, more, fetchMore, board?.posts.length]);
 
-  const steps = gateSteps({ username: lists?.me ?? null, emailVerified: !!verified, accepted: !!board?.mine?.ok, createdAt: lists?.createdAt, banned: !!board?.notice?.banned }, now);
+  const steps = gateSteps({ username: lists?.me ?? null, accepted: !!board?.mine?.ok, createdAt: lists?.createdAt, banned: !!board?.notice?.banned }, now);
   const banned = steps[0] === 'banned';
   // Never accepted: the gate shows open, as the board's first word to you. "Not now" folds it until Post is tapped.
   const [folded, setFoldedState] = useState(() => { try { return localStorage.getItem(FOLD_KEY) === uid; } catch { return false; } });
@@ -130,6 +131,7 @@ export function Board({ uid, email, pulled, onAccount }: { uid: string; email: s
   return (
     <div className="board">
       {banned && <p className="card bd-notice" role="status">The app’s owner banned this account from the board for breaking its rules. You can still read it.</p>}
+      {!banned && closed && <p className="card bd-notice" role="status"><b>Board closed</b> · the app’s owner closed posting for now. You can still read it.</p>}
       {!banned && removedNew > 0 && (
         <div className="card bd-notice" role="status">
           <p>The app’s owner removed {removedNew === 1 ? 'a post' : `${removedNew} posts`} of yours for breaking the board’s rules.</p>
@@ -137,12 +139,12 @@ export function Board({ uid, email, pulled, onAccount }: { uid: string; email: s
         </div>
       )}
       {showGate ? (
-        <Gate uid={uid} email={email} steps={steps} accepted={!!board?.mine?.ok} createdAt={lists?.createdAt}
-          onVerified={setVerified} onAccount={onAccount} onJoined={() => setGateOpen(true)} onFold={() => { setGateOpen(false); setFolded(true); }} />
+        <Gate uid={uid} steps={steps} accepted={!!board?.mine?.ok} createdAt={lists?.createdAt}
+          onAccount={onAccount} onJoined={() => setGateOpen(true)} onFold={() => { setGateOpen(false); setFolded(true); }} />
       ) : (
         <div className="bd-head">
           <p className="bd-sub">Everyone on Gym Tracker · newest first</p>
-          {!banned && <button type="button" className="primary bd-post" onClick={post}>Post</button>}
+          {!banned && !closed && <button type="button" className="primary bd-post" onClick={post}>Post</button>}
         </div>
       )}
       {note && <p className="muted small" role="status">{note}</p>}
@@ -222,24 +224,21 @@ function PostCard({ me, p, held, lead, checked, liked, now, onLike, onHide, onMo
 }
 
 /** What stands between you and a post, each with its way through; the rules once, to accept. */
-function Gate({ uid, email, steps, accepted, createdAt, onVerified, onAccount, onJoined, onFold }: {
-  uid: string; email: string | null | undefined; steps: string[]; accepted: boolean; createdAt?: number;
-  onVerified: (v: boolean) => void; onAccount: () => void; /** Accepted: the gate stays open on what's left. */ onJoined: () => void; onFold: () => void;
+function Gate({ uid, steps, accepted, createdAt, onAccount, onJoined, onFold }: {
+  uid: string; steps: string[]; accepted: boolean; createdAt?: number;
+  onAccount: () => void; /** Accepted: the gate stays open on what's left. */ onJoined: () => void; onFold: () => void;
 }) {
   const [age, setAge] = useState(false);
   const [rules, setRules] = useState(false);
-  const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg | null>(null);
   const run = async (f: () => Promise<void>) => {
     setBusy(true); setMsg(null);
     try { await f(); } catch (e) { setMsg({ ok: false, text: plain(e) }); } finally { setBusy(false); }
   };
-  const emailOk = !steps.includes('email');
   const from = postsFrom(createdAt);
   const left = steps.filter((s) => s !== 'accept');
   const why = left.includes('username') ? 'Posting opens once you’ve chosen a username.'
-    : left.includes('email') ? 'Posting opens once your email is verified.'
     : left.includes('age') ? `Posting opens once your account is a day old${from ? `: ${new Date(from).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}.`
     : null;
   return (
@@ -256,22 +255,6 @@ function Gate({ uid, email, steps, accepted, createdAt, onVerified, onAccount, o
         <div className="bd-step">
           <span className="bd-box" aria-hidden="true" /><span>A username · <span className="bd-notyet">not yet</span>
             <button type="button" className="bd-link bd-steplink" onClick={onAccount}>Pick one on Friends</button></span>
-        </div>
-      )}
-      <div className="bd-step">
-        <span className={`bd-box${emailOk ? ' on' : ''}`} aria-hidden="true">{emailOk && <Icon name="check" size={18} sw={2.5} />}</span>
-        <span>Email verified{!emailOk && <> · <span className="bd-notyet">not yet</span></>}
-          {!emailOk && <span className="muted small bd-stepsub">{sent ? `We sent a link to ${maskEmail(email)}. Open it, then come back.` : `We’ll send a link to ${maskEmail(email)}.`}</span>}
-        </span>
-      </div>
-      {!emailOk && (
-        <div className="bd-gate-btns">
-          <button type="button" className="wide" disabled={busy} onClick={() => void run(async () => { await sendVerification(await loadCloud()); setSent(true); setMsg({ ok: true, text: 'Sent. Check your inbox (and spam).' }); })}>{sent ? 'Resend link' : 'Send link'}</button>
-          {sent && <button type="button" className="wide" disabled={busy} onClick={() => void run(async () => {
-            const ok = await checkVerified(await loadCloud());
-            onVerified(ok);
-            if (!ok) setMsg({ ok: false, text: 'Not verified yet. Open the link in the email, then try again.' });
-          })}>I’ve opened it</button>}
         </div>
       )}
       {!accepted ? (

@@ -36,7 +36,7 @@ export function fakeNet(jwks: unknown, status: (url: string) => number = () => 2
     const url = String(input instanceof Request ? input.url : input);
     if (url === JWKS_URL) { keyFetches++; return new Response(JSON.stringify(jwks), { headers: { 'cache-control': 'public, max-age=3600' } }); }
     if (url.startsWith(FIRESTORE)) return world.get(decodeURIComponent(url.slice(FIRESTORE.length)), new Headers(init?.headers).get('authorization'));
-    sent.push({ url, headers: new Headers(init?.headers), body: new Uint8Array(init?.body as ArrayBuffer) });
+    sent.push({ url, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? new TextEncoder().encode(init.body) : new Uint8Array(init?.body as ArrayBuffer) });
     return new Response(null, { status: status(url) });
   };
   return { sent, keyFetches: () => keyFetches };
@@ -113,6 +113,8 @@ export class World {
     const [top, owner, coll, id] = path.split('/');
     // A report on a board post (social S4): its reporter, or one of the app's owners.
     if (top === 'board') return coll === 'reports' && (id === uid || OWNERS.includes(uid));
+    // Your counters are yours alone (r28); the app's counter for the day is anyone's, signed in or not.
+    if (top === 'boardRate' || top === 'reportRate' || top === 'socialRate') return owner === uid;
     if (!coll) return true;
     if (uid === owner) return true;
     if (coll === 'meta' || coll === 'months') return this.docs.has(`users/${owner}/friends/${uid}`);
@@ -123,7 +125,7 @@ export class World {
   get(path: string, authorization: string | null): Response {
     const uid = authorization ? (decodeJwt(authorization.replace(/^Bearer /, '')).sub ?? '') : '';
     this.reads.push({ path, uid });
-    if (!uid || !this.may(path, uid)) return Response.json({ error: { code: 403 } }, { status: 403 });
+    if (!path.startsWith('limits/') && (!uid || !this.may(path, uid))) return Response.json({ error: { code: 403 } }, { status: 403 });
     const d = this.docs.get(path);
     if (!d) return Response.json({ error: { code: 404 } }, { status: 404 });
     return Response.json({ name: path, fields: typed(d.fields).mapValue && (typed(d.fields).mapValue as { fields: unknown }).fields, createTime: new Date(d.createTime).toISOString(), updateTime: new Date(d.createTime).toISOString() });

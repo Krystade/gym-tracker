@@ -1,5 +1,6 @@
 // The board (social S3, S4; plan .superpowers/redesign/social/plan.md §3): one page of short text posts that everyone signed in
-// reads. Posting takes a verified email, an account a day old, a one-time "16 or older, and the board's rules", and no ban;
+// reads. Posting takes a username, an account a day old, a one-time "16 or older, and the board's rules", and no ban (no verified
+// email since r28, owner 2026-10-22);
 // firestore.rules holds every one of those, and the counts and limits below are the same numbers. Plain TypeScript, no DOM.
 
 /** A post's most characters, as firestore.rules counts them (UTF-16 units: a JS string's length; 💪 is two). */
@@ -150,30 +151,20 @@ export function postAgo(at: number, now: number): string {
   return new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-/** An email as the gate shows it: the first letter and the domain ("j•••@example.com"). */
-export function maskEmail(email: string | null | undefined): string {
-  const e = (email ?? '').trim();
-  const at = e.lastIndexOf('@');
-  if (at < 1) return 'your email';
-  return `${[...e][0]}•••${e.slice(at)}`;
-}
-
 // ---- The gate ----
 
 export interface GateFacts {
   /** Your @username; null: none chosen yet. */ username: string | null;
-  emailVerified: boolean;
   /** You accepted "16 or older, and the board's rules" (private/board ok). */ accepted: boolean;
   /** Your profile's createdAt (ms); undefined: none yet (it's written on the next open). */ createdAt?: number;
   banned: boolean;
 }
-export type GateStep = 'banned' | 'username' | 'email' | 'accept' | 'age';
+export type GateStep = 'banned' | 'username' | 'accept' | 'age';
 /** What still stands between you and a post, in the order the gate shows it; [] when you can post. */
 export function gateSteps(g: GateFacts, now: number): GateStep[] {
   if (g.banned) return ['banned'];
   const out: GateStep[] = [];
   if (!g.username) out.push('username');
-  if (!g.emailVerified) out.push('email');
   if (!g.accepted) out.push('accept');
   if (g.createdAt == null || now <= g.createdAt + ACCOUNT_AGE_MS) out.push('age');
   return out;

@@ -66,6 +66,29 @@ git push
 Once the site has redeployed, open Gym Tracker **from the Home Screen icon** (push only works there on iPhone), go to
 More → Notifications → **Turn on notifications**, allow them, then tap **Send test notification**.
 
+## 6. Limit alerts by email (optional)
+
+When someone runs into one of the app's limits (5 posts a day, 20 reports, 300 social actions, 30 messages an hour to one
+friend, or the whole app's 2,000 a day), the Worker pushes to the owner's phone. With these two secrets it also emails you,
+at most once a day per person and limit. It uses Resend's free plan (3,000 emails a month, 100 a day).
+
+1. Sign up at resend.com **with the email address the alerts should go to** (until you verify a domain there, Resend's
+   test sender only delivers to your own account's address).
+2. In Resend: API Keys → Create API Key → permission **Sending access** → Create. Copy it once; don't paste it anywhere else.
+3. From this `worker/` folder (each command asks for the value and never shows it):
+
+   ```sh
+   npx wrangler secret put RESEND_API_KEY
+   npx wrangler secret put ALERT_EMAIL
+   ```
+
+   `ALERT_EMAIL` is that same address. It's a secret only so it stays out of this public repo.
+
+Without them the pushes still go; only the email is skipped. To stop the emails, `npx wrangler secret delete ALERT_EMAIL`.
+
+The Worker also checks the app's counter for the day every 15 minutes (a cron trigger: the free plan allows five), so you hear
+when the app is full even if whoever filled it never opened the app.
+
 ## Checks on the iPhone (only the phone can confirm these)
 
 - The test notification shows with the app open, in the background, and with the phone locked.

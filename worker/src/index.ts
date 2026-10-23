@@ -2,10 +2,15 @@ import { AuthError, verifyIdToken } from './auth';
 import { allowedOrigin, withCors } from './cors';
 import { localMode, type Env } from './env';
 import { FirestoreError } from './firestore';
-import { check, recipients, Refused } from './notify';
+import { alertEmail } from './email';
+import { getDoc } from './firestore';
+import { check, globalPush, recipients, Refused, type FriendPush } from './notify';
+import { dayId, GLOBAL_PER_DAY } from '../../src/domain/limits';
+import { OWNERS } from '../../src/cloud/owner';
 import * as v from './validate';
 
 export { UserBox } from './userbox';
+import { NOTIFY_PER_DAY } from './userbox';
 
 // The Worker only answers CORS, checks the Firebase ID token, applies the rate limit and hands the call to the account's
 // Durable Object. Routes are the app's: see src/push/client.ts.
@@ -47,13 +52,12 @@ async function handle(req: Request, env: Env): Promise<Response> {
       const claim = v.claim(await body(req));
       const { success: ok } = await env.NOTIFY_LIMIT.limit({ key: uid }).catch(() => ({ success: false }));
       if (!ok) throw new Http(429, 'slow down');
+      // And a day's worth, counted exactly in the caller's own Durable Object: each /notify reads Firestore as them.
+      if (!(await box.spend('notify', NOTIFY_PER_DAY))) throw new Http(429, 'slow down');
       const push = await check(env, token, uid, claim, Date.now()).catch((e) => {
         throw e instanceof Refused ? new Http(403, 'refused') : e instanceof FirestoreError ? new Http(502, 'firestore') : e;
       });
-      for (const to of recipients(claim)) {
-        const outcome = await env.USERS.get(env.USERS.idFromName(to)).friendPush(push);
-        console.log(JSON.stringify({ kind: push.kind, outcome }));
-      }
+      await deliver(env, push, recipients(claim));
       return json({ ok: true });
     }
     case 'POST /badge': await box.setBadge(v.badge(await body(req))); return json({ ok: true });
@@ -67,7 +71,33 @@ async function handle(req: Request, env: Env): Promise<Response> {
   }
 }
 
+/** A checked push to each recipient's Durable Object; a limit's also by email, once (the first owner's box keeps the day). */
+async function deliver(env: Env, push: FriendPush, to: readonly string[]): Promise<void> {
+  const outcomes: string[] = [];
+  for (const uid of to) {
+    const outcome = await env.USERS.get(env.USERS.idFromName(uid)).friendPush(push);
+    outcomes.push(outcome);
+    console.log(JSON.stringify({ kind: push.kind, outcome }));
+  }
+  if (push.kind === 'limit' && (outcomes[0] === 'sent' || outcomes[0] === 'no device')) await alertEmail(env, push.note);
+}
+
+/**
+ * The cron (wrangler.jsonc triggers, every 15 minutes): the app's counter for the day, read as nobody (anyone may). Full, the
+ * owners hear of it, once a day, even when nobody using the app saw it (someone flooding it from outside the app).
+ */
+export async function watchDay(env: Env, now = Date.now()): Promise<boolean> {
+  const d = await getDoc(env, null, ['limits', dayId(now)]).catch(() => null);
+  const n = d && d !== 'denied' ? d.fields.n : null;
+  if (typeof n !== 'number' || n < GLOBAL_PER_DAY) return false;
+  await deliver(env, globalPush(now), OWNERS);
+  return true;
+}
+
 export default {
+  async scheduled(_c: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(watchDay(env));
+  },
   async fetch(req: Request, env: Env): Promise<Response> {
     const origin = allowedOrigin(req.headers.get('origin'), env);
     if (req.method === 'OPTIONS') return withCors(new Response(null, { status: 204 }), origin, true);

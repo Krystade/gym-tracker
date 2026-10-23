@@ -6,12 +6,12 @@ import { POST_DAYS_MS } from '../domain/board';
 
 // The board's writes, in the shapes firestore.rules want (the rules tests hold the rules themselves to it).
 
-const push = vi.hoisted(() => ({ calls: [] as unknown[][] }));
-vi.mock('../push/client', () => ({ notifyFriend: (...a: unknown[]) => { push.calls.push(a); } }));
+const push = vi.hoisted(() => ({ calls: [] as unknown[][], limits: [] as unknown[][] }));
+vi.mock('../push/client', () => ({ notifyFriend: (...a: unknown[]) => { push.calls.push(a); }, notifyLimit: (...a: unknown[]) => { push.limits.push(a); } }));
 
 const NOW = Date.parse('2026-10-22T18:00:00Z');
 const MIN = 60_000, DAY = 864e5;
-beforeEach(() => { push.calls.length = 0; vi.useFakeTimers({ now: NOW, toFake: ['Date'] }); });
+beforeEach(() => { push.calls.length = 0; push.limits.length = 0; vi.useFakeTimers({ now: NOW, toFake: ['Date'] }); });
 
 const world = (extra: Record<string, Record<string, unknown>> = {}) => fakeFirestore({ 'users/me': { username: 'mara_lifts', displayName: 'Mara R.' }, ...extra });
 
@@ -21,12 +21,15 @@ describe('a post', () => {
     const p = await createPost(w.cloud, 'me', 'Deload every 3rd week?', NOW);
     expect(w.docs[`board/${p.id}`]).toMatchObject({ uid: 'me', name: 'Mara R.', user: 'mara_lifts', t: 'Deload every 3rd week?', reports: 0, likes: 0 });
     expect(w.docs['boardRate/me']).toMatchObject({ n: 1 });
+    expect(w.docs['limits/20748']).toEqual({ n: 1 }); // the app's counter for the day (r28)
   });
   it('waits a minute after the last, and stops at 5 in the day that began with the first', async () => {
     const w = world({ 'boardRate/me': { at: ts(NOW - 30_000), win: ts(NOW - 30_000), n: 1 } });
     await expect(createPost(w.cloud, 'me', 'again', NOW)).rejects.toThrow(/One post a minute/);
     w.docs['boardRate/me'] = { at: ts(NOW - 2 * MIN), win: ts(NOW - 3600_000), n: 5 };
+    expect(push.limits).toEqual([]);
     await expect(createPost(w.cloud, 'me', 'sixth', NOW)).rejects.toThrow(/5 posts today/);
+    expect(push.limits).toEqual([['board']]); // the owner hears of it (r28)
     w.docs['boardRate/me'] = { at: ts(NOW - 2 * MIN), win: ts(NOW - DAY - 1), n: 5 };
     await createPost(w.cloud, 'me', 'a new day', NOW);
     expect(w.docs['boardRate/me']).toMatchObject({ n: 1 });
@@ -49,6 +52,7 @@ describe('a report', () => {
   it('20 a day; the owner’s own reports ring nobody', async () => {
     const w = world({ 'reportRate/me': { at: ts(NOW - MIN), win: ts(NOW - 3600_000), n: 20 }, 'board/p1': { uid: 'x', user: 'x', t: 'x', at: ts(NOW), reports: 0, likes: 0 } });
     await expect(reportPost(w.cloud, 'me', 'p1', 'spam', [], NOW)).rejects.toThrow(/20 reports today/);
+    expect(push.limits).toEqual([['report']]);
     const o = fakeFirestore({ 'board/p1': { uid: 'x', user: 'x', t: 'x', at: ts(NOW), reports: 0, likes: 0 } });
     await reportPost(o.cloud, OWNERS[0], 'p1', 'other', [], NOW);
     expect(push.calls).toEqual([]);

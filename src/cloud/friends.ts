@@ -8,6 +8,7 @@ import { CHANGE_GAP_MS, nextChangeAt } from '../domain/friendNames';
 import { cleanDisplayName, displayNameError, displayOf, NAME_GAP_MS, nextNameAt } from '../domain/displayName';
 import type { SetEntry } from '../domain/types';
 import { notifyFriend } from '../push/client';
+import { counted, limitHit, socialNext, whyRefused, withTries } from './limits';
 import type { Cloud } from './firebase';
 
 // Friendship is two documents, users/A/friends/B and users/B/friends/A: A's list naming B is what lets B read A's log.
@@ -144,13 +145,15 @@ export async function setVerified({ F, db }: Cloud, uid: string, on: boolean): P
   });
 }
 
-/** Your one live invite: making a new one ends the old. */
-export async function makeInvite({ F, db }: Cloud, uid: string, now = Date.now()): Promise<Invite> {
+/** Your one live invite: making a new one ends the old. Counted (cloud/limits). */
+export async function makeInvite(c: Cloud, uid: string, now = Date.now()): Promise<Invite> {
+  const { F, db } = c;
   const token = newToken();
-  const b = F.writeBatch(db);
-  for (const d of (await F.getDocs(F.collection(db, `users/${uid}/invites`))).docs) b.delete(d.ref);
-  b.set(F.doc(db, `users/${uid}/invites/${token}`), { created: F.Timestamp.fromMillis(now), expires: F.Timestamp.fromMillis(now + WEEK) });
-  await b.commit();
+  const old = (await F.getDocs(F.collection(db, `users/${uid}/invites`))).docs;
+  await counted(c, uid, null, (b) => {
+    for (const d of old) b.delete(d.ref);
+    b.set(F.doc(db, `users/${uid}/invites/${token}`), { created: F.Timestamp.fromMillis(now), expires: F.Timestamp.fromMillis(now + WEEK) });
+  }, now);
   return { uid, token };
 }
 export async function liveInvite({ F, db }: Cloud, uid: string, now = Date.now()): Promise<(Invite & { expires: number }) | null> {
@@ -203,7 +206,7 @@ export async function sendRequest(c: Cloud, me: string, myName: string, to: stri
   if ((await F.getDoc(F.doc(db, `users/${me}/requests/${them}`))).exists()) { await acceptRequest(c, me, them, now); return 'accepted'; }
   const ref = F.doc(db, `users/${them}/requests/${me}`);
   if ((await F.getDoc(ref)).exists()) throw fail(`You’ve already asked @${to}. They’ll see it under Friends.`);
-  try { await F.setDoc(ref, { username: myName, sent: now }); } catch (e) {
+  try { await counted(c, me, 'requests', (b) => b.set(ref, { username: myName, sent: now }), now); } catch (e) {
     // Refused: they take friends by invite link only (or blocked you, which this mustn't say).
     if ((e as { code?: string }).code === 'permission-denied') throw fail(`@${to} takes new friends by invite link only. Ask them for one.`);
     throw e;
@@ -356,9 +359,11 @@ async function readSettingsBits({ F, db }: Cloud, uid: string): Promise<{ status
 
 /** A gym a friend sent you, waiting under Friends until you add it or dismiss it. */
 export interface SentGym { id: string; from: string; fromName: string; gym: Omit<Gym, 'id'>; sent: number }
-export async function sendGym({ F, db }: Cloud, me: string, myName: string, to: string, g: Gym, now = Date.now()): Promise<void> {
+export async function sendGym(c: Cloud, me: string, myName: string, to: string, g: Gym, now = Date.now()): Promise<void> {
+  const { F, db } = c;
   const { id: _id, ...gym } = g;
-  const ref = await F.addDoc(F.collection(db, `users/${to}/gymInbox`), { from: me, fromName: myName, gym, sent: now });
+  const ref = F.doc(F.collection(db, `users/${to}/gymInbox`));
+  await counted(c, me, 'messages', (b) => b.set(ref, { from: me, fromName: myName, gym, sent: now }), now);
   notifyFriend('gym', to, ref.id);
 }
 export async function listSentGyms({ F, db }: Cloud, me: string): Promise<SentGym[]> {
@@ -386,7 +391,7 @@ const COULDNT = 'Couldn’t send.';
 async function sendInbox(c: Cloud, me: string, to: string, data: { kind: 'p'; e: PresetKey } | { kind: 'm'; t: string }): Promise<string> {
   const { F, db } = c;
   const rateRef = F.doc(db, `users/${me}/sendRate/${to}`);
-  const attempt = async (flip: boolean) => {
+  const attempt = async (flip: boolean, off: number) => {
     const snap = await F.getDoc(rateRef);
     const r = snap.exists() ? (snap.data() as RateDoc) : null;
     const now = F.serverTimestamp();
@@ -394,25 +399,22 @@ async function sendInbox(c: Cloud, me: string, to: string, data: { kind: 'p'; e:
     if (r) {
       const newHour = Date.now() - r.win.toMillis() >= HOUR;
       if (newHour === flip) {
-        if (r.n >= PER_HOUR) throw fail('That’s 30 this hour. Try again later.');
+        if (r.n >= PER_HOUR) { limitHit('send', to); throw fail('That’s 30 this hour. Try again later.'); }
         next = { at: now, win: r.win, n: r.n + 1 };
       }
       const wait = r.at.toMillis() + 2100 - Date.now();
       if (wait > 0 && wait <= 2100) await sleep(wait);
     }
     const ref = F.doc(F.collection(db, `users/${to}/inbox`));
+    const counters = await socialNext(c, me, Date.now(), false, off);
     const b = F.writeBatch(db);
     b.set(ref, { from: me, ...data, at: now });
     b.set(rateRef, next);
+    counters(b);
     await b.commit();
     return ref.id;
   };
-  const denied = (e: unknown) => (e as { code?: string }).code === 'permission-denied';
-  let id: string;
-  try { id = await attempt(false); } catch (e) {
-    if (!denied(e)) throw e;
-    try { id = await attempt(true); } catch (e2) { throw denied(e2) ? fail(COULDNT) : e2; }
-  }
+  const id = await withTries(attempt, async () => (await whyRefused(c, 'messages')) ?? fail(COULDNT));
   notifyFriend('inbox', to, id);
   return id;
 }

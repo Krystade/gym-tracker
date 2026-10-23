@@ -34,10 +34,11 @@ const path = (segments: string[]) => segments.map(encodeURIComponent).join('/');
  * One document, read as the caller. A Doc when it exists and they may read it; null when it doesn't exist but they
  * may (404); 'denied' when the rules refuse them (403). Anything else is a FirestoreError.
  */
-export async function getDoc(env: Pick<Env, 'AUTH_EMULATOR' | 'FIREBASE_PROJECT' | 'FIRESTORE_EMULATOR'>, token: string, segments: string[]): Promise<Doc | null | 'denied'> {
+export async function getDoc(env: Pick<Env, 'AUTH_EMULATOR' | 'FIREBASE_PROJECT' | 'FIRESTORE_EMULATOR'>, token: string | null, segments: string[]): Promise<Doc | null | 'denied'> {
   let r: Response;
   try {
-    r = await net.fetch(`${base(env)}/${path(segments)}`, { headers: { authorization: `Bearer ${token}` } });
+    // No token (the cron's read of the app's day counter, which anyone may read): asked as nobody.
+    r = await net.fetch(`${base(env)}/${path(segments)}`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
   } catch { throw new FirestoreError('unreachable'); }
   if (r.status === 404) { await r.body?.cancel(); return null; }
   if (r.status === 403) { await r.body?.cancel(); return 'denied'; }

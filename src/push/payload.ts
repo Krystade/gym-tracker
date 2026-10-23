@@ -7,8 +7,8 @@ export type ActivityKind = 'request' | 'accepted' | 'gym';
 export type MessageKind = 'ping' | 'message';
 export type FriendKind = ActivityKind | MessageKind;
 /** `pain`: the next-morning question about yesterday's pain (item 08, round 20). */
-/** New reports on the board, to its owner alone (social S4): at most one a day. */
-export type ModKind = 'report';
+/** New reports on the board, to its owner alone (social S4): at most one a day. A limit someone ran into (r28): one a day each. */
+export type ModKind = 'report' | 'limit';
 export type Kind = 'test' | 'rest' | 'remind' | 'recap' | 'pain' | FriendKind | ModKind;
 export const ACTIVITY_KINDS: readonly ActivityKind[] = ['request', 'accepted', 'gym'];
 
@@ -64,10 +64,11 @@ export const DELIVERY: Record<Kind, Delivery> = {
   message: { ttl: 86400, urgency: 'normal', topic: 'friend' },
   // The owner's: one waiting at a time, kept a day.
   report: { ttl: 86400, urgency: 'normal', topic: 'report' },
+  limit: { ttl: 86400, urgency: 'normal', topic: 'limit' },
 };
 
 /** Where each kind lands; a friend's kinds land on that friend (the route passed to buildPayload). */
-const ROUTE: Record<Kind, Route> = { rest: 'rest', remind: 'today', recap: 'recap', pain: 'pain', test: 'today', request: 'friends', accepted: 'friends', gym: 'friends', ping: 'friends', message: 'friends', report: 'review' };
+const ROUTE: Record<Kind, Route> = { rest: 'rest', remind: 'today', recap: 'recap', pain: 'pain', test: 'today', request: 'friends', accepted: 'friends', gym: 'friends', ping: 'friends', message: 'friends', report: 'review', limit: 'review' };
 
 /**
  * The Topic header for pushes from one sender: 22 base64url characters of SHA-256(uid). A push still waiting at the push
@@ -163,6 +164,17 @@ export const requestNote = (name: string) => ({ title: 'Friend request', body: `
 export const acceptedNote = (name: string) => ({ title: 'New friend', body: `You and ${name} are friends` });
 /** The owner's daily word that the board has reports waiting: nothing of who or what (a lock screen is no place for it). */
 export const reportNote = () => ({ title: 'Board reports', body: 'New reports are waiting in Board review.' });
+/** A limit reached (r28; domain/limits), to the owner: whose (their username, when they have one) and which. */
+export function limitNote(id: 'board' | 'report' | 'social' | 'send' | 'global', who: string): { title: string; body: string } {
+  const body = {
+    board: `${who} reached the board’s 5 posts today.`,
+    report: `${who} made 20 reports today.`,
+    social: `${who} reached 300 social actions today (💪s, messages, requests, invites, gyms).`,
+    send: `${who} sent one friend 30 messages or pings this hour.`,
+    global: 'Gym Tracker reached 2,000 social writes today: posts, messages and requests stop until 00:00 UTC.',
+  }[id];
+  return { title: 'Limit reached', body };
+}
 export const gymNote = (name: string, gym: string) => ({ title: 'Gym shared', body: `${name} sent you a gym: ${clip(gym, MAX_GYM) || 'a gym'}` });
 /**
  * The pings, stored by key (firestore.rules allows exactly these), so their words can change without touching what's

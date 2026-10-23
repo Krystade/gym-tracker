@@ -12,6 +12,9 @@ export interface Env {
   AUTH_EMULATOR: string;
   /** Local mode only: the Firestore emulator (http://127.0.0.1:8080). Otherwise Firestore itself. */
   FIRESTORE_EMULATOR?: string;
+  /** Secrets (r28): Resend's API key and the owner's address for limit alerts (email.ts). Unset, no email. */
+  RESEND_API_KEY?: string;
+  ALERT_EMAIL?: string;
   /** Secret: the VAPID private key as a JWK. Unset, nothing is sent. */
   VAPID_PRIVATE_JWK?: string;
 }
