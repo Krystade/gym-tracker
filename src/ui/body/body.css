@@ -1,0 +1,49 @@
+/* The body map (src/ui/body). Every fill is an opaque step authored in OKLCH and shipped as hex, never a translucent tint: the
+   app is dark only (color-scheme: dark), so these are its one set. Each tone is named by a word in the legend beside it. */
+:root {
+  --bm-body: #292b2f;       /* oklch(0.290 0.008 266): head, hands, knees, shins, feet; 1.15:1 on --surface-2, a quiet silhouette */
+  --bm-idle: #3f4249;       /* oklch(0.380 0.012 266): a muscle with nothing to say; 1.62:1 on --surface-2 */
+  /* Stats' Muscles sheet: the bars' statuses, in the hues of their marks (✓ --ok, ▽ --danger, ▲ --warn), a step apart in lightness. */
+  --bm-on: #62d286;         /* oklch(0.780 0.150 152): on target */
+  --bm-pace: #519164;       /* oklch(0.600 0.095 152): on pace, the same green a step down */
+  --bm-under: #ea564d;      /* oklch(0.650 0.185 27): under */
+  --bm-over: #fda856;       /* oklch(0.800 0.140 62): over */
+  /* The Why sheet: recovery today. */
+  --bm-ready: #62d286;      /* oklch(0.780 0.150 152) */
+  --bm-recovering: #eebc4a; /* oklch(0.820 0.140 85) */
+  --bm-notyet: #ea564d;     /* oklch(0.650 0.185 27) */
+  /* A lift's page: what a set counts for, one ramp from the accent down to rust (amber has no vivid dark form; orange does). */
+  --bm-w100: #fdbe45;       /* oklch(0.840 0.150 80) */
+  --bm-w75: #ed9235;        /* oklch(0.740 0.150 62) */
+  --bm-w50: #cf6e37;        /* oklch(0.640 0.140 48) */
+  --bm-w25: #a3563b;        /* oklch(0.540 0.110 40): 2.05:1 on --bm-idle, still a colour beside it */
+  --bm-outline: #eef2f9;    /* oklch(0.960 0.010 264): the outline of muscles guessed from a name */
+}
+
+.bodymap { margin: 4px 0 12px; }
+.bodymap.bm-md { --bm-h: 252px; }
+.bodymap.bm-sm { --bm-h: 176px; }
+.bm-figs { display: flex; justify-content: center; gap: 16px; }
+.bm-side { display: block; height: var(--bm-h); width: auto; aspect-ratio: 632 / 1254; flex: none; }
+span.bm-side { border-radius: 40% 40% 12% 12%; background: var(--surface); }
+[data-tappable] .bm-figs path[data-m] { cursor: pointer; }
+.bm-side path { stroke: none; }
+.bm-body { fill: var(--bm-body); }
+.bm-idle { fill: var(--bm-idle); }
+.bm-on { fill: var(--bm-on); } .bm-pace { fill: var(--bm-pace); } .bm-under { fill: var(--bm-under); } .bm-over { fill: var(--bm-over); }
+.bm-none { fill: var(--bm-idle); }
+.bm-ready { fill: var(--bm-ready); } .bm-recovering { fill: var(--bm-recovering); } .bm-notyet { fill: var(--bm-notyet); }
+.bm-w100 { fill: var(--bm-w100); } .bm-w75 { fill: var(--bm-w75); } .bm-w50 { fill: var(--bm-w50); } .bm-w25 { fill: var(--bm-w25); }
+.bm-side path.bm-out { stroke: var(--bm-outline); stroke-width: 1.5px; vector-effect: non-scaling-stroke; paint-order: stroke; }
+
+/* The legend: a swatch and its word for each colour shown. */
+.bm-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin-top: 10px; font-size: var(--fs-sm); color: var(--text-2); }
+.bm-key { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.bm-sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.bm-sw.bm-on { background: var(--bm-on); } .bm-sw.bm-pace { background: var(--bm-pace); } .bm-sw.bm-under { background: var(--bm-under); }
+.bm-sw.bm-over { background: var(--bm-over); } .bm-sw.bm-none { background: var(--bm-idle); }
+.bm-sw.bm-ready { background: var(--bm-ready); } .bm-sw.bm-recovering { background: var(--bm-recovering); } .bm-sw.bm-notyet { background: var(--bm-notyet); }
+.bm-sw.bm-w100 { background: var(--bm-w100); } .bm-sw.bm-w75 { background: var(--bm-w75); } .bm-sw.bm-w50 { background: var(--bm-w50); }
+.bm-sw.bm-w25 { background: var(--bm-w25); }
+.bm-sw.bm-out { background: var(--bm-idle); box-shadow: inset 0 0 0 1.5px var(--bm-outline); }
+.bm-note { margin: 6px 0 0; text-align: center; font-size: var(--fs-xs); color: var(--text-3); }

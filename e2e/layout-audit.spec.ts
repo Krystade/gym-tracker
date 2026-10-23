@@ -945,6 +945,45 @@ test('Stats v2: the tiles, the lift, calendar, muscles and week sheets, every ra
   clean(found);
 });
 
+// ---- The body map (owner, 2026-10-22): Stats' Muscles sheet, the Why sheet, a lift from the catalog and one guessed from its name. ----
+
+test('Body map: the Muscles sheet front and back, Why’s recovery, a known lift and a guessed one', async ({ page }, info) => {
+  test.setTimeout(180_000);
+  await phone(page);
+  const found: string[] = [];
+  // PNGs of the screen as the phone shows it, when asked for (BODY_PNG=<dir>).
+  const png = async (name: string) => { if (process.env.BODY_PNG) await page.screenshot({ path: `${process.env.BODY_PNG}/${info.project.name}-${name}.png` }); };
+  const drawn = async (scope: Locator) => { await expect(scope.locator('figure.bodymap svg.bm-side')).toHaveCount(2); await scope.locator('figure.bodymap').scrollIntoViewIfNeeded(); };
+  await importLog(page);
+  // A lift the catalog doesn't have, its muscles guessed from the words.
+  await importLog(page, [HEADER, ...[1, 2].map((k) => [add(DAY0, -1), 'Paused Kroc Row', '', k, 80, 10, '', '', '', 'sample', '', '', `${add(DAY0, -1)}T17:3${k}:00.000Z`, ...Array(13).fill('')].join(','))].join('\n'), null);
+  await goto(page, 'Stats');
+  await page.locator('[data-tile="muscles"]').click();
+  const d = page.getByRole('dialog', { name: 'Sets per muscle' });
+  await drawn(d);
+  await check(page, info, found, 'bodymap-stats', [], '[role=dialog]');
+  await png('bodymap-stats');
+  await d.getByRole('button', { name: 'Done' }).click();
+
+  await goto(page, 'Today');
+  await page.getByRole('region', { name: 'Ready' }).getByRole('button', { name: /^Why/ }).click();
+  const why = page.getByRole('dialog', { name: 'Why' });
+  await drawn(why);
+  await check(page, info, found, 'bodymap-why', [], '[role=dialog]');
+  await png('bodymap-why');
+  await why.getByRole('button', { name: 'Done' }).click();
+
+  for (const [lift, state] of [['Bench Press', 'bodymap-lift-known'], ['Paused Kroc Row', 'bodymap-lift-guessed']] as const) {
+    await goto(page, 'Lifts');
+    await page.getByRole('button', { name: new RegExp(`^${lift}`) }).first().click();
+    await expect(page.getByRole('heading', { name: lift, level: 1 })).toBeVisible();
+    await drawn(page.getByRole('main'));
+    await check(page, info, found, state, [], '.lift-map');
+    await png(state);
+  }
+  clean(found);
+});
+
 // ---- Achievements (plan stage 2): the Stats tile, its sheet, a family's levels. Counting starts on the profile's first open. ----
 
 /** Sets logged on DAY0 (a row per set, the import's columns): a new lift at three plates, and one more lift tried. */

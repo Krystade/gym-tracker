@@ -138,3 +138,41 @@ test('a lift’s settings are folded into Lift settings at the foot, and its two
   await expect(fold.getByRole('group', { name: 'Rename or merge' })).toBeVisible();
   await expect(fold.getByRole('heading', { level: 3 })).toHaveText(['Progression', 'Rename or merge']);
 });
+
+test('a lift’s body map: its muscles in four steps by what a set counts for, outlined when guessed from the name, a muscle tapped opens its weeks, and How to do it', async ({ page }) => {
+  await open(page);
+  await seed(page, 'Bench Press', 3);
+  await openLift(page, 'Bench Press');
+  const map = page.getByRole('region', { name: 'Muscles worked' }).locator('figure.bodymap');
+  await expect(map.locator('svg.bm-side')).toHaveCount(2);
+  await expect(map.getByRole('img')).toHaveAccessibleName('Muscles worked: chest · triceps ½ · front delts ½');
+  await expect(map.locator('path[data-m="Chest"]')).toHaveClass('bm-w100');
+  await expect(map.locator('path[data-m="Front Delts"]')).toHaveClass('bm-w50');
+  for (const p of await map.locator('path[data-m="Triceps"]').all()) await expect(p).toHaveClass('bm-w50');
+  await expect(map.locator('path[data-m="Quads"]')).toHaveClass('bm-idle');
+  await expect(map.locator('path.bm-out')).toHaveCount(0); // from the catalog: no outline
+  await expect(map.locator('.bm-legend')).toHaveText(/^1 set½$/);
+  const how = page.getByRole('link', { name: 'How to do it ↗' });
+  await expect(how).toHaveAttribute('href', 'https://www.youtube.com/results?search_query=how%20to%20do%20Bench%20Press');
+  await expect(how).toHaveAttribute('target', '_blank');
+  // The chest tapped: its weeks, over the lift page; Done comes back to it.
+  const chest = (await map.locator('svg[data-side="front"] path[data-m="Chest"]').boundingBox())!;
+  await page.mouse.click(chest.x + chest.width * 0.25, chest.y + chest.height * 0.5);
+  const ch = page.getByRole('dialog', { name: /^Chest · / });
+  await expect(ch).toBeVisible();
+  await ch.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('heading', { name: 'Bench Press', level: 1 })).toBeVisible();
+
+  // A name the catalog doesn't have: its muscles guessed from the words, outlined (solid), and the legend says so.
+  await seed(page, 'Paused Kroc Row', 2);
+  await openLift(page, 'Paused Kroc Row');
+  const guess = page.getByRole('region', { name: 'Muscles worked' }).locator('figure.bodymap');
+  await expect(guess.locator('svg.bm-side')).toHaveCount(2);
+  await expect(page.getByText(/guessed from the name/).first()).toBeVisible();
+  const outlined = guess.locator('path.bm-out');
+  expect(await outlined.count()).toBeGreaterThan(0);
+  expect(await outlined.count()).toBe(await guess.locator('path[class*="bm-w"]').count()); // every coloured muscle, nothing else
+  await expect(outlined.first()).toHaveCSS('stroke-dasharray', 'none');
+  await expect(guess.locator('.bm-legend')).toContainText('guessed from the name');
+  await expect(guess.locator('path[data-m="Mid-Back"]').first()).toHaveClass('bm-w100 bm-out');
+});

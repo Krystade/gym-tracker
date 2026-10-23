@@ -133,3 +133,48 @@ test('an unseen past workout is one line under the plan, and opens that day in H
   await expect(page.getByRole('button', { name: 'Add exercise' })).toBeVisible();
   await expect(past).toHaveCount(0);
 });
+
+test('Why’s body map: recovery today in three steps, the same as each muscle’s Now; a muscle tapped opens its weeks, and Why › comes back', async ({ page }) => {
+  test.setTimeout(120_000);
+  // Tuesday: the six weeks, and a hard chest day yesterday (ten more sets to failure) on top of Monday's session.
+  const TUE = new Date('2026-10-20T17:00:00');
+  const hard = Array.from({ length: 10 }, (_, i) => `2026-10-19,Bench Press,,${4 + i},135,6,0,,,sample,2026-10-19T18:${String(10 + 3 * i).padStart(2, '0')}:00.000Z`);
+  await page.clock.install({ time: TUE });
+  await page.goto('/');
+  await goto(page, 'Backup');
+  await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([sixWeeksCsv(TUE), ...hard].join('\n')) });
+  await expect(page.getByText(/✓ Imported \d+ new sets/)).toBeVisible();
+  await goto(page, 'Today');
+  const tile = page.getByRole('region', { name: 'Ready' });
+  await tile.getByRole('button', { name: /^Why/ }).click();
+  const why = page.getByRole('dialog', { name: 'Why' });
+  const map = why.locator('figure.bodymap');
+  await expect(map.locator('svg.bm-side')).toHaveCount(2);
+  const tone = (pct: number) => (pct >= 80 ? 'ready' : pct >= 50 ? 'recovering' : 'notyet');
+  const rows = why.locator('.why-table tbody tr');
+  expect(await rows.count()).toBeGreaterThan(0);
+  const seen = new Set<string>();
+  for (const r of await rows.all()) {
+    const m = (await r.locator('th').textContent())!.trim();
+    const pct = Number((await r.locator('td').last().textContent())!.replace('%', ''));
+    const t = tone(pct);
+    seen.add(t);
+    await expect(r.locator('td').last()).toHaveClass(t); // the table's Now in the map's colour
+    for (const p of await map.locator(`path[data-m="${m}"]`).all()) await expect(p).toHaveClass(`bm-${t}`);
+    await expect(map.locator('.bm-legend')).toContainText({ ready: 'ready', recovering: 'recovering', notyet: 'not yet' }[t]);
+  }
+  // (The model has every muscle back within a day of this much: the steps' cut-offs are unit-tested in src/ui/body/regions.test.ts.)
+  expect(seen.size).toBeGreaterThan(0);
+  // A muscle not trained in two weeks is ready.
+  const listed = new Set((await why.locator('.why-table tbody th').allTextContents()).map((s) => s.trim()));
+  const fresh = ['Quads', 'Hamstrings', 'Calves', 'Glutes', 'Chest', 'Lats'].find((m) => !listed.has(m))!;
+  expect(fresh).toBeTruthy();
+  await expect(map.locator(`path[data-m="${fresh}"]`).first()).toHaveClass('bm-ready');
+  // The chest tapped: its weeks; ‹ Why goes back.
+  const chest = (await map.locator('svg[data-side="front"] path[data-m="Chest"]').boundingBox())!;
+  await page.mouse.click(chest.x + chest.width * 0.25, chest.y + chest.height * 0.5);
+  const ch = page.getByRole('dialog', { name: /^Chest · / });
+  await expect(ch).toBeVisible();
+  await ch.getByRole('button', { name: 'Why', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Why' })).toBeVisible();
+});

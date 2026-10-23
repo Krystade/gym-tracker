@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { readFileSync } from 'node:fs';
 
 const BUILD_ID = process.env.GITHUB_SHA?.slice(0, 7) ?? `dev-${Date.now().toString(36)}`;
 const BUILT_AT = new Date().toISOString();
@@ -17,6 +18,20 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    // The third-party notices (the body map's MIT geometry) ship with the app: the file at the site root, and the licence comment
+    // heading src/ui/body/paths.ts on the chunk that holds it (the minifier drops comments; keeping every legal comment instead
+    // would add Firebase's to the bundle, about 140 kB).
+    {
+      name: 'third-party-notices',
+      generateBundle(_, bundle) {
+        this.emitFile({ type: 'asset', fileName: 'THIRD_PARTY_NOTICES.md', source: readFileSync('THIRD_PARTY_NOTICES.md', 'utf8') });
+        const notice = /\/\*! @license[\s\S]*?\*\//.exec(readFileSync('src/ui/body/paths.ts', 'utf8'))?.[0];
+        if (!notice) this.error('src/ui/body/paths.ts lost its licence comment');
+        const chunks = Object.values(bundle).filter((c) => c.type === 'chunk' && c.moduleIds.some((id) => id.replaceAll('\\', '/').endsWith('src/ui/body/paths.ts')));
+        if (!chunks.length) this.error('no chunk holds the body map paths');
+        for (const c of chunks) if (c.type === 'chunk') c.code = `${notice}\n${c.code}`;
+      },
+    },
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',

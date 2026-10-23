@@ -1145,6 +1145,10 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 .works .works-like { margin-left: 4px; vertical-align: baseline; }
 .works-pick { display: grid; gap: 10px; justify-items: start; }
 .works-pick input { width: 100%; }
+/* A lift's muscles on the body map, and how to do it (a search, in a new tab). */
+.lift-map { margin: 8px 0 12px; display: grid; justify-items: center; }
+.lift-map .bodymap { margin: 0; }
+.how-to { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--accent-text); font-size: var(--fs-sub); font-weight: 500; text-decoration: none; }
 
 /* History → a day → Fix sets */
 .fix-done { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; overflow-wrap: anywhere; }

@@ -7,7 +7,10 @@ import { Energy } from './Energy';
 import { CycleRow } from './Cycle';
 import { Icon } from './icons';
 import { StatsSheet } from './StatsSheet';
-import { MusclesSheet } from './StatsTiles';
+import { MuscleSheet, MusclesSheet } from './StatsTiles';
+import { BodyMap } from './body/BodyMap';
+import { recoveryTone, recoveryTones, TONE_WORD } from './body/regions';
+import type { Muscle } from '../domain/muscles';
 import { WeighIn } from './WeighIn';
 import { readyNow, stripView, tileView, whyView, type Planned, type ReadyInput, type StripView, type TileView, type WhyView } from './readyView';
 import './ready.css';
@@ -42,6 +45,8 @@ export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpe
   const [why, setWhy] = useState(false);
   // All muscles › in Why: the Stats Muscles sheet, in the Why sheet's place.
   const [muscles, setMuscles] = useState(false);
+  // A muscle tapped on a body map (Why's, or the Muscles sheet's): its weeks, with a way back to where it was tapped.
+  const [muscle, setMuscle] = useState<{ m: Muscle; from: 'why' | 'muscles' } | null>(null);
   const open = openPick ?? !worked;
   // After the first set, opened again: the plan with today's session in it (computed only then).
   const live = worked && (open || why);
@@ -72,11 +77,18 @@ export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpe
         </div>
       </section>
       {strip && !weekRow && <WeekStrip s={strip} />}
-      {why && <WhySheet w={whyView(r, input, sys, slots)} t={t} onClose={() => setWhy(false)} onAllMuscles={() => { setWhy(false); setMuscles(true); }} />}
+      {why && <WhySheet w={whyView(r, input, sys, slots)} t={t} onClose={() => setWhy(false)} onAllMuscles={() => { setWhy(false); setMuscles(true); }}
+        onMuscle={(m) => { setWhy(false); setMuscle({ m, from: 'why' }); }} />}
       {muscles && (
         <StatsSheet title="Sets per muscle" onClose={() => setMuscles(false)}>
-          <MusclesSheet entries={input.entries as SetEntry[]} profile={input.profile} today={input.today} body={input.body} program={input.program} onOpenLift={onOpenLift} />
+          <MusclesSheet entries={input.entries as SetEntry[]} profile={input.profile} today={input.today} body={input.body} program={input.program} onOpenLift={onOpenLift}
+            onOpenMuscle={(m) => { setMuscles(false); setMuscle({ m, from: 'muscles' }); }} />
         </StatsSheet>
+      )}
+      {muscle && (
+        <MuscleSheet entries={input.entries as SetEntry[]} profile={input.profile} today={input.today} muscle={muscle.m} onClose={() => setMuscle(null)}
+          back={<button type="button" className="st-link st-back" onClick={() => { setMuscle(null); if (muscle.from === 'why') setWhy(true); else setMuscles(true); }}>
+            <Icon name="chev-left" size={18} sw={2} />{muscle.from === 'why' ? 'Why' : 'Muscles'}</button>} />
       )}
     </>
   );
@@ -152,7 +164,10 @@ export function WeekStrip({ s, inTile = false }: { s: StripView; /** Inside Read
   );
 }
 
-export function WhyBody({ w, t, onAllMuscles }: { w: WhyView; t: TileView; /** The Stats Muscles sheet. */ onAllMuscles?: () => void }) {
+export function WhyBody({ w, t, onAllMuscles, onMuscle }: { w: WhyView; t: TileView; /** The Stats Muscles sheet. */ onAllMuscles?: () => void;
+  /** A muscle tapped on the body map: its weeks. */ onMuscle?: (m: Muscle) => void }) {
+  const tones = recoveryTones(w.muscles);
+  const said = (['notyet', 'recovering'] as const).map((k) => { const ms = w.muscles.filter((m) => recoveryTone(m.pct) === k).map((m) => m.muscle); return ms.length ? `${TONE_WORD[k]}: ${ms.join(', ')}` : ''; }).filter(Boolean);
   const top = Math.max(1, ...w.today.map((v) => Math.max(v.band[1], v.done + v.add)));
   const pct = (x: number) => `${Math.min(100, (100 * x) / top).toFixed(1)}%`;
   return (
@@ -163,17 +178,18 @@ export function WhyBody({ w, t, onAllMuscles }: { w: WhyView; t: TileView; /** T
       </div>
       {w.gain && <p className="why-gain">{w.gain}</p>}
       <h3>Your muscles</h3>
+      {w.muscles.length > 0 && <BodyMap size="sm" tones={tones} onMuscle={onMuscle} label={`Recovery today: ${said.length ? said.join('; ') : 'every muscle ready'}`} />}
       {w.muscles.length ? (
         <table className="why-table">
           <thead><tr><th scope="col">Muscle</th><th scope="col">Last trained</th><th scope="col">Fresh by</th><th scope="col">Now</th></tr></thead>
           <tbody>
             {w.muscles.map((m) => (
-              <tr key={m.muscle}><th scope="row">{m.muscle}</th><td>{m.last}</td><td>{m.fresh}</td><td className={m.pct > 50 ? 'ok' : 'warn'}>{m.pct}%</td></tr>
+              <tr key={m.muscle}><th scope="row">{m.muscle}</th><td>{m.last}</td><td>{m.fresh}</td><td className={recoveryTone(m.pct)}>{m.pct}%</td></tr>
             ))}
           </tbody>
         </table>
       ) : <p className="why-p">Nothing trained in the last two weeks.</p>}
-      <p className="why-p small">Now: the chance the muscle is back to full strength today. Fresh by: the first day that’s better than even.</p>
+      <p className="why-p small">Now: the chance the muscle is back to full strength today; 80% and up is ready, 50 to 79% recovering, under 50% not yet. Fresh by: the first day that’s better than even.</p>
       <dl className="why-lines">
         <div><dt>Recovery speeds</dt><dd>{w.source}</dd></div>
         <div><dt>Energy</dt><dd>{w.energy}</dd></div>
@@ -198,6 +214,6 @@ export function WhyBody({ w, t, onAllMuscles }: { w: WhyView; t: TileView; /** T
   );
 }
 
-function WhySheet({ w, t, onClose, onAllMuscles }: { w: WhyView; t: TileView; onClose: () => void; onAllMuscles: () => void }) {
-  return <StatsSheet title="Why" onClose={onClose}><WhyBody w={w} t={t} onAllMuscles={onAllMuscles} /></StatsSheet>;
+function WhySheet({ w, t, onClose, onAllMuscles, onMuscle }: { w: WhyView; t: TileView; onClose: () => void; onAllMuscles: () => void; onMuscle: (m: Muscle) => void }) {
+  return <StatsSheet title="Why" onClose={onClose}><WhyBody w={w} t={t} onAllMuscles={onAllMuscles} onMuscle={onMuscle} /></StatsSheet>;
 }

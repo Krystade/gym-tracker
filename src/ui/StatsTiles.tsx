@@ -15,7 +15,7 @@ import { prKinds, recordLabel, records, type RecordKind } from '../domain/record
 import type { Rotation as RotationOffer } from '../domain/rotation';
 import { stall as stallOf } from '../domain/rotation';
 import { e1rm, liftSets } from '../domain/stats';
-import { forViewer, rangeDays, rangeFrom, rangeLabel, rangeWeeks, rangeWords, type Range } from '../domain/statsLayout';
+import { DEFAULT_RANGE, forViewer, isRange, rangeDays, rangeFrom, rangeLabel, rangeWeeks, rangeWords, type Range } from '../domain/statsLayout';
 import type { DayPlan, Program } from '../domain/program';
 import { bestRests, bestSetPoints, fatiguePerSet, movesTogether, muscleSpan, muscleWeeks, nextSession, relativeStrength } from '../domain/statsCore';
 import { warmupCount } from '../domain/suggest';
@@ -28,6 +28,8 @@ import type { SetEntry } from '../domain/types';
 import { highest, unlockedOn, type Achievements } from '../domain/achievements';
 import { streak } from '../domain/analytics';
 import { getPref, setPref } from '../state/prefs';
+import { activeProfileDb } from '../db/db';
+import { StatsSheet } from './StatsSheet';
 import { BarChart } from './charts/BarChart';
 import { Calendar } from './charts/Calendar';
 import { ChartTable } from './charts/ChartTable';
@@ -43,6 +45,8 @@ import {
   PullPush, RateSheet, RestSheet, shortDate, signed, spread, SparkRef, StartSheet,
 } from './StatsSheets';
 import { VolumeSteps } from './VolumeSteps';
+import { BodyMap } from './body/BodyMap';
+import { statusTones, TONE_WORD, type StatusTone } from './body/regions';
 import { AchievementsSheet, AchShelf, nextLine } from './AchievementsSheet';
 import { WeightSheet } from './WeightSheet';
 import { LastWeek } from './WeekDigest';
@@ -688,12 +692,24 @@ export function MusclesSheet({ entries, profile, today, who, body, program, onOp
         </ul>
       </section>
     )}
+    <WeekMap sets={v.week.sets} profile={profile} left={left} reach={reach} onOpen={onOpenMuscle} />
     <MuscleBars sets={v.week.sets} profile={profile} left={left} reach={reach} />
     {v.week.unmapped.length > 0 && <p className="muted small">Not counted (unknown muscles): {v.week.unmapped.join(', ')}</p>}
     {body && <VolumeSteps entries={entries} body={body} profile={profile} today={today} />}
     <ChartTable caption="Fractional sets per muscle" head={['Muscle', 'This week / last week']} rows={MUSCLES.map((m) => [m, `${fmt1(v.week.sets[m])} / ${fmt1(v.last.sets[m])}`])} />
     {range && onOpenMuscle && <MuscleRows entries={entries} profile={profile} today={today} range={range} onOpen={onOpenMuscle} />}
   </>);
+}
+
+/**
+ * The body map over the bars (owner, 2026-10-22): each muscle in its bar's status this week, a glance before the numbers; a tap opens
+ * the muscle's weeks, as its row in the list does.
+ */
+function WeekMap({ sets, profile, left, reach, onOpen }: { sets: Record<Muscle, number>; profile: Profile; left: number; reach: Record<Muscle, number>; onOpen?: (m: Muscle) => void }) {
+  const tones = useMemo(() => statusTones(sets, profile, left, reach), [sets, profile, left, reach]);
+  const count = (t: StatusTone) => MUSCLES.filter((m) => tones[m] === t).length;
+  const said = (['under', 'pace', 'on', 'over'] as const).filter((t) => count(t)).map((t) => `${count(t)} ${TONE_WORD[t]}`);
+  return <BodyMap tones={tones} onMuscle={onOpen} label={`Body map, this week: ${said.join(', ') || 'no targets'}`} />;
 }
 
 /** Each muscle's weeks over the range, worked out once per log, profile, day and range. A muscle not planned has no band. */
@@ -736,6 +752,19 @@ export function MuscleWeeks({ entries, profile, today, range, muscle }: { entrie
   const { weeks, rows } = useMuscleWeeks(entries, profile, today, range);
   const r = rows.find((x) => x.m === muscle)!;
   return <MuscleWeeksSheet muscle={muscle} weeks={weeks} values={r.values} band={r.band} span={r.span} range={range} own={!!profile.custom?.includes(profile.tiers[muscle])} />;
+}
+
+/**
+ * One muscle's weeks in a sheet of its own, opened away from Stats (a muscle tapped on the Why sheet's or a lift's body map): over
+ * the range Stats last showed. `back`: a way back to the sheet it was opened from.
+ */
+export function MuscleSheet({ entries, profile, today, muscle, onClose, back }: { entries: SetEntry[]; profile: Profile; today: string; muscle: Muscle; onClose: () => void; back?: ReactNode }) {
+  const [range] = useState<Range>(() => { const r = getPref<string>(activeProfileDb(), 'stats:range'); return isRange(r) ? r : DEFAULT_RANGE; });
+  return (
+    <StatsSheet key={muscle} title={`${muscle} · ${lastOf(range)}`} onClose={onClose} link={back}>
+      <MuscleWeeks entries={entries} profile={profile} today={today} range={range} muscle={muscle} />
+    </StatsSheet>
+  );
 }
 
 /** Every muscle behind what the rest of the week can make up (not just four), furthest first, each with a lift of theirs that works it. */

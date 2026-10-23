@@ -296,7 +296,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
             onOpenPriorities={top(() => { setProgramOpen(false); setPrioOpen(true); })} />
           : sub ? <MoreSubScreen at={sub} store={store} profile={profile} rawProfile={rawProfile} body={body} sync={sync} cloud={cloud} people={people} person={person} today={date}
             onBack={top(() => setMoreAt(null))} onOpen={toMore} onOpenPaste={top(() => setPasteOpen(true))} onOpenFriends={top(() => { setMoreAt(null); setTab('friends'); })} />
-          : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={day} bodyDays={body.days} onBack={() => setExercise(null)}
+          : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={day} bodyDays={body.days} profile={profile.profile} onBack={() => setExercise(null)}
             onRenamed={(to) => { renameToday(person.id, day, exercise, to); setExercise(to); window.scrollTo(0, 0); }}
             onDay={(d) => { setHistoryAt(d); setExercise(null); setTab('history'); }}
             onLog={() => { logToday(person.id, day, exercise); setLogDay(null); setExercise(null); setTab('today'); window.scrollTo(0, 0); }} />

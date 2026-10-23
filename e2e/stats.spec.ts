@@ -391,3 +391,45 @@ test('stats: 80 timed sessions, weigh-ins and a program: fatigue per set, best r
   await expect(d.getByRole('list', { name: 'The timer’s rest per lift' }).getByRole('listitem').first()).toBeVisible();
   await expect(d.locator('.st-ev .st-t-ev')).toHaveText(['learnedlearned from the log', 'researchfrom research']);
 });
+
+// ---- The body map (owner, 2026-10-22): over the Muscles sheet's bars, each muscle in its bar's status; a tap opens its weeks. ----
+
+test('stats: the Muscles sheet’s body map sits over the bars, coloured as each bar’s status says, and a muscle tapped opens its weeks', async ({ page }) => {
+  await seed(page, 2);
+  const d = await sheet(page, 'muscles');
+  const map = d.locator('figure.bodymap');
+  await expect(map.locator('svg.bm-side')).toHaveCount(2); // the lazy drawing loaded: front and back
+  // Above the bars.
+  expect(await map.evaluate((m) => !!(m.compareDocumentPosition(document.querySelector('.st-sheet .mrow')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+  const CLASS: Record<string, string> = { under: 'bm-under', 'on pace': 'bm-pace', 'on target': 'bm-on', over: 'bm-over' };
+  const checked: string[] = [];
+  for (const m of ['Chest', 'Biceps', 'Quads', 'Lats']) {
+    const word = (await d.locator(`.mrow[aria-label^="${m}:"] .mword`).textContent())!.trim();
+    for (const p of await map.locator(`path[data-m="${m}"]`).all()) await expect(p).toHaveClass(CLASS[word]);
+    // Every colour on the map has its word in the legend.
+    await expect(map.locator('.bm-legend')).toContainText(word);
+    checked.push(`${m} ${word}`);
+  }
+  expect(new Set(checked.map((c) => c.split(' ').slice(1).join(' '))).size).toBeGreaterThan(1); // more than one status shown
+  // Abductors has no shape of its own: it's named under the map.
+  await expect(map.locator('path[data-m="Abductors"]')).toHaveCount(0);
+  await expect(map.locator('.bm-note')).toContainText('abductors');
+  // A tap on the chest opens Chest's weeks, and its back link returns to the sheet.
+  const chest = (await map.locator('svg[data-side="front"] path[data-m="Chest"]').boundingBox())!;
+  await page.mouse.click(chest.x + chest.width * 0.25, chest.y + chest.height * 0.5);
+  const ch = page.getByRole('dialog', { name: 'Chest · last 12 weeks' });
+  await expect(ch).toBeVisible();
+  await ch.getByRole('button', { name: 'Muscles', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Sets per muscle' })).toBeVisible();
+  // Just off a thin muscle still counts for it: 6 px beside the forearm, on nothing that is a muscle.
+  await page.locator('figure.bodymap').scrollIntoViewIfNeeded();
+  const off = await page.locator('figure.bodymap svg[data-side="back"] path[data-m="Forearms"]').evaluate((el) => {
+    const b = el.getBoundingClientRect(), y = b.top + b.height * 0.5;
+    for (let x = b.left; x < b.right; x++) if (document.elementFromPoint(x, y) === el) return { x: x - 6, y, there: document.elementFromPoint(x - 6, y)?.getAttribute('data-m') ?? null };
+    return null;
+  });
+  expect(off).not.toBeNull();
+  expect(off!.there).toBeNull();
+  await page.mouse.click(off!.x, off!.y);
+  await expect(page.getByRole('dialog', { name: 'Forearms · last 12 weeks' })).toBeVisible();
+});

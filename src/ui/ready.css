@@ -86,8 +86,10 @@ li[data-mark='optional'] > .ws-mark { border: 2px dashed var(--accent); }
 .why-table tbody th { font-weight: 400; color: var(--text); padding-right: 8px; overflow-wrap: anywhere; }
 .why-table td { color: var(--text-2); padding-right: 8px; white-space: nowrap; }
 .why-table td:last-child, .why-table th:last-child { text-align: right; padding-right: 0; }
-.why-table td.ok { color: var(--ok); }
-.why-table td.warn { color: var(--warn); }
+/* "Now" in the body map's three steps (src/ui/body/body.css), so a muscle reads the same in the table and on the map. */
+.why-table td.ready { color: var(--bm-ready); }
+.why-table td.recovering { color: var(--bm-recovering); }
+.why-table td.notyet { color: var(--bm-notyet); }
 .why-lines { margin: 16px 0 0; display: grid; gap: 12px; }
 .why-lines div { display: grid; gap: 2px; }
 .why-lines dt { font-size: var(--fs-sm); color: var(--text-2); }

@@ -11,7 +11,11 @@ import { Records } from './Records';
 import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
 import { CATALOG, PROGRAM_LIFTS } from '../domain/catalog';
-import { worksLine } from '../domain/muscles';
+import { musclesText, worksLine, type Muscle } from '../domain/muscles';
+import type { Profile } from '../domain/profile';
+import { BodyMap } from './body/BodyMap';
+import { weightTones } from './body/regions';
+import { MuscleSheet } from './StatsTiles';
 import { resolveLift } from '../domain/lifts';
 import { nearestLifts, searchLifts } from '../domain/search';
 import { bodyRepsPoints, bodyStrength, strength, strengthSeries, testDue } from '../domain/estimators';
@@ -212,15 +216,38 @@ function WorksLine({ name, settings, readOnly }: { name: string; settings: Setti
   );
 }
 
+/** A web search for how a lift is done (owner, 2026-10-22: a link out, nothing bundled). */
+export const howToUrl = (name: string) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`how to do ${name}`)}`;
+
+/**
+ * The lift's muscles on the body (owner, 2026-10-22), each in four steps of what a set counts for it (1, ¾, ½, ¼), outlined when
+ * they were guessed from the name; a tap opens a muscle's weeks. Then "How to do it ↗", a search in a new tab.
+ */
+function LiftMap({ name, onMuscle }: { name: string; onMuscle?: (m: Muscle) => void }) {
+  const r = resolveLift(name);
+  const guessed = r.how === 'built';
+  return (
+    <section className="lift-map" aria-label="Muscles worked">
+      {r.m && Object.keys(r.m).length > 0 && (
+        <BodyMap size="sm" tones={weightTones(r.m)} outlined={guessed} onMuscle={onMuscle} label={`Muscles worked: ${musclesText(r.m)}${guessed ? ', guessed from the name' : ''}`}
+          extra={guessed && <span className="bm-key"><i className="bm-sw bm-out" aria-hidden="true" />guessed from the name</span>} />
+      )}
+      <a className="how-to" href={howToUrl(name)} target="_blank" rel="noopener noreferrer">How to do it ↗</a>
+    </section>
+  );
+}
+
 /** `readOnly`: a friend's lift, charts and history only. `onDay`: a record tapped opens its day in History. */
-export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly, bodyDays }: {
+export function ExerciseScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly, bodyDays, profile }: {
   name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; programs: ProgramStore; date: string; onLog: () => void; onBack: () => void;
   onRenamed: (to: string) => void; onDay?: (date: string) => void; readOnly?: boolean;
   /** His energy by day (item 06: a suggested deload holds the rotation offer, as on Today). */
   bodyDays?: readonly BodyDay[];
+  /** His priorities and targets: a muscle tapped on the body map opens its weeks against its band. */
+  profile?: Profile;
 }) {
   if (isCardio(name)) return <CardioScreen name={name} store={store} programs={programs} date={date} onLog={onLog} onBack={onBack} onDay={onDay} readOnly={readOnly} />;
-  return <LiftScreen {...{ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly, bodyDays }} />;
+  return <LiftScreen {...{ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly, bodyDays, profile }} />;
 }
 
 /** A share of ln e1RM as a whole percent, at least 1. */
@@ -228,7 +255,8 @@ const pct = (u: number) => Math.max(1, Math.round(100 * u));
 /** An uncertainty in reps: a tenth below 10, so a test that halves it never reads "±1 to ±1". */
 const repsU = (x: number) => (x < 10 ? String(Math.round(x * 10) / 10) : String(Math.round(x)));
 
-function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly, bodyDays }: Parameters<typeof ExerciseScreen>[0]) {
+function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly, bodyDays, profile }: Parameters<typeof ExerciseScreen>[0]) {
+  const [muscle, setMuscle] = useState<Muscle | null>(null);
   const hold = isHoldLift(name, store.entries);
   // Item 06: in a light week, "Next time" is its target, and no test is due.
   const [owner] = useState(activeProfileDb);
@@ -264,6 +292,8 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
       <button className="back" onClick={onBack}>‹ Back</button>
       <h1>{name}</h1>
       <WorksLine name={name} settings={settings} readOnly={readOnly} />
+      <LiftMap name={name} onMuscle={!readOnly && profile ? setMuscle : undefined} />
+      {muscle && profile && <MuscleSheet entries={store.entries} profile={profile} today={today} muscle={muscle} onClose={() => setMuscle(null)} />}
       {!readOnly && <SuggestionCard s={sug} onLog={trainedToday ? undefined : onLog} />}
       {rot && <RotationSuggestion owner={owner} r={rot} carry={carry} known={store.entries.some((e) => sameExercise(e.exercise, rot.to))} today={today}
         onSwitch={inProgram(programs, name) ? async () => setSwitched({ to: rot.to, undo: await applyRotation(rot, carry, programs, settings, today, todayPlanFor(programs, store.entries, today)) }) : undefined} />}
