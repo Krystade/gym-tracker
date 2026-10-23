@@ -27,6 +27,7 @@ import { prSetIds } from '../domain/summary';
 import { fmtPerSide } from '../domain/plates';
 import { isCardio } from '../domain/cardio';
 import { CardioCard } from './CardioCard';
+import { FoldLine } from './FoldLine';
 import { AchLines } from './AchievementsSheet';
 import { WhyWeightSheet } from './WhyWeight';
 import { useAchLines, useAchOpen } from '../state/useAchievements';
@@ -43,7 +44,7 @@ export function ExerciseCard({ plannedMinutes, ...p }: CardProps) {
 }
 
 function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, openReq = null, who, swappedFrom, left = [], onGo,
-  supersetWith, onNotSuperset, switchAfter, roundAfter, onSwitch, aside, restDelta, light = false, completesPlan, onPlanDone, plannedOf }: {
+  supersetWith, onNotSuperset, switchAfter, roundAfter, onSwitch, aside, restDelta, light = false, completesPlan, onPlanDone, plannedOf, onLiftAfter, onTouch }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
   /** The plan sent you to this card: open it if it's folded. Each request once (a render of the card's own keeps it). */
   openReq?: object | null;
@@ -70,6 +71,10 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   light?: boolean;
   /** With the log as it is after a set: that set did the plan's last planned set (no rest then: `onPlanDone`, given the rest held back). */
   completesPlan?: (entries: SetEntry[]) => boolean; onPlanDone?: (resume: () => void) => void;
+  /** With the log as it is after a set here: the other lift he's on (domain/upNext onLift), which this one's last set leads to. */
+  onLiftAfter?: (entries: SetEntry[]) => string | undefined;
+  /** A tap anywhere on the card: he's on this lift. */
+  onTouch?: () => void;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
   // Folded or open as the user last chose: true folded, false open; null, automatic: folded once the plan's sets are done.
@@ -150,7 +155,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     if (at === undefined && date === realToday) {
       // What the rest leads to: this lift's next set while its plan has one, else the plan's next lift (domain/upNext).
       const after = [...store.entries.filter((x) => x.id !== e.id), e];
-      const label = upNext({ exercise, entries: after, date, left, round: roundAfter?.(after, e.id),
+      const label = upNext({ exercise, entries: after, date, left, round: roundAfter?.(after, e.id), on: onLiftAfter?.(after),
         planned: plannedOf ?? ((x) => (sameExercise(x, exercise) ? plannedSets : null)) });
       const switchTo = switchAfter?.(after, e.id);
       // The rest for this set: the lift's base (his setting, his knee once his sets show it, else research) and its effort
@@ -214,23 +219,19 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
 
   if (folded) {
     const top = working.length ? working.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && (b.reps ?? 0) > (a.reps ?? 0)) ? b : a)) : null;
-    const count = complete ? null : plannedSets ? `${working.length}/${plannedSets} sets` : working.length ? plural(working.length, 'set') : 'Not started';
+    const count = complete ? `${working.length}/${plannedSets} sets ✓` : plannedSets ? `${working.length}/${plannedSets} sets` : working.length ? plural(working.length, 'set') : 'Not started';
+    // The lift he's on first among what's left (owner, 2026-10-22: the plan's next was offered first, mid-way through his curls).
+    const on = justDone ? onLiftAfter?.(store.entries) : undefined;
+    const offer = on ? [...left.filter((x) => sameExercise(x, on)), ...left.filter((x) => !sameExercise(x, on))] : left;
     return (
-      <section className="card folded" data-card={exercise.toLowerCase()}>
-        <button className="fold-line" aria-expanded="false" aria-label={`Show ${exercise}`} onClick={unfold}>
-          {complete && <span className="fold-check" aria-hidden="true"><Icon name="check" size={16} sw={2.5} /></span>}
-          <b>{exercise}</b>
-          {complete ? <span className="ok">{working.length}/{plannedSets} sets ✓</span> : <span className="muted">{count}</span>}
-          {today.some((x) => prs.has(x.id)) && <span className="tag pr-tag">PR</span>}
-          {top && <span className="muted nw">{fmtSet(top)}</span>}
-          <Icon name="chev-right" size={18} className="fold-chev" />
-        </button>
+      <section className="card folded" data-card={exercise.toLowerCase()} onClickCapture={onTouch}>
+        <FoldLine name={exercise} done={complete} count={count} pr={today.some((x) => prs.has(x.id))} best={top ? fmtSet(top) : null} onClick={unfold} />
         {pr && <p role="status" className="pr">{pr}</p>}
         <AchLines us={ach.lines} onOpen={openAch} />
         {justDone && onGo && left.length > 0 && (
           <div className="chips left-row" role="group" aria-label="Left to do">
             <span className="chip-label">Left</span>
-            {left.map((ex) => <button key={ex} type="button" className="chip" onClick={() => onGo(ex)}>{ex}</button>)}
+            {offer.map((ex) => <button key={ex} type="button" className="chip" onClick={() => onGo(ex)}>{ex}</button>)}
           </div>
         )}
       </section>
@@ -238,7 +239,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   }
 
   return (
-    <section ref={box} className="card" data-card={exercise.toLowerCase()}>
+    <section ref={box} className="card" data-card={exercise.toLowerCase()} onClickCapture={onTouch}>
       <header className="card-head">
         <button className="link" onClick={() => onOpen(exercise)}>{exercise}</button>
         {/* Every open card folds from its head (owner, 2026-10-19: a card could only be closed by finishing it). */}

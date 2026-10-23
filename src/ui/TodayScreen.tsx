@@ -61,6 +61,7 @@ import { sizing } from '../domain/learn/session';
 import { kneePlan } from '../domain/learn/rest';
 import { warmupCount } from '../domain/suggest';
 import { usualMinutes } from '../domain/timing';
+import { onLift } from '../domain/upNext';
 
 const ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 /** The same array while it holds the same sets (a set logged today makes a new log with the same days before it). */
@@ -157,7 +158,10 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   const [go, setGo] = useState<{ to: string; open: boolean } | null>(null);
   const used = useRef<typeof go>(null);
   const openReq = go !== used.current && go?.open ? go : null;
-  const goTo = (n: string) => { addCard(n); setGo({ to: n, open: true }); };
+  // When he last tapped each card, or the plan sent him to it: with the sets' own times, which lift he's on (domain/upNext onLift).
+  const touched = useRef(new Map<string, number>());
+  const touch = (n: string) => { touched.current.set(n.toLowerCase(), Date.now()); };
+  const goTo = (n: string) => { touch(n); addCard(n); setGo({ to: n, open: true }); };
   useEffect(() => {
     if (!go || go === used.current || picking || swapFor) return;
     used.current = go;
@@ -390,7 +394,8 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
         openReq={openReq && sameExercise(openReq.to, n) ? openReq : null}
         supersetWith={groupOf(n)?.lifts.filter((x) => !sameExercise(x, n))} onNotSuperset={() => { const g = groupOf(n); if (g) dismiss(g); }}
         switchAfter={switchAfter} roundAfter={roundAfter} plannedOf={(ex) => plannedSets(programs.program, plan, ex)} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} restDelta={restDelta} light={!!light}
-        completesPlan={completesPlan} onPlanDone={onPlanDone} />)}
+        completesPlan={completesPlan} onPlanDone={onPlanDone} onTouch={() => touch(n)}
+        onLiftAfter={(after) => onLift({ exercise: n, entries: after, date, planned: (ex) => plannedSets(programs.program, plan, ex), lifts: cards, touched: (l) => touched.current.get(l.toLowerCase()) })} />)}
       {/* Below the cards, so the card you're logging on never moves down. */}
       {!summary && <SessionSummary entries={store.entries} date={date} past={date < today} />}
       <button className="wide add-exercise" data-tour="add" onClick={() => setPicking(true)}>Add exercise</button>

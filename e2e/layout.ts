@@ -29,6 +29,8 @@ export async function notched(page: Page) {
 
 export type Kind =
   | 'overlap' // (a) two painted things cross
+  | 'touch' // (a) two painted blocks with no gap between them (under 2px), side by side for 8px or more
+  | 'edge' // (a) a painted block inside a card closer than 4px to the card's side
   | 'clipped' // (b) text cut off by a box that hides its overflow
   | 'spill' // (b) text running out of the pill, button or card it sits on
   | 'truncated' // (b) an ellipsis hiding part of a text that has a number in it
@@ -256,6 +258,32 @@ export async function audit(page: Page, extra: Allow[] = []): Promise<Finding[]>
         // Two lines of the same text run, or text in a label over its own control's text: the same words, not a collision.
         if (p.text && q.text && p.el.parentElement === q.el.parentElement && Math.abs(p.raw.t - q.raw.t) < 1) continue;
         add('overlap', p.el, `${box(p.vis)} × ${box(q.vis)}: ${n(w(x))}×${n(h(x))}px`, q.el, p.ps, q.ps);
+      }
+    }
+
+    // (a) Touching (owner, 2026-10-22: an unlock row sat on its card's edge and ran into the chips under it, crossing neither):
+    // two painted blocks, neither holding the other, in one layer, under 2px apart one way while alongside by 8px or more the
+    // other. Only shapes of their own (rounded on every corner: a row, a chip, a tile), not a list's flush rows or a full-bleed
+    // band; a run of like boxes in one parent (a segmented control) is one thing, not two. And such a shape inside a card (that
+    // doesn't clip it) closer than 4px to the card's side: on its edge.
+    const round = (el: Element) => { const s = css(el); return [s.borderTopLeftRadius, s.borderTopRightRadius, s.borderBottomLeftRadius, s.borderBottomRightRadius].every((r) => parseFloat(r) > 2); };
+    const blocks = live.filter((i) => !i.text && !i.ps && !REPLACED.has(i.el.tagName) && w(i.vis) >= 40 && h(i.vis) >= 16 && round(i.el));
+    const kin = (a: Element, b: Element) => a.parentElement === b.parentElement && a.className === b.className;
+    for (let i = 0; i < blocks.length; i++) {
+      const p = blocks[i];
+      for (let j = i + 1; j < blocks.length; j++) {
+        const q = blocks[j];
+        if (related(p.el, q.el) || kin(p.el, q.el) || p.layer !== q.layer) continue;
+        const gx = Math.max(q.vis.l - p.vis.r, p.vis.l - q.vis.r), gy = Math.max(q.vis.t - p.vis.b, p.vis.t - q.vis.b);
+        const ox = Math.min(p.vis.r, q.vis.r) - Math.max(p.vis.l, q.vis.l), oy = Math.min(p.vis.b, q.vis.b) - Math.max(p.vis.t, q.vis.t);
+        const touching = (gy > -1 && gy < 2 && ox >= 8) || (gx > -1 && gx < 2 && oy >= 8);
+        if (touching) add('touch', p.el, `${box(p.vis)} and ${box(q.vis)}: ${n(Math.max(gx, gy))}px apart`, q.el);
+      }
+      const card = p.el.parentElement?.closest('.card');
+      if (card && css(card).overflow === 'visible' && !p.el.classList.contains('card')) {
+        const c = rr(card.getBoundingClientRect());
+        const d = Math.min(p.vis.l - c.l, c.r - p.vis.r);
+        if (d < 4) add('edge', p.el, `${box(p.vis)} ${n(d)}px from the side of ${name(card)} ${box(c)}`);
       }
     }
 

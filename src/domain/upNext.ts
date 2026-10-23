@@ -19,11 +19,36 @@ export const NEXT = 'Next: ';
  * lift with sets left.
  */
 export function upNext(o: { exercise: string; entries: readonly SetEntry[]; date: string; planned: (exercise: string) => number | null | undefined;
-  left: readonly string[]; round?: readonly string[] }): string {
+  left: readonly string[]; round?: readonly string[]; on?: string }): string {
   const done = (lift: string) => o.entries.filter((e) => e.date === o.date && sameExercise(e.exercise, lift) && isWorking(e)).length;
   const more = (lift: string) => { const p = o.planned(lift); return p == null || p <= 0 || done(lift) < p; };
   const again = o.round?.find(more) ?? (more(o.exercise) ? o.exercise : undefined);
   if (again) return setNext(again, done(again) + 1);
+  if (o.on && !sameExercise(o.on, o.exercise) && more(o.on)) return setNext(o.on, done(o.on) + 1);
   const next = o.left.find((l) => !sameExercise(l, o.exercise) && !o.round?.some((r) => sameExercise(r, l)) && more(l));
   return next ? `${NEXT}${next}` : PLAN_DONE;
+}
+
+/**
+ * The lift he's on besides `exercise`, as a set on it is saved: of the day's other lifts (`lifts`, Today's cards) with sets
+ * still to do, the one touched last, a set logged on it or its card tapped (`touched`, epoch ms), if that was since this
+ * lift's first set today: he went to it while this one was going. None when he hasn't.
+ */
+export function onLift(o: { exercise: string; entries: readonly SetEntry[]; date: string; planned: (exercise: string) => number | null | undefined;
+  lifts: readonly string[]; touched: (lift: string) => number | undefined }): string | undefined {
+  const day = o.entries.filter((e) => e.date === o.date);
+  const at = (e: SetEntry) => (e.loggedAt ? Date.parse(e.loggedAt) : e.seq);
+  const mine = day.filter((e) => sameExercise(e.exercise, o.exercise) && isWorking(e)).map(at);
+  if (!mine.length) return undefined;
+  const since = Math.min(...mine);
+  let best: { lift: string; t: number } | undefined;
+  for (const lift of o.lifts) {
+    if (sameExercise(lift, o.exercise)) continue;
+    const sets = day.filter((e) => sameExercise(e.exercise, lift) && isWorking(e));
+    const p = o.planned(lift);
+    if (p != null && p > 0 && sets.length >= p) continue; // done
+    const t = Math.max(o.touched(lift) ?? -Infinity, ...sets.map(at));
+    if (t > since && (!best || t > best.t)) best = { lift, t };
+  }
+  return best?.lift;
 }

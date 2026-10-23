@@ -1549,6 +1549,87 @@ test('Prompts: the morning pain question, answered with a note (item 08)', async
 
 // ---- The audit itself: it sees each kind of fault, and nothing on a clean page. ----
 
+// Owner, 2026-10-22: "two collapsed exercises look differently" (a chevron wrapped alone to a second line, a PR chip alone on
+// one), and "award popup overlaps" (a lift's last set unlocked a PR: the row sat on its folded card's edge and ran into the
+// Left chips under it). Every folded state at 375 and 320 px: done, done with a PR and its unlock and Left row, part done and
+// folded by hand, not started, a long name, no planned count.
+test('Today’s folded cards: one layout for every state, and a last set’s unlock row inside its card, clear of the Left row', async ({ page }, info) => {
+  test.setTimeout(180_000);
+  await phone(page);
+  const found: string[] = [];
+  await importLog(page);
+  await goto(page, 'Today');
+  await openProgram(page);
+  await page.getByRole('textbox', { name: 'Days per week' }).fill('3');
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await expect(page.getByRole('heading', { name: /^Day A/ })).toBeVisible();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  const rows = page.getByRole('list', { name: 'Planned exercises' }).getByRole('listitem');
+  expect(await rows.count()).toBeGreaterThanOrEqual(3);
+  // The first lift swapped for squats (a history to beat): light sets, then a PR on the last planned one.
+  await rows.first().getByRole('button', { name: 'Swap' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Barbell Squat');
+  await page.getByRole('button', { name: /^Barbell Squat/ }).first().click();
+  const sq = page.locator('[data-card="barbell squat"]');
+  const sets = Number((await rows.first().locator('.plan-count').textContent())!.split('/')[1]);
+  for (let i = 0; i < sets; i++) {
+    await logSet(page, sq, `18:${String(10 + 3 * i).padStart(2, '0')}:00`, i < sets - 1 ? '135' : '450', '5');
+    if (i < sets - 1) await expect(sq.getByRole('list', { name: 'Sets for Barbell Squat' }).getByRole('listitem')).toHaveCount(i + 1);
+  }
+  // The lines are worked out on a timer once the set is saved (its PR line shown), and logSet holds the clock.
+  await expect(sq.getByRole('status')).toContainText('PR');
+  await page.clock.runFor(100);
+  await expect(sq.locator('.fold-line')).toBeVisible();
+  await expect(sq.locator('.ach-lines').getByRole('button').first()).toBeVisible();
+  await expect(sq.getByRole('group', { name: 'Left to do' })).toBeVisible();
+  await sq.evaluate((c) => c.scrollIntoView({ block: 'center' }));
+  await check(page, info, found, 'today-folded-unlock');
+  // A long name with no planned count, and a bodyweight lift (added first: the picker takes Today's place, and a card folded by
+  // hand opens again when it comes back); the plan's second lift part done, its third opened unstarted; all folded by hand.
+  const extra = [['Single Arm Cable Lateral Raise Behind Back', '22.5', '15'], ['Pull-up', '0', '12']] as const;
+  for (const [lift, w, r] of extra) {
+    const card = await addCard(page, lift);
+    await logSet(page, card, '18:50:00', w, r);
+    await expect(card.getByRole('list', { name: `Sets for ${lift}` }).getByRole('listitem')).toHaveCount(1);
+  }
+  const nameOf = async (k: number) => (await rows.nth(k).locator('.plan-name').getAttribute('data-exercise'))!;
+  const b = await nameOf(1), c = await nameOf(2);
+  await rows.nth(1).locator('.plan-name').click();
+  const cb = page.locator(`[data-card="${b.toLowerCase()}"]`);
+  await logSet(page, cb, '18:55:00', '100', '10');
+  await expect(cb.getByRole('list', { name: `Sets for ${b}` }).getByRole('listitem')).toHaveCount(1);
+  await rows.nth(2).locator('.plan-name').click();
+  for (const lift of [b, c, ...extra.map(([l]) => l)]) await page.locator(`[data-card="${lift.toLowerCase()}"]`).getByRole('button', { name: `Fold ${lift}` }).click();
+  const lines = page.locator('.card.folded .fold-line');
+  await expect(lines).toHaveCount(5);
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 812 });
+    // At 320 the plan is folded: these are the cards' states (the plan's rows at 320 are not this test's).
+    if (width === 320) await page.getByRole('button', { name: /^Today’s plan/ }).click();
+    // One layout: the glyph and the chevron centred down the line, at the same x on every card; the name on the first row, the
+    // count under it; the best set's right edge the same everywhere.
+    const geo = await lines.evaluateAll((els) => els.map((el) => {
+      const r = (q: string) => { const e = el.querySelector(q); if (!e) return null; const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom, m: (b.top + b.bottom) / 2 }; };
+      const line = el.getBoundingClientRect(), card = el.closest('.card')!.getBoundingClientRect();
+      return { name: el.getAttribute('aria-label'), mid: (line.top + line.bottom) / 2, card: card.right, glyph: r('.fold-check'), chev: r('.fold-chev'), title: r('.fold-name'), count: r('.fold-meta > :first-child'), best: r('.fold-best'), pr: r('.pr-tag') };
+    }));
+    const bad: string[] = [];
+    const near = (a: number, b: number, d = 1) => Math.abs(a - b) <= d;
+    for (const g of geo) {
+      if (!g.glyph || !g.chev || !g.title || !g.count) { bad.push(`${g.name}: a part is missing`); continue; }
+      if (!near(g.glyph.m, g.mid) || !near(g.chev.m, g.mid)) bad.push(`${g.name}: glyph/chevron not centred (${g.glyph.m}, ${g.chev.m} vs ${g.mid})`);
+      if (!near(g.chev.r, g.card - 16, 2)) bad.push(`${g.name}: chevron not at the right edge (${g.chev.r} vs ${g.card - 16})`);
+      if (!near(g.glyph.l, geo[0].glyph!.l) || !near(g.title.l, geo[0].title!.l)) bad.push(`${g.name}: glyph or name not where the others are`);
+      if (!(g.count.t >= g.title.b - 1)) bad.push(`${g.name}: the count is not under the name`);
+      if (g.best && !near(g.best.r, g.chev.l - 12, 2)) bad.push(`${g.name}: best set not against the chevron's column (${g.best.r} vs ${g.chev.l - 12})`);
+      if (g.pr && !near(g.pr.m, g.count.m, 2)) bad.push(`${g.name}: PR chip not beside the count`);
+    }
+    expect(bad, `${width}px:\n${bad.join('\n')}`).toEqual([]);
+    await check(page, info, found, `today-folded-${width}`);
+  }
+  clean(found);
+});
+
 test('the audit finds each kind of fault on a page built with them, and none on a clean one', async ({ page }) => {
   const shell = (body: string) => `<!doctype html><meta name=viewport content="width=device-width"><style>
     body { margin: 0; font: 16px/20px sans-serif; background: #111; color: #eee; } main { padding: 59px 16px 120px; }
@@ -1581,6 +1662,13 @@ test('the audit finds each kind of fault on a page built with them, and none on 
   // A bar stuck to the very top: its words go under the status bar once the page scrolls.
   expect(await kinds('<div style="position:sticky;top:0;background:#222;padding:12px 0 8px">Search</div><div style="height:2000px"></div>')).toEqual(['notch']);
   expect(await kinds('<div style="position:sticky;top:0;background:#222;padding:59px 0 8px;margin-top:-59px">Search</div><div style="height:2000px"></div>')).toEqual([]);
+  // Two blocks with no gap (an unlock row on the chips under it), and the same 8px apart; a block on its card's side, and inset.
+  expect(await kinds('<div class=a style="background:#555;height:40px;border-radius:8px"></div><div class=b style="border-radius:8px;background:#666;height:40px"></div>')).toEqual(['touch']);
+  expect(await kinds('<div class=a style="background:#555;height:40px;border-radius:8px"></div><div class=b style="border-radius:8px;background:#666;height:40px;margin-top:8px"></div>')).toEqual([]);
+  expect(await kinds('<div class=card style="background:#222;border-radius:12px"><div style="background:#444;height:40px;border-radius:8px"></div></div>')).toEqual(['edge']);
+  expect(await kinds('<div class=card style="background:#222;border-radius:12px;padding:12px 16px"><div style="background:#444;height:40px;border-radius:8px"></div></div>')).toEqual([]);
+  // A list's flush rows and a full-bleed band (square corners) are not shapes touching.
+  expect(await kinds('<div class=a style="background:#555;height:40px"></div><div class=b style="background:#666;height:40px"></div><div class=card style="background:#222;border-radius:12px"><div style="background:#444;height:40px"></div></div>')).toEqual([]);
   // A sheet over a backdrop, its button down in the home indicator's strip; and the same sheet padded clear of it.
   // The render check: text over text, text over a chart, text out of its tile, an ellipsis, a 36px button.
   const strict = async (body: string) => {

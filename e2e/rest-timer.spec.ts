@@ -194,6 +194,52 @@ test('the last planned set of a lift names the plan’s next lift, never a set p
   await page.screenshot({ path: 'test-results/rest-plan-done.png' });
 });
 
+// Owner, 2026-10-22: "I finished one exercise and the next popped up but I was already working on a different exercise." His leg
+// raises and curls in turns; the leg raises' last set said "Next Cable Pushdown" (the plan's next) and offered it first, mid-curls.
+test('a lift done while another is going: the bar and the Left row name the one he is on, not the plan’s next', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-16T18:00:00') });
+  await page.goto('/');
+  await goto(page, 'Backup');
+  await page.getByLabel('Import CSV').setInputFiles(path.join(import.meta.dirname, 'fixtures', 'history.sample.csv'));
+  await expect(page.getByText(/Imported 6 new/)).toBeVisible();
+  await goto(page, 'Today');
+  await openProgram(page);
+  await page.getByRole('textbox', { name: 'Days per week' }).fill('2');
+  await page.getByRole('textbox', { name: 'Sets per session' }).fill('14');
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  const rows = page.getByRole('list', { name: 'Planned exercises' }).getByRole('listitem');
+  expect(await rows.count(), 'a plan of three lifts or more').toBeGreaterThanOrEqual(3);
+  const names = await rows.locator('.plan-name').evaluateAll((els) => els.map((e) => e.getAttribute('data-exercise')!));
+  const [a, b, c] = names;
+  const sets = Number((await rows.nth(0).locator('.plan-count').textContent())!.split('/')[1]);
+  // The first lift and the third, in turns as he does them, 4 minutes apart: a rest each time, no superset.
+  await rows.nth(0).locator('.plan-name').click();
+  await rows.nth(2).locator('.plan-name').click();
+  const cardA = page.locator(`[data-card="${a.toLowerCase()}"]`), cardC = page.locator(`[data-card="${c.toLowerCase()}"]`);
+  let min = 30;
+  const logOn = async (card: typeof cardA) => {
+    const w = card.getByRole('textbox', { name: 'Weight' });
+    if ((await w.inputValue()) === '') await w.fill('50');
+    await page.clock.pauseAt(new Date(`2026-10-16T18:${min}:00`));
+    min += 4;
+    await card.getByRole('button', { name: /^Add set/ }).click();
+  };
+  for (let i = 1; i < sets; i++) { await logOn(cardA); await expect(cardA.getByRole('list', { name: `Sets for ${a}` }).getByRole('listitem')).toHaveCount(i); }
+  await logOn(cardC);
+  await expect(cardC.getByRole('list', { name: `Sets for ${c}` }).getByRole('listitem')).toHaveCount(1);
+  await logOn(cardA); // the first lift's last planned set
+  const timer = page.getByRole('timer', { name: 'Rest' });
+  await expect(timer).toBeVisible();
+  await expect(timer.locator('.rest-next')).toHaveText(`Next ${c} · set 2`);
+  await expect(timer).not.toContainText(b);
+  // The finished card's Left row leads with the lift he's on.
+  const offer = cardA.getByRole('group', { name: 'Left to do' }).getByRole('button');
+  await expect(offer.first()).toHaveText(c);
+  // Nothing opened or scrolled him off: the third lift's card is still open, its form there.
+  await expect(cardC.getByRole('button', { name: /^Add set/ })).toBeVisible();
+});
+
 // Owner, 2026-10-20: "most of the text on the timer message is cut off, I see 'Rest d…'". At 375 px the words beside the time
 // had about 77 px, so "Rest done" was cut, and a lift's name would be.
 test('done, the rest bar shows “Rest done” and the next lift in full at 375 px', async ({ page }) => {

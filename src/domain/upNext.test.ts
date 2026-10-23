@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { PLAN_DONE, upNext } from './upNext';
+import { onLift, PLAN_DONE, upNext } from './upNext';
 
 // What the rest bar and the lock-screen alert say comes after a set. Owner, 2026-10-20: the last of 4 planned Cable Pushdown
 // sets said "set 5 next".
@@ -67,5 +67,44 @@ describe('upNext', () => {
     expect(upNext({ exercise: 'Cable Pushdown', entries: three, date: D, planned, left, round })).toBe('Cable Pushdown · set 4 next');
     const all = [...three, set('Cable Pushdown')];
     expect(upNext({ exercise: 'Cable Pushdown', entries: all, date: D, planned, left, round })).toBe('Next: Face Pull');
+  });
+});
+
+// Owner, 2026-10-22: leg raises and curls taken in turns; the leg raises' last set said "Next Cable Pushdown", the plan's next,
+// while he was halfway through his curls.
+describe('the lift he is on', () => {
+  const at = (exercise: string, hm: string): SetEntry => ({ ...set(exercise), loggedAt: new Date(`${D}T${hm}:00`).toISOString() });
+  const day = [at('Supported Leg Raise', '19:32'), at('DB Curl', '19:37'), at('Supported Leg Raise', '19:39'), at('DB Curl', '19:40'), at('Supported Leg Raise', '19:51')];
+  const planned = plan({ 'Supported Leg Raise': 3, 'Cable Pushdown': 4, 'DB Curl': 3 });
+  const lifts = ['Supported Leg Raise', 'DB Curl'];
+  const none = () => undefined;
+
+  it('a lift done: the other lift he has going, not the plan’s next', () => {
+    const on = onLift({ exercise: 'Supported Leg Raise', entries: day, date: D, planned, lifts, touched: none });
+    expect(on).toBe('DB Curl');
+    expect(upNext({ exercise: 'Supported Leg Raise', entries: day, date: D, planned, left: ['Supported Leg Raise', 'Cable Pushdown', 'DB Curl'], on }))
+      .toBe('DB Curl · set 3 next');
+  });
+
+  it('a card tapped since this lift started counts, sets or none; one finished, or last touched before, doesn’t', () => {
+    const t = (hm: string) => new Date(`${D}T${hm}:00`).getTime();
+    const curlsDone = [...day, at('DB Curl', '19:45')];
+    expect(onLift({ exercise: 'Supported Leg Raise', entries: curlsDone, date: D, planned, lifts, touched: none })).toBeUndefined();
+    expect(onLift({ exercise: 'Supported Leg Raise', entries: curlsDone, date: D, planned, lifts: [...lifts, 'Lateral Raise'], touched: (l) => (l === 'Lateral Raise' ? t('19:50') : undefined) }))
+      .toBe('Lateral Raise');
+    expect(onLift({ exercise: 'Supported Leg Raise', entries: curlsDone, date: D, planned, lifts: [...lifts, 'Lateral Raise'], touched: (l) => (l === 'Lateral Raise' ? t('19:00') : undefined) }))
+      .toBeUndefined();
+  });
+
+  it('nothing else going: the plan’s next, as before', () => {
+    const alone = [at('Supported Leg Raise', '19:32'), at('Supported Leg Raise', '19:39'), at('Supported Leg Raise', '19:51')];
+    const on = onLift({ exercise: 'Supported Leg Raise', entries: alone, date: D, planned, lifts, touched: none });
+    expect(on).toBeUndefined();
+    expect(upNext({ exercise: 'Supported Leg Raise', entries: alone, date: D, planned, left: ['Supported Leg Raise', 'Cable Pushdown', 'DB Curl'], on })).toBe('Next: Cable Pushdown');
+  });
+
+  it('his own next set still comes first while this lift has sets left', () => {
+    const two = day.slice(0, 4);
+    expect(upNext({ exercise: 'Supported Leg Raise', entries: two, date: D, planned, left: [], on: 'DB Curl' })).toBe('Supported Leg Raise · set 3 next');
   });
 });

@@ -9,6 +9,7 @@ import { activeProfileDb } from '../db/db';
 import { clearDraft, getDraft, markDirty, saveDraft } from '../state/drafts';
 import { Stepper } from './Stepper';
 import { prToast } from '../domain/records';
+import { FoldLine } from './FoldLine';
 import { AchLines } from './AchievementsSheet';
 import { useAchLines, useAchOpen } from '../state/useAchievements';
 import { prSetIds } from '../domain/summary';
@@ -126,9 +127,7 @@ export function CardioCard({ exercise, date, today: realToday = date, store, onO
   if (complete && !opened) {
     return (
       <section className="card folded" data-card={exercise.toLowerCase()}>
-        <button className="fold-line" aria-expanded="false" aria-label={`Show ${exercise}`} onClick={() => setOpened(true)}>
-          <b>{exercise}</b><span className="ok">✓</span>{bouts.some((x) => prs.has(x.id)) && <span className="tag pr-tag">PR</span>}<span className="muted nw">{fmtCardio(bouts.at(-1)!.cardio!)}</span>
-        </button>
+        <FoldLine name={exercise} done count="✓" pr={bouts.some((x) => prs.has(x.id))} best={fmtCardio(bouts.at(-1)!.cardio!)} onClick={() => setOpened(true)} />
         {pr && <p role="status" className="pr">{pr}</p>}
         <AchLines us={ach.lines} onOpen={openAch} />
       </section>
