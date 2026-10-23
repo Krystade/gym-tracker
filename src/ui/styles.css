@@ -255,6 +255,23 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 /* The fold chevron sits in the head's top right; the title and Best wrap beside it. */
 .card:has(> .card-head .card-fold) > .card-head { position: relative; padding-right: 40px; }
 .card-head .card-fold { position: absolute; top: 0; right: -10px; color: var(--text-2); }
+/* Item 8: × beside the fold chevron takes the lift off today. */
+.card:has(> .card-head .card-remove) > .card-head { padding-right: 80px; }
+.card-head .card-remove { position: absolute; top: 0; right: 34px; color: var(--text-2); }
+/* A Today card swiped right to left: Remove behind it, shown only while it moves or stays open (its corners never show red). */
+.swipe { position: relative; margin-bottom: 16px; }
+.swipe-face { position: relative; z-index: 1; touch-action: pan-y; transition: transform 0.2s ease; }
+.swipe[data-moving] > .swipe-face { transition: none; }
+.swipe-face > .card { margin-bottom: 0; }
+.swipe-remove { position: absolute; top: 0; right: 0; bottom: 0; width: 120px; min-height: 44px; padding: 0 0 0 24px; border-radius: var(--r-group);
+  background: var(--danger); color: #2a0806; font-weight: 600; visibility: hidden; }
+.swipe[data-open] > .swipe-remove, .swipe[data-moving] > .swipe-remove { visibility: visible; }
+/* What came off today, with its Undo for 5 s: above the tab bar and the rest bar. */
+.remove-toast { position: fixed; z-index: 5; left: calc(16px + var(--sal)); right: calc(16px + var(--sar)); bottom: calc(57px + var(--sab) + var(--rest-h, 0px) + 8px);
+  display: flex; align-items: center; gap: 8px; margin: 0; padding: 4px 4px 4px 16px; border-radius: var(--r-group); background: var(--surface-2);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.45); }
+.remove-toast > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.remove-toast .mini { flex: none; color: var(--accent-text); }
 /* Best and Last read as one small block under the name. */
 .card-last { font-size: var(--fs-sub); margin: 0 0 6px; }
 /* A lift that reached its planned sets: one tappable 52px line, still in its slot. */

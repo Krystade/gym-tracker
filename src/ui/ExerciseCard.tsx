@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import { byOrderDone, lastSession, sameExercise } from '../domain/stats';
-import { estimateRir, isTest, isWorking, nextTarget, priorE1rm, rirOffset } from '../domain/progression';
+import { estimateRir, isTest, isTraining, isWorking, nextTarget, priorE1rm, rirOffset } from '../domain/progression';
 import { ladderOf } from '../domain/learn/ladder';
 import { prToast, records } from '../domain/records';
 import { fmtDay, fmtSet, fmtWeight, plural } from '../domain/format';
@@ -35,6 +35,16 @@ import { useAchLines, useAchOpen } from '../state/useAchievements';
 
 const TARGET_LEAD: Partial<Record<string, string>> = { increase: 'Go up: ', test: 'From your test: ', carry: 'Estimate: ', hold: 'Hold: ', ease: 'Lighter: ', light: 'Light week: ' };
 
+/**
+ * A folded card's count against the plan, and whether the lift is done: its working sets less any test (owner, 2026-10-23: a
+ * test and 2 working sets folded as 3/3).
+ */
+export function foldCount(sets: readonly SetEntry[], plannedSets: number | null | undefined): { complete: boolean; count: string } {
+  const n = sets.filter(isTraining).length, any = sets.filter(isWorking).length;
+  const complete = plannedSets != null && plannedSets > 0 && n >= plannedSets;
+  return { complete, count: complete ? `${n}/${plannedSets} sets ✓` : plannedSets ? `${n}/${plannedSets} sets` : any ? plural(any, 'set') : 'Not started' };
+}
+
 type CardProps = Parameters<typeof LiftCard>[0] & { plannedMinutes?: number | null };
 /** A cardio machine gets its own card: time and distance, not weight and reps. */
 export function ExerciseCard({ plannedMinutes, ...p }: CardProps) {
@@ -45,7 +55,7 @@ export function ExerciseCard({ plannedMinutes, ...p }: CardProps) {
 }
 
 function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, plates = PLATE_SIZES, openReq = null, who, swappedFrom, left = [], onGo,
-  supersetWith, onNotSuperset, switchAfter, roundAfter, onSwitch, aside, restDelta, light = false, completesPlan, onPlanDone, plannedOf, onLiftAfter, onTouch }: {
+  supersetWith, onNotSuperset, switchAfter, roundAfter, onSwitch, aside, restDelta, light = false, completesPlan, onPlanDone, plannedOf, onLiftAfter, onTouch, onRemove }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
   /** The plate sizes at this gym, for the per-side line. */
   plates?: readonly number[];
@@ -78,6 +88,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   onLiftAfter?: (entries: SetEntry[]) => string | undefined;
   /** A tap anywhere on the card: he's on this lift. */
   onTouch?: () => void;
+  /** Item 8: takes the lift off today (its sets with it); its × beside the fold chevron. */
+  onRemove?: () => void;
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
   // Folded or open as the user last chose: true folded, false open; null, automatic: folded once the plan's sets are done.
@@ -201,7 +213,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     return t?.kind !== 'ease' ? null : t.easeBy === 'help' ? ' Next time starts with a step more help.' : t.easeBy === 'reps' ? ' Next time starts a rep down on each set.' : ' Next time starts a step lighter.';
   }, [sharp, store.entries, exercise, st, date, plannedSets]);
   const away = sharp ? left.filter((ex) => !sameExercise(ex, exercise) && !loadsRegion(ex, sharp.region)) : [];
-  const complete = plannedSets != null && plannedSets > 0 && working.length >= plannedSets;
+  const { complete, count: foldText } = foldCount(today, plannedSets);
   // The plan sent you here: open a folded card, but a card that isn't finished has nothing to open, so don't pin it open.
   const [usedReq, setUsedReq] = useState<object | null>(null);
   const folded = shut ?? complete;
@@ -228,13 +240,12 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
 
   if (folded) {
     const top = working.length ? working.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && (b.reps ?? 0) > (a.reps ?? 0)) ? b : a)) : null;
-    const count = complete ? `${working.length}/${plannedSets} sets ✓` : plannedSets ? `${working.length}/${plannedSets} sets` : working.length ? plural(working.length, 'set') : 'Not started';
     // The lift he's on first among what's left (owner, 2026-10-22: the plan's next was offered first, mid-way through his curls).
     const on = justDone ? onLiftAfter?.(store.entries) : undefined;
     const offer = on ? [...left.filter((x) => sameExercise(x, on)), ...left.filter((x) => !sameExercise(x, on))] : left;
     return (
       <section className="card folded" data-card={exercise.toLowerCase()} onClickCapture={onTouch}>
-        <FoldLine name={exercise} done={complete} count={count} pr={today.some((x) => prs.has(x.id))} best={top ? fmtSet(top) : null} onClick={unfold} />
+        <FoldLine name={exercise} done={complete} count={foldText} pr={today.some((x) => prs.has(x.id))} best={top ? fmtSet(top) : null} onClick={unfold} />
         {pr && <p role="status" className="pr">{pr}</p>}
         <AchLines us={ach.lines} onOpen={openAch} />
         {justDone && onGo && left.length > 0 && (
@@ -255,6 +266,11 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
         <button type="button" className="mini icon card-fold" aria-expanded="true" aria-label={`Fold ${exercise}`} onClick={() => { setEditing(null); setShut(true); }}>
           <Icon name="chev-down" size={22} sw={2} />
         </button>
+        {onRemove && (
+          <button type="button" className="mini icon card-remove" aria-label={`Remove ${exercise} from today`} onClick={onRemove}>
+            <Icon name="close" size={20} sw={2} />
+          </button>
+        )}
         {best?.set && <span className="muted">Best {fmtSet(best.set)} · e1RM {fmtWeight(Math.round(best.value))} lb</span>}
       </header>
       {supersetWith && supersetWith.length > 0 && (

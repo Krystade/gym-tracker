@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { SetEntry } from '../domain/types';
-import { defaultSettings, isWorking } from '../domain/progression';
+import { defaultSettings, isTraining } from '../domain/progression';
 import { nextDay, type DayPlan, type Program, type Slot } from '../domain/program';
 import { sameExercise } from '../domain/stats';
 import { isHoldLift } from '../domain/care';
@@ -29,8 +29,8 @@ export const sizedHow = (L: Lengths, by: Sizing['by']): string => by === 'pace' 
   ? `at your pace (${toMin(L.pace.lo)}–${toMin(L.pace.hi)})${L.both ? ` · ${toMin(L.plan)} at the timer’s rests` : ''}`
   : 'at the timer’s rests · your pace sizes it after 2 timed days';
 
-/** Done for the plan: a working set, or a cardio bout. */
-const doneEntry = (e: SetEntry) => isWorking(e) || !!e.cardio;
+/** Done for the plan: a working set that isn't a test (a max single is strength, not one of the sets), or a cardio bout. */
+const doneEntry = (e: SetEntry) => isTraining(e) || !!e.cardio;
 
 /**
  * The day's plan: the one stored, else the suggested day (readiness S4: today's session in the week's plan, which may reorder the

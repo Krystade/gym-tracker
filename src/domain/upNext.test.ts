@@ -13,6 +13,11 @@ const sets = (exercise: string, n: number) => Array.from({ length: n }, () => se
 const plan = (counts: Record<string, number>) => (ex: string) => counts[ex] ?? null;
 
 describe('upNext', () => {
+  it('a test set is not one of the plan’s sets: a test and 2 working sets of 3 planned is set 3 next', () => {
+    const entries = [set('DB Curl', ['test']), ...sets('DB Curl', 2)];
+    expect(upNext({ exercise: 'DB Curl', entries, date: D, planned: plan({ 'DB Curl': 3 }), left: ['DB Curl'] })).toBe('DB Curl · set 3 next');
+  });
+
   it('names the next set of the lift while its plan has sets left', () => {
     const entries = sets('Cable Pushdown', 3);
     expect(upNext({ exercise: 'Cable Pushdown', entries, date: D, planned: plan({ 'Cable Pushdown': 4 }), left: ['Cable Pushdown', 'Machine Chest Press'] }))

@@ -6,8 +6,9 @@ import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import type { ProgramStore } from '../state/useProgram';
 import { dayOrder, exerciseNames, sameExercise } from '../domain/stats';
-import { fmtDay } from '../domain/format';
+import { fmtDay, plural } from '../domain/format';
 import { ExerciseCard } from './ExerciseCard';
+import { SwipeRemove } from './SwipeRemove';
 import { SessionSummary } from './SessionSummary';
 import { Energy } from './Energy';
 import { CycleRow } from './Cycle';
@@ -151,6 +152,31 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     if (r) void programs.savePlan(r);
   }, [programs.program, programs.plans, programs.savePlan, store.entries, date, today, suggested]);
   const addCard = (n: string) => setExtra((xs) => (xs.some((x) => sameExercise(x, n)) ? xs : [...xs, n]));
+  // Item 8 (owner): a lift off today, by its × or a swipe. Its sets today go with it; a planned lift is skipped for today, the
+  // program left as it is. Undo for 5 s puts back the sets, the card where it was, and the plan.
+  const [removed, setRemoved] = useState<{ name: string; sets: SetEntry[]; at: number; skipped: string | null } | null>(null);
+  useLayoutEffect(() => { if (!removed) return; const t = setTimeout(() => setRemoved(null), 5000); return () => clearTimeout(t); }, [removed]);
+  const removeCard = async (n: string) => {
+    const sets = store.entries.filter((e) => e.date === date && sameExercise(e.exercise, n));
+    if (sets.length && !(await store.removeMany(sets.map((e) => e.id)))) return;
+    const at = extra.findIndex((x) => sameExercise(x, n));
+    setExtra((xs) => xs.filter((x) => !sameExercise(x, n)));
+    // A rest running for this lift's next set has nothing to lead to now.
+    if (date === today && currentRest()?.card === n.toLowerCase()) closeTimers();
+    const slot = programs.program && plan
+      ? (plan.quick != null ? plan.slots ?? [] : (programs.program.days[plan.day] ?? programs.program.days[0]).slots).find((s) => sameExercise(plan.swaps[s.exercise] ?? s.exercise, n))
+      : undefined;
+    const skipped = slot && plan && !plan.skips.includes(slot.exercise) ? slot.exercise : null;
+    if (skipped && plan) void programs.savePlan({ ...plan, skips: [...plan.skips, skipped] });
+    setRemoved({ name: n, sets, at, skipped });
+  };
+  const undoRemove = async () => {
+    const r = removed;
+    if (!r || (r.sets.length && !(await store.restoreMany(r.sets)))) return;
+    if (r.at >= 0) setExtra((xs) => (xs.some((x) => sameExercise(x, r.name)) ? xs : [...xs.slice(0, r.at), r.name, ...xs.slice(r.at)]));
+    if (r.skipped && plan) void programs.savePlan({ ...plan, skips: plan.skips.filter((x) => x !== r.skipped) });
+    setRemoved(null);
+  };
   // Null = automatic: open while the day has lifts left, folded once every planned lift is done or skipped.
   const [planOpen, setPlanOpen] = useState<boolean | null>(null);
   // A new card lands at the bottom, off-screen: bring it up. The plan stays as it was; it's the list of what's next.
@@ -389,14 +415,18 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       {lastUnseen && <LastWorkoutLine entries={store.entries} date={lastUnseen} today={today} profile={profile}
         onOpen={() => { markFinished(owner, lastUnseen, { seen: true }); setFinishRev((n) => n + 1); onOpenDay?.(lastUnseen); }} />}
       {cards.length === 0 && <p className="muted">{date < today ? 'Nothing logged that day.' : 'Nothing logged yet today.'}</p>}
-      {cards.map((n) => <ExerciseCard key={n.toLowerCase()} exercise={n} date={date} today={today} store={store} settings={settings} onOpen={onOpen}
+      {cards.map((n) => <SwipeRemove key={n.toLowerCase()} onRemove={() => void removeCard(n)}><ExerciseCard exercise={n} date={date} today={today} store={store} settings={settings} onOpen={onOpen} onRemove={() => void removeCard(n)}
         plannedSets={plannedSets(programs.program, plan, n)} plannedMinutes={plannedMinutes(programs.program, plan, n)} gym={gyms.active?.name} plates={platesOf(gyms.active)} who={who} left={hasPlan ? left : []} onGo={goTo}
         swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
         openReq={openReq && sameExercise(openReq.to, n) ? openReq : null}
         supersetWith={groupOf(n)?.lifts.filter((x) => !sameExercise(x, n))} onNotSuperset={() => { const g = groupOf(n); if (g) dismiss(g); }}
         switchAfter={switchAfter} roundAfter={roundAfter} plannedOf={(ex) => plannedSets(programs.program, plan, ex)} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} restDelta={restDelta} light={!!light}
         completesPlan={completesPlan} onPlanDone={onPlanDone} onTouch={() => touch(n)}
-        onLiftAfter={(after) => onLift({ exercise: n, entries: after, date, planned: (ex) => plannedSets(programs.program, plan, ex), lifts: cards, touched: (l) => touched.current.get(l.toLowerCase()) })} />)}
+        onLiftAfter={(after) => onLift({ exercise: n, entries: after, date, planned: (ex) => plannedSets(programs.program, plan, ex), lifts: cards, touched: (l) => touched.current.get(l.toLowerCase()) })} /></SwipeRemove>)}
+      {removed && (
+        <p className="remove-toast" role="status"><span>{removed.name} removed from today{removed.sets.length > 0 && ` · ${plural(removed.sets.length, 'set')} deleted`}</span>
+          <button type="button" className="mini" onClick={() => void undoRemove()}>Undo</button></p>
+      )}
       {/* Below the cards, so the card you're logging on never moves down. */}
       {!summary && <SessionSummary entries={store.entries} date={date} past={date < today} />}
       <button className="wide add-exercise" data-tour="add" onClick={() => setPicking(true)}>Add exercise</button>

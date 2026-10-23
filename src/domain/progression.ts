@@ -293,7 +293,8 @@ export const isTest = (s: SetEntry): boolean => s.flags.includes('test');
  * recalibrates instead (see `nextTarget`): a lone max-effort set isn't a session to add reps to.
  */
 export const isProgressionSet = (s: SetEntry): boolean => isWorking(s);
-const isTraining = (s: SetEntry) => isWorking(s) && !isTest(s);
+/** A working set that isn't a test: what the plan's sets, a card's count and "Today so far" count (owner, 2026-10-23). */
+export const isTraining = (s: SetEntry): boolean => isWorking(s) && !isTest(s);
 
 /**
  * `planned`: the sets the plan has for this lift today, where known. Last time's extra sets at the top weight don't hold the

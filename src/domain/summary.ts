@@ -1,5 +1,5 @@
 import { muscleVector, type Muscle } from './muscles';
-import { isWorking } from './progression';
+import { isTraining, isWorking } from './progression';
 import { byOrderDone, daySets, lastSession, sameExercise } from './stats';
 import { prKinds } from './records';
 import { liftKey } from './ids';
@@ -32,8 +32,10 @@ export function daySummary(entries: SetEntry[], date: string): DaySummary {
   for (const e of today) if (!names.some((n) => sameExercise(n, e.exercise))) names.push(e.exercise);
   const lifts = names.map((exercise) => {
     const sets = today.filter((e) => sameExercise(e.exercise, exercise));
-    const prev = lastSession(entries, exercise, date)?.sets.filter(isWorking) ?? [];
-    const top = topSet(sets);
+    // Against last time's best working set, never its test single (owner, 2026-10-23: "↑ last 45 × 1"); today's top likewise,
+    // while it has a working set besides a test.
+    const prev = lastSession(entries, exercise, date)?.sets.filter(isTraining) ?? [];
+    const top = topSet(sets.some(isTraining) ? sets.filter(isTraining) : sets);
     const times = sets.filter((e) => e.weight === top.weight && e.reps === top.reps).length;
     // A partial set can be the PR (heaviest weight) without being a working set.
     const pr = daySets(entries, date).some((e) => prs.has(e.id) && sameExercise(e.exercise, exercise));

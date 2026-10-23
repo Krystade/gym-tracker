@@ -61,6 +61,18 @@ describe('daySummary', () => {
     expect(d.muscles[0][1]).toBeGreaterThanOrEqual(d.muscles.at(-1)![1]); // most-trained first
   });
 
+  it('compares against last time’s best working set, never its test single (owner, 2026-10-23)', () => {
+    const entries = [
+      s('2026-09-28', 'DB Curl', 45, 1, ['test']), s('2026-09-28', 'DB Curl', 35, 9), s('2026-09-28', 'DB Curl', 35, 7),
+      s(TODAY, 'DB Curl', 35, 10),
+    ];
+    const curl = daySummary(entries, TODAY).lifts[0];
+    expect([curl.last?.weight, curl.last?.reps]).toEqual([35, 9]);
+    // Today's own test isn't its top set either, while it has a working set.
+    const withTest = daySummary([...entries, s(TODAY, 'DB Curl', 50, 1, ['test'])], TODAY).lifts[0];
+    expect([withTest.top.weight, withTest.top.reps]).toEqual([35, 10]);
+  });
+
   it('is empty on a day with no working sets', () => {
     expect(daySummary([s(TODAY, 'Bench Press', 95, 5, ['warmup'])], TODAY).lifts).toEqual([]);
   });

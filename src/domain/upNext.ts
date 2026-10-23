@@ -1,4 +1,4 @@
-import { isWorking } from './progression';
+import { isTraining, isWorking } from './progression';
 import { sameExercise } from './stats';
 import type { SetEntry } from './types';
 
@@ -20,7 +20,8 @@ export const NEXT = 'Next: ';
  */
 export function upNext(o: { exercise: string; entries: readonly SetEntry[]; date: string; planned: (exercise: string) => number | null | undefined;
   left: readonly string[]; round?: readonly string[]; on?: string }): string {
-  const done = (lift: string) => o.entries.filter((e) => e.date === o.date && sameExercise(e.exercise, lift) && isWorking(e)).length;
+  // A test single isn't one of the plan's sets (owner, 2026-10-23).
+  const done = (lift: string) => o.entries.filter((e) => e.date === o.date && sameExercise(e.exercise, lift) && isTraining(e)).length;
   const more = (lift: string) => { const p = o.planned(lift); return p == null || p <= 0 || done(lift) < p; };
   const again = o.round?.find(more) ?? (more(o.exercise) ? o.exercise : undefined);
   if (again) return setNext(again, done(again) + 1);
@@ -46,7 +47,7 @@ export function onLift(o: { exercise: string; entries: readonly SetEntry[]; date
     if (sameExercise(lift, o.exercise)) continue;
     const sets = day.filter((e) => sameExercise(e.exercise, lift) && isWorking(e));
     const p = o.planned(lift);
-    if (p != null && p > 0 && sets.length >= p) continue; // done
+    if (p != null && p > 0 && sets.filter(isTraining).length >= p) continue; // done
     const t = Math.max(o.touched(lift) ?? -Infinity, ...sets.map(at));
     if (t > since && (!best || t > best.t)) best = { lift, t };
   }
