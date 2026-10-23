@@ -39,6 +39,13 @@ html, body { margin: 0; background: var(--bg); color: var(--text); }
 /* clip, not hidden: hidden on html+body makes body the scroll container, which breaks window scroll and sticky headers. */
 body { overflow-x: clip; }
 body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+/* A long-press on a label, button or chart shouldn't select it and raise iOS's Copy / Look Up bar. On body, not .app,
+   so portalled sheets inherit it. Fields and what people wrote to each other (messages, board posts) stay selectable;
+   fields get an explicit `text`, since WebKit can refuse focus or the caret in an input that inherits `none`. */
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea, [contenteditable]:not([contenteditable=false]), .bubble-text, .bd-text, .rv-text {
+  -webkit-user-select: text; user-select: text; -webkit-touch-callout: default;
+}
 /* The large title: one per screen. */
 h1 { font-size: var(--fs-title); line-height: 41px; font-weight: 700; letter-spacing: -0.01em; margin: 4px 0 16px; }
 p { margin: 6px 0; }
