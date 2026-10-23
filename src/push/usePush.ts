@@ -86,13 +86,25 @@ export const useOpenRoute = PUSH_ON ? function useOpenRoute(go: (r: Route) => vo
       const s = await take('route').catch(() => undefined);
       if (s && Date.now() - s.at < FRESH_MS && isRoute(s.route)) show(s.route);
     };
-    if (!fromHash()) void fromStore();
+    // Coming back: iOS brings the app up for a tap before the service worker's notificationclick stores the route (and its
+    // message can be lost to a page that was suspended), so look again for a few seconds, not only the moment it shows.
+    let looks: number[] = [];
+    const resume = () => {
+      looks.forEach(clearTimeout);
+      looks = [0, 400, 1200, 2500, 5000].map((ms) => window.setTimeout(() => { if (document.visibilityState === 'visible') void fromStore(); }, ms));
+    };
+    if (!fromHash()) resume();
     const onHash = () => { fromHash(); };
-    const onVis = () => { if (document.visibilityState === 'visible') void fromStore(); else tapShown = false; };
+    const onVis = () => { if (document.visibilityState === 'visible') resume(); else { tapShown = false; looks.forEach(clearTimeout); } };
     const onMsg = (e: MessageEvent) => { const d = e.data as { type?: string; route?: unknown }; if (d?.type === 'open' && isRoute(d.route)) follow(d.route); };
     window.addEventListener('hashchange', onHash);
+    window.addEventListener('pageshow', resume);
     document.addEventListener('visibilitychange', onVis);
     navigator.serviceWorker?.addEventListener('message', onMsg);
-    return () => { window.removeEventListener('hashchange', onHash); document.removeEventListener('visibilitychange', onVis); navigator.serviceWorker?.removeEventListener('message', onMsg); };
+    return () => {
+      looks.forEach(clearTimeout);
+      window.removeEventListener('hashchange', onHash); window.removeEventListener('pageshow', resume);
+      document.removeEventListener('visibilitychange', onVis); navigator.serviceWorker?.removeEventListener('message', onMsg);
+    };
   }, []);
 } : () => {};

@@ -25,6 +25,16 @@
  * (a notification tapped on the Home Screen, owner's 13 mini, 2026-10-20) iOS can hand back a stale visual viewport past the
  * end of a page that got shorter in the background (a lift's card folded, the rest bar gone), with no touch at all: that
  * looked like a bounce, so the pin left the tab bar mid-screen with the page below it. Without a touch it is a stuck screen.
+ *
+ * A keyboard-short visual viewport (under four fifths of the layout's height) is a keyboard or picker only while a field that
+ * raises one has focus. Without one there is no keyboard: iOS handed back the viewport a keyboard left (owner's 13 mini,
+ * 2026-10-22: back to Friends › Board, the tab bar 318px up the screen and the page drawn whole below it). The stuck screens
+ * seen are a few px short, never a keyboard's height, so a keyboard-short one with no field focused leaves the chrome on the
+ * layout's edges, as a keyboard does.
+ *
+ * And while a keyboard is up, the sheets with a field in them (a thread's message box, Add a friend) ride on top of it, as a
+ * compose box does in any app: --kb is the keyboard's top above the layout's bottom, --kb-top the visual viewport's offset
+ * (iOS can pan the screen down the layout as well). The tab bar and the other chrome stay behind it.
  */
 // A field that can raise a keyboard or picker. Read-only ones can't (the invite link), nor inputmode=none.
 const FIELD = 'input:not([type=checkbox], [type=radio], [type=range], [type=button], [type=submit], [type=reset], [type=file], [type=image], [readonly], [inputmode=none]), '
@@ -53,17 +63,24 @@ export function pinChromeToVisualViewport(root: HTMLElement = document.documentE
   const update = () => {
     const active = document.activeElement;
     const field = (active?.matches(FIELD) ?? false) && active !== picked;
-    // A keyboard or picker takes a fifth of the screen or more; the stuck gap left behind is far smaller, or has no focus.
-    const inputUp = field && vv.height < innerHeight * 0.8;
+    // A keyboard or picker takes a fifth of the screen or more; the stuck gap left behind is far smaller. Short by that much
+    // with no field to raise one, it's no keyboard and no stuck screen: a viewport iOS forgot to give back.
+    const short = vv.height < innerHeight * 0.8;
+    const inputUp = field && short;
     const pinch = Math.abs(vv.scale - 1) > 0.01; // zoomed in by hand: the chrome is meant to stay put then
-    if (!inputUp && !pinch && bouncing()) return; // the bounce settles with a scroll event, and the poll looks again
-    const top = inputUp || pinch ? 0 : vv.offsetTop;
-    const bottom = inputUp || pinch ? 0 : innerHeight - (vv.offsetTop + vv.height);
-    const next = `${Math.round(top)}px ${Math.round(bottom)}px`;
+    if (!short && !pinch && bouncing()) return; // the bounce settles with a scroll event, and the poll looks again
+    const still = short || pinch;
+    const top = still ? 0 : vv.offsetTop;
+    const bottom = still ? 0 : innerHeight - (vv.offsetTop + vv.height);
+    const kb = inputUp && !pinch ? Math.max(0, innerHeight - (vv.offsetTop + vv.height)) : 0;
+    const kbTop = inputUp && !pinch ? Math.max(0, vv.offsetTop) : 0;
+    const next = `${Math.round(top)}px ${Math.round(bottom)}px ${Math.round(kb)}px ${Math.round(kbTop)}px`;
     if (next === last) return; // runs on every scroll: no style change unless the gap moved
     last = next;
     root.style.setProperty('--vv-top', `${Math.round(top)}px`);
     root.style.setProperty('--vv-bottom', `${Math.round(bottom)}px`);
+    root.style.setProperty('--kb', `${Math.round(kb)}px`);
+    root.style.setProperty('--kb-top', `${Math.round(kbTop)}px`);
   };
   // The keyboard animates away over a few hundred ms, and the stuck state says nothing when it settles.
   let timers: number[] = [];
@@ -75,7 +92,7 @@ export function pinChromeToVisualViewport(root: HTMLElement = document.documentE
     const field = document.activeElement?.matches(ANY_FIELD) ?? false;
     if (hadField && !field) until = Date.now() + LINGER_MS; // it blurred or left the page: watch the screen settle
     hadField = field;
-    if (!field && last === '0px 0px' && Date.now() > until) { clearInterval(poll); poll = 0; }
+    if (!field && last === '0px 0px 0px 0px' && Date.now() > until) { clearInterval(poll); poll = 0; }
   };
   const wake = () => { until = Date.now() + LINGER_MS; if (!poll) poll = window.setInterval(tick, POLL_MS); };
   const later = () => { wake(); timers.forEach(clearTimeout); update(); timers = [100, 400, 800].map((ms) => window.setTimeout(update, ms)); };

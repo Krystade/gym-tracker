@@ -159,3 +159,24 @@ test('a swapped-away lift with a set today keeps its card', async ({ page }) => 
   await expect(card(page, 'Standing Cable Crunch')).toBeVisible();
   await expect(card(page, lift)).toBeVisible();
 });
+
+// Owner, 2026-10-23: opening Add exercise (or Swap) on Today opened again every card he had folded by hand. The picker takes
+// Today's place, and each card's fold went with it.
+test('a card folded by hand stays folded through Add exercise, cancelled or used', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-19T18:00:00') });
+  await page.goto('/');
+  await addLift(page, 'Cable Pushdown');
+  const c = card(page, 'Cable Pushdown');
+  await log(c, 'Cable Pushdown', '120', '10');
+  await c.getByRole('button', { name: 'Fold Cable Pushdown' }).click();
+  await expect(c).toHaveClass(/\bfolded\b/);
+  // Cancelled: back on Today, the card as he left it.
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Cable Curl');
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(c).toHaveClass(/\bfolded\b/);
+  // Used: another lift added, and the folded one still folded.
+  await addLift(page, 'Cable Curl');
+  await expect(card(page, 'Cable Curl')).not.toHaveClass(/\bfolded\b/);
+  await expect(c).toHaveClass(/\bfolded\b/);
+});

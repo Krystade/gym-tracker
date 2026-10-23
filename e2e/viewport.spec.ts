@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { addFriend, goto } from './nav';
+import { addFriend, goto, sendRequest } from './nav';
 
 // The fixed chrome on an iPhone after a picker or keyboard: the owner's 13 mini showed the tab bar halfway up the screen
 // with the page below it, and a time input's "6:00 PM" over the clock. iOS 26 leaves visualViewport offset from the
@@ -166,11 +166,11 @@ test('a select still focused after its picker closes lets the chrome follow a st
   await vv(page, { height: 420 });
   await page.waitForTimeout(150);
   expect((await box(page, 'nav.tabs')).bottom).toBe(H);
-  // A pick closes it and leaves the screen stuck 200px down and short, with the select still focused and no event.
-  await vv(page, { offsetTop: 200, height: 600 }, false);
+  // A pick closes it and leaves the screen stuck 200px down and a little short, with the select still focused and no event.
+  await vv(page, { offsetTop: 200, height: H - 24 }, false);
   await biceps.selectOption('1');
   await expect(biceps).toBeFocused();
-  await expect.poll(() => box(page, 'nav.tabs').then((b) => b.bottom)).toBe(200 + 600);
+  await expect.poll(() => box(page, 'nav.tabs').then((b) => b.bottom)).toBe(200 + H - 24);
   // Focused again, it can hold a picker up once more.
   await vv(page, { offsetTop: 0, height: null });
   await expect.poll(() => box(page, 'nav.tabs').then((b) => b.bottom)).toBe(H);
@@ -335,9 +335,16 @@ test('Friends: the invite link raises no keyboard, so focused on a short stuck s
   await expect(link).toHaveAttribute('readonly', '');
   await link.click();
   await expect(link).toBeFocused();
-  // Short of four fifths of the screen, as a keyboard leaves it; but a read-only field can't have one up.
-  await vv(page, { offsetTop: 200, height: 600 }, false);
-  await expect.poll(() => tabBottom(page)).toBe(800);
+  // Stuck, a little short: the bar follows the screen.
+  await vv(page, { offsetTop: 200, height: H - 24 }, false);
+  await expect.poll(() => tabBottom(page)).toBe(200 + H - 24);
+  // Short of four fifths of the screen, as a keyboard leaves it; but a read-only field can't have one up, so the sheet the
+  // link is in stays on the bottom edge rather than ride a keyboard that isn't there, and so does the bar.
+  const sheet = await addFriend(page);
+  await vv(page, { offsetTop: 0, height: 600 }, false);
+  await page.waitForTimeout(700);
+  expect(await sheet.evaluate((el) => el.getBoundingClientRect().bottom)).toBe(H);
+  expect(await tabBottom(page)).toBe(H);
   // A field that types still holds the bar behind its keyboard, as everywhere else.
   await vv(page, { offsetTop: 0, height: null });
   const theirs = (await addFriend(page)).getByRole('textbox', { name: 'Their username' });
@@ -345,4 +352,85 @@ test('Friends: the invite link raises no keyboard, so focused on a short stuck s
   await vv(page, { height: 450 });
   await page.waitForTimeout(700);
   expect(await tabBottom(page)).toBe(H);
+});
+
+// Owner's 13 mini, 2026-10-22, Friends › Board: ticked the gate's two boxes, left the app, came back to the tab bar across the
+// middle of the screen (its foot 318px up: a keyboard's height) with the page drawn whole below it. iOS handed back the visual
+// viewport a keyboard leaves, with no field focused and so no keyboard up; the pin took that for a stuck screen and moved the
+// bar onto it. A keyboard-short screen counts only while a field that raises one has focus.
+test('Friends › Board: back from the background to a keyboard-short screen with no field focused, the bars stay on the screen edges', async ({ page }) => {
+  await claimed(page);
+  const H = 812;
+  await page.getByRole('tab', { name: 'Board' }).click();
+  const gate = page.getByRole('region', { name: 'Join the board' });
+  await gate.getByLabel('I’m 16 or older').check();
+  await gate.getByLabel(/I’ll keep to the board’s rules/).check();
+  await gate.getByRole('button', { name: 'Join the board' }).click();
+  await expect(gate).toContainText('Posting opens once your email is verified.');
+  expect(await tabBottom(page)).toBe(H);
+  await visibility(page, 'hidden');
+  await vv(page, { offsetTop: 0, height: H - 318 }, false);
+  await visibility(page, 'visible');
+  await page.waitForTimeout(1200); // the resume's checks at once, 100, 400 and 800 ms, and the poll's
+  expect(await tabBottom(page)).toBe(H);
+  expect((await box(page, '.status-backdrop')).top).toBe(0);
+  await page.screenshot({ path: 'test-results/viewport-board-resume.png' });
+  // The same with a button focused (Join, just tapped): no keyboard there either.
+  await gate.getByRole('button', { name: 'Send link' }).focus();
+  await vv(page, { height: H - 300 });
+  await page.waitForTimeout(700);
+  expect(await tabBottom(page)).toBe(H);
+  // And a stuck screen of the real kind still takes the bar with it.
+  await vv(page, { offsetTop: 300, height: H - 24 });
+  await expect.poll(() => tabBottom(page)).toBe(300 + H - 24);
+});
+
+// Owner's 13 mini, 2026-10-22: a thread open, typing, and the message box nowhere: behind the keyboard, with the last bubble cut
+// off just above the keyboard's bar. The sheet stayed on the layout's bottom edge, as the tab bar does, under the keyboard.
+test('a sheet with a field rides above the keyboard: the thread’s message box and Add a friend’s username', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const ctx = async () => { const p = await (await browser.newContext()).newPage(); await fakeViewport(p); return p; };
+  const [pa, pb] = await Promise.all([ctx(), ctx()]);
+  const [a, b] = await Promise.all([claimed(pa), claimed(pb)]);
+  const H = 812, KB = 336;
+  // Add a friend: the username field focused, the keyboard up; the sheet's field stays above it.
+  const add = await addFriend(pb);
+  const theirs = add.getByRole('textbox', { name: 'Their username' });
+  await theirs.focus();
+  await vv(pb, { height: H - KB });
+  await expect.poll(() => add.evaluate((el) => el.getBoundingClientRect().bottom)).toBe(H - KB);
+  expect(await theirs.evaluate((el) => el.getBoundingClientRect().bottom)).toBeLessThanOrEqual(H - KB);
+  expect(await tabBottom(pb), 'the tab bar stays behind the keyboard').toBe(H);
+  await theirs.blur();
+  await vv(pb, { height: null });
+  await expect.poll(() => add.evaluate((el) => el.getBoundingClientRect().bottom)).toBe(H);
+  await sendRequest(pb, a.name);
+  await pa.reload();
+  await goto(pa, 'Friends');
+  await pa.getByRole('region', { name: 'Friends', exact: true }).getByRole('region', { name: 'Requests' }).getByRole('button', { name: 'Accept' }).click();
+  await expect(pa.getByRole('region', { name: 'Friends', exact: true }).getByRole('status')).toHaveText(`You and @${b.name} are now friends.`);
+  // A's thread with B, typing.
+  await pa.getByRole('region', { name: 'Crew' }).getByTestId(`crew-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
+  const sheet = pa.getByRole('dialog', { name: `Messages with @${b.name}` });
+  const field = sheet.getByRole('textbox', { name: `Message @${b.name}` });
+  const bottomOf = (l: typeof field) => l.evaluate((el) => el.getBoundingClientRect().bottom);
+  const topOf = (l: typeof field) => l.evaluate((el) => el.getBoundingClientRect().top);
+  await expect.poll(() => bottomOf(sheet)).toBe(H);
+  await field.focus();
+  await vv(pa, { height: H - KB });
+  // The message box right above the keyboard, the sheet's top still on the screen.
+  await expect.poll(() => bottomOf(sheet)).toBe(H - KB);
+  expect(await bottomOf(field)).toBeLessThanOrEqual(H - KB);
+  expect(await topOf(sheet)).toBeGreaterThanOrEqual(0);
+  await expect(sheet.getByRole('list', { name: 'Messages' })).toBeVisible();
+  await pa.screenshot({ path: 'test-results/viewport-thread-keyboard.png' });
+  // iOS can pan the screen down the layout as well: the sheet follows what's visible.
+  await vv(pa, { offsetTop: 120, height: H - KB });
+  await expect.poll(() => bottomOf(sheet)).toBe(120 + H - KB);
+  expect(await topOf(sheet)).toBeGreaterThanOrEqual(120);
+  // The keyboard goes: the sheet back on the bottom edge.
+  await field.blur();
+  await vv(pa, { offsetTop: 0, height: null });
+  await expect.poll(() => bottomOf(sheet)).toBe(H);
+  await Promise.all([pa.context().close(), pb.context().close()]);
 });

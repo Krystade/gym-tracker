@@ -1017,7 +1017,11 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 
 /* The sheet stays on the screen you see: its foot on the bottom edge and its top below the status bar, both moved by the gap
    iOS 26 can leave between the two viewports (src/ui/viewportPin.ts), as the tab bar is. 100% is the viewport it's fixed to. */
-.sheet { translate: 0 calc(-1 * var(--vv-bottom, 0px)); max-height: calc(100% - var(--sat) - 24px - var(--vv-top, 0px) - var(--vv-bottom, 0px)); }
+/* With a keyboard up its foot is on the keyboard (--kb) and its top below the screen's (--kb-top), so a field in it shows. */
+.sheet {
+  translate: 0 calc(-1 * (var(--vv-bottom, 0px) + var(--kb, 0px)));
+  max-height: calc(100% - var(--sat) - 24px - var(--vv-top, 0px) - var(--vv-bottom, 0px) - var(--kb, 0px) - var(--kb-top, 0px));
+}
 /* The message box grows a line at a time from one to five (ThreadSheet sets its height), then scrolls. Send stays at its foot,
    with the count above it once a message nears 140; a message keeps its line breaks in the thread. */
 .compose textarea {

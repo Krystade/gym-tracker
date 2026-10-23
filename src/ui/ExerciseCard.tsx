@@ -28,6 +28,7 @@ import { fmtPerSide } from '../domain/plates';
 import { isCardio } from '../domain/cardio';
 import { CardioCard } from './CardioCard';
 import { FoldLine } from './FoldLine';
+import { useCardFold } from '../state/cardFold';
 import { AchLines } from './AchievementsSheet';
 import { WhyWeightSheet } from './WhyWeight';
 import { useAchLines, useAchOpen } from '../state/useAchievements';
@@ -78,8 +79,9 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
 }) {
   const [editing, setEditing] = useState<SetEntry | null>(null);
   // Folded or open as the user last chose: true folded, false open; null, automatic: folded once the plan's sets are done.
-  // Opening a finished card keeps it open (more sets are theirs to add); a reload starts every card automatic again.
-  const [shut, setShut] = useState<boolean | null>(null);
+  // Opening a finished card keeps it open (more sets are theirs to add); a reload starts every card automatic again. Kept
+  // outside the card (state/cardFold), so the exercise picker taking Today's place doesn't open them all again.
+  const [shut, setShut] = useCardFold(date, exercise);
   const [pr, setPr] = useState<string | null>(null);
   useEffect(() => { if (!pr) return; const t = setTimeout(() => setPr(null), 6000); return () => clearTimeout(t); }, [pr]);
   // What the set just saved unlocked: lines under the PR line (plan §6), tapped open on Stats.

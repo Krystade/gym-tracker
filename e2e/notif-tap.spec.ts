@@ -68,6 +68,12 @@ async function befriend(from: { page: Page }, to: { page: Page; name: string }, 
   await goto(from.page, 'Friends');
 }
 
+/** The app goes to the background or comes back to the front, as iOS tells it. */
+const visibility = (page: Page, state: 'hidden' | 'visible') => page.evaluate((st) => {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => st });
+  document.dispatchEvent(new Event('visibilitychange'));
+}, state);
+
 /** The sheet is up and whole on the screen: below the notch, above the home bar. */
 async function onScreen(page: Page, sheet: ReturnType<Page['getByRole']>) {
   await expect(sheet).toBeInViewport({ ratio: 1 });
@@ -129,6 +135,23 @@ test('a friend’s message push opens their thread: on a launch, on a tap with t
   await expect(tab(b.page, 'Friends')).toHaveAttribute('aria-current', 'page');
   await onScreen(b.page, sheet);
   await b.page.screenshot({ path: `${SHOTS}/2-thread-open-app.png` });
+
+  // Back from the background with the app on another tab: iOS brings the app up first and only then runs the service worker's
+  // notificationclick, which stores the route a moment after the page came back (its message to the page can be lost while
+  // the page was suspended). The app still goes to the thread.
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await goto(b.page, 'Stats');
+  await visibility(b.page, 'hidden');
+  await visibility(b.page, 'visible');
+  await b.page.waitForTimeout(700);
+  await b.page.evaluate((r) => new Promise<void>((done) => {
+    const q = indexedDB.open('gym-tracker-push', 1);
+    q.onupgradeneeded = () => q.result.createObjectStore('kv');
+    q.onsuccess = () => { const tx = q.result.transaction('kv', 'readwrite'); tx.objectStore('kv').put({ route: r, at: Date.now() }, 'route'); tx.oncomplete = () => done(); };
+  }), route);
+  await expect(sheet).toBeVisible();
+  await expect(tab(b.page, 'Friends')).toHaveAttribute('aria-current', 'page');
+  await onScreen(b.page, sheet);
   await Promise.all([a.page.context().close(), b.page.context().close()]);
 });
 

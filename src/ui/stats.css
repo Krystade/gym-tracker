@@ -77,7 +77,7 @@
 /* The sheet: on the visible viewport, its body the only thing that scrolls, the page under it still. */
 html.sheet-lock { overflow: hidden; overscroll-behavior: none; }
 .st-backdrop { touch-action: none; }
-.st-sheet { translate: 0 calc(var(--drag, 0px) - var(--vv-bottom, 0px)); padding-top: 0; gap: 0; transition: translate 200ms var(--out); }
+.st-sheet { translate: 0 calc(var(--drag, 0px) - var(--vv-bottom, 0px) - var(--kb, 0px)); padding-top: 0; gap: 0; transition: translate 200ms var(--out); }
 .st-sheet.dragging { transition: none; }
 .st-sheet::before { display: none; }
 .st-sheet:focus { outline: none; }

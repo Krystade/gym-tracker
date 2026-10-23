@@ -195,6 +195,38 @@ describe('service worker push', () => {
     }
   });
 
+  // Owner, 2026-10-22: a friend's message, tapped, didn't open the thread. On iOS 18.4+ the push event has both the payload
+  // (`data`) and the system's proposed notification (`notification`, a Notification), whose `data` WebKit may give as null or
+  // as the JSON's text. The route came only from that: lost, the shown notification's `navigate` was Today's.
+  it('a friend’s push keeps its thread’s route when the proposed notification has lost its data', async () => {
+    const payload = buildPayload('message', messageNote('jake', 'leg day?'), APP, { route: 'friend.u1', from: 'u1', name: 'jake' });
+    const proposed = (data: unknown) => ({ title: 'jake', body: 'leg day?', lang: 'en', navigate: `${APP}#open=friend.u1`, data });
+    // With the payload there, all of it is kept (who it's from too, for your tag for them).
+    const whole = { route: 'friend.u1', from: 'u1', name: 'jake' };
+    const cases: [Omit<PushEventLike, 'waitUntil'>, object][] = [
+      [{ data: { json: () => payload, text: () => JSON.stringify(payload) }, notification: proposed(null) }, whole],
+      [{ data: { json: () => payload, text: () => JSON.stringify(payload) }, notification: { ...proposed(null), navigate: null } }, whole],
+      [{ data: { json: () => payload, text: () => JSON.stringify(payload) }, notification: proposed(JSON.stringify(payload.notification.data)) }, whole],
+      // No payload to read: the proposed notification's own `navigate` still says where.
+      [{ data: null, notification: proposed(null) }, { route: 'friend.u1' }],
+    ];
+    for (const [event, data] of cases) {
+      const f = fakes();
+      onPush({ ...event, waitUntil: f.waitUntil }, f.d);
+      await f.waits[0];
+      expect(f.d.registration.showNotification).toHaveBeenCalledWith('jake', expect.objectContaining({
+        navigate: `${APP}#open=friend.u1`, data: expect.objectContaining(data) }));
+    }
+  });
+
+  it('a tap on a notification whose data was lost goes by its `navigate`', async () => {
+    const f = fakes();
+    onNotificationClick({ notification: { close: vi.fn(), data: null, navigate: `${APP}#open=friend.u1` }, waitUntil: f.waitUntil }, f.d);
+    await f.waits[0];
+    expect(f.d.clients.openWindow).toHaveBeenCalledWith(`${APP}#open=friend.u1`);
+    expect(f.d.record).toHaveBeenCalledWith('route', expect.objectContaining({ route: 'friend.u1' }));
+  });
+
   it('tells open windows which friend a push is about, so the app reads that thread again', async () => {
     const win = { focus: vi.fn(async () => {}), postMessage: vi.fn() };
     const f = fakes([win]);

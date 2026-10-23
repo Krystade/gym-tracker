@@ -1,6 +1,6 @@
 import { noteOf } from './payload';
 import { tagNote } from '../domain/friendNames';
-import { isRoute } from './routes';
+import { isRoute, parseOpen } from './routes';
 import type { PushRecords } from './store';
 
 // The service worker's push and notificationclick handlers, written against the few things they touch so tests can fake them.
@@ -20,13 +20,39 @@ interface ExtendableEvent { waitUntil(p: Promise<unknown>): void }
 export interface PushEventLike extends ExtendableEvent {
   data?: { json(): unknown; text(): string } | null;
   /** Declarative Web Push (iOS 18.4+): the notification the system proposes. */
-  notification?: { title?: string; body?: string; lang?: string; data?: unknown } | null;
+  notification?: { title?: string; body?: string; lang?: string; data?: unknown; navigate?: string | null } | null;
 }
-export interface ClickEventLike extends ExtendableEvent { notification: { close(): void; data?: unknown } }
+export interface ClickEventLike extends ExtendableEvent { notification: { close(): void; data?: unknown; navigate?: string | null } }
 
-const parse = (e: PushEventLike): unknown => {
-  if (e.notification) return e.notification;
-  try { return e.data?.json(); } catch { return null; }
+/** The route a notification's `navigate` names, when it's this app's (`<scope>#open=<route>`). */
+const routeOf = (navigate: unknown, scope: string): string | undefined => {
+  if (typeof navigate !== 'string') return undefined;
+  try {
+    const u = new URL(navigate);
+    return u.href.startsWith(scope) ? parseOpen(u.hash) ?? undefined : undefined;
+  } catch { return undefined; }
+};
+/** A notification's data as an object: WebKit can give a declarative one's as null, or as the JSON's text. */
+const dataOf = (v: unknown): unknown => {
+  if (typeof v !== 'string') return v;
+  try { return JSON.parse(v); } catch { return null; }
+};
+
+/**
+ * What arrived: the payload we sent, read from the push's own data, which carries everything (the route, who it's from). On
+ * iOS 18.4+ the system's proposed notification comes too, but its `data` can be lost (null, or text): it's used only when
+ * there's no payload to read, and its `navigate` says where a tap lands when nothing else does.
+ */
+const parse = (e: PushEventLike, scope: string): unknown => {
+  let raw: unknown = null;
+  try { raw = e.data?.json(); } catch { /* a broken payload: the proposed notification, else a plain one */ }
+  if (raw && typeof raw === 'object' && 'notification' in raw) return raw;
+  const p = e.notification;
+  if (!p) return raw;
+  const d = dataOf(p.data);
+  const data = d && typeof d === 'object' ? d as Record<string, unknown> : {};
+  const route = typeof data.route === 'string' ? data.route : routeOf(p.navigate, scope);
+  return { title: p.title, body: p.body, lang: p.lang, data: { ...data, ...(route && { route }) } };
 };
 
 /**
@@ -51,7 +77,7 @@ async function tagged(n: Note, d: SwDeps): Promise<Note> {
 }
 
 export function onPush(e: PushEventLike, d: SwDeps): void {
-  const n = noteOf(parse(e));
+  const n = noteOf(parse(e, d.scope));
   const friend = !!d.tags && FRIEND_KINDS.has(n.data.kind ?? '');
   // Where a tap lands, as the declarative notification this replaces had it. A browser that knows `navigate` (iOS 18.4+)
   // opens it itself and fires no notificationclick; shown without one, a tap there just brought the app up wherever it
@@ -75,7 +101,7 @@ export function onPush(e: PushEventLike, d: SwDeps): void {
 /** A tap: an open window goes there; with none, a new one opens on the route. The route is stored too, for a window that loses the hash. */
 export function onNotificationClick(e: ClickEventLike, d: SwDeps): void {
   e.notification.close();
-  const raw = (e.notification.data as { route?: unknown } | undefined)?.route;
+  const raw = (dataOf(e.notification.data) as { route?: unknown } | null | undefined)?.route ?? routeOf(e.notification.navigate, d.scope);
   const route = isRoute(raw) ? raw : 'today';
   e.waitUntil((async () => {
     await d.record('route', { route, at: Date.now() }).catch(() => {});
