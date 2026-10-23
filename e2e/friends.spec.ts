@@ -94,6 +94,7 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   await fp.getByRole('button', { name: 'History', exact: true }).click();
   await expect(b.page.getByRole('button', { name: /Bench Press/ })).toContainText('135 × 8');
   await expect(b.page.getByRole('button', { name: 'Add to this day' })).toHaveCount(0);
+  await expect(b.page.getByRole('button', { name: /^More for / })).toHaveCount(0); // a friend's days have no actions
   await b.page.getByRole('button', { name: `@${a.name}`, exact: true }).click();
   await fp.getByRole('button', { name: 'Lifts', exact: true }).click();
   await b.page.getByRole('button', { name: /Bench Press/ }).click();

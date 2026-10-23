@@ -19,7 +19,8 @@ export function useSettings(goal: TrainingGoal = 'size') {
   ]), []);
   useEffect(() => { void reload(); }, [reload]);
   const get = useCallback((name: string, hold?: boolean) => resolveSettings(map.get(settingsKey(name)), name, hold, goal), [map, goal]);
-  const save = useCallback(async (s: ExerciseSettings) => { await db.putSettings(s); setMap((m) => { const n = new Map(m).set(s.key, s); register(n); return n; }); }, []);
+  // `rangeFrom` is worked out on every read (resolveSettings), never stored: a row saved from a read must not pin it.
+  const save = useCallback(async ({ rangeFrom: _, ...s }: ExerciseSettings) => { await db.putSettings(s); setMap((m) => { const n = new Map(m).set(s.key, s); register(n); return n; }); }, []);
   // Shown straight away; a failed write leaves the row as it was on the next launch.
   const saveTags = useCallback(async (t: TagPrefs) => { setTags(t); await db.putTags(t).catch(() => {}); }, []);
   return { get, save, reload, tags, saveTags };

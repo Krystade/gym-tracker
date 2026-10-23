@@ -28,9 +28,10 @@ import { fmtPerSide } from '../domain/plates';
 import { isCardio } from '../domain/cardio';
 import { CardioCard } from './CardioCard';
 import { AchLines } from './AchievementsSheet';
+import { WhyWeightSheet } from './WhyWeight';
 import { useAchLines, useAchOpen } from '../state/useAchievements';
 
-const TargetIcon = () => <Icon name="target" size={20} />;
+const TARGET_LEAD: Partial<Record<string, string>> = { increase: 'Go up: ', test: 'From your test: ', carry: 'Estimate: ', hold: 'Hold: ', ease: 'Lighter: ', light: 'Light week: ' };
 
 type CardProps = Parameters<typeof LiftCard>[0] & { plannedMinutes?: number | null };
 /** A cardio machine gets its own card: time and distance, not weight and reps. */
@@ -107,6 +108,10 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   settingsNow.current = settings;
   const target = nextTarget(store.entries, exercise, st, date, plannedSets, light);
   const sug = suggest(store.entries, exercise, st, date, plannedSets, light);
+  // The target as its line says it (and the sheet's head): kind, each set's reps or sets × reps, and the load.
+  const targetText = `${TARGET_LEAD[sug.kind] ?? ''}${sug.kind === 'new' ? `${sug.sets} × ${sug.reps}–${sug.repMax}${sug.unit}`
+    : sug.perSet ? `${sug.perSet.join(' · ')}${sug.unit}` : `${sug.sets} × ${sug.reps}${sug.unit}${sug.kind !== 'maxed' ? '+' : ''}`}${fmtLoad(sug.weight)}`;
+  const [why, setWhy] = useState(false);
   const pace = useMemo(() => paces(store.entries), [store.entries]);
   // The stepper moves by the lift's learned rung when that is finer than 5 lb, and a typed increment isn't set (item 01).
   const weightStep = useMemo(() => { const l = st.increment === 5 ? ladderOf(store.entries, exercise) : null; return l && l.step < 5 ? l.step : 5; }, [store.entries, exercise, st.increment]);
@@ -249,7 +254,14 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       {aside}
       {last && <p className="muted card-last">Last ({fmtDay(last.date, realToday)}): {last.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</p>}
       {swappedFrom && <p className="muted card-last">For {swappedFrom}{from && <> · last {from.sets.map((s, i) => <Fragment key={s.id}>{i > 0 && ' · '}<span className="nw">{fmtSet(s)}</span></Fragment>)}</>}</p>}
-      {target && <p className="target" aria-label="Target"><TargetIcon /><span>{sug.kind === 'increase' && 'Go up: '}{sug.kind === 'test' && 'From your test: '}{sug.kind === 'carry' && 'Estimate: '}{sug.kind === 'hold' && 'Hold: '}{sug.kind === 'ease' && 'Lighter: '}{sug.kind === 'light' && 'Light week: '}{sug.perSet ? <>{sug.perSet.join(' · ')}{sug.unit}</> : <>{sug.sets} × {sug.reps}{sug.unit}{sug.kind !== 'maxed' && '+'}</>}{fmtLoad(sug.weight)}{fmtPerSide(sug.weight ?? 0, exercise) && <span className="target-warm muted">{fmtPerSide(sug.weight ?? 0, exercise)}</span>}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}{sug.why && <span className="target-warm muted target-why">{sug.why}</span>}</span></p>}
+      {(target || sug.kind === 'new') && (
+        <p className="target" aria-label="Target">
+          {/* The "?" stands where the target's glyph was, as on the rest bar: why this target, line by line (WhyWeight). */}
+          <button type="button" className="why-btn" aria-label="Why this weight" aria-haspopup="dialog" onClick={() => setWhy(true)}><Icon name="help" size={22} /></button>
+          <span>{targetText}{fmtPerSide(sug.weight ?? 0, exercise) && <span className="target-warm muted">{fmtPerSide(sug.weight ?? 0, exercise)}</span>}{sug.warmups.length > 0 && <span className="target-warm muted">warm-up {fmtRamp(sug)}</span>}{sug.why && <span className="target-warm muted target-why">{sug.why}</span>}</span>
+        </p>
+      )}
+      {why && <WhyWeightSheet exercise={exercise} target={targetText} s={sug} today={realToday} onClose={() => setWhy(false)} />}
       <ol className="sets" aria-label={`Sets for ${exercise}`}>
         {today.map((s, i) => (
           <li key={s.id}>

@@ -15,6 +15,7 @@ import { Icon } from './icons';
 import { ExercisePicker } from './ExercisePicker';
 import { Input } from './Field';
 import { changeLift, setWeight } from '../domain/dayEdit';
+import { StatsSheet } from './StatsSheet';
 
 /** The last fix made from History, for its Undo: the sets as they were before it. */
 interface Fixed { date: string; text: string; before: SetEntry[] }
@@ -94,6 +95,8 @@ export function HistoryScreen({ who, store, onOpen, onAddTo, focus = null, onFoc
     if (fixed && (await updateMany(fixed.before))) setFixed(null);
   }, [fixed, updateMany]);
   const onChangeLift = useCallback((date: string, name: string) => setPicking({ date, name }), []);
+  // A day's "⋯" (owner, 2026-10-22: Fix sets on every day card was clutter): its actions in a small sheet, one day at a time.
+  const [menu, setMenu] = useState<string | null>(null);
   // Back from the picker: the day being fixed in view again.
   useEffect(() => {
     if (!picking && fixing) document.querySelector(`details.day[data-date="${fixing}"]`)?.scrollIntoView({ block: 'start' });
@@ -117,12 +120,21 @@ export function HistoryScreen({ who, store, onOpen, onAddTo, focus = null, onFoc
           <details className="month" key={mo.key} open={open} onToggle={rendered ? undefined : (e) => { if (e.currentTarget.open) show(mo.key); }}>
             <summary onClick={rendered ? undefined : () => show(mo.key)}><span>{monthName(mo.key)} · {plural(mo.days.length, 'session')}</span></summary>
             {rendered && mo.days.map((s) => (
-              <Day key={s.date} s={s} open={s === sessions[0] || s.date === at || s.date === fixing} today={today} prs={prs} supersetsOn={supersetsOn} onOpen={onOpen} onAddTo={onAddTo}
+              <Day key={s.date} s={s} open={s === sessions[0] || s.date === at || s.date === fixing} today={today} prs={prs} supersetsOn={supersetsOn} onOpen={onOpen}
+                onMenu={own ? setMenu : undefined}
                 fix={own ? { on: fixing === s.date, set: setFixing, changeLift: onChangeLift, apply, fixed: fixed?.date === s.date ? fixed : null, undo } : undefined} />
             ))}
           </details>
         );
       })}
+      {menu && (
+        <StatsSheet title={fmtDay(menu, today)} onClose={() => setMenu(null)}>
+          <div className="day-actions">
+            {onAddTo && <button className="wide" onClick={() => { const d = menu; setMenu(null); onAddTo(d); }}>Add to this day</button>}
+            <button className="wide" onClick={() => { setFixing(menu); setMenu(null); }}>Fix sets</button>
+          </div>
+        </StatsSheet>
+      )}
     </>
   );
 }
@@ -133,9 +145,13 @@ interface FixProps {
   apply: (date: string, changed: SetEntry[], text: string) => Promise<void>; fixed: Fixed | null; undo: () => Promise<void>;
 }
 
-const Day = memo(function Day({ s, open, today, prs, supersetsOn, onOpen, onAddTo, fix }: {
+/**
+ * `onMenu`: the day's "⋯" (own log only), opening its actions: Add to this day and Fix sets. It sits beside the chevron, outside
+ * the summary (a button inside one would be a button in a button), and goes while the day is being fixed (Done ends that).
+ */
+const Day = memo(function Day({ s, open, today, prs, supersetsOn, onOpen, onMenu, fix }: {
   s: Session; open: boolean; today: string; prs: Set<string>; supersetsOn: (date: string) => Map<string, string[]>;
-  onOpen: (name: string) => void; onAddTo?: (date: string) => void; fix?: FixProps;
+  onOpen: (name: string) => void; onMenu?: (date: string) => void; fix?: FixProps;
 }) {
   const groups = byExercise(s.sets);
   // The day's own sets are all of its date's: no need to read the whole log for each day.
@@ -144,7 +160,9 @@ const Day = memo(function Day({ s, open, today, prs, supersetsOn, onOpen, onAddT
   // Cardio counts in minutes, not sets.
   const bouts = s.sets.filter((x) => x.cardio), lifts = s.sets.length - bouts.length;
   const cardio = Math.round(bouts.reduce((a, x) => a + x.cardio!.seconds, 0) / 60);
+  const menu = onMenu && !fix?.on;
   return (
+    <div className={menu ? 'day-item has-menu' : 'day-item'}>
     <details className="day" data-date={s.date} open={open}>
       <summary>
         <span className="day-date">{fmtDay(s.date, today)}</span>
@@ -174,10 +192,10 @@ const Day = memo(function Day({ s, open, today, prs, supersetsOn, onOpen, onAddT
           </button>
           );
         })}
-        {onAddTo && !fix?.on && <button className="wide" onClick={() => onAddTo(s.date)}>Add to this day</button>}
-        {fix && !fix.on && <button className="wide" onClick={() => fix.set(s.date)}>Fix sets</button>}
       </div>
     </details>
+    {menu && <button type="button" className="day-menu-btn" aria-label={`More for ${fmtDay(s.date, today)}`} aria-haspopup="dialog" onClick={() => onMenu(s.date)}><Icon name="more" size={22} /></button>}
+    </div>
   );
 });
 

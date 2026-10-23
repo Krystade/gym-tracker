@@ -28,7 +28,15 @@ test('Fix sets: Change lift moves a day’s sets to the picked lift, Set weight 
   await goto(page, 'History');
   const day = page.locator(`details.day[data-date="${D}"]`);
   await expect(day).toHaveAttribute('open', '');
-  await day.getByRole('button', { name: 'Fix sets' }).click();
+  // The day's actions are behind its "⋯" (a small sheet), not on the card.
+  await expect(page.getByRole('button', { name: 'Fix sets' })).toHaveCount(0);
+  await page.locator('.day-item', { has: day }).getByRole('button', { name: /^More for / }).click();
+  const menu = page.getByRole('dialog');
+  await expect(menu.getByRole('button')).toHaveText(['Add to this day', 'Fix sets', 'Done']);
+  await menu.getByRole('button', { name: 'Fix sets' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  // While fixing, the day has its Done, not a "⋯".
+  await expect(page.locator('.day-item', { has: day }).getByRole('button', { name: /^More for / })).toHaveCount(0);
   await day.getByRole('group', { name: 'Cable Pushdown' }).getByRole('button', { name: 'Change lift' }).click();
   await expect(page.getByRole('heading', { name: /^Change Cable Pushdown on .* to$/ })).toBeVisible();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Incline Bench Pushdown');

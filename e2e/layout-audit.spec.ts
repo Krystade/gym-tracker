@@ -8,6 +8,7 @@ import { account, atGym, befriend, boardPost, iso, log, named, onBoard, ownerAcc
 import { convertedRows, pasteRows, toCsv as dupesCsv, TWINS } from './fixtures/dupes';
 import { friendLog, publish, summaryOf } from './fixtures/compare';
 import { sixWeeks, WED } from './fixtures/today';
+import { WHY, whyCsv } from './fixtures/whyWeight';
 
 // The layout audit (e2e/layout.ts) over every screen and state, at the 13 mini's 375×812 with its notch, in WebKit and Chromium.
 // Each test walks a part of the app with synthetic data (long names, big numbers) and fails listing every finding at once; the
@@ -862,7 +863,14 @@ test('History: Fix sets with its lifts to tick, the weight field, the lift picke
   await expect(page.getByText(/✓ Imported \d+ new sets/)).toBeVisible();
   await goto(page, 'History');
   const day = page.locator(`details.day[data-date="${D}"]`);
-  await day.getByRole('button', { name: 'Fix sets' }).click();
+  // Each day's "⋯" beside its chevron (a closed day's too), and its sheet, under the render check's stricter rules.
+  await check(page, info, found, 'history-day-menus', [], '.day-item');
+  await png(page, info, 'history-day-menus');
+  await page.locator('.day-item', { has: day }).getByRole('button', { name: /^More for / }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await check(page, info, found, 'history-day-menu-sheet', [], 'main');
+  await png(page, info, 'history-day-menu-sheet');
+  await page.getByRole('dialog').getByRole('button', { name: 'Fix sets' }).click();
   const bench = day.getByRole('group', { name: 'Incline Bench Press With A Very Long Name' });
   await bench.getByRole('checkbox').nth(0).check();
   await bench.getByRole('checkbox').nth(1).check();
@@ -875,6 +883,41 @@ test('History: Fix sets with its lifts to tick, the weight field, the lift picke
   await day.getByRole('group', { name: 'Cable Pushdown' }).getByRole('button', { name: 'Change lift' }).click();
   await expect(page.getByRole('heading', { name: /^Change Cable Pushdown on/ })).toBeVisible();
   await check(page, info, found, 'history-fix-sets-picker');
+  clean(found);
+});
+
+// ---- Why this weight: the target's "?" and its sheet, for each kind of target. ----
+
+/** The screen as the phone shows it (not the full page), for looking at: screenshots/why-weight/<browser>-<name>.png. */
+async function png(page: Page, info: TestInfo, name: string) {
+  await page.screenshot({ path: path.join('screenshots', 'why-weight', `${info.project.name}-${name}.png`) });
+}
+
+test('Why this weight: the target’s “?” and its sheet for a normal progression, a stall, a jump, a pain hold and a brand-new lift', async ({ page }, info) => {
+  test.setTimeout(150_000);
+  await phone(page);
+  const found: string[] = [];
+  await importLog(page, whyCsv(DAY0), null);
+  await goto(page, 'Today');
+  for (const [name, { lift, lines: want }] of Object.entries(WHY)) {
+    const card = await addCard(page, lift);
+    const q = card.getByLabel('Target').getByRole('button', { name: 'Why this weight' });
+    await q.scrollIntoViewIfNeeded();
+    if (name === 'normal') await check(page, info, found, 'why-weight-card', [], `[data-card="${lift.toLowerCase()}"]`);
+    await q.click();
+    const sheet = page.getByRole('dialog', { name: 'Why this weight' });
+    await expect(sheet.locator('.why-lines > li')).toHaveCount(want.length);
+    expect(await sheet.locator('.why-lines > li').evaluateAll((ls) => ls.map((l) => l.getAttribute('data-input')))).toEqual(want);
+    await check(page, info, found, `why-weight-${name}`, [], 'main');
+    await png(page, info, name);
+    // Its end, scrolled to: the last line and Done.
+    await sheet.locator('.st-sh-body').evaluate((b) => b.scrollTo({ top: b.scrollHeight }));
+    await check(page, info, found, `why-weight-${name}-end`, [], 'main');
+    await sheet.getByRole('button', { name: 'Done' }).click();
+    await expect(sheet).toHaveCount(0);
+    // One card at a time: folded, so the next one comes up under the head.
+    await card.getByRole('button', { name: `Fold ${lift}` }).click();
+  }
   clean(found);
 });
 

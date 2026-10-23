@@ -113,6 +113,23 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
 .rest-why li b { flex: none; font-variant-numeric: tabular-nums; }
 .rest-why li b.add { color: var(--accent-text); }
 .rest-why .rest-why-total { padding-top: 8px; box-shadow: inset 0 1px var(--hairline); font-weight: 600; }
+/* The target's "?": its glyph's place, a 44px tap reaching into the card's padding and the gap, the line no taller for it. */
+.target .why-btn { flex: none; align-self: flex-start; display: grid; place-items: center; width: 44px; height: 44px; margin: -11px -12px; padding: 0; background: none; color: var(--accent-text); border-radius: var(--r-pill); }
+.target .why-btn:active { background: var(--fill); }
+/* Why this weight: the target, the reason in a sentence, then a line per input with its evidence. */
+.why-target { margin: 0; display: grid; gap: 2px; }
+.why-target b { font-size: var(--fs-body); color: var(--accent-text); font-variant-numeric: tabular-nums; }
+.why-reason { margin: 8px 0 4px; font-size: var(--fs-sm); }
+.why-lines { list-style: none; margin: 0; padding: 0; }
+.why-lines li { padding: 12px 0; display: grid; gap: 2px; }
+.why-lines li + li { box-shadow: inset 0 1px var(--hairline); }
+.why-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.why-top .muted { flex: none; font-size: var(--fs-sm); }
+.why-value { margin: 0; font-variant-numeric: tabular-nums; }
+.why-ev { margin: 2px 0 0; font-size: var(--fs-sm); color: var(--text-3); }
+.why-tag { display: inline-block; padding: 0 6px; margin-right: 4px; border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: 600; line-height: 18px; background: var(--fill); color: var(--text-2); }
+.why-tag.ev-a { color: var(--ok); }
+.why-tag.ev-b { color: var(--accent-text); }
 .card.folded .left-row { margin: 0 16px 12px; }
 /* 56px of tabs and a hairline: 57px over the home-indicator inset (the rest bar and the walkthrough sit on it). */
 .tabs {
@@ -368,15 +385,25 @@ details.month > summary::after { content: '›'; font-size: var(--fs-xl); color:
 details.month[open] > summary::after { transform: rotate(90deg); }
 /* A month's days are one group: cells divided by hairlines, the group's corners on its first and last day. */
 details.day { background: var(--surface); border: 0; border-radius: 0; margin: 0; }
-details.month > summary + details.day { border-top-left-radius: var(--r-group); border-top-right-radius: var(--r-group); }
-details.day:last-child { border-bottom-left-radius: var(--r-group); border-bottom-right-radius: var(--r-group); margin-bottom: 16px; }
+/* Each day sits in a .day-item with its "⋯" (own log), so the group's first and last and the hairlines go by the items. */
+.day-item { position: relative; }
+details.month > summary + .day-item > details.day { border-top-left-radius: var(--r-group); border-top-right-radius: var(--r-group); }
+.day-item:last-child > details.day { border-bottom-left-radius: var(--r-group); border-bottom-right-radius: var(--r-group); margin-bottom: 16px; }
 /* A hairline from the text's edge to the cell's right edge. */
-details.day + details.day > summary { background: linear-gradient(var(--hairline), var(--hairline)) 16px 0 / calc(100% - 16px) 1px no-repeat; }
+.day-item + .day-item > details.day > summary { background: linear-gradient(var(--hairline), var(--hairline)) 16px 0 / calc(100% - 16px) 1px no-repeat; }
 details.day > summary { min-height: 52px; padding: 10px 16px; list-style: none; cursor: pointer; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; }
 details.day > summary .day-date { font-weight: 600; grid-column: 1; }
 details.day > summary .muted { grid-column: 1; }
 /* Decorative cue that the day opens; <details> already exposes its state. */
 details.day > summary::after { content: '›'; grid-column: 2; grid-row: 1 / span 2; font-size: var(--fs-xl); color: var(--text-3); transition: transform 0.15s; }
+/* A day with a "⋯": a 44px column kept free before the chevron (10px, the glyph at its right edge, where it always was); the
+   button lies over that column, outside the summary, level with the date and its counts. */
+.day-item.has-menu > details.day > summary { grid-template-columns: 1fr 44px 10px; }
+.day-item.has-menu > details.day > summary::after { grid-column: 3; text-align: right; }
+.day-menu-btn { position: absolute; top: 10px; right: 34px; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; background: none; color: var(--text-2); border-radius: var(--r-pill); }
+.day-menu-btn:active { background: var(--fill); }
+.day-actions { display: grid; gap: 8px; padding: 4px 0 8px; }
+.day-actions > .wide { margin: 0; }
 details.day[open] > summary::after { transform: rotate(90deg); }
 .pain-mark { color: var(--pain); font-size: .85em; }
 details.day > summary::-webkit-details-marker { display: none; }

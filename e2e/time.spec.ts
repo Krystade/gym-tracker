@@ -27,7 +27,8 @@ test('a forgotten set goes into yesterday at the suggested time, and the workout
   await page.reload();
   await goto(page, 'History');
   await expect(page.locator('details.day').filter({ hasText: 'Thu, Oct 1' })).toContainText('1 exercise · 5 sets · 17 min');
-  await page.getByRole('button', { name: 'Add to this day' }).click();
+  await page.getByRole('button', { name: 'More for Thu, Oct 1' }).click();
+  await page.getByRole('dialog', { name: 'Thu, Oct 1' }).getByRole('button', { name: 'Add to this day' }).click();
   await expect(page.getByText('Logging to a past day')).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'When' })).toHaveValue('18:09');
   await logBench(page, '135', '9');

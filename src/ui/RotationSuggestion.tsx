@@ -54,7 +54,7 @@ export async function applyRotation(r: Rotation, carry: Carry | null, programs: 
   const st = settings.get(r.to);
   await programs.save(rotateProgram(before, r.from, r.to, { repMin: st.repMin, repMax: st.repMax }));
   const seeded = !!carry || !!st.seed;
-  if (seeded) await settings.save({ ...st, seed: carry ? { weight: carry.weight, reps: carry.reps, from: r.from, date: today } : undefined });
+  if (seeded) await settings.save({ ...st, seed: carry ? { weight: carry.weight, reps: carry.reps, from: r.from, date: today, e1rm: Math.round(carry.e1rm), basis: carry.basis } : undefined });
   const stored = plan ? programs.plans.find((p) => p.key === plan.key) ?? null : null;
   const renamed = stored ? renameInPlan(stored, r.from, r.to) : null;
   if (renamed) await programs.savePlan(renamed);

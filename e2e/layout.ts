@@ -61,6 +61,7 @@ export const ALLOW: Allow[] = [
   { kind: 'overlap', a: '.st-tl-track i', b: '.st-tl-track i', why: 'PRs days apart on one row of the PR timeline: their ticks touch, as marks on a strip do' },
   { kind: 'overlap', a: '.st-div .st-b-track > b', b: '.st-div .st-b-track > i', why: 'a bar either side of zero starts at the zero line drawn across it' },
   { kind: 'overlap', a: '.st-db-track i', b: '.st-db-track b, .st-db-track i', why: 'a rest’s two dots (you, the timer) sit on the ends of the bar joining them, and meet when the two are close' },
+  { kind: 'overlap', a: '.day-menu-btn, .day-menu-btn > svg', b: '.has-menu > details.day, .has-menu > details.day > summary', why: 'a History day’s “⋯” lies over its own summary row, in the column kept free for it beside the chevron (outside the summary: a button in a button otherwise)' },
 ];
 
 /** Every finding on the screen as it is now; `extra` adds allowances for this screen only. */

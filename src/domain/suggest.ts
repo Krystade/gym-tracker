@@ -1,5 +1,5 @@
 import { isHold, isHoldLift } from './care';
-import { defaultSettings, isTest, isWorking, nextTarget, type ExerciseSettings, type Target } from './progression';
+import { defaultSettings, isTest, isWorking, nextTarget, rangePart, type ExerciseSettings, type Target, type TargetPart } from './progression';
 import type { DayPlan, Program } from './program';
 import { daySets, sameExercise, sessionsFor } from './stats';
 import type { SetEntry } from './types';
@@ -13,6 +13,8 @@ export interface Suggestion {
   unit: '' | ' s';
   /** Same weight, more reps: each set's own target, one per set (`reps` is the lowest), and the rule in a few words. */
   perSet?: number[]; why?: string;
+  /** The inputs that made it, a line each, for the card's "Why this weight" (progression Target.parts), and the sets' own line. */
+  parts: TargetPart[];
 }
 
 /** Sets planned today for this lift: its own slot, or the slot it was swapped into. A skipped slot plans nothing. */
@@ -68,8 +70,13 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
     planned != null ? [planned, 'program'] : lastWorking ? [lastWorking, 'last'] : [3, 'default'];
   const clamped = t?.kind === 'light' ? t.perSet!.length : Math.min(6, Math.max(1, sets));
   const unit = isHoldLift(exercise, entries) ? ' s' : '';
+  // How many sets: the plan's, last time's, or 3. A light week's are its own (its line says so).
+  const setsPart: TargetPart = { key: 'sets', what: 'Sets', value: `${clamped}`, evidence: setsFrom === 'program' ? { ev: 'b', method: 'today’s plan' }
+    : setsFrom === 'last' ? { ev: 'b', method: 'as many as last time' } : { ev: 'c', note: 'default 3 until a session or a plan says otherwise' } };
   if (!t) return { unit, weight: null, reps: st.repMin, repMax: st.repMax, sets: clamped, setsFrom, kind: 'new', warmups: [],
-    reason: `No history yet: pick a weight you can do about ${st.repMax} times, and log every set.` };
+    reason: `No history yet: pick a weight you can do about ${st.repMax} times, and log every set.`,
+    parts: [{ key: 'new', what: 'No history yet', value: `pick a weight you can do about ${st.repMax}${unit || ' times'}`, evidence: { ev: 'c', note: 'nothing logged to go on: your first sets set it' } },
+      rangePart(st, exercise, !!unit), setsPart] };
   const top = t.range?.repMax ?? st.repMax;
   // Item 14: up from help (a weight at or below bodyweight) is less help.
   const up = t.weight <= 0 ? `${t.step ?? st.increment} lb less help` : `+${t.step ?? st.increment} lb`;
@@ -88,7 +95,8 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
   // One target a set: the plan's count, or last time's; a set past last time's aims at the last one's number.
   const perSet = t.perSet && Array.from({ length: clamped }, (_, i) => t.perSet![Math.min(i, t.perSet!.length - 1)]);
   return { unit, weight: t.weight, reps: perSet ? Math.min(...perSet) : t.reps, repMax: st.repMax, sets: clamped, setsFrom, kind: t.kind, reason,
-    warmups: warmAlready(entries, exercise, date) ? [] : warmups(t.weight, exercise), ...(perSet && { perSet, why: t.why }) };
+    warmups: warmAlready(entries, exercise, date) ? [] : warmups(t.weight, exercise), ...(perSet && { perSet, why: t.why }),
+    parts: t.kind === 'light' ? t.parts : [...t.parts, setsPart] };
 }
 
 /**
