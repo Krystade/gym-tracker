@@ -34,7 +34,8 @@ test('a rest timer starts on Add set, clear of the form, and starts over on the 
   await card.getByRole('button', { name: /^Add set/ }).click();
   // No history for this lift: 2:00.
   await expect(timer).toContainText('2:00');
-  expect(await page.evaluate(() => (window as unknown as { locks: string[] }).locks)).toEqual(['on']);
+  // Taken in the tap and let go at once: held only for the last 15 s (e2e/battery), the tap's grant lets that one through.
+  expect(await page.evaluate(() => (window as unknown as { locks: string[] }).locks)).toEqual(['on', 'off']);
   await page.clock.fastForward(30_000);
   await expect(timer).toContainText('1:30');
 

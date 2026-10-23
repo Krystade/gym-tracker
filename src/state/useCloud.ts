@@ -19,7 +19,8 @@ import { useBox, useOwnBox } from './box';
 export type CloudStatus = { kind: 'idle' } | { kind: 'busy'; text: string } | { kind: 'done'; text: string } | { kind: 'error'; text: string };
 const QUIET_MS = 3000; // after the last change, so a run of sets syncs once
 const NEWS_MS = 60_000;
-const POLL_MS = 120_000;
+// Every 5 minutes while open (it was 2: battery audit, 2026-10-23); a change here and coming back to the app still sync at once.
+const POLL_MS = 300_000;
 const whenIdle = (f: () => void) => {
   const w = globalThis as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number };
   if (w.requestIdleCallback) w.requestIdleCallback(f, { timeout: 3000 }); else setTimeout(f, 500);
@@ -112,7 +113,7 @@ export function useCloud(store: SetsStore, body: BodyStore, person: Person, meta
     if (!mine) return;
     const on = () => { if (document.visibilityState === 'visible') void run(); };
     document.addEventListener('visibilitychange', on);
-    // And every couple of minutes while it's open, so another phone's sets and friends' requests turn up without a tap.
+    // And every 5 minutes while it's open, so another phone's sets and friends' requests turn up without a tap.
     const t = setInterval(() => { if (document.visibilityState === 'visible') void run(); }, POLL_MS);
     return () => { document.removeEventListener('visibilitychange', on); clearInterval(t); };
   }, [mine, run]);

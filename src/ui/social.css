@@ -155,8 +155,9 @@
 .pulse { position: relative; }
 .pulse::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--live); opacity: 0; pointer-events: none; }
 @media (prefers-reduced-motion: no-preference) {
-  /* Training now: one ring that grows and fades from the avatar, over and over. */
-  .pulse::after { animation: fd-pulse 1.8s var(--out) infinite; }
+  /* Training now: one ring that grows and fades from the avatar three times, then stays, still (as under reduced motion):
+     an endless pulse kept the phone drawing 48 frames a second while a friend trained (battery audit, 2026-10-23). */
+  .pulse::after { opacity: 0.9; inset: -3px; animation: fd-pulse 1.8s var(--out) 3; }
   /* Rings draw on the first look of the day, one person after another. */
   .fd-rail .ring.draw .seg { animation: fd-draw 700ms var(--out) both; animation-delay: calc((var(--d, 0) + var(--rd, 0)) * 1ms); }
   .fd-who { animation: fd-fade 360ms var(--out) both; animation-delay: calc(var(--d, 0) * 1ms); }

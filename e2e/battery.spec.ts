@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { goto } from './nav';
-import { account, PASSWORD } from './seed';
+import { account, PASSWORD, signedIn } from './seed';
 
 // Battery (audit 2026-10-23): what keeps waking the phone when nothing is happening. Every repeating timer's callbacks are
 // counted, by the period it was set with; the minute tick (60 s) is left out, as a window of a few seconds may or may not hold it.
@@ -68,9 +68,16 @@ test('signed in, a reload keeps you signed in (the sign-in still kept in Indexed
   await expect(acct).toContainText(`Signed in as ${me.email}`, { timeout: 20_000 });
 });
 
-test('the rest timer stops ticking while the app is in the background, and shows the right time on coming back', async ({ page }) => {
-  await page.addInitScript(countTimers);
-  await page.goto('/');
+/** Changes to the rest bar's progress line over `ms` of real time: a frame drawn for each. */
+async function lineMoves(page: Page, ms: number) {
+  return page.evaluate((ms) => new Promise<number>((done) => {
+    let n = 0;
+    const o = new MutationObserver((rs) => { n += rs.length; });
+    o.observe(document.querySelector('.rest-timer')!, { attributes: true, attributeFilter: ['style'], subtree: true, characterData: true, childList: true });
+    setTimeout(() => { o.disconnect(); done(n); }, ms);
+  }), ms);
+}
+const restIn = async (page: Page) => {
   await page.getByRole('button', { name: 'Add exercise' }).click();
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Cable Curl');
   await page.getByRole('button', { name: /^Cable Curl/ }).first().click();
@@ -78,18 +85,71 @@ test('the rest timer stops ticking while the app is in the background, and shows
   await card.getByRole('textbox', { name: 'Weight' }).fill('50');
   await card.getByRole('textbox', { name: 'Reps' }).fill('10');
   await card.getByRole('button', { name: /^Add set/ }).click();
-  const timer = page.getByRole('timer', { name: 'Rest' });
+  return page.getByRole('timer', { name: 'Rest' });
+};
+
+test('the rest bar draws once a second, as the seconds turn, and not at all in the background; the right time on coming back', async ({ page }) => {
+  await page.addInitScript(countTimers);
+  await page.goto('/');
+  const timer = await restIn(page);
   await expect(timer).toContainText(/[12]:\d\d/);
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  await page.waitForTimeout(6000); // past the tab bar pin's 5 s of looking
-  // In view it ticks (the control: the counter sees the timer's own interval).
-  expect(await over(page, 2000)).toBeGreaterThanOrEqual(4);
+  // In view: the digits and the line, once a second (it was 4 times: 12 changes in 3 s).
+  const seen = await lineMoves(page, 3000);
+  expect(seen).toBeGreaterThanOrEqual(2);
+  expect(seen).toBeLessThanOrEqual(8); // each second: the line's style and the digits' text
   const before = await timer.locator('b').innerText();
   await page.evaluate(() => (window as unknown as { __vis: (v: string) => void }).__vis('hidden'));
-  expect(await over(page, 3000)).toBe(0);
-  // Back: the time read at once, 3 s and more on from where it was, and ticking again.
+  await page.waitForTimeout(300); // a tick from just before, still rendering
+  expect(await lineMoves(page, 3000)).toBe(0);
+  // Back: the time read at once, 3 s and more on from where it was, and drawing again.
   await page.evaluate(() => (window as unknown as { __vis: (v: string) => void }).__vis('visible'));
   const secs = (t: string) => { const [m, s] = t.split(':').map(Number); return m * 60 + s; };
   await expect.poll(async () => secs(before) - secs(await timer.locator('b').innerText())).toBeGreaterThanOrEqual(3);
-  expect(await over(page, 2000)).toBeGreaterThanOrEqual(4);
+  expect(await lineMoves(page, 2000)).toBeGreaterThanOrEqual(1);
+});
+
+test('the screen is kept on for the rest’s last 15 s only: taken in the tap and let go, taken again 15 s from the end', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { locks: string[] };
+    w.locks = [];
+    Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => {
+      w.locks.push('on');
+      const s = { released: false, release: async () => { if (!s.released) { s.released = true; w.locks.push('off'); } }, addEventListener() {} };
+      return s;
+    } } });
+  });
+  await page.clock.install({ time: new Date('2026-10-16T18:00:00') });
+  await page.goto('/');
+  await page.clock.pauseAt(new Date('2026-10-16T18:30:00'));
+  const timer = await restIn(page);
+  await expect(timer).toContainText('2:00');
+  const locks = () => page.evaluate(() => (window as unknown as { locks: string[] }).locks.join(' '));
+  await expect.poll(locks).toBe('on off'); // the tap's grant, nothing held
+  await page.clock.fastForward(100_000);
+  await expect(timer).toContainText('0:20');
+  expect(await locks()).toBe('on off');
+  await page.clock.fastForward(5_500);
+  await expect(timer).toContainText('0:1');
+  await expect.poll(locks).toBe('on off on'); // held from 0:15
+  // Done: let go.
+  await page.clock.fastForward(16_000);
+  await expect(timer).toContainText('Rest done');
+  await expect.poll(locks).toBe('on off on off');
+});
+
+test('signed in, the account syncs every 5 minutes while open, not every 2', async ({ browser, request }) => {
+  const me = await account(request);
+  const page = await signedIn(browser, me, new Date('2026-10-16T18:00:00'));
+  await goto(page, 'Today');
+  let reads = 0;
+  page.on('request', (r) => { if (/databases\/\(default\)\/documents/.test(r.url())) reads++; });
+  await page.clock.runFor(10_000);
+  reads = 0;
+  // Four and a half minutes open on Today, nothing changed: no sync (every 2 minutes, that was two).
+  await page.clock.runFor(270_000);
+  expect(reads).toBe(0);
+  // At 5 minutes it does.
+  await page.clock.runFor(40_000);
+  await expect.poll(() => reads).toBeGreaterThan(0);
 });

@@ -202,6 +202,10 @@ test('with motion, the rings draw and the live ring pulses', async ({ browser, r
   await expect(crew(page).getByTestId(`ring-${c.live.name}`).locator('.fd-live')).toBeVisible({ timeout: 15_000 });
   const names = await page.evaluate(() => document.getAnimations().map((a) => (a as CSSAnimation).animationName));
   expect(names).toContain('fd-pulse');
+  // Three times, then a still ring (battery: it pulsed for as long as they trained, 48 frames a second).
+  const pulse = page.locator('.pulse').first();
+  await expect.poll(() => page.evaluate(() => document.getAnimations().filter((a) => (a as CSSAnimation).animationName === 'fd-pulse' && a.playState === 'running').length), { timeout: 10_000 }).toBe(0);
+  expect(await pulse.evaluate((el) => Number(getComputedStyle(el, '::after').opacity))).toBeGreaterThan(0.5);
 });
 
 test('at 320 wide nothing spills sideways; the rail scrolls on its own', async ({ browser, request }) => {

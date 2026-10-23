@@ -92,6 +92,8 @@ export function nextOf(label: string | undefined, card: string | undefined): { s
   return lift.toLowerCase() === card?.toLowerCase() ? { sub: `Set ${m[1]} next` } : { row: `${lift} · set ${m[1]}` };
 }
 
+/** The screen is kept on for the rest's last 15 s only (battery audit, 2026-10-23: it was the whole rest). */
+const HOLD_MS = 15_000;
 /** How long "Rest done" stays up before the bar goes. */
 const DONE_FOR = 30_000;
 const mss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -100,7 +102,7 @@ const amount = (p: RestPart) => !p.add ? mss(p.s) : `${p.s < 0 ? '−' : '+'}${M
 
 /**
  * The rest between sets: a bar above the tabs counting down, silent (logging happens with music on). −30 s and +30 s change
- * it (a tap on the bar itself does nothing: it sits where a thumb lands); only × puts it away. While it runs the screen stays on,
+ * it (a tap on the bar itself does nothing: it sits where a thumb lands); only × puts it away. In its last 15 s the screen stays on,
  * where the Wake Lock API is there.
  */
 export function RestTimer() {
@@ -111,18 +113,23 @@ export function RestTimer() {
   useEffect(() => {
     if (!r) return;
     // Ticking only while it can be seen: hidden, nothing is drawn (battery audit, 2026-10-23: 4 renders a second went on in
-    // the background); back in view it reads the clock at once, so the time shown is never stale.
+    // the background); back in view it reads the clock at once, so the time shown is never stale. Once a second, as the
+    // seconds turn over (the progress line moves with the digits; it was 4 times a second).
+    const until = r.until;
     let id = 0;
-    const tick = () => setNow(Date.now());
+    const tick = () => {
+      const t = Date.now();
+      setNow(t);
+      const ms = (until - t) % 1000; // to the next whole second of the countdown (past the end, of the time since)
+      id = window.setTimeout(tick, (ms > 0 ? ms : 1000 + ms) + 5);
+    };
     const run = () => {
-      clearInterval(id); id = 0;
-      if (document.visibilityState === 'hidden') return;
-      tick();
-      id = window.setInterval(tick, 250);
+      clearTimeout(id); id = 0;
+      if (document.visibilityState !== 'hidden') tick();
     };
     run();
     document.addEventListener('visibilitychange', run);
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', run); };
+    return () => { clearTimeout(id); document.removeEventListener('visibilitychange', run); };
   }, [r]);
   const left = r ? Math.max(0, Math.ceil((r.until - now) / 1000)) : 0;
   const gone = !r || now >= r.until + DONE_FOR;
@@ -147,21 +154,27 @@ export function RestTimer() {
   const explained = !!lines;
   useEffect(() => { if (!explained) setWhy(false); }, [explained]);
 
+  const until = r?.until;
   useEffect(() => {
-    if (!running) return;
-    let lock: WakeLockSentinel | null = null, alive = true;
-    const take = async () => {
+    if (!running || until == null) return;
+    let lock: WakeLockSentinel | null = null, alive = true, at = 0;
+    const near = () => until - Date.now() <= HOLD_MS;
+    const take = async (keep: boolean) => {
       try {
         const l = await navigator.wakeLock?.request('screen');
-        if (alive) lock = l ?? null; else void l?.release();
+        if (alive && keep) { void lock?.release().catch(() => {}); lock = l ?? null; } else void l?.release().catch(() => {});
       } catch { /* not allowed here: the timer runs anyway */ }
     };
-    void take();
-    // A hidden page loses its lock; take it again on the way back.
-    const onVis = () => { if (document.visibilityState === 'visible') void take(); };
+    // WebKit grants a wake lock only in a tap, then for the rest of the page's life (WebKit 263382@main): this request, made
+    // in the tap that started or moved the rest, is what lets the one 15 s before the end through with no tap. Until then
+    // it's let go at once, and the screen sleeps as iOS decides (with Attention Aware on, never while it's looked at).
+    void take(near());
+    if (!near()) at = window.setTimeout(() => void take(true), until - HOLD_MS - Date.now());
+    // A hidden page loses its lock; take it again on the way back, in the last 15 s.
+    const onVis = () => { if (document.visibilityState === 'visible' && near()) void take(true); };
     document.addEventListener('visibilitychange', onVis);
-    return () => { alive = false; document.removeEventListener('visibilitychange', onVis); lock?.release().catch(() => {}); };
-  }, [running]);
+    return () => { alive = false; clearTimeout(at); document.removeEventListener('visibilitychange', onVis); lock?.release().catch(() => {}); };
+  }, [running, until]);
 
   // Room under the page for the bar, so nothing has to stay under it (taller with a line for the next lift).
   const { sub: then, row } = nextOf(r?.label, r?.card);
