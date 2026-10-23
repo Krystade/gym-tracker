@@ -135,8 +135,8 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       if (next != null) setReps(String(next));
       if (ok && when) { if (when.always) resuggest.current = true; else setWhenOpen(false); }
       if (ok && keepDraft) { clearDraft(owner.profile, draftKey); dirty.current = false; }
-      // A warm-up doesn't move the next set: back to what the card suggests (the last working set, else the target).
-      if (ok && keepDraft && flags.includes('warmup')) { setWeight(initial.weight == null ? '' : String(initial.weight)); setReps(initial.reps == null ? '' : String(initial.reps)); }
+      // A warm-up or a test doesn't move the next set: back to what the card suggested before it (the next set, else the target).
+      if (ok && keepDraft && (flags.includes('warmup') || flags.includes('test'))) { setWeight(initial.weight == null ? '' : String(initial.weight)); setReps(initial.reps == null ? '' : String(initial.reps)); }
       if (ok) { setLoud(false); setAsked(null); setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setTags([]); setEditTags(false); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); setMoreOpen(false); }
     } finally { busy.current = false; }
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextTime, plannedSets, suggest, warmups } from './suggest';
+import { nextSet, nextTime, plannedSets, setDrop, suggest, warmups } from './suggest';
 import { defaultSettings, nextTarget } from './progression';
 import type { SetEntry } from './types';
 import type { DayPlan, Program } from './program';
@@ -110,5 +110,44 @@ describe('one hold check for every line', () => {
     const log = [s(day1, 'Plank', 0, 30), s(day2, 'Plank', 0, 30)];
     expect(suggest(log, 'Plank', defaultSettings('Plank'), today, null).unit).toBe(' s');
     expect(nextTarget(log, 'Plank', defaultSettings('Plank'), today)!.text).toBe('BW × 35 s');
+  });
+});
+
+describe('nextSet (item 11: owner, 2026-10-23)', () => {
+  const DB = { key: 'db curl', repMin: 10, repMax: 15, increment: 5 };
+  const day = '2026-10-23';
+  const oct12 = [s('2026-10-12', 'DB Curl', 45, 1, ['test']), s('2026-10-12', 'DB Curl', 35, 9), s('2026-10-12', 'DB Curl', 35, 7)];
+  const at = (log: SetEntry[], today: SetEntry[], planned: number | null = 3) =>
+    nextSet([...log, ...today], 'DB Curl', day, suggest([...log, ...today], 'DB Curl', DB, day, planned), today);
+  it('waits for a training set: nothing done, or only a test', () => {
+    expect(at(oct12, [])).toBeNull();
+    expect(at(oct12, [s(day, 'DB Curl', 45, 1, ['test'])])).toBeNull();
+    expect(at(oct12, [s(day, 'DB Curl', 20, 10, ['warmup'])])).toBeNull();
+  });
+  it('without a learned drop, steps as today’s targets do (10 · 8 · 8), and never from a test', () => {
+    expect(setDrop([...oct12, s(day, 'DB Curl', 35, 9)], 'DB Curl', day, 1)).toBeNull();
+    // 35 × 9 against a 10: the 8 after it is 2 down, so 7.
+    expect(at(oct12, [s(day, 'DB Curl', 35, 9)])).toMatchObject({ weight: 35, reps: 7, extra: false, learned: false });
+    // A test single first changes nothing: the next set is from the 35s.
+    expect(at(oct12, [s(day, 'DB Curl', 45, 1, ['test']), s(day, 'DB Curl', 35, 9)])).toMatchObject({ weight: 35, reps: 7, extra: false });
+    // The targets flat from here: the same reps.
+    expect(at(oct12, [s(day, 'DB Curl', 35, 9), s(day, 'DB Curl', 35, 8)])).toMatchObject({ weight: 35, reps: 8, extra: false });
+  });
+  it('past the planned sets it is an extra set, and keeps coming', () => {
+    const three = [s(day, 'DB Curl', 35, 10), s(day, 'DB Curl', 35, 8), s(day, 'DB Curl', 35, 8)];
+    expect(at(oct12, three)).toMatchObject({ weight: 35, reps: 8, extra: true });
+    expect(at(oct12, [...three, s(day, 'DB Curl', 30, 9)])).toMatchObject({ weight: 30, reps: 9, extra: true });
+    // The test isn't one of the sets planned.
+    expect(at(oct12, [s(day, 'DB Curl', 45, 1, ['test']), ...three.slice(0, 2)])).toMatchObject({ extra: false });
+  });
+  it('with a learned drop, the last set’s reps less it', () => {
+    // Eight sessions of 12, 10, 8: his sets drop about 2.
+    const days = ['2026-09-01', '2026-09-04', '2026-09-08', '2026-09-11', '2026-09-15', '2026-09-18', '2026-09-22', '2026-09-25'];
+    const log = days.flatMap((d) => [s(d, 'DB Curl', 30, 12), s(d, 'DB Curl', 30, 10), s(d, 'DB Curl', 30, 8)]);
+    const d = setDrop(log, 'DB Curl', day, 1)!;
+    expect(d).toBeGreaterThan(1.5);
+    // 30 × 14 with 1 planned: an extra set from what he did, 14 less about 2 (the plan has no step past its one set).
+    expect(at(log, [s(day, 'DB Curl', 30, 14)], 1)).toMatchObject({ weight: 30, reps: Math.round(14 - d), extra: true, learned: true, why: expect.stringContaining('your sets drop') });
+    expect(Math.round(14 - d)).toBe(12);
   });
 });

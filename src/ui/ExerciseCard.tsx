@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import { byOrderDone, lastSession, sameExercise } from '../domain/stats';
-import { estimateRir, isWorking, nextTarget, priorE1rm, rirOffset } from '../domain/progression';
+import { estimateRir, isTest, isWorking, nextTarget, priorE1rm, rirOffset } from '../domain/progression';
 import { ladderOf } from '../domain/learn/ladder';
 import { prToast, records } from '../domain/records';
 import { fmtDay, fmtSet, fmtWeight, plural } from '../domain/format';
@@ -11,7 +11,7 @@ import { SetForm, type SetFormValue } from './SetForm';
 import { isHoldLift, loadsRegion } from '../domain/care';
 import { painToday } from '../domain/painPlan';
 import { SetRowContent } from './SetRow';
-import { suggest } from '../domain/suggest';
+import { nextSet, suggest } from '../domain/suggest';
 import { Icon } from './icons';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
 import { hhmm, paces, restFor, suggestTime, type RestPart } from '../domain/timing';
@@ -133,14 +133,19 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   // The last set actually done here, not a pasted one that sorts after it.
   const latest = (xs: SetEntry[]) => xs.findLast((s) => s.loggedAt) ?? xs.at(-1);
   const working = today.filter(isWorking);
-  // The numbers come from a working set: after a warm-up the form goes back to the target.
-  const seed = latest(working);
+  // The sets the next one is aimed from: a test is strength, not a set to repeat (owner, 2026-10-23).
+  const training = working.filter((x) => !isTest(x));
   const pulley: Flag[] = (latest(today) ?? last?.sets.find(isWorking))?.flags.includes('double_pulley') ? ['double_pulley'] : [];
   // With nothing to go on, a lift that needs gear starts empty: a prefilled 0 would log a weighted lift as bodyweight.
   // Each set has its own rep target (owner, 2026-10-19): the next working set's, while the weight is the target's.
   const aim = (i: number, weight: number | null | undefined): number | undefined =>
     sug.perSet && weight === sug.weight ? sug.perSet[Math.min(i, sug.perSet.length - 1)] : undefined;
-  const initial: Omit<SetFormValue, 'weight'> & { weight: number | null } = seed ? { weight: seed.weight, reps: aim(working.length, seed.weight) ?? seed.reps ?? st.repMin, flags: pulley }
+  // Item 11 (owner, 2026-10-23): after a set, the next one, from what he just did; past the plan, an extra one. The form starts there.
+  const next = nextSet(store.entries, exercise, date, sug, today);
+  /** The next set as it would be with `v` just saved (the log here doesn't have it yet). */
+  const nextAfter = (v: SetFormValue) => (v.flags.includes('warmup') || v.flags.includes('test') ? undefined
+    : nextSet(store.entries, exercise, date, sug, [...today, { id: '', date, seq: Date.now(), exercise, setNo: 0, weight: v.weight, reps: v.reps, flags: v.flags, source: 'app', loggedAt: new Date().toISOString() }]));
+  const initial: Omit<SetFormValue, 'weight'> & { weight: number | null } = next ? { weight: next.weight, reps: next.reps, flags: pulley }
     : target ? { weight: target.weight, reps: aim(0, target.weight) ?? target.reps, flags: pulley }
     : { weight: hold || gearOf(exercise) === 'no equipment' ? 0 : null, reps: st.repMin, flags: [] };
 
@@ -152,7 +157,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     // In a light week a working set is marked light (item 06): stopped short on purpose, so nothing reads it as his best.
     if (light && !rest.flags.includes('warmup') && !rest.flags.includes('light')) rest.flags = [...rest.flags, 'light'];
     // A time for a late set is on the day being logged to.
-    const e = await store.add({ date, exercise, ...rest, gym, ...(at !== undefined && { at: at ? new Date(`${date}T${at}:00`) : null }), target: { weight: sug.weight, reps: aim(working.length, sug.weight) ?? sug.reps, sets: sug.sets } });
+    const e = await store.add({ date, exercise, ...rest, gym, ...(at !== undefined && { at: at ? new Date(`${date}T${at}:00`) : null }), target: { weight: sug.weight, reps: aim(training.length, sug.weight) ?? sug.reps, sets: sug.sets } });
     if (!e) return false;
     // A set done just now starts the rest; one entered for an earlier time or day doesn't. Inside a superset with a lift still to
     // go in the round, a short switch instead, and that lift's card comes up.
@@ -276,6 +281,12 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
           </li>
         ))}
       </ol>
+      {next && !editing && (
+        <p className="next-set" aria-label={next.extra ? 'Extra set' : 'Next set'}>
+          <span className="next-set-label">{next.extra ? 'Extra set' : 'Next set'}</span> {next.reps}{sug.unit}{fmtLoad(next.weight)}
+          <span className="target-warm muted">{next.why}</span>
+        </p>
+      )}
       {gone && <p className="undo-note" role="status">Set {gone.no} deleted. <button className="mini" onClick={async () => { if (await store.restore(gone.set)) setGone(null); }}>Undo</button></p>}
       {pr && <p role="status" className="pr">{pr}</p>}
       <AchLines us={ach.lines} onOpen={openAch} />
@@ -321,7 +332,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
         </div>
       ) : (
         <SetForm key="new" exercise={exercise} plates={plates} hold={hold} initial={initial} submitLabel={who ? `Add set · ${who}` : 'Add set'} onSubmit={addSet} keepDraft day={date} heaviest={heaviest} weightStep={weightStep}
-          nextReps={(v) => (v.flags.includes('warmup') ? undefined : aim(working.length + 1, v.weight))}
+          nextReps={(v) => nextAfter(v)?.reps}
           tagPrefs={settings.tags} onTagPrefs={settings.saveTags}
           when={{ suggest: suggestWhen, always: date < realToday, max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined }} />
       )}

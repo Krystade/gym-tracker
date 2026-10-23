@@ -75,20 +75,32 @@ describe('nextTarget', () => {
 
 describe('test sets', () => {
   const test = (date: string, setNo: number, weight: number, reps: number, rir = 0) => s(date, setNo, weight, reps, { flags: ['test'], rir });
-  it('count as working sets for double progression (owner, 2026-10-19)', () => {
-    // An AMRAP test after the working sets tops the range with them: 12 + 10 + 12 = 34, within 2 of 3 × 12. Without it, 22 of 2 × 12 − 1.
+  it('count toward progression as e1RM evidence (owner, 2026-10-19)', () => {
+    // An AMRAP test after the working sets: 30 × 12, e1RM 42, puts 12 reps within reach at 30, the range's top, so it goes up,
+    // though 12 + 10 alone is 22 of 2 × 12 − 1.
     const e = [s('2026-01-01', 1, 30, 12), s('2026-01-01', 2, 30, 10), test('2026-01-01', 3, 30, 12)];
-    expect(nextTarget(e, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'increase', weight: 35, reps: 8, done: { total: 34, sets: 3 } });
-    // A heavier test is the session's top weight, as any heavier set is: 35 × 9, at RIR 0 its limit, so 35 × 9 again; with
-    // reps in reserve logged, 35 × 10.
+    expect(nextTarget(e, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'increase', weight: 35, reps: 8, done: { total: 22, sets: 2 }, byTest: { weight: 30, reps: 12, at: 30 } });
+    // Without it, the reps climb.
+    expect(nextTarget(e.slice(0, 2), 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 30 });
+    // A heavier test isn't the weight the sets aim at: 30 × 12, 12 topped the range, so up to 35 by the sets themselves.
     const heavier = [s('2026-01-01', 1, 30, 12), s('2026-01-01', 2, 30, 12), test('2026-01-01', 3, 35, 9)];
-    expect(nextTarget(heavier, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 35, reps: 9 });
-    expect(nextTarget([...heavier.slice(0, 2), test('2026-01-01', 3, 35, 9, 1)], 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 35, reps: 10 });
+    expect(nextTarget(heavier, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'increase', weight: 35, reps: 8 });
+    expect(nextTarget(heavier, 'Curl', S, '2026-01-08')!.byTest).toBeUndefined();
     // An older test doesn't override working sets done since.
     const later = [test('2025-12-20', 1, 60, 1), s('2026-01-01', 1, 30, 10), s('2026-01-01', 2, 30, 10)];
     expect(nextTarget(later, 'Curl', S, '2026-01-08')).toMatchObject({ kind: 'reps', weight: 30, reps: 11 });
     expect(isProgressionSet(test('2026-01-01', 1, 30, 12))).toBe(true);
     expect(isProgressionSet(s('2026-01-01', 1, 30, 12, { flags: ['test', 'warmup'] }))).toBe(false);
+  });
+  it('in a working session are strength, not rep targets: a test single never becomes the sets to repeat (owner, 2026-10-23)', () => {
+    // DB curl, 3 planned, Oct 12: 45 × 1 (a test), 35 × 9, 35 × 7. Was "1 · 1 · 1 @ 45 lb": the single read as the top set.
+    const DB = { key: 'db curl', repMin: 10, repMax: 15, increment: 5 };
+    const e = [test('2026-10-12', 1, 45, 1), s('2026-10-12', 2, 35, 9), s('2026-10-12', 3, 35, 7)];
+    const t = nextTarget(e, 'Curl', DB, '2026-10-23', 3)!;
+    expect(t).toMatchObject({ kind: 'reps', weight: 35, perSet: [10, 8, 8] });
+    expect(t.text).toBe('35 lb × 10 · 8 · 8');
+    // Its e1RM (45 lb, about 8.6 reps at 35) is a line of its own, and doesn't top the range.
+    expect(t.parts.find((p) => p.key === 'test')).toMatchObject({ what: 'Your test set', value: expect.stringContaining('45 lb × 1') });
   });
   it('a test newer than the last working session resets the weight to its e1RM at the top of the range', () => {
     const base = [s('2026-01-01', 1, 30, 10), s('2026-01-01', 2, 30, 10)];

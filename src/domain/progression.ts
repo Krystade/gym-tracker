@@ -153,6 +153,8 @@ export interface Target {
   range?: RangeFit;
   /** For an increase: the step (lb), and the learned drop behind each set's target, when there is one. */
   step?: number; drop?: Drop;
+  /** An increase its session's sets didn't earn alone: a test there put the top of the range within reach at `at` (lb). */
+  byTest?: { weight: number; reps: number; at: number };
   /** 'hold' and 'ease': the pain behind it (item 08, painPlan). */
   pain?: PainGate;
   /** 'ease': how it's eased: load off, more help (an assisted bodyweight lift), or a rep off each set (bodyweight, no help known). */
@@ -367,7 +369,10 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
     return { kind: 'test', weight: w, reps: st.repMin, last: before[0].sets, text: `From your test: ${lb(w)} × ${st.repMin}+`, parts };
   }
   const last = before[Math.max(0, at)];
-  const working = last.sets.filter(isProgressionSet);
+  // A test there counts as strength (its e1RM, below), never as a set to repeat or the weight to repeat it at (owner, 2026-10-23:
+  // a 45 × 1 single before 35 × 9, 35 × 7 made the target 1 · 1 · 1 @ 45). A session with a test always has training sets (`at`).
+  const working = last.sets.filter(isTraining);
+  const sameTests = last.sets.filter((x) => isTest(x) && isWorking(x));
   // Item 14: a lift whose load is the body reads each set's weight as what was added to it, help kept in an older import's note
   // counted below bodyweight (learn/bodyweight), so "BW × 10" and "BW − 30 × 10" are different sets.
   const unit = hold ? 's' : '';
@@ -391,6 +396,14 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   const bestN = planned != null && planned > 0 && all.length > planned ? new Set([...all].sort((a, b) => (b.reps as number) - (a.reps as number)).slice(0, planned)) : null;
   const atTop = bestN ? all.filter((x) => bestN.has(x)) : all;
   const minReps = Math.min(...atTop.map((x) => x.reps as number));
+  // The session's best test as e1RM evidence (reps in reserve counted): the reps it puts within reach at the working weight.
+  const bestTest = !unit && !body && top > 0 && sameTests.length ? sameTests.reduce((a, b) => (testE1rm(b) > testE1rm(a) ? b : a)) : null;
+  const testE = bestTest ? testE1rm(bestTest) : 0;
+  const testReps = testE > 0 ? 30 * (testE / top - 1) : null;
+  const byTest = testReps != null && testReps >= repMax - 1e-6;
+  if (bestTest && testReps != null) parts.push({ key: 'test', what: 'Your test set', date: last.date,
+    value: `${lb(bestTest.weight)} × ${bestTest.reps}${bestTest.rir ? `, ${bestTest.rir} in reserve` : ''} → e1RM ${Math.round(testE)} lb: about ${Math.max(0, Math.floor(testReps + 1e-6))} reps at ${lb(top)}${byTest ? ', the top of the range' : ''}`,
+    evidence: { ev: 'b', method: 'its e1RM by Epley, reps in reserve counted: a test counts as strength, not as reps to repeat' } });
   /** A plan with more sets than last time: the extra sets aim at the last one's number. */
   const extend = (aimed: number[]) => (planned != null && planned > aimed.length ? [...aimed, ...Array<number>(planned - aimed.length).fill(aimed.at(-1)!)] : aimed);
   /** The plan's line, when it moved this target: the best N of more sets, or, for a target a set, sets added past last time's `n`. */
@@ -433,7 +446,11 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   }
   // Up once the sets at the top weight total within 2 reps of all at the top of the range (12/12/10 at 3 × 8–12), none below its bottom.
   const total = atTop.reduce((a, x) => a + (x.reps as number), 0);
-  const topped = total >= atTop.length * repMax - Math.min(2, atTop.length - 1) && minReps >= repMin; // one heavier top set gets no slack
+  const toppedBySets = total >= atTop.length * repMax - Math.min(2, atTop.length - 1) && minReps >= repMin; // one heavier top set gets no slack
+  // Or a test there puts the range's top within reach at the working weight: a test counts toward progression (owner, 2026-10-19).
+  const topped = toppedBySets || byTest;
+  const toppedWhat = toppedBySets ? 'Range topped last time' : 'Range topped by your test';
+  const testUp = !toppedBySets && byTest ? { byTest: { weight: bestTest!.weight, reps: bestTest!.reps as number, at: top } } : {};
   // The range, and the fit that moved it (item 03: a, growth alike over 5–30 reps; b, his drop, on its own line), as read here.
   const rangeLines = (): TargetPart[] => [rangePart(st, exercise, hold), ...(range ? [{ key: 'fit' as const, what: range.how === 'top' ? 'Range raised for your jumps' : 'Range lowered for your jumps',
     value: `${range.repMin}–${range.repMax} reps, so the next weight lands inside it`,
@@ -441,7 +458,7 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   // Topped: the total that went up; not yet, the total it goes up at (and every set at the bottom, when one wasn't).
   const need = atTop.length * repMax - Math.min(2, atTop.length - 1);
   const progress = (what: string): TargetPart => ({ key: 'progress', what, evidence: { ev: 'a', cite: PLOTKIN },
-    value: `${total}${unit ? ' s' : ' reps'} over ${atTop.length} × ${repMax}${unit ? ' s' : ''}${topped ? '' : `: up at ${need}${minReps < repMin ? `, every set ${repMin}+` : ''}`}` });
+    value: `${total}${unit ? ' s' : ' reps'} over ${atTop.length} × ${repMax}${unit ? ' s' : ''}${toppedBySets ? '' : `: up at ${need}${minReps < repMin ? `, every set ${repMin}+` : ''}`}` });
   // Item 14: an assisted bodyweight lift whose range is topped takes a step less help: the rung below on its assisted machine's
   // stack (learned, item 01; a typed increment wins), up to bodyweight.
   if (body && top < 0 && topped) {
@@ -449,7 +466,7 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
     const help = !typed ? ladderOf(entries, exercise, undefined, true) : null;
     const w = Math.min(0, help ? -prevRung(help, -top) : top + st.increment) || 0;
     const step = Math.round((w - top) * 100) / 100;
-    parts.push(progress('Range topped last time'), ...rangeLines(), stepPart('Less help', `${lb(top)} → ${lb(w)}`, typed, help));
+    parts.push(progress(toppedWhat), ...rangeLines(), stepPart('Less help', `${lb(top)} → ${lb(w)}`, typed, help));
     planLine();
     return { kind: 'increase', weight: w, reps: repMin, last: last.sets, done: { total, sets: atTop.length }, step, text: `Go up: ${lb(w)} × ${repMin}+`, parts };
   }
@@ -458,8 +475,8 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
     const typed = st.increment !== DEFAULT_INCREMENT;
     const w = !typed && learned.ladder ? nextRung(learned.ladder, top) : top + st.increment;
     const step = Math.round((w - top) * 100) / 100;
-    const base = { kind: 'increase' as const, weight: w, last: last.sets, done: { total, sets: atTop.length }, step, ...(range && { range }) };
-    parts.push(progress('Range topped last time'), ...rangeLines(), stepPart('Up', `${lb(top)} → ${lb(w)}`, typed, typed ? null : learned.ladder));
+    const base = { kind: 'increase' as const, weight: w, last: last.sets, done: { total, sets: atTop.length }, step, ...(range && { range }), ...testUp };
+    parts.push(progress(toppedWhat), ...rangeLines(), stepPart('Up', `${lb(top)} → ${lb(w)}`, typed, typed ? null : learned.ladder));
     const drop = learned.drop;
     if (!unit && drop) {
       // Item 02: each set from last time's same set, less the learned drop (floored: a miss costs more than an easy day), so
@@ -479,7 +496,7 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   }
   // A bodyweight hold at the top of its range has nowhere to go in time: add weight or a harder variation.
   if (unit && top === 0 && topped) {
-    parts.push(progress('Range topped last time'), rangePart(st, exercise, hold));
+    parts.push(progress(toppedWhat), rangePart(st, exercise, hold));
     planLine();
     return { kind: 'maxed', weight: 0, reps: st.repMax, last: last.sets, text: `BW × ${st.repMax}s held: add weight or try a harder variation`, parts };
   }
@@ -505,7 +522,7 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   // The range read for "topped" (and, loaded, each set's cap). Hits: the stall rule, when there were targets to go by; it moved
   // the step only when one was missed (all hit is what no targets gives too).
   // Bodyweight reps aren't capped, so the range moves no number there: its own line says what it does.
-  if (!uncapped) parts.push(progress(topped ? 'Range topped last time' : 'Range not topped yet'), ...rangeLines());
+  if (!uncapped) parts.push(progress(topped ? toppedWhat : 'Range not topped yet'), ...rangeLines());
   if (hits.some((h) => !h)) parts.push({ key: 'hits', what: `Targets, last ${hits.length === 1 ? 'session' : `${hits.length} sessions`}`, value: `${hits.map((h) => (h ? 'hit' : 'missed')).join(' · ')}: ${wanted === 'repeat' ? 'repeat last time' : `${plus} on one set`}`,
     evidence: { ev: 'c', note: 'a fixed rule: missed once, one set goes up; missed twice in 3, repeat' } });
   if (rir) parts.push({ key: 'rir', what: 'Reps in reserve you logged', value: 'no set aims past its reps + RIR', evidence: { ev: 'b', method: 'your log: a set at RIR 0 gets no rep' } });

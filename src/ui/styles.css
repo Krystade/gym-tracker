@@ -438,6 +438,8 @@ li.set-row { display: flex; align-items: center; gap: 8px; }
 .set-no { flex: none; }
 .target { color: var(--accent-text); font-size: var(--fs-body); font-weight: 600; font-variant-numeric: tabular-nums; margin: 4px 0 8px; display: flex; align-items: center; gap: 8px; }
 .target-warm { display: block; font-weight: 400; font-size: var(--fs-sm); }
+.next-set { font-size: var(--fs-body); font-weight: 600; font-variant-numeric: tabular-nums; margin: 8px 0 4px; }
+.next-set-label { color: var(--accent-text); }
 .tag.est { font-style: italic; }
 .tag.pr-tag { color: var(--accent); font-weight: 700; }
 .summary-lifts { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }

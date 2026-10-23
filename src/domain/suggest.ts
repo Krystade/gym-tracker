@@ -4,6 +4,8 @@ import type { DayPlan, Program } from './program';
 import { daySets, sameExercise, sessionsFor } from './stats';
 import type { SetEntry } from './types';
 import { addDays } from './analytics';
+import { coreBefore, decay } from './learn';
+import { liftKey } from './ids';
 
 export interface Ramp { weight: number; reps: number }
 export interface Suggestion {
@@ -80,7 +82,8 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
   const top = t.range?.repMax ?? st.repMax;
   // Item 14: up from help (a weight at or below bodyweight) is less help.
   const up = t.weight <= 0 ? `${t.step ?? st.increment} lb less help` : `+${t.step ?? st.increment} lb`;
-  const reason = t.kind === 'increase' ? `${t.done!.total}${unit || ' reps'} last time, within 2 of ${t.done!.sets} × ${top}${unit}, so ${up}.`
+  const reason = t.kind === 'increase' ? (t.byTest ? `Your test set (${t.byTest.weight} lb × ${t.byTest.reps}) puts ${top} reps within reach at ${t.byTest.at} lb, so ${up}.`
+      : `${t.done!.total}${unit || ' reps'} last time, within 2 of ${t.done!.sets} × ${top}${unit}, so ${up}.`)
       + (t.drop ? ` Each set aims at last time’s less ${Math.round(Math.max(0, t.drop.mean) * 2) / 2}: what your ${t.drop.all} weight increases cost you.` : '')
     : t.kind === 'repeat' ? 'Last time had no complete sets: repeat the weight and log every rep.'
     : t.kind === 'maxed' ? `You held about ${st.repMax}${unit} a set: add weight, or move to a harder variation.`
@@ -111,3 +114,38 @@ export function nextTime(entries: SetEntry[], exercise: string, st: ExerciseSett
 /** How many warm-up sets the next session of this lift would suggest (default rep range), for time estimates. */
 export const warmupCount = (entries: SetEntry[], exercise: string, date: string): number =>
   warmups(suggest(entries, exercise, defaultSettings(exercise), date, null).weight ?? 0, exercise).length;
+
+/**
+ * Reps the next set of a lift loses to the one before it today, as learned (learn/capacity: A_same, at his τ and ρ), after `n`
+ * working sets of it: with sets his usual gap g apart, set n + 1 carries A·Σ K(j·g) for j = 1..n and set n A·Σ K(j·g) for
+ * j = 1..n − 1, so the step between them is A·K(n·g). Null until the lift has a within-session contrast of its own.
+ */
+export function setDrop(entries: readonly SetEntry[], exercise: string, date: string, n: number): number | null {
+  const core = coreBefore(entries, date);
+  const l = core?.lifts.get(liftKey(exercise));
+  if (!core || !l?.aSameOwn || n < 1) return null;
+  return Math.max(0, l.aSame.mean) * decay(core, n * core.gap);
+}
+
+/** The set to do next (item 11): `extra` past the sets planned, `learned` when the drop is his. */
+export interface NextSet { weight: number; reps: number; extra: boolean; learned: boolean; why: string }
+/**
+ * The next set, from the last one done today (owner, 2026-10-23: "a suggested next set that's recalculated when data is entered,
+ * in case I want to do more than planned"): its weight, its reps less the learned within-session drop (setDrop); without one,
+ * less the step the day's targets take between those sets; without those, the same reps. `done`: today's sets of the lift, in
+ * the order done. A test is strength, not a set to aim from, and not one of the sets planned. Null before a training set.
+ */
+export function nextSet(entries: readonly SetEntry[], exercise: string, date: string, s: Suggestion, done: readonly SetEntry[]): NextSet | null {
+  const working = done.filter(isWorking), training = working.filter((x) => !isTest(x));
+  const last = training.findLast((x) => x.loggedAt) ?? training.at(-1);
+  if (!last || last.reps == null) return null;
+  const learned = s.unit ? null : setDrop(entries, exercise, date, working.length);
+  const i = training.length, plan = s.perSet && s.weight === last.weight && i < s.perSet.length ? Math.max(0, s.perSet[i - 1] - s.perSet[i]) : 0;
+  const d = learned ?? plan;
+  // A hold steps in 5 s, like its stepper.
+  const by = s.unit ? 5 : 1, reps = Math.max(by, Math.round((last.reps - d) / by) * by);
+  const half = Math.round(d * 2) / 2;
+  const why = learned != null ? (half > 0 ? `${last.reps}${s.unit} less about ${half}: your sets drop that much` : `${last.reps}${s.unit} again: your sets hold`)
+    : plan > 0 ? `${last.reps}${s.unit} less ${plan}, as today’s targets step down` : `${last.reps}${s.unit} again, as your last set`;
+  return { weight: last.weight, reps, extra: i >= s.sets, learned: learned != null, why };
+}
