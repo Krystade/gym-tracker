@@ -17,6 +17,17 @@ const EMU_HOST = import.meta.env.VITE_EMU_HOST || '127.0.0.1';
 const EMU_AUTH_PORT = Number(import.meta.env.VITE_EMU_AUTH_PORT || 9099);
 const EMU_FIRESTORE_PORT = Number(import.meta.env.VITE_EMU_FIRESTORE_PORT || 8080);
 
+/**
+ * Firebase's IndexedDB persistence, without its cross-tab poll. Signed in, the SDK reads its whole store every 800 ms, for
+ * as long as the app is open, to catch a sign-in or sign-out made in another tab (battery audit, 2026-10-23: 1.25 wakeups a
+ * second on every screen, the app's only steady timer). The app is one window on the Home Screen; this phone's own sign-in
+ * and sign-out go through this instance, which keeps its cache itself. Same database and keys, so nobody is signed out.
+ */
+export function quiet<P>(persistence: P): P {
+  const Base = persistence as unknown as new () => object;
+  return class QuietIndexedDB extends Base { startPolling() { /* no other tab to hear from */ } } as unknown as P;
+}
+
 export interface Cloud { auth: Auth; db: Firestore; A: typeof import('firebase/auth'); F: typeof import('firebase/firestore/lite') }
 let loading: Promise<Cloud> | null = null;
 
@@ -26,7 +37,7 @@ export function loadCloud(): Promise<Cloud> {
     const [{ initializeApp }, A, F] = await Promise.all([import('firebase/app'), import('firebase/auth'), import('firebase/firestore/lite')]);
     const app = initializeApp(LOCAL ? { ...CONFIG, apiKey: 'demo-key', projectId: 'demo-gym-tracker' } : CONFIG);
     // No popup/redirect resolver: email + password needs none, and it keeps Firebase's sign-in iframe out.
-    const auth = A.initializeAuth(app, { persistence: [A.indexedDBLocalPersistence, A.browserLocalPersistence] });
+    const auth = A.initializeAuth(app, { persistence: [quiet(A.indexedDBLocalPersistence), A.browserLocalPersistence] });
     const db = F.getFirestore(app);
     if (LOCAL) {
       A.connectAuthEmulator(auth, `http://${EMU_HOST}:${EMU_AUTH_PORT}`, { disableWarnings: true });

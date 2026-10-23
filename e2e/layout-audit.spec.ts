@@ -283,7 +283,9 @@ test('The board: posts with long names and the ✓, a held post, your own, ⋯, 
   const pn = await open(browser, newcomer);
   await pn.getByRole('tab', { name: 'Board' }).click();
   const gate = pn.getByRole('region', { name: 'Join the board' });
-  await expect(gate).toContainText('Email verified · not yet');
+  // No email step since cdbbd3e: the rules to accept, and a new account waits a day.
+  await expect(gate).toContainText('Posting opens once your account is a day old');
+  await expect(gate.getByRole('button', { name: 'Join the board' })).toBeVisible();
   await check(pn, info, found, 'board-gate');
   await pn.context().close();
 

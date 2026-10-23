@@ -110,9 +110,19 @@ export function RestTimer() {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (!r) return;
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(id);
+    // Ticking only while it can be seen: hidden, nothing is drawn (battery audit, 2026-10-23: 4 renders a second went on in
+    // the background); back in view it reads the clock at once, so the time shown is never stale.
+    let id = 0;
+    const tick = () => setNow(Date.now());
+    const run = () => {
+      clearInterval(id); id = 0;
+      if (document.visibilityState === 'hidden') return;
+      tick();
+      id = window.setInterval(tick, 250);
+    };
+    run();
+    document.addEventListener('visibilitychange', run);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', run); };
   }, [r]);
   const left = r ? Math.max(0, Math.ceil((r.until - now) / 1000)) : 0;
   const gone = !r || now >= r.until + DONE_FOR;
