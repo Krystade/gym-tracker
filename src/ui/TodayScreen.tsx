@@ -54,8 +54,9 @@ import { MorningCheck } from './MorningCheck';
 import { systemic } from '../domain/learn/deload';
 import { deloadSnoozed, endLight, lightOn, snoozeDeload, startLight, tappedLight } from '../state/lightWeek';
 import { DeloadPrompt, LightWeekLine } from './DeloadPrompt';
-import { ReadyCard } from './ReadyTile';
-import { readyMorning, readyNow, suggestedDay, type ReadyInput } from './readyView';
+import { ReadyCard, WeekCard } from './ReadyTile';
+import { readyMorning, readyNow, stripView, suggestedDay, type ReadyInput } from './readyView';
+import { PastDay, PlannedDay } from './DayReview';
 import { restDatesOf } from '../push/activity';
 import { PUSH_ON } from '../push/config';
 import { setRestDates } from '../push/usePush';
@@ -88,6 +89,16 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   onOpenDay?: (date: string) => void;
 }) {
   const [picking, setPicking] = useState(false);
+  // Owner, 2026-10-23: a day tapped in Ready's Week row, shown in today's place, read only (a future day: its plan). Never kept:
+  // the app opens on today, and so does coming back to it after 5 minutes away.
+  const [look, setLook] = useState<string | null>(null);
+  const pick = (d: string) => { setLook(d === today ? null : d); window.scrollTo(0, 0); };
+  useEffect(() => {
+    let hid = 0;
+    const on = () => { if (document.visibilityState === 'hidden') hid = Date.now(); else if (hid && Date.now() - hid > 5 * 60_000) setLook(null); };
+    document.addEventListener('visibilitychange', on);
+    return () => document.removeEventListener('visibilitychange', on);
+  }, []);
   const [swapFor, setSwapFor] = useState<string | null>(null);
   // A recap tap with a picker up (it takes Today's place): the picker goes, so the digest shows.
   const [recapSeen, setRecapSeen] = useState(recap);
@@ -350,6 +361,24 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     const rot = x && <RotationSuggestion owner={owner} r={x.r} carry={x.carry} known={x.known} today={today} onSwitch={() => void rotate(x.r, x.carry)} />;
     return sore || rot ? <>{sore}{rot}</> : null;
   };
+  // The week as Ready's Week row shows it, for the day tapped (only while one is).
+  const lookWeek = useMemo(() => (look && morning ? stripView(worked ? readyNow(readyIn) : morning, store.entries) : null), [look, morning, worked, readyIn, store.entries]);
+  if (look && isToday0 && lookWeek) {
+    const label = fmtDay(look, today);
+    return (
+      <div>
+        <div className="today-head">
+          <div className="day-switch review-head">
+            <button className="mini review-back" onClick={() => pick(today)}><Icon name="chev-left" size={28} sw={2} />Back to today</button>
+            <h1>{label}</h1>
+          </div>
+        </div>
+        <WeekCard s={lookWeek} shown={look} onPick={pick} />
+        {look < today ? <PastDay entries={store.entries} date={look} onOpen={onOpen} /> : <PlannedDay d={lookWeek.days.find((d) => d.date === look)} label={label} />}
+        <RestTimer />
+      </div>
+    );
+  }
   if (picking) return <ExercisePicker recent={exerciseNames(store.entries)} gym={gyms.active} onCancel={() => setPicking(false)}
     onPick={(n) => { goTo(n); setPicking(false); }} />;
   if (swapFor && plan) return <ExercisePicker recent={exerciseNames(store.entries)} gym={gyms.active} title={`Swap ${swapFor}`} suggested={swapSuggestions(swapFor, store.entries, date, 5, available)} onCancel={() => setSwapFor(null)}
@@ -373,7 +402,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       {/* Which gym only matters once there's a choice of them. */}
       {gyms.gyms.length > 1 && gyms.active && <button className="gym-line" onClick={onOpenGym}><span>at <b className="pname">{gyms.active.name}</b></span><Icon name="chev-right" size={16} sw={2} /></button>}
       {/* Owner Q5: the tile at the top of Today, about today only; the Energy chips in it. */}
-      {date === today && morning && <ReadyCard input={readyIn} morning={morning} body={body} worked={worked} sys={sys} slots={todaySlots} onOpenLift={onOpen} />}
+      {date === today && morning && <ReadyCard input={readyIn} morning={morning} body={body} worked={worked} sys={sys} slots={todaySlots} onOpenLift={onOpen} onPickDay={pick} />}
       {news && onOpenNews && (
         <button className="today-news" onClick={() => onOpenNews({ uid: news.uid, name: news.name })}>
           <Icon name="message" size={22} /><span><FriendName me={me} friend={news} bare inButton /> {news.text}</span><span className="small reply">tap to reply</span>

@@ -30,22 +30,28 @@
 .weigh-row form button { padding: 0 18px; }
 .weigh-row .weigh-val { font-size: var(--fs-body); font-variant-numeric: tabular-nums; }
 .weigh-row .weigh-val + .quiet-btn { justify-self: end; grid-column: 2; grid-row: 1; margin-right: -8px; }
-/* One line: Week, a mark a day from today with its name under it, "1 of 2" and the chevron. A tap opens the strip. */
-.rw-row { width: 100%; grid-template-columns: var(--rl) minmax(0, 1fr) auto; gap: 0 8px; padding: 4px 0 0; border-radius: 0; background: none; color: var(--text); text-align: left; font-weight: 400; }
-.rw-days { list-style: none; margin: 0; padding: 0; display: flex; justify-content: space-between; gap: 2px; min-width: 0; }
-.rw-days li { flex: none; min-width: 14px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+/* Week, "1 of 2" and the chevron: a tap opens the strip. Under it a mark a day with its letter, each a 44 × 44 tap (owner,
+   2026-10-23: that day on Today); the row reaches into the card's padding so 7 of them fit 375 px. */
+.rw-row { width: 100%; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; min-height: 44px; padding: 4px 0 0; border-radius: 0; background: none; color: var(--text); text-align: left; font-weight: 400; }
+.rw-days { list-style: none; margin: 0 -8px; padding: 0; display: grid; grid-template-columns: repeat(var(--n, 7), minmax(0, 1fr)); min-width: 0; }
+.rw-days li { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.rw-days li > button, .ws-days li > .ws-pick { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; min-width: 0; min-height: 44px; padding: 0; border-radius: 10px; background: none; color: inherit; font-weight: 400; }
+.ws-days li > .ws-pick { justify-content: flex-start; gap: 5px; padding: 4px 0; }
 .rw-days li span { font-size: 11px; line-height: 14px; color: var(--text-2); white-space: nowrap; }
-.rw-days li[data-today] span { color: var(--text); font-weight: 600; }
-/* Item 12: today in the whole week, a pill under its name. */
-.rw-days li[data-today] span { min-width: 18px; margin: 0 -2px; padding: 0 2px; border-radius: 7px; background: var(--fill-2); text-align: center; }
-.ws-days li[data-today] .ws-day { margin: 0 -4px; padding: 0 4px; border-radius: 7px; background: var(--fill-2); }
+.rw-days li[data-today] span:not(.sr-only) { color: var(--text); font-weight: 600; }
+/* Item 12: the day Today shows (today, or a day tapped), a pill under its name. */
+.rw-days li[data-shown] span:not(.sr-only) { min-width: 18px; margin: 0 -2px; padding: 0 2px; border-radius: 7px; background: var(--fill-2); color: var(--text); font-weight: 600; text-align: center; }
+.ws-days li[data-shown] .ws-day { margin: 0 -4px; padding: 0 4px; border-radius: 7px; background: var(--fill-2); color: var(--text); font-weight: 600; }
+/* A day shown in today's place: the Week row alone, at the top. */
+.week-card .ready-checkin { margin-top: 0; padding-top: 0; border-top: 0; }
+.week-card .rw-row { margin-top: 0; border-top: 0; }
 .rw-goal { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sub); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rw-goal .ic { color: var(--text-3); }
 .rw-goal .flip { rotate: 180deg; }
 .rw-goal-l { font-size: var(--fs-sub); color: var(--text-2); }
 /* Opened: the strip inside the tile, no card or heading of its own. */
 .week-strip.in-tile { margin: 0; padding: 2px 0 4px; background: none; border-radius: 0; }
-.week-strip.in-tile .ws-days { margin-top: 4px; }
+.week-strip.in-tile .ws-days { margin: 4px -8px 0; gap: 0; }
 
 /* Folded after the day's first set: one line, a tap opens it. */
 .ready-card.folded { padding: 0; }
@@ -65,13 +71,13 @@
 .ws-day { font-size: var(--fs-xs); line-height: 16px; color: var(--text-2); }
 .ws-days li[data-today] .ws-day { color: var(--text); font-weight: 600; }
 .ws-mark { display: block; width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box; }
-li[data-mark='train'] > .ws-mark { background: var(--accent); }
-li[data-mark='light'] > .ws-mark { background: color-mix(in oklab, var(--accent) 45%, var(--surface)); border: 2px solid var(--accent); }
-li[data-mark='rest'] > .ws-mark { border: 2px solid var(--fill-2); }
-li[data-mark='optional'] > .ws-mark { border: 2px dashed var(--accent); }
+li[data-mark='train'] .ws-mark { background: var(--accent); }
+li[data-mark='light'] .ws-mark { background: color-mix(in oklab, var(--accent) 45%, var(--surface)); border: 2px solid var(--accent); }
+li[data-mark='rest'] .ws-mark { border: 2px solid var(--fill-2); }
+li[data-mark='optional'] .ws-mark { border: 2px dashed var(--accent); }
 /* Before today (item 12): a day he went, ticked; one he didn't, a small dot. */
-li[data-mark='done'] > .ws-mark { display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); }
-li[data-mark='missed'] > .ws-mark { width: 6px; height: 6px; margin: 4px; background: var(--fill-2); }
+li[data-mark='done'] .ws-mark { display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); }
+li[data-mark='missed'] .ws-mark { width: 6px; height: 6px; margin: 4px; background: var(--fill-2); }
 .ws-s { min-height: 14px; max-width: 100%; font-size: 11px; line-height: 14px; color: var(--text-2); text-align: center; overflow-wrap: anywhere; }
 .ws-why { list-style: none; margin: 10px 0 0; padding: 8px 0 0; border-top: 1px solid var(--hairline); display: grid; gap: 4px; }
 .ws-why li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; font-size: var(--fs-sm); line-height: 18px; }
@@ -112,3 +118,12 @@ li[data-mark='missed'] > .ws-mark { width: 6px; height: 6px; margin: 4px; backgr
 .why-bar { grid-column: 1 / -1; position: relative; display: block; height: 8px; border-radius: 4px;
   background: linear-gradient(to right, var(--accent-hi) 0 var(--done), var(--accent) var(--done) var(--plan), var(--fill) var(--plan) 100%); }
 .why-bar::after { content: ''; position: absolute; left: var(--lo); width: calc(var(--hi) - var(--lo)); top: 11px; height: 2px; border-radius: 1px; background: var(--text-3); }
+
+/* A day tapped in the Week row (owner, 2026-10-23): Back to today where the day arrows were, its sets read only, a future day's plan. */
+.review-head .review-back { grid-column: 1 / -1; justify-self: start; display: inline-flex; align-items: center; gap: 0; padding: 0 12px 0 0; font-weight: 600; }
+.review-card .set-row { display: flex; align-items: center; }
+.review-note { margin: 4px 0 16px; }
+.review-plan h2 { margin: 0 0 8px; }
+.review-slots { list-style: none; margin: 0 -16px; padding: 0; border-top: 1px solid var(--hairline); }
+.review-slots li { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 48px; padding: 0 16px; }
+.review-slots li + li { box-shadow: inset 0 1px var(--hairline); }

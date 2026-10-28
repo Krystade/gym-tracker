@@ -645,22 +645,24 @@ test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded
     if ((await row.getAttribute('aria-expanded')) === 'false') await row.click();
     await expect(strip).toBeVisible();
   };
-  // Item 12: the folded Week row holds the whole week, 7 days, on one line at 375 and 320 px, inside the row and clear of its count.
+  // Item 12: the folded Week row holds the whole week, 7 days, on one line at 375 and 320 px, inside the card. Owner, 2026-10-23:
+  // each day a tap of its own (the day on Today), 44 × 44 on his 375 px phone.
   const oneLine = async () => {
     const row = tile.getByRole('button', { name: /^Week/ });
     if ((await row.getAttribute('aria-expanded')) === 'true') await row.click();
     for (const width of [375, 320]) {
       await page.setViewportSize({ width, height: 812 });
-      const m = await row.evaluate((b) => {
-        const r = b.getBoundingClientRect(), days = [...b.querySelectorAll('.rw-days > li')].map((li) => li.getBoundingClientRect());
-        const goal = b.querySelector('.rw-goal')!.getBoundingClientRect();
-        return { n: days.length, tops: new Set(days.map((d) => Math.round(d.top))).size, h: r.height, left: Math.min(...days.map((d) => d.left)) - r.left,
-          gap: goal.left - Math.max(...days.map((d) => d.right)), over: b.scrollWidth - b.clientWidth };
+      const m = await tile.evaluate((t) => {
+        const r = t.getBoundingClientRect(), w = t.querySelector('.ready-week')!;
+        const days = [...w.querySelectorAll('.rw-days > li > button')].map((b) => b.getBoundingClientRect());
+        return { n: days.length, tops: new Set(days.map((d) => Math.round(d.top))).size, minW: Math.min(...days.map((d) => d.width)), minH: Math.min(...days.map((d) => d.height)),
+          left: Math.min(...days.map((d) => d.left)) - r.left, right: r.right - Math.max(...days.map((d) => d.right)), over: w.scrollWidth - w.clientWidth };
       });
       expect(m, `Week row at ${width}`).toMatchObject({ n: 7, tops: 1, over: 0 });
-      expect(m.h, `Week row at ${width}`).toBeLessThanOrEqual(52);
       expect(m.left, `Week row at ${width}`).toBeGreaterThanOrEqual(0);
-      expect(m.gap, `Week row at ${width}`).toBeGreaterThanOrEqual(2);
+      expect(m.right, `Week row at ${width}`).toBeGreaterThanOrEqual(0);
+      expect(m.minH, `Week row at ${width}`).toBeGreaterThanOrEqual(44);
+      if (width === 375) expect(m.minW, `Week row at ${width}`).toBeGreaterThanOrEqual(44);
       await png(`week-row-${width}`);
     }
     await page.setViewportSize({ width: 375, height: 812 });

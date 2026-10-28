@@ -28,7 +28,7 @@ export const WEEK_ROW = true;
 // days from today, each rest day's reason. Why › opens the sheet (Stats v2's).
 
 /** The tile as the day started (`morning`), or as it is now once he has trained today and opens it again. */
-export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpenLift, weekRow = WEEK_ROW }: {
+export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpenLift, onPickDay, weekRow = WEEK_ROW }: {
   input: ReadyInput; morning: Planned; body: BodyStore;
   /** A working set logged today: the tile folds. */
   worked: boolean;
@@ -40,6 +40,8 @@ export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpe
   onOpenLift?: (name: string) => void;
   /** The week as a one-line row inside the tile (WEEK_ROW); false: the full strip under it. */
   weekRow?: boolean;
+  /** A day of the Week row tapped (owner, 2026-10-23): Today shows that day. */
+  onPickDay?: (date: string) => void;
 }) {
   const [openPick, setOpen] = useState<boolean | null>(null);
   const [why, setWhy] = useState(false);
@@ -73,7 +75,7 @@ export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpe
           <Energy body={body} date={input.today} />
           <CycleRow date={input.today} />
           <WeighIn body={body} date={input.today} row />
-          {strip && weekRow && <WeekRow s={strip} />}
+          {strip && weekRow && <WeekRow s={strip} onPick={onPickDay} />}
         </div>
       </section>
       {strip && !weekRow && <WeekStrip s={strip} />}
@@ -92,6 +94,14 @@ export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpe
       )}
     </>
   );
+}
+
+/**
+ * Owner, 2026-10-23: a day tapped in the Week row shows on Today in today's place, read only. Ready is about today, so it goes;
+ * the Week row stays, at the top, the day shown with the pill, to tap another day or today again.
+ */
+export function WeekCard({ s, shown, onPick }: { s: StripView; shown: string; onPick: (date: string) => void }) {
+  return <section className="ready-card week-card" aria-label="Week"><div className="ready-checkin"><WeekRow s={s} shown={shown} onPick={onPick} /></div></section>;
 }
 
 export function ReadyTile({ t, onWhy, onFold }: { t: TileView; onWhy: () => void; onFold?: () => void }) {
@@ -123,43 +133,55 @@ export function ReadyTile({ t, onWhy, onFold }: { t: TileView; onWhy: () => void
 const said = (d: StripDay) => (d.mark === 'done' ? 'done' : d.mark === 'missed' || d.mark === 'rest' ? 'rest' : d.mark === 'optional' ? 'optional' : d.session ?? 'train');
 /** A day's mark: a tick on a day he went. */
 const Mark = ({ d }: { d: StripDay }) => <i className="ws-mark" aria-hidden="true">{d.mark === 'done' && <Icon name="check" size={10} sw={3.5} />}</i>;
+/** A day as a tap says it: "Wed: done", "Fri, today: Day A". */
+const dayName = (d: StripDay) => `${d.day}${d.today ? ', today' : ''}: ${said(d)}${d.mark === 'light' ? ', light' : ''}`;
 
 /**
- * The week in one line inside Ready (IA A1): a mark for each day of the week (item 12: the days he went before today ticked),
- * today's highlighted, and how far the goal is ("1 of 2"). A tap opens the full strip in place, each training day's session and
- * each rest day's reason.
+ * The week inside Ready (IA A1): a line with how far the goal is ("1 of 2"), a tap on it opening the strip in place (each training
+ * day's session and each rest day's reason), and a mark for each day of the week under it (item 12: the days he went before
+ * today ticked). Owner, 2026-10-23: each day is a 44 × 44 tap that shows that day on Today (`onPick`); the day shown (today
+ * unless one was tapped) has the pill.
  */
-export function WeekRow({ s }: { s: StripView }) {
+export function WeekRow({ s, shown, onPick }: { s: StripView; shown?: string; onPick?: (date: string) => void }) {
   const [open, setOpen] = useState(false);
+  const at = shown ?? s.days.find((d) => d.today)?.date;
   return (
     <div className="ready-week">
       <button type="button" className="rw-row" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span className="chip-label">Week</span>
-        {open ? <span className="rw-goal-l">{s.goal}</span> : (
-          <ol className="rw-days" aria-hidden="true" style={{ '--n': s.days.length } as CSSProperties}>
-            {s.days.map((d) => <li key={d.date} data-mark={d.mark} data-today={d.today || undefined}><Mark d={d} /><span>{d.short}</span></li>)}
-          </ol>
-        )}
-        <span className="rw-goal">{open ? null : s.count}<Icon name="chev-down" size={16} sw={2} className={open ? 'flip' : undefined} /></span>
-        {!open && <span className="sr-only">{s.goal}: {s.days.map((d) => `${d.label} ${said(d)}`).join(', ')}</span>}
+        <span className="rw-goal">{open ? s.goal : s.count}<Icon name="chev-down" size={16} sw={2} className={open ? 'flip' : undefined} /></span>
+        {!open && <span className="sr-only"> done</span>}
       </button>
-      {open && <WeekStrip s={s} inTile />}
+      {open ? <WeekStrip s={s} inTile shown={at} onPick={onPick} /> : (
+        <ol className="rw-days" aria-label="This week" style={{ '--n': s.days.length } as CSSProperties}>
+          {s.days.map((d) => (
+            <li key={d.date} data-mark={d.mark} data-today={d.today || undefined} data-shown={d.date === at || undefined}>
+              {onPick
+                ? <button type="button" aria-label={dayName(d)} aria-pressed={d.date === at} onClick={() => onPick(d.date)}><Mark d={d} /><span>{d.short}</span></button>
+                : <><Mark d={d} /><span aria-hidden="true">{d.short}</span><span className="sr-only">{dayName(d)}</span></>}
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 }
 
-export function WeekStrip({ s, inTile = false }: { s: StripView; /** Inside Ready's Week row: no card or heading of its own. */ inTile?: boolean }) {
+export function WeekStrip({ s, inTile = false, shown, onPick }: { s: StripView; /** Inside Ready's Week row: no card or heading of its own. */ inTile?: boolean;
+  /** The day Today shows (the pill), and a day tapped: as the Week row's. */ shown?: string; onPick?: (date: string) => void }) {
+  const at = shown ?? s.days.find((d) => d.today)?.date;
   return (
     <section className={inTile ? 'week-strip in-tile' : 'week-strip'} aria-label="Week plan">
       {!inTile && <div className="ws-head"><h2>Week plan</h2><span>{s.goal}</span></div>}
-      <ol className="ws-days" style={{ '--n': s.days.length } as CSSProperties}>
-        {s.days.map((d) => (
-          <li key={d.date} data-mark={d.mark} data-today={d.today || undefined} aria-label={`${d.label}: ${said(d)}${d.mark === 'light' ? ', light' : ''}`}>
-            <span className="ws-day">{d.label}</span>
-            <Mark d={d} />
-            <span className="ws-s">{d.session ?? ''}</span>
-          </li>
-        ))}
+      <ol className="ws-days" aria-label="This week" style={{ '--n': s.days.length } as CSSProperties}>
+        {s.days.map((d) => {
+          const body = <><span className="ws-day">{d.label}</span><Mark d={d} /><span className="ws-s">{d.session ?? ''}</span></>;
+          return (
+            <li key={d.date} data-mark={d.mark} data-today={d.today || undefined} data-shown={d.date === at || undefined} aria-label={onPick ? undefined : dayName(d)}>
+              {onPick ? <button type="button" className="ws-pick" aria-label={dayName(d)} aria-pressed={d.date === at} onClick={() => onPick(d.date)}>{body}</button> : body}
+            </li>
+          );
+        })}
       </ol>
       {s.reasons.length > 0 && (
         <ul className="ws-why">

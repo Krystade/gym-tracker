@@ -123,6 +123,11 @@ export interface StripDay {
   mark: 'train' | 'light' | 'rest' | 'optional' | 'done' | 'missed';
   session: string | null;
   today?: boolean;
+  /** The weekday ("Thu"), today's too: what a tap on the day says. */
+  day: string;
+  /** From today on: a training day's lifts as planned, a rest day's reason. */
+  slots?: readonly Slot[];
+  why?: string;
 }
 export interface StripView {
   days: StripDay[];
@@ -151,10 +156,12 @@ export function stripView(r: Planned, entries?: readonly SetEntry[]): StripView 
     const went = new Set<string>();
     const from = weekStart(today);
     for (const e of entries) if (e.date >= from && e.date < today && weekDaySet(e)) went.add(e.date);
-    for (let d = from; d < today; d = addDays(d, 1)) past.push({ date: d, label: weekday(d), short: weekday(d)[0], mark: went.has(d) ? 'done' : 'missed', session: null });
+    for (let d = from; d < today; d = addDays(d, 1)) past.push({ date: d, label: weekday(d), day: weekday(d), short: weekday(d)[0], mark: went.has(d) ? 'done' : 'missed', session: null });
   }
   const days: StripDay[] = [...past, ...p.days.map((d: PlanDay, i): StripDay => ({
-    date: d.date, label: i === 0 ? 'Today' : weekday(d.date), short: weekday(d.date)[0], today: i === 0,
+    date: d.date, label: i === 0 ? 'Today' : weekday(d.date), day: weekday(d.date), short: weekday(d.date)[0], today: i === 0,
+    slots: d.train ? d.session?.slots : undefined,
+    why: d.train ? undefined : i === 0 && goalMet ? 'Goal met · an extra session is optional' : d.rest?.label,
     // The goal met: today is an extra, optional (owner S4), whatever the plan rests it for.
     mark: i === 0 && goalMet && !d.train ? 'optional' : d.train ? (d.light ? 'light' : 'train') : 'rest',
     session: d.train ? d.session?.name ?? null : null,
