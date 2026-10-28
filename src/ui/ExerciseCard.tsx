@@ -34,6 +34,9 @@ import { WhyWeightSheet } from './WhyWeight';
 import { useAchLines, useAchOpen } from '../state/useAchievements';
 
 const TARGET_LEAD: Partial<Record<string, string>> = { increase: 'Go up: ', test: 'From your test: ', carry: 'Estimate: ', hold: 'Hold: ', ease: 'Lighter: ', light: 'Light week: ' };
+/** A target as its card's line says it: kind, each set's reps or sets × reps, and the load ("Go up: 3 × 8+ · 140 lb"). */
+export const targetLine = (sug: ReturnType<typeof suggest>) => `${TARGET_LEAD[sug.kind] ?? ''}${sug.kind === 'new' ? `${sug.sets} × ${sug.reps}–${sug.repMax}${sug.unit}`
+    : sug.perSet ? `${sug.perSet.join(' · ')}${sug.unit}` : `${sug.sets} × ${sug.reps}${sug.unit}${sug.kind !== 'maxed' ? '+' : ''}`}${fmtLoad(sug.weight)}`;
 
 /**
  * A folded card's count against the plan, and whether the lift is done: its working sets less any test (owner, 2026-10-23: a
@@ -130,8 +133,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   const target = nextTarget(store.entries, exercise, st, date, plannedSets, light);
   const sug = suggest(store.entries, exercise, st, date, plannedSets, light);
   // The target as its line says it (and the sheet's head): kind, each set's reps or sets × reps, and the load.
-  const targetText = `${TARGET_LEAD[sug.kind] ?? ''}${sug.kind === 'new' ? `${sug.sets} × ${sug.reps}–${sug.repMax}${sug.unit}`
-    : sug.perSet ? `${sug.perSet.join(' · ')}${sug.unit}` : `${sug.sets} × ${sug.reps}${sug.unit}${sug.kind !== 'maxed' ? '+' : ''}`}${fmtLoad(sug.weight)}`;
+  const targetText = targetLine(sug);
   const [why, setWhy] = useState(false);
   const pace = useMemo(() => paces(store.entries), [store.entries]);
   // The stepper moves by the lift's learned rung when that is finer than 5 lb, and a typed increment isn't set (item 01).

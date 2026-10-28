@@ -374,7 +374,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
           </div>
         </div>
         <WeekCard s={lookWeek} shown={look} onPick={pick} />
-        {look < today ? <PastDay entries={store.entries} date={look} onOpen={onOpen} /> : <PlannedDay d={lookWeek.days.find((d) => d.date === look)} label={label} />}
+        {look < today ? <PastDay entries={store.entries} date={look} onOpen={onOpen} /> : <PlannedDay d={lookWeek.days.find((d) => d.date === look)} label={label} entries={store.entries} settings={settings} />}
         <RestTimer />
       </div>
     );

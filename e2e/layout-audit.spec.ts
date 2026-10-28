@@ -656,7 +656,7 @@ test('Today: the READY tile (new user, go, tight week, goal met, layoff), folded
         const r = t.getBoundingClientRect(), w = t.querySelector('.ready-week')!;
         const days = [...w.querySelectorAll('.rw-days > li > button')].map((b) => b.getBoundingClientRect());
         return { n: days.length, tops: new Set(days.map((d) => Math.round(d.top))).size, minW: Math.min(...days.map((d) => d.width)), minH: Math.min(...days.map((d) => d.height)),
-          left: Math.min(...days.map((d) => d.left)) - r.left, right: r.right - Math.max(...days.map((d) => d.right)), over: w.scrollWidth - w.clientWidth };
+          left: Math.min(...days.map((d) => d.left)) - r.left, right: r.right - Math.max(...days.map((d) => d.right)), over: t.scrollWidth - t.clientWidth };
       });
       expect(m, `Week row at ${width}`).toMatchObject({ n: 7, tops: 1, over: 0 });
       expect(m.left, `Week row at ${width}`).toBeGreaterThanOrEqual(0);

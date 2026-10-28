@@ -25,7 +25,7 @@ async function start(page: Page) {
   await page.getByRole('button', { name: 'Build program' }).click();
   await page.getByRole('button', { name: '‹ Back' }).click();
   await goto(page, 'Weekly goal');
-  await page.getByRole('textbox', { name: 'Sessions per week goal' }).fill('3');
+  await page.getByRole('textbox', { name: 'Sessions per week goal' }).fill('5');
   await goto(page, 'Today');
 }
 const week = (page: Page) => page.getByRole('list', { name: 'This week' });
@@ -41,6 +41,24 @@ test('a past day in the week row opens read only, a future day its plan, and Bac
   await expect(days).toHaveCount(7);
   for (let i = 0; i < 7; i++) await big(days.nth(i));
   await expect(day(page, 'Fri')).toHaveAttribute('aria-pressed', 'true');
+
+  // Owner (item 1): the plan's day picker right under its header, above the lifts, however long the list is.
+  const todays = page.getByRole('region', { name: 'Today’s plan' });
+  const pickerY = (await todays.getByRole('group', { name: 'Program day' }).boundingBox())!.y;
+  expect(pickerY).toBeLessThan((await todays.getByRole('list', { name: 'Planned exercises' }).boundingBox())!.y);
+
+  // Owner (item 7): a day done is a filled tick, a planned day an outlined ring, a day without a session a dim dot.
+  const mark = (i: number) => week(page).getByRole('listitem').nth(i).locator('.ws-mark').evaluate((m) => {
+    const c = getComputedStyle(m);
+    return { fill: c.backgroundColor !== 'rgba(0, 0, 0, 0)', ring: c.borderTopStyle !== 'none' && parseFloat(c.borderTopWidth) >= 2, tick: !!m.querySelector('svg'), w: m.getBoundingClientRect().width };
+  });
+  expect(await mark(0)).toMatchObject({ fill: true, ring: false, tick: true }); // Monday, done
+  expect(await mark(1)).toMatchObject({ fill: true, ring: false, tick: false }); // Tuesday, not gone: a dot
+  expect((await mark(1)).w).toBeLessThan(10);
+  const planned = [];
+  for (const i of [4, 5, 6]) if (/^(train|light)$/.test((await week(page).getByRole('listitem').nth(i).getAttribute('data-mark'))!)) planned.push(await mark(i));
+  expect(planned.length).toBeGreaterThan(0);
+  for (const m of planned) expect(m).toMatchObject({ fill: false, ring: true, tick: false });
 
   // Wednesday: its lift and sets, read only.
   await day(page, 'Wed').click();
@@ -75,10 +93,10 @@ test('a past day in the week row opens read only, a future day its plan, and Bac
   await day(page, 'Tue').click();
   await expect(page.getByText('Nothing logged that day.')).toBeVisible();
 
-  // The days after today: each its plan, a session's lifts or the rest day's reason, nothing to log. The goal 3 with 2 done
-  // and Friday not trained: Saturday or Sunday trains unless today does.
+  // The days after today: each its plan, a session's lifts or the rest day's reason, nothing to log. The goal 5 with 2 done:
+  // Friday, Saturday and Sunday all train.
   const plan = page.getByRole('region', { name: /^Plan for/ });
-  const marks: string[] = [];
+  const marks: string[] = [], loads: string[] = [];
   for (const [i, name] of [[5, 'Sat'], [6, 'Sun']] as const) {
     await day(page, name).click();
     await expect(h1).toContainText(name);
@@ -86,11 +104,18 @@ test('a past day in the week row opens read only, a future day its plan, and Bac
     const mark = (await week(page).getByRole('listitem').nth(i).getAttribute('data-mark'))!;
     marks.push(mark);
     if (mark === 'rest') await expect(plan.getByRole('heading', { name: 'Rest' })).toBeVisible();
-    else await expect(plan.getByRole('list', { name: 'Planned exercises' }).getByRole('listitem').first()).toBeVisible();
+    else {
+      // Owner (item 9): each planned lift with the target its card would show that day.
+      const lifts = plan.getByRole('list', { name: 'Planned exercises' }).getByRole('listitem');
+      await expect(lifts.first()).toBeVisible();
+      const targets = await lifts.locator('.review-target').allTextContents();
+      for (const t of targets) expect(t).toMatch(/\d+ × \d+|\d+ min|\d+( · \d+)+/);
+      loads.push(...targets.filter((t) => / \d+ lb$/.test(t)));
+    }
     await expect(page.getByRole('textbox', { name: 'Weight' })).toHaveCount(0);
   }
-  const fri = (await week(page).getByRole('listitem').nth(4).getAttribute('data-mark'))!;
-  expect([fri, ...marks].some((m) => m === 'train' || m === 'light'), `Fri ${fri}, Sat/Sun ${marks}`).toBe(true);
+  expect(loads.length, 'a lift he has done before, with its weight').toBeGreaterThan(0);
+  expect(marks, 'Sat, Sun').toEqual([expect.stringMatching(/^(train|light)$/), expect.stringMatching(/^(train|light)$/)]);
 
   // The app always opens on today.
   await page.reload();

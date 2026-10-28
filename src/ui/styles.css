@@ -575,7 +575,7 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 /* B's scoreboard line: sets done of planned, big and tabular, over a bar with a segment per set. */
 .sets-progress { margin: 2px 0 10px; }
 /* The day chips under the list; a lift's load never splits from its number. */
-.plan-days { margin-top: 12px; }
+.plan-days { margin: 0 0 8px; }
 .plan-load { white-space: nowrap; }
 .sets-num { margin: 0 0 6px; font-size: var(--fs-xl); line-height: 28px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .sets-num b { font-size: var(--fs-title); line-height: 34px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }

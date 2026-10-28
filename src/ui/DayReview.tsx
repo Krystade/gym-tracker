@@ -5,6 +5,11 @@ import { prSetIds } from '../domain/summary';
 import { SetRowContent } from './SetRow';
 import { SessionSummary } from './SessionSummary';
 import type { StripDay } from './readyView';
+import type { SettingsStore } from '../state/useSettings';
+import { isHoldLift } from '../domain/care';
+import { suggest } from '../domain/suggest';
+import { cardioTarget } from '../domain/cardio';
+import { targetLine } from './ExerciseCard';
 
 // Owner, 2026-10-23: "When tapping a day in my week line, it should move from today to that day so I can review what I did."
 // The day tapped shows in today's place on Today, read only: no set form, so no rest and no next set. Fixing a set stays in
@@ -34,10 +39,11 @@ export function PastDay({ entries, date, onOpen }: { entries: SetEntry[]; date: 
   );
 }
 
-const reps = (a: number, b: number) => (a === b ? `${a}` : `${a}–${b}`);
-
-/** A day after today: the week plan's session for it and its lifts, or why it's a rest day. */
-export function PlannedDay({ d, label }: { d: StripDay | undefined; label: string }) {
+/**
+ * A day after today: the week plan's session for it and its lifts, each with the target its card would show that day (owner,
+ * 2026-10-23: "should be allowed to see the expected weights"), or why it's a rest day.
+ */
+export function PlannedDay({ d, label, entries, settings }: { d: StripDay | undefined; label: string; entries: SetEntry[]; settings: SettingsStore }) {
   const train = !!d && d.mark !== 'rest' && d.mark !== 'missed';
   return (
     <section className="card review-plan" aria-label={`Plan for ${label}`}>
@@ -45,7 +51,9 @@ export function PlannedDay({ d, label }: { d: StripDay | undefined; label: strin
         <h2>{d.session ?? 'Train'}{d.mark === 'light' && <span className="muted"> · light</span>}</h2>
         {d.slots?.length ? (
           <ol className="review-slots" aria-label="Planned exercises">
-            {d.slots.map((s) => <li key={s.exercise}><b>{s.exercise}</b><span className="muted small">{s.minutes != null ? `${s.minutes} min` : `${s.sets} × ${reps(s.repMin, s.repMax)}`}</span></li>)}
+            {d.slots.map((s) => <li key={s.exercise}><b>{s.exercise}</b><span className="muted small review-target">{s.minutes != null
+              ? cardioTarget(entries, s.exercise, s.minutes, d.date).text
+              : targetLine(suggest(entries, s.exercise, settings.get(s.exercise, isHoldLift(s.exercise, entries)), d.date, s.sets, d.mark === 'light'))}</span></li>)}
           </ol>
         ) : <p className="muted">Nothing planned yet.</p>}
       </> : <>

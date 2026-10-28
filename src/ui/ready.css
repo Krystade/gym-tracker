@@ -32,7 +32,7 @@
 .weigh-row .weigh-val + .quiet-btn { justify-self: end; grid-column: 2; grid-row: 1; margin-right: -8px; }
 /* Week, "1 of 2" and the chevron: a tap opens the strip. Under it a mark a day with its letter, each a 44 × 44 tap (owner,
    2026-10-23: that day on Today); the row reaches into the card's padding so 7 of them fit 375 px. */
-.rw-row { width: 100%; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; min-height: 44px; padding: 4px 0 0; border-radius: 0; background: none; color: var(--text); text-align: left; font-weight: 400; }
+.rw-row { width: 100%; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; min-height: 44px; margin-top: 0; padding: 0; border-radius: 0; background: none; color: var(--text); text-align: left; font-weight: 400; }
 .rw-days { list-style: none; margin: 0 -8px; padding: 0; display: grid; grid-template-columns: repeat(var(--n, 7), minmax(0, 1fr)); min-width: 0; }
 .rw-days li { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .rw-days li > button, .ws-days li > .ws-pick { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; min-width: 0; min-height: 44px; padding: 0; border-radius: 10px; background: none; color: inherit; font-weight: 400; }
@@ -42,6 +42,13 @@
 /* Item 12: the day Today shows (today, or a day tapped), a pill under its name. */
 .rw-days li[data-shown] span:not(.sr-only) { min-width: 18px; margin: 0 -2px; padding: 0 2px; border-radius: 7px; background: var(--fill-2); color: var(--text); font-weight: 600; text-align: center; }
 .ws-days li[data-shown] .ws-day { margin: 0 -4px; padding: 0 4px; border-radius: 7px; background: var(--fill-2); color: var(--text); font-weight: 600; }
+/* The day buttons carry their own space under the letters: the card's padding under them is less (the first lift stays on the
+   first screen, today-order). */
+.ready-card:has(.ready-week:last-child) { padding-bottom: 2px; }
+/* "Week 1 of 3" on the tile's top line; the days a row of their own, a hairline above as the rows above them. */
+.ready-link.rw-toggle { gap: 5px; color: var(--text-2); font-weight: 400; white-space: nowrap; }
+.ready-link.rw-toggle .rw-goal { color: var(--text-2); }
+.ready-week.bare { margin-top: 2px; padding-top: 2px; border-top: 1px solid var(--hairline); }
 /* A day shown in today's place: the Week row alone, at the top. */
 .week-card .ready-checkin { margin-top: 0; padding-top: 0; border-top: 0; }
 .week-card .rw-row { margin-top: 0; border-top: 0; }
@@ -71,12 +78,14 @@
 .ws-day { font-size: var(--fs-xs); line-height: 16px; color: var(--text-2); }
 .ws-days li[data-today] .ws-day { color: var(--text); font-weight: 600; }
 .ws-mark { display: block; width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box; }
-li[data-mark='train'] .ws-mark { background: var(--accent); }
-li[data-mark='light'] .ws-mark { background: color-mix(in oklab, var(--accent) 45%, var(--surface)); border: 2px solid var(--accent); }
-li[data-mark='rest'] .ws-mark { border: 2px solid var(--fill-2); }
+/* Owner, 2026-10-23: planned and done must differ at a glance, not by colour alone. Planned: an outlined ring (a light day's
+   dotted); done: a filled tick; no session (a rest day, or a day before today he didn't go): a dim dot. */
+li[data-mark='train'] .ws-mark { border: 2px solid var(--accent); }
+li[data-mark='light'] .ws-mark { border: 2px dotted var(--accent); }
+li[data-mark='rest'] .ws-mark { width: 6px; height: 6px; margin: 4px; background: var(--fill-2); }
 li[data-mark='optional'] .ws-mark { border: 2px dashed var(--accent); }
 /* Before today (item 12): a day he went, ticked; one he didn't, a small dot. */
-li[data-mark='done'] .ws-mark { display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); }
+li[data-mark='done'] .ws-mark { display: grid; place-items: center; background: var(--ok); color: var(--surface); }
 li[data-mark='missed'] .ws-mark { width: 6px; height: 6px; margin: 4px; background: var(--fill-2); }
 .ws-s { min-height: 14px; max-width: 100%; font-size: 11px; line-height: 14px; color: var(--text-2); text-align: center; overflow-wrap: anywhere; }
 .ws-why { list-style: none; margin: 10px 0 0; padding: 8px 0 0; border-top: 1px solid var(--hairline); display: grid; gap: 4px; }
@@ -122,8 +131,11 @@ li[data-mark='missed'] .ws-mark { width: 6px; height: 6px; margin: 4px; backgrou
 /* A day tapped in the Week row (owner, 2026-10-23): Back to today where the day arrows were, its sets read only, a future day's plan. */
 .review-head .review-back { grid-column: 1 / -1; justify-self: start; display: inline-flex; align-items: center; gap: 0; padding: 0 12px 0 0; font-weight: 600; }
 .review-card .set-row { display: flex; align-items: center; }
+.review-card .sets { margin-bottom: 0; }
+.review-card .sets:not(:empty) { border-bottom: 0; }
 .review-note { margin: 4px 0 16px; }
 .review-plan h2 { margin: 0 0 8px; }
 .review-slots { list-style: none; margin: 0 -16px; padding: 0; border-top: 1px solid var(--hairline); }
-.review-slots li { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 48px; padding: 0 16px; }
+.review-slots li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 2px 12px; min-height: 48px; padding: 6px 16px; }
+.review-target { text-align: right; overflow-wrap: anywhere; }
 .review-slots li + li { box-shadow: inset 0 1px var(--hairline); }

@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import type { BodyStore } from '../state/useBody';
 import type { Systemic } from '../domain/learn/deload';
 import type { Slot } from '../domain/program';
@@ -44,6 +44,8 @@ export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpe
   onPickDay?: (date: string) => void;
 }) {
   const [openPick, setOpen] = useState<boolean | null>(null);
+  // The Week row's strip, opened from "Week 1 of 3" on the tile's top line.
+  const [weekOpen, setWeekOpen] = useState(false);
   const [why, setWhy] = useState(false);
   // All muscles › in Why: the Stats Muscles sheet, in the Why sheet's place.
   const [muscles, setMuscles] = useState(false);
@@ -70,12 +72,13 @@ export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpe
   return (
     <>
       <section className="ready-card" aria-label="Ready" data-kind={t.kind}>
-        <ReadyTile t={t} onWhy={() => setWhy(true)} onFold={worked ? () => setOpen(false) : undefined} />
+        <ReadyTile t={t} onWhy={() => setWhy(true)} onFold={worked ? () => setOpen(false) : undefined}
+          week={strip && weekRow ? <WeekToggle s={strip} open={weekOpen} onToggle={() => setWeekOpen(!weekOpen)} /> : undefined} />
         <div className="ready-checkin">
           <Energy body={body} date={input.today} />
           <CycleRow date={input.today} />
           <WeighIn body={body} date={input.today} row />
-          {strip && weekRow && <WeekRow s={strip} onPick={onPickDay} />}
+          {strip && weekRow && <WeekRow s={strip} onPick={onPickDay} open={weekOpen} />}
         </div>
       </section>
       {strip && !weekRow && <WeekStrip s={strip} />}
@@ -104,13 +107,14 @@ export function WeekCard({ s, shown, onPick }: { s: StripView; shown: string; on
   return <section className="ready-card week-card" aria-label="Week"><div className="ready-checkin"><WeekRow s={s} shown={shown} onPick={onPick} /></div></section>;
 }
 
-export function ReadyTile({ t, onWhy, onFold }: { t: TileView; onWhy: () => void; onFold?: () => void }) {
+export function ReadyTile({ t, onWhy, onFold, week }: { t: TileView; onWhy: () => void; onFold?: () => void; /** The Week row's toggle, on the top line. */ week?: ReactNode }) {
   const inline = !!t.session && !!t.fresh?.startsWith('Fresh');
   return (
     <div className="ready-tile">
       <div className="ready-top">
         <span className="ready-k">Ready</span>
         <span className="ready-acts">
+          {week}
           {onFold && <button type="button" className="ready-link" aria-expanded={true} aria-label="Fold Ready" onClick={onFold}><Icon name="chev-down" size={18} sw={2} className="flip" /></button>}
           <button type="button" className="ready-link" onClick={onWhy}>Why <Icon name="chev-right" size={16} sw={2} /></button>
         </span>
@@ -136,22 +140,29 @@ const Mark = ({ d }: { d: StripDay }) => <i className="ws-mark" aria-hidden="tru
 /** A day as a tap says it: "Wed: done", "Fri, today: Day A". */
 const dayName = (d: StripDay) => `${d.day}${d.today ? ', today' : ''}: ${said(d)}${d.mark === 'light' ? ', light' : ''}`;
 
+/** "Week 1 of 3": a tap opens the strip in place (each training day's session, each rest day's reason). */
+function WeekToggle({ s, open, onToggle, line = false }: { s: StripView; open: boolean; onToggle: () => void; /** A row of its own, over the days. */ line?: boolean }) {
+  return (
+    <button type="button" className={line ? 'rw-row' : 'ready-link rw-toggle'} aria-expanded={open} onClick={onToggle}>
+      {line ? <span className="chip-label">Week</span> : <span>Week</span>}
+      <span className="rw-goal">{s.count}<span className="sr-only"> done</span><Icon name="chev-down" size={16} sw={2} className={open ? 'flip' : undefined} /></span>
+    </button>
+  );
+}
+
 /**
- * The week inside Ready (IA A1): a line with how far the goal is ("1 of 2"), a tap on it opening the strip in place (each training
- * day's session and each rest day's reason), and a mark for each day of the week under it (item 12: the days he went before
- * today ticked). Owner, 2026-10-23: each day is a 44 × 44 tap that shows that day on Today (`onPick`); the day shown (today
- * unless one was tapped) has the pill.
+ * The week inside Ready (IA A1): a mark for each day of the week (item 12: the days he went before today ticked), and under
+ * "Week 1 of 3" (on the tile's top line, so the plan's first lift stays on the first screen) the strip in its place. Owner,
+ * 2026-10-23: each day is a 44 × 44 tap that shows that day on Today (`onPick`); the day shown (today unless one was tapped) has
+ * the pill. With no `open` given, its own toggle in a line over the days (a day shown in today's place, WeekCard).
  */
-export function WeekRow({ s, shown, onPick }: { s: StripView; shown?: string; onPick?: (date: string) => void }) {
-  const [open, setOpen] = useState(false);
+export function WeekRow({ s, shown, onPick, open: given }: { s: StripView; shown?: string; onPick?: (date: string) => void; open?: boolean }) {
+  const [mine, setMine] = useState(false);
+  const open = given ?? mine;
   const at = shown ?? s.days.find((d) => d.today)?.date;
   return (
-    <div className="ready-week">
-      <button type="button" className="rw-row" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="chip-label">Week</span>
-        <span className="rw-goal">{open ? s.goal : s.count}<Icon name="chev-down" size={16} sw={2} className={open ? 'flip' : undefined} /></span>
-        {!open && <span className="sr-only"> done</span>}
-      </button>
+    <div className={given == null ? 'ready-week' : 'ready-week bare'}>
+      {given == null && <WeekToggle s={s} open={open} onToggle={() => setMine(!mine)} line />}
       {open ? <WeekStrip s={s} inTile shown={at} onPick={onPick} /> : (
         <ol className="rw-days" aria-label="This week" style={{ '--n': s.days.length } as CSSProperties}>
           {s.days.map((d) => (

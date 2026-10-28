@@ -154,6 +154,23 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onEdit
       </div>
 
       {open && (<>
+      {/* Which day, right under the header (owner, 2026-10-23: it stays in one place however long the day's list is). */}
+      <div className="chips seg-wide plan-days" role="group" aria-label="Program day">
+        {program.days.map((d, i) => (
+          <button key={d.name} type="button" className="chip" aria-pressed={!quick && i === plan.day} onClick={() => onChange({ ...plan, day: i, skips: [], swaps: {}, slots: undefined, quick: undefined })}>{d.name}</button>
+        ))}
+        <button type="button" className="chip" aria-pressed={quick} onClick={() => { if (!quick) pickQuick(Number(minutes) || 30); }}>Quick</button>
+      </div>
+      {quick && (
+        <label className="quick-minutes">Minutes
+          <Input aria-label="Minutes" inputMode="numeric" value={minutes} onChange={(e) => {
+            setMinutes(e.target.value);
+            const n = Number(e.target.value);
+            if (Number.isInteger(n) && n >= 5 && n <= 180) pickQuick(n);
+          }} />
+          <span className="muted small">What your week is furthest behind on</span>
+        </label>
+      )}
       {total > 0 && (
         <div className="sets-progress">
           <div className="sets-bar" aria-hidden="true">{Array.from({ length: total }, (_, i) => <i key={i} className={i < setsDone ? 'on' : undefined} />)}</div>
@@ -183,23 +200,6 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onEdit
           );
         })}
       </ol>
-      {/* Which day, under the lifts (IA A1): picked now and then, so the first lift and its target come first. */}
-      <div className="chips seg-wide plan-days" role="group" aria-label="Program day">
-        {program.days.map((d, i) => (
-          <button key={d.name} type="button" className="chip" aria-pressed={!quick && i === plan.day} onClick={() => onChange({ ...plan, day: i, skips: [], swaps: {}, slots: undefined, quick: undefined })}>{d.name}</button>
-        ))}
-        <button type="button" className="chip" aria-pressed={quick} onClick={() => { if (!quick) pickQuick(Number(minutes) || 30); }}>Quick</button>
-      </div>
-      {quick && (
-        <label className="quick-minutes">Minutes
-          <Input aria-label="Minutes" inputMode="numeric" value={minutes} onChange={(e) => {
-            setMinutes(e.target.value);
-            const n = Number(e.target.value);
-            if (Number.isInteger(n) && n >= 5 && n <= 180) pickQuick(n);
-          }} />
-          <span className="muted small">What your week is furthest behind on</span>
-        </label>
-      )}
       </>)}
     </section>
   );
