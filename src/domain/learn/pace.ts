@@ -1,5 +1,5 @@
 import { liftKey } from '../ids';
-import { doneAt } from '../stats';
+import { doneAt, learnable } from '../stats';
 import { inOrder } from './num';
 import type { SetEntry } from '../types';
 import { pool } from './pool';
@@ -54,6 +54,7 @@ function dayGaps(d: SetEntry[]): Gaps {
 }
 
 export function paceOf(entries: readonly SetEntry[]): Pace | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const days = new Map<string, SetEntry[]>();
   for (const e of entries) {
     if (!e.loggedAt || e.flags.includes('warmup')) continue;

@@ -4,7 +4,7 @@ import { settingsKey } from '../progression';
 import { judgeDay, offersOf, restsOf, timedWorking, type DayPace, type Gap, type GapModel, type Judged } from '../superset';
 import { restSeconds, SET_WORK } from '../timing';
 import type { SetEntry } from '../types';
-import { doneAt } from '../stats';
+import { doneAt, learnable } from '../stats';
 import { dayOf } from './capacity';
 import { logBefore } from './index';
 import { lnGamma } from './num';
@@ -420,6 +420,7 @@ const FITS: { today: string; facts: number; dis: string; log: readonly SetEntry[
  * date (state/notSuperset; never switches, and each counts against his rate).
  */
 export function gapModel(entries: readonly SetEntry[], today: string, dismissed: Readonly<Record<string, string[][]>> = {}): SwitchModel {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const log = logBefore(entries, today), facts = liftFactsVersion();
   const dis = JSON.stringify(Object.keys(dismissed).filter((d) => d < today && dismissed[d].length).sort().map((d) => [d, dismissed[d]]));
   for (const f of FITS) {

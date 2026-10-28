@@ -14,6 +14,7 @@ export function SetRowContent({ s, estRir, no = s.setNo, pr = false }: { s: SetE
       {s.rir != null ? <span className="tag">RIR {s.rir}</span>
         : estRir != null && <span className="tag est" title="Estimated">~{estRir} RIR</span>}
       {s.flags.filter((f) => f !== 'bodyweight' && f !== 'cardio').map((f) => <span key={f} className={`tag ${f}`}>{f === 'pain' && s.painRegion ? `pain · ${s.painRegion}${s.painSeverity ? ` · ${HOW_BAD[s.painSeverity]}` : ''}` : TAG[f] ?? f}</span>)}
+      {s.excluded && <span className="tag not-used" title="Kept as logged: nothing learns from it and it sets no record">not used for learning or records</span>}
       {s.tags?.map((t) => <span key={`#${t}`} className="tag own">{t}</span>)}
       {s.note && <span className="note">{s.note}</span>}
     </>

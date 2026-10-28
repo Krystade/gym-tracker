@@ -90,6 +90,7 @@ export const lastSession = (entries: SetEntry[], exercise: string, beforeDate: s
 export interface SeriesPoint { date: string; e1rm: number; pr: boolean }
 
 export function e1rmSeries(entries: SetEntry[], exercise: string): SeriesPoint[] {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const out: SeriesPoint[] = [];
   let top = -Infinity;
   for (const x of [...sessionsFor(entries, exercise)].reverse()) {
@@ -129,3 +130,10 @@ export function dayOrder(entries: SetEntry[], date: string): string[] {
   }
   return out;
 }
+
+/**
+ * The log as every learner and record reads it: without the sets marked not used (SetEntry.excluded), which stay in History.
+ * The same array when none are, and one array per log, so what is learned from it stays cached.
+ */
+export const learnable: <T extends readonly SetEntry[]>(entries: T) => T = perLog((entries) =>
+  (entries.some((e) => e.excluded) ? entries.filter((e) => !e.excluded) : entries)) as <T extends readonly SetEntry[]>(entries: T) => T;

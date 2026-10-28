@@ -1,7 +1,7 @@
 import { isHoldLift } from './care';
 import { fmtClock } from './cardio';
 import { fmtWeight } from './format';
-import { byOrderDone, e1rm, liftIndex, liftSets } from './stats';
+import { byOrderDone, e1rm, liftIndex, liftSets, learnable } from './stats';
 import type { SetEntry } from './types';
 import { addedLoad, bodyShare } from './learn/bodyweight';
 
@@ -104,6 +104,7 @@ function scan(lift: readonly SetEntry[]): Scan {
 
 /** Every set that broke a record when it was done, with the records it broke. `lifts`: only these lifts (by key). */
 export function prKinds(entries: SetEntry[], lifts?: ReadonlySet<string>): Map<string, RecordKind[]> {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const out = new Map<string, RecordKind[]>();
   for (const [k, lift] of liftIndex(entries)) if (!lifts || lifts.has(k)) for (const [id, kinds] of scan(lift).broke) out.set(id, kinds);
   return out;
@@ -114,7 +115,7 @@ export const prIds = (entries: SetEntry[]): Set<string> => new Set(prKinds(entri
 
 /** What a lift holds now, by kind. */
 export const records = (entries: SetEntry[], exercise: string): Map<RecordKind, Held> =>
-  scan(liftSets(entries, exercise)).held;
+  scan(liftSets(learnable(entries), exercise)).held;
 
 const trim = (n: number) => String(Math.round(n * 100) / 100);
 const lb = (n: number) => `${fmtWeight(n)} lb`;
@@ -157,6 +158,7 @@ const RANK: RecordKind[] = ['e1rm', 'heaviest', ...REP_MAXES.map((n) => `rm${n}`
 
 /** The banner for a set just saved ("PR! Best e1RM: 209 lb"), or null. `entries` may or may not include it yet. */
 export function prToast(entries: SetEntry[], set: SetEntry): string | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const lift = liftSets(entries, set.exercise).filter((e) => e.id !== set.id);
   const { broke, tally } = scan([...lift, set]);
   const kind = RANK.find((k) => broke.get(set.id)?.includes(k));

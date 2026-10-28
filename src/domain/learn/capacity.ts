@@ -3,7 +3,7 @@ import { isHold } from '../care';
 import { liftKey } from '../ids';
 import { liftFactsVersion, resolveLift } from '../lifts';
 import type { Vector } from '../muscles';
-import { byOrderDone, doneAt } from '../stats';
+import { byOrderDone, doneAt, learnable } from '../stats';
 import type { SetEntry } from '../types';
 import { addedLoad, bodyShare } from './bodyweight';
 import { inOrder, inv3, truncBelow } from './num';
@@ -492,6 +492,7 @@ interface Steps { dd: Float64Array; lay: Float64Array }
  * `light: false` (tests only) reads ramp and back-off sets by the habit, as stage 1 did.
  */
 export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean; learnBias?: boolean; light?: boolean } = {}): Core {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const censor = opts.censor ?? true, learnBias = opts.learnBias ?? true, lightBound = opts.light ?? true;
   // Days, in date order, each in the order done.
   const byDate = new Map<string, SetEntry[]>();

@@ -9,7 +9,7 @@ import { REACCLIMATION, runIndex } from './learn/trend';
 import { dayOf, MAX_REPS } from './learn/capacity';
 import { painRisk, zoneOf } from './learn/pain';
 import { painGate } from './painPlan';
-import { liftSets, type SeriesPoint } from './stats';
+import { liftSets, type SeriesPoint, learnable } from './stats';
 import type { SetEntry } from './types';
 import { isCardio } from './cardio';
 
@@ -45,24 +45,28 @@ export function weightForReps(f: Formula, oneRmLb: number, r: number): number {
  * level, with its uncertainty); null when the core has no level for it (a hold, bodyweight only, cardio, nothing logged).
  */
 export function strength(entries: readonly SetEntry[], exercise: string, date: string): Strength | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const core = coreBefore(entries, addDays(date, 1));
   return core && strengthOf(core, exercise, date);
 }
 
 /** Item 14: a bodyweight lift's level on `date`, in body mass, read as the reps it leaves fresh at bodyweight; null without one. */
 export function bodyStrength(entries: readonly SetEntry[], exercise: string, date: string): BodyStrength | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const core = coreBefore(entries, addDays(date, 1));
   return core && bodyStrengthOf(core, exercise, date);
 }
 
 /** Item 14: those fresh reps at bodyweight at each session up to `date`, oldest first, as chart points (the value in `e1rm`). */
 export function bodyRepsPoints(entries: readonly SetEntry[], exercise: string, date: string): SeriesPoint[] {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const core = coreBefore(entries, addDays(date, 1));
   return core ? bodyRepsSeries(core, exercise).map((p) => ({ date: p.date, e1rm: p.reps, pr: false })) : [];
 }
 
 /** The lift's level at each session up to `date`, oldest first, as chart points (no records: a level isn't a set); null without one. */
 export function strengthSeries(entries: readonly SetEntry[], exercise: string, date: string): SeriesPoint[] | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const core = coreBefore(entries, addDays(date, 1));
   const pts = core ? levelSeries(core, exercise) : [];
   return pts.length ? pts.map((p) => ({ date: p.date, e1rm: p.e1rm, pr: false })) : null;
@@ -73,6 +77,7 @@ export function strengthSeries(entries: readonly SetEntry[], exercise: string, d
  * habit, its session fatigue put back; test sets calibrate the RIR bias), not the best Epley reading of recent sets.
  */
 export function calibratedE1rm(entries: readonly SetEntry[], exercise: string, beforeDate = '9999-12-31'): number | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const core = coreBefore(entries, beforeDate);
   return core && (strengthOf(core, exercise, beforeDate)?.e1rm ?? null);
 }
@@ -99,6 +104,7 @@ export interface TestDue { weight: number; reps: number; u: number; after: numbe
 /** `st`: the lift's settings (a typed increment wins over the learned ladder); `target`: today's target, when known. */
 export function testDue(entries: readonly SetEntry[], exercise: string, today: string, st?: { increment: number },
   target?: { kind: string; weight: number | null } | null): TestDue | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   if (isCardio(exercise) || isHoldLift(exercise, entries)) return null;
   // (a) One failure set a day: sets to failure need longer recovery (Morán-Navarro 2017), so not two tests in a workout.
   if (entries.some((e) => e.date === today && e.flags.includes('test'))) return null;

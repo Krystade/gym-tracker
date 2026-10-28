@@ -3,7 +3,7 @@ import { isHold } from '../care';
 import { liftKey } from '../ids';
 import { liftFactsVersion, resolveLift } from '../lifts';
 import { MUSCLES, type Muscle, type Vector } from '../muscles';
-import { byOrderDone, doneAt } from '../stats';
+import { byOrderDone, doneAt, learnable } from '../stats';
 import type { SetEntry } from '../types';
 import { aheadVar, dayOf, KAPPA_PRIOR, READY, type Cell, type Core, type Est, type LiftCore } from './capacity';
 import { coreBefore } from './index';
@@ -396,6 +396,7 @@ const LN2PI = Math.log(2 * Math.PI);
  * as of the days before today (index.coreBefore): its readings learn, every set deposits. Pure: the same inputs give the same fit.
  */
 export function fitRecovery(entries: readonly SetEntry[], core: RecoveryCore, today: string, tz: string): RecoveryFit {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const todayN = dayOf(today);
   // Sessions in date order, each in the order done.
   const byDate = new Map<string, SetEntry[]>();
@@ -894,6 +895,7 @@ const FITS = new WeakMap<readonly SetEntry[], Map<string, RecoveryFit | null>>()
  * zone. Null when the core can't fit; never throws (a refinement, never a reason to fail a screen).
  */
 export function recoveryOf(entries: readonly SetEntry[], today: string, tz: string): RecoveryFit | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   let by = FITS.get(entries);
   if (!by) FITS.set(entries, by = new Map());
   const key = `${today}|${tz}`;

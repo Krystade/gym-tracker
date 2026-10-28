@@ -7,7 +7,7 @@ import { targetFor, type Profile } from './profile';
 import type { DayPlan, Program } from './program';
 import { isBarbellCompound, isWorking } from './progression';
 import { prKinds } from './records';
-import { daySets, e1rm, liftIndex, sameExercise } from './stats';
+import { daySets, e1rm, liftIndex, sameExercise, learnable } from './stats';
 import { fitTargets, setYield, weeklyBudget } from './targets';
 import type { SetEntry } from './types';
 import { addedLoad, bodyShare } from './learn/bodyweight';
@@ -228,6 +228,7 @@ function weightedSessions(sets: readonly SetEntry[], today: string): WSession[] 
 export const STRONGER_MIN = 6;
 /** A lift's change on its own start: the best e1RM in its last two weeks against its first two (feed e1rmChange's shape). */
 export function liftGains(entries: readonly SetEntry[], today: string): { lift: string; date: string; pct: number }[] {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const out: { lift: string; date: string; pct: number }[] = [];
   for (const [lift, sets] of byCatalog(entries)) {
     if (bodyShare(lift) != null) continue; // a bodyweight lift has no e1RM (records: item 14)

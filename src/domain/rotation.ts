@@ -18,7 +18,7 @@ import type { BodyDay } from './body';
 import { painShaped, spillOver } from './painPlan';
 import { isProgressionSet, isWorking, type ExerciseSettings } from './progression';
 import { renameInProgram } from './rename';
-import { e1rm, exerciseNames, sameExercise, sessionsFor } from './stats';
+import { e1rm, exerciseNames, sameExercise, sessionsFor, learnable } from './stats';
 import type { SetEntry } from './types';
 
 // Rotating a plateaued lift to another variation of the same movement (round 13). Six movement patterns, a few variations
@@ -101,6 +101,7 @@ export interface Stall { since: string; sessions: number; weeks: number; last: s
  * stopped short on purpose, it neither progressed nor stalled.
  */
 export function sinceProgress(entries: SetEntry[], exercise: string, today: string): { since: string; sessions: number; last: string } | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const ss = sessionsFor(entries, exercise).filter((x) => x.date <= today)
     .map((x) => ({ date: x.date, sets: x.sets.filter(isProgressionSet) })).filter((x) => x.sets.length && !x.sets.every(isLight)).reverse();
   if (!ss.length) return null;
@@ -124,6 +125,7 @@ export function sinceProgress(entries: SetEntry[], exercise: string, today: stri
  * (learn/capacity) and a held session as the reading it is.
  */
 export function stall(entries: SetEntry[], exercise: string, today: string): Stall | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   if (isHoldLift(exercise, entries) || isCardio(exercise)) return null;
   const run = sinceProgress(entries, exercise, today);
   if (!run || days(run.last, today) > STALE_DAYS) return null;
@@ -157,6 +159,7 @@ export const sore = (entries: SetEntry[], n: string, today: string): boolean =>
  * those trained longest ago, never trained first. So it goes A → B → C and back to A.
  */
 export function nextVariation(entries: SetEntry[], lift: string, today: string, ctx: RotationContext = {}): string | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const pattern = patternOf(lift);
   if (!pattern) return null;
   const ok = ctx.available ? new Set([...ctx.available].map(key)) : null;
@@ -193,6 +196,7 @@ export function nextVariation(entries: SetEntry[], lift: string, today: string, 
 export interface Rotation { from: string; to: string; pattern: Pattern; muscle: Muscle | null; bias: Muscle[]; sameMuscle: boolean; sameBias: boolean; stall: Stall }
 
 export function rotation(entries: SetEntry[], lift: string, today: string, ctx: RotationContext = {}): Rotation | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const pattern = patternOf(lift);
   if (!pattern) return null;
   const s = stall(entries, lift, today);
@@ -280,6 +284,7 @@ function catalogSpread(core: Core): number {
  * learned ladder (a typed increment wins). Null when there's no ratio, or the new lift was trained lately.
  */
 export function carryOver(entries: SetEntry[], from: string, to: string, today: string, st: ExerciseSettings): Carry | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   // A bodyweight lift's load is its share of his body plus what's added (item 14): without his body weight there's no lb to aim at.
   if (bodyShare(to) != null) return null;
   const core = coreBefore(entries, addDays(today, 1));

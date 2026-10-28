@@ -1,3 +1,4 @@
+import { learnable } from '../stats';
 import { addDays } from '../analytics';
 import type { BodyDay } from '../body';
 import { likelyRegion } from '../care';
@@ -62,6 +63,7 @@ const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b), n = 
 
 /** The light week on `today`: from his tap (`tapped`), else from the log's latest run of light sets; null when none is on. */
 export function lightWeek(entries: readonly SetEntry[], today: string, tapped?: { from: string; end?: string } | null): { from: string; to: string } | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   let last = '';
   for (const e of entries) if (isLight(e) && e.date <= today && e.date > last) last = e.date;
   let first = last;
@@ -133,6 +135,7 @@ const SCALES = new WeakMap<Core, Map<string, number>>();
  * prior with the weight of SHIFT_PRIOR.k stretches.
  */
 export function scaleOf(core: Core, entries: readonly SetEntry[], before: string): number {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   let byDate = SCALES.get(core);
   if (!byDate) SCALES.set(core, byDate = new Map());
   const hit = byDate.get(before);
@@ -193,6 +196,7 @@ export function energyOf(body: readonly BodyDay[], window: string, today: string
  */
 const LAST = new WeakMap<readonly SetEntry[], { body: readonly BodyDay[]; key: string; out: Systemic | null }>();
 export function systemic(entries: readonly SetEntry[], body: readonly BodyDay[], today: string, tapped?: { from: string; end?: string } | null): Systemic | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   // Asked once per lift card on a render: the same log, energy, day and tap give the same answer.
   const key = `${today}|${tapped?.from ?? ''}|${tapped?.end ?? ''}`;
   const hit = LAST.get(entries);

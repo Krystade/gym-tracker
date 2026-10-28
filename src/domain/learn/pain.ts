@@ -2,7 +2,7 @@ import { addDays } from '../analytics';
 import { isCardio, isCardioEntry } from '../cardio';
 import { likelyRegion } from '../care';
 import { liftKey } from '../ids';
-import { byOrderDone, perLog } from '../stats';
+import { byOrderDone, perLog, learnable } from '../stats';
 import type { SetEntry } from '../types';
 import { dayOf } from './capacity';
 import { logBefore } from './index';
@@ -140,6 +140,7 @@ export interface PainFit {
 
 /** The fit (see the header). Pure: the same log gives the same result. `upTo`: as eventsOf (a day number, dayOf). */
 export function fitPain(entries: readonly SetEntry[], upTo = Infinity): PainFit {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const { ev, keys, regions } = eventsOf(entries, upTo);
   const S = ev.length, L = keys.length, R = regions.length;
   // The person's rate before each session, and its log score alone (the flat baseline).
@@ -251,13 +252,14 @@ export function fitPain(entries: readonly SetEntry[], upTo = Infinity): PainFit 
 }
 
 /** The fit, once per log array. */
-export const painFit: (entries: readonly SetEntry[]) => PainFit = perLog(fitPain);
+export const painFit: (entries: readonly SetEntry[]) => PainFit = perLog((entries) => fitPain(learnable(entries)));
 
 /**
  * The risk for a lift's session on `date`, from everything logged up to now on that day: earlier lifts today count (an elbow
  * that hurt on the first lift raises the next elbow lift's risk), later days don't.
  */
 export function painRisk(entries: readonly SetEntry[], exercise: string, date: string): PainRisk {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const log = logBefore(entries, addDays(date, 1));
   // A morning answer counts from its morning on: with none in the log, every day's fit is the one fit.
   if (!answered(log)) return painFit(log).risk(exercise, date);

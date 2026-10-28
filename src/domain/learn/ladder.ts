@@ -1,5 +1,5 @@
 import { liftKey } from '../ids';
-import { liftSets, perLog } from '../stats';
+import { liftSets, perLog, learnable } from '../stats';
 import type { SetEntry } from '../types';
 import { tagsOf, type Implement } from './tags';
 import { addedLoad, bodyShare } from './bodyweight';
@@ -115,6 +115,7 @@ const total = (c: ArrayLike<number>) => { let n = 0; for (let r = 0; r < NR; r++
  * (item 14): the ladder of the help on a bodyweight lift (lb of help, positive), from the help he has logged on it.
  */
 export function ladderOf(entries: readonly SetEntry[], exercise: string, gym = gymOf(entries, exercise), assist = false): Ladder | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   if (assist && bodyShare(exercise) == null) return null; // help is only read on a lift whose load is the body
   const imp = tagsOf(exercise).imp;
   const name = assist ? null : (imp && SHARED[imp]) ?? null;

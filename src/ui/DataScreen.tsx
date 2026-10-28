@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { ProfileStore } from '../state/useProfile';
 import type { ProgramStore } from '../state/useProgram';
@@ -15,6 +15,8 @@ import { Icon } from './icons';
 import { goalLabel } from './PrioritiesScreen';
 import type { MoreAt } from './MoreScreens';
 import { isOwner } from '../cloud/owner';
+import { useProfileId } from '../state/profileDb';
+import { perSideOffered } from './PerSideReview';
 
 /**
  * The More tab (IA plan A3, owner 2026-10-21): rows in four groups, each opening its screen, so the whole tab is one screen.
@@ -31,9 +33,16 @@ export function DataScreen({ store, profile, programs, gyms, photos, cloud, peop
   const cycle = useCycle();
   const p = programs.program, goal = profile.profile.weeklyGoal;
   const shots = photos.metas.length;
+  const profileId = useProfileId();
+  const perSide = useMemo(() => perSideOffered(store.entries, profileId), [store.entries, profileId]);
   return (
     <>
       <h1>More</h1>
+      {perSide && (
+        <Group name="To review">
+          <Row name="Bar sets logged per side" sub="Old bar sets to turn into totals · once" onClick={() => onOpen('perside')} />
+        </Group>
+      )}
       <Group name="Training setup">
         <Row name="Program" sub={p ? `${plural(p.days.length, 'day')}${p.days.length <= 3 ? ` · ${p.days.map((d) => d.name).join(', ')}` : ''}` : 'Not built yet'} onClick={onOpenProgram} />
         <Row name="Weekly goal" sub="Drives the week plan, rings and Compare" note={plural(goal, 'session')} onClick={() => onOpen('goal')} />

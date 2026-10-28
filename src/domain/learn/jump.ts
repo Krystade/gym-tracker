@@ -1,5 +1,5 @@
 import { liftKey } from '../ids';
-import { exerciseNames, perLog, sessionsFor } from '../stats';
+import { exerciseNames, perLog, sessionsFor, learnable } from '../stats';
 import type { SetEntry } from '../types';
 import { fatigueOf, type Core } from './capacity';
 import { truncBelow } from './num';
@@ -42,6 +42,7 @@ const days = (a: string, b: string) => (Date.parse(b) - Date.parse(a)) / 864e5;
 
 /** Every qualifying increase in the log, oldest first, fatigue-adjusted with `core` when it scores both sets. */
 export function jumpsOf(entries: readonly SetEntry[], core: Core | null): Jump[] {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const out: Jump[] = [];
   const delta = (e: SetEntry) => { const f = core?.features.get(e.id); return f ? fatigueOf(core!, liftKey(e.exercise), f) : 0; };
   for (const name of exerciseNames(entries as SetEntry[])) {
@@ -94,7 +95,8 @@ export function dropsFrom(jumps: readonly Jump[]): ((exercise: string) => Drop) 
 /** The learned drop for each lift of this log (core: the learning core's fit of the same log, for the fatigue adjustment). */
 export const dropsOf: (entries: readonly SetEntry[], core: Core | null) => ((exercise: string) => Drop) | null = (() => {
   const by = perLog(() => ({ core: null as Core | null, v: undefined as ReturnType<typeof dropsFrom> | undefined }));
-  return (entries, core) => {
+  return (log, core) => {
+    const entries = learnable(log); // the log without sets marked not used (stats.learnable)
     const hit = by(entries);
     if (hit.v === undefined || hit.core !== core) { hit.v = dropsFrom(jumpsOf(entries, core)); hit.core = core; }
     return hit.v;

@@ -166,7 +166,7 @@ describe('the next-morning check in the CSV (item 08)', () => {
   const sore = mk(1, { flags: ['pain'], painRegion: 'elbow', painSeverity: 2, morning: 'sore', morningNote: 'stiff, "worse" lifting a kettle, then fine' });
   it('round-trips the answer and its note; a set without one has none', () => {
     const text = toCsv([sore, mk(2)]);
-    expect(text.split('\r\n')[0].split(',').slice(-2)).toEqual(['morning', 'morning_note']);
+    expect(text.split('\r\n')[0].split(',').slice(-3, -1)).toEqual(['morning', 'morning_note']);
     const { entries: back, errors } = parseCsv(text);
     expect(errors).toEqual([]);
     expect(back[0]).toMatchObject({ morning: 'sore', morningNote: sore.morningNote });
@@ -185,5 +185,20 @@ describe('the next-morning check in the CSV (item 08)', () => {
   });
   it('an answer given since a backup is a change to that set, so a restore shows it', () => {
     expect(diffSets([mk(1, { flags: ['pain'] })], [mk(1, { flags: ['pain'], morning: 'settled' })]).changed).toHaveLength(1);
+  });
+});
+
+describe('a set marked not used for learning or records, in the CSV', () => {
+  it('round-trips the mark; a set without it has none', () => {
+    const text = toCsv([mk(1, { excluded: true }), mk(2)]);
+    expect(text.split('\r\n')[0].split(',').at(-1)).toBe('not_used');
+    const { entries: back, errors } = parseCsv(text);
+    expect(errors).toEqual([]);
+    expect(back[0].excluded).toBe(true);
+    expect(back[1]).not.toHaveProperty('excluded');
+  });
+  it('a file from before it reads as none marked; the mark differs from the set unmarked', () => {
+    expect(parseCsv('date,exercise,set,weight_lb,reps\n2026-01-05,Smith Squat,1,100,10\n').entries[0]).not.toHaveProperty('excluded');
+    expect(diffSets([mk(1)], [mk(1, { excluded: true })]).changed).toHaveLength(1);
   });
 });

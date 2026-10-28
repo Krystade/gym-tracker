@@ -725,6 +725,25 @@ details.builder[open] > summary { margin-bottom: 8px; }
 .dupes-steps { list-style: none; padding: 8px 0 0; margin: 0; border-top: 1px solid var(--line); }
 .dupes-steps li > .muted { display: block; margin-top: 4px; }
 .dupes-done { margin-bottom: 4px; }
+/* More → Bar sets logged per side (PerSideReview). */
+.perside > p { margin: 0 0 8px; }
+.perside h3 { margin: 14px 0 4px; font-size: var(--fs-md); display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.perside h3 .small { white-space: nowrap; }
+.perside-list { list-style: none; padding: 0; margin: 0 0 8px; }
+.perside-list li { padding: 8px 0; overflow-wrap: anywhere; }
+.perside-list li + li { border-top: 1px solid var(--line); }
+.perside-list label { display: grid; grid-template-columns: 24px 1fr; gap: 10px; align-items: start; min-height: 44px; cursor: pointer; }
+.perside-list input[type=checkbox] { width: 22px; height: 22px; margin: 1px 0 0; accent-color: var(--accent); }
+.perside-list label > span, .perside-list li > span { display: grid; gap: 2px; }
+.perside-was { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.perside-now { font-weight: 600; font-variant-numeric: tabular-nums; }
+.perside-more { border-top: 1px solid var(--line); }
+.perside-more > summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-weight: 600; }
+.perside-more > summary::-webkit-details-marker { display: none; }
+.perside-more > summary::after { content: '›'; font-size: var(--fs-xl); color: var(--text-3); transition: transform 0.15s; }
+.perside-more[open] > summary::after { transform: rotate(90deg); }
+.perside > .wide { margin-top: 8px; }
+.tag.not-used { color: var(--text-3); }
 
 /* Paste from notes */
 .paste-label { display: grid; gap: 6px; font-size: var(--fs-sm); color: var(--muted); }

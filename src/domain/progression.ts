@@ -1,6 +1,6 @@
 import { liftKey } from './ids';
 import { resolveLift } from './lifts';
-import { e1rm, estimateWeightForReps, sessionsFor } from './stats';
+import { e1rm, estimateWeightForReps, sessionsFor, learnable } from './stats';
 import type { SetEntry } from './types';
 import { isHold, isHoldLift } from './care';
 import { coreBefore, logBefore } from './learn';
@@ -78,6 +78,7 @@ export const isWorking = (s: SetEntry): boolean => !s.flags.includes('warmup') &
 const lightSession = (sets: SetEntry[]): boolean => { const w = sets.filter(isWorking); return w.length > 0 && w.every(isLight); };
 
 export function priorE1rm(entries: SetEntry[], exercise: string, beforeDate: string): number | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   // A light week's sets (item 06) are stopped short on purpose: not a reading of the recent best.
   const vals = sessionsFor(entries, exercise).filter((x) => x.date < beforeDate && !lightSession(x.sets)).slice(0, 3)
     .flatMap((x) => x.sets.map(e1rm)).filter((v): v is number => v != null);
@@ -107,6 +108,7 @@ const isFirstAtWeight = (set: SetEntry, sessionSets: SetEntry[]) =>
  * One pass, oldest session first, carrying the last three sessions' best e1RM as the prior.
  */
 export function rirOffset(entries: SetEntry[], exercise: string): number {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const window: (number | null)[] = [];
   const diffs: number[] = [];
   for (const session of [...sessionsFor(entries, exercise)].reverse()) {
@@ -227,6 +229,7 @@ const DEFAULT_INCREMENT = 5;
  * (learn/jump, fatigue-adjusted by the learning core). Null parts: nothing to learn from yet, so today's rules stand.
  */
 export function learnedFor(log: readonly SetEntry[], exercise: string, date: string): { ladder: Ladder | null; drop: Drop | null } {
+  log = learnable(log); // the log without sets marked not used (stats.learnable)
   // Only what was done before the day: a target doesn't move under you while you train.
   const entries = logBefore(log, date);
   return { ladder: ladderOf(entries, exercise), drop: dropsOf(entries, coreBefore(log, date))?.(exercise) ?? null };
@@ -303,6 +306,7 @@ export const isTraining = (s: SetEntry): boolean => isWorking(s) && !isTest(s);
  * progressed from: the first target after it is the one before it.
  */
 export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned?: number | null, light = false): Target | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const t = baseTarget(entries, exercise, st, date, planned);
   return light && t ? lighten(t, entries, exercise, st, date, planned) : t;
 }

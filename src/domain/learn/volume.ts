@@ -1,3 +1,4 @@
+import { learnable } from '../stats';
 import { addDays, SESSION_CAP, weekStart, weeklyMuscleSets } from '../analytics';
 import type { BodyDay } from '../body';
 import { isCardioEntry } from '../cardio';
@@ -86,6 +87,7 @@ export interface VolumeAdvice {
 
 /** Of the last BASE_WEEKS whole weeks before `today`'s, those that count: a lifting session in it and no light set. */
 export function countedWeeks(entries: readonly SetEntry[], today: string): string[] {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const now = weekStart(today), first = addDays(now, -7 * BASE_WEEKS);
   const lifted = new Set<string>(), light = new Set<string>();
   for (const e of entries) {
@@ -104,6 +106,7 @@ const npdf = (x: number, v: number) => Math.exp(-0.5 * x * x / v) / Math.sqrt(2 
  * `body` his energy, `tapped` a light week he started on this phone. Null with no training before today.
  */
 export function volumeAdvice(entries: readonly SetEntry[], body: readonly BodyDay[], profile: Profile, today: string, tapped?: { from: string; end?: string } | null): VolumeAdvice | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const s = systemic(entries, body, today, tapped);
   if (!s) return null;
   const weeks = countedWeeks(entries, today);

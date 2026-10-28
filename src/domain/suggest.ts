@@ -1,7 +1,7 @@
 import { isHold, isHoldLift } from './care';
 import { defaultSettings, isTest, isWorking, nextTarget, rangePart, type ExerciseSettings, type Target, type TargetPart } from './progression';
 import type { DayPlan, Program } from './program';
-import { daySets, sameExercise, sessionsFor } from './stats';
+import { daySets, sameExercise, sessionsFor, learnable } from './stats';
 import type { SetEntry } from './types';
 import { addDays } from './analytics';
 import { coreBefore, decay } from './learn';
@@ -63,6 +63,7 @@ const warmAlready = (entries: SetEntry[], exercise: string, date: string) =>
  * `light`: a light week is on (item 06): its target, and its sets (half).
  */
 export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null, light = false): Suggestion {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const t = nextTarget(entries, exercise, st, date, planned, light);
   // Sets as in the last session of working sets: a test counts toward the weight, not the set count.
   const training = (e: SetEntry) => isWorking(e) && !isTest(e);
@@ -107,6 +108,7 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
  * once it has working sets today, the session after — today counts as the last session.
  */
 export function nextTime(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null, light = false): { s: Suggestion; trainedToday: boolean } {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const trainedToday = daySets(entries, date).some((e) => sameExercise(e.exercise, exercise) && isWorking(e));
   return trainedToday ? { s: suggest(entries, exercise, st, addDays(date, 1), null, light), trainedToday } : { s: suggest(entries, exercise, st, date, planned, light), trainedToday };
 }
@@ -121,6 +123,7 @@ export const warmupCount = (entries: SetEntry[], exercise: string, date: string)
  * j = 1..n − 1, so the step between them is A·K(n·g). Null until the lift has a within-session contrast of its own.
  */
 export function setDrop(entries: readonly SetEntry[], exercise: string, date: string, n: number): number | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const core = coreBefore(entries, date);
   const l = core?.lifts.get(liftKey(exercise));
   if (!core || !l?.aSameOwn || n < 1) return null;
@@ -136,6 +139,7 @@ export interface NextSet { weight: number; reps: number; extra: boolean; learned
  * the order done. A test is strength, not a set to aim from, and not one of the sets planned. Null before a training set.
  */
 export function nextSet(entries: readonly SetEntry[], exercise: string, date: string, s: Suggestion, done: readonly SetEntry[]): NextSet | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const working = done.filter(isWorking), training = working.filter((x) => !isTest(x));
   const last = training.findLast((x) => x.loggedAt) ?? training.at(-1);
   if (!last || last.reps == null) return null;

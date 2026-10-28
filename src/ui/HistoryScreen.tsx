@@ -189,6 +189,7 @@ const Day = memo(function Day({ s, open, today, prs, supersetsOn, onOpen, onMenu
               {warm > 0 && `${working.length ? ' + ' : ''}${plural(warm, 'warm-up')}`}
             </span>
             {sets.filter((x) => x.note).map((x) => <span key={x.id} className="muted">“{x.note}”</span>)}
+            {sets.some((x) => x.excluded) && <span className="muted small">{sets.every((x) => x.excluded) ? 'Not' : 'Some sets not'} used for learning or records</span>}
           </button>
           );
         })}

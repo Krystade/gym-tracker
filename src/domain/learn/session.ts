@@ -2,7 +2,7 @@ import { isCardio, isCardioEntry } from '../cardio';
 import { liftKey } from '../ids';
 import { liftFactsVersion } from '../lifts';
 import { isWorking, settingsKey } from '../progression';
-import { byOrderDone, doneAt, perLog, sameExercise } from '../stats';
+import { byOrderDone, doneAt, perLog, sameExercise, learnable } from '../stats';
 import { supersets, type GapModel, type Superset } from '../superset';
 import { isIsolation, planSeconds, REST_MAX_S, SET_WORK, stepsLeft, stepsOf, type KneeAt, type PlanSlot, type Step } from '../timing';
 import type { SetEntry } from '../types';
@@ -529,13 +529,14 @@ function forecast(live: readonly { m: Member; w: number }[], steps: readonly Ste
 }
 
 /** His pace as learned from a log (once per log array): null under MIN_DAYS timed days or PERSON_MIN gaps. */
-export const paceFit: (entries: readonly SetEntry[]) => PaceFit | null = perLog(fit);
+export const paceFit: (entries: readonly SetEntry[]) => PaceFit | null = perLog((entries) => fit(learnable(entries)));
 /**
  * His pace as of the days before `date`: a forecast doesn't learn from the session it forecasts (today moves it as a day
  * effect). A set logged today makes a new log, but the days before are the same sets: the last fit is kept for them.
  */
 let LAST: { date: string; log: readonly SetEntry[]; facts: number; fit: PaceFit | null } | null = null;
 export function paceBefore(entries: readonly SetEntry[], date: string): PaceFit | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const log = logBefore(entries, date), facts = liftFactsVersion();
   if (LAST && LAST.date === date && LAST.facts === facts && LAST.log.length === log.length) {
     let same = true;
@@ -580,7 +581,7 @@ const quietOf = perLog((log): Quiet | null => {
   return { seconds: Math.max(REST_MAX_S + SET_WORK, Math.exp(q(0.75) + FENCE * (q(0.75) - q(0.25)))), gaps: n, days };
 });
 /** How long a session on `date` may go quiet before it closes (see Quiet), as of the days before it; null: it never closes by itself. */
-export const quietAfter = (entries: readonly SetEntry[], date: string): Quiet | null => quietOf(logBefore(entries, date));
+export const quietAfter = (entries: readonly SetEntry[], date: string): Quiet | null => quietOf(logBefore(learnable(entries), date));
 
 /**
  * How a plan built to minutes (Quick, Suggested today, a program by minutes) is sized (owner, 2026-10-20: "a 45-min plan takes
@@ -590,6 +591,7 @@ export const quietAfter = (entries: readonly SetEntry[], date: string): Quiet | 
  */
 export interface Sizing { by: 'pace' | 'plan'; seconds: (slots: readonly PlanSlot[]) => number }
 export function sizing(entries: readonly SetEntry[], date: string, o: { warmups?: (ex: string) => number; kept?: (ex: string) => number | undefined; knee?: KneeAt } = {}): Sizing {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const fit = paceBefore(entries, date);
   const warmups = o.warmups ?? (() => 0);
   if (fit) return { by: 'pace', seconds: (slots) => (slots.length ? fit.forecast(stepsOf(slots, warmups), { date }).seconds : 0) };
@@ -617,6 +619,7 @@ export interface Lengths {
  */
 export function sessionLengths(entries: readonly SetEntry[], date: string, slots: readonly PlanSlot[],
   o: { warmups?: (ex: string) => number; kept?: (ex: string) => number | undefined; fresh?: boolean; delta?: number } = {}): Lengths {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const fit = paceBefore(entries, date);
   const warmups = o.warmups ?? (() => 0);
   const all = stepsOf(slots, warmups);

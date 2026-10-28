@@ -1,7 +1,7 @@
 import { isCardio, isCardioEntry } from '../cardio';
 import { liftKey } from '../ids';
 import { liftFactsVersion, resolveLift } from '../lifts';
-import { byOrderDone, doneAt } from '../stats';
+import { byOrderDone, doneAt, learnable } from '../stats';
 import { planSeconds, REST_MAX_S, REST_MIN_S, REST_STEP, SET_WORK, stepsOf, type KneeAt, type KneeRest, type PlanSlot, type Prior } from '../timing';
 import type { SetEntry } from '../types';
 import { aheadVar, dayOf, RHOS, TAUS, type Core } from './capacity';
@@ -198,6 +198,7 @@ export function kneeFrom(core: Core, exercise: string, prior: readonly Prior[], 
  */
 let LAST: { date: string; log: readonly SetEntry[]; facts: number; core: Core | null } | null = null;
 export function coreFor(entries: readonly SetEntry[], date: string): Core | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const log = logBefore(entries, date), facts = liftFactsVersion();
   if (LAST && LAST.date === date && LAST.facts === facts && LAST.log.length === log.length) {
     let same = true;
@@ -217,6 +218,7 @@ const hard = (e: SetEntry) => !e.flags.includes('warmup') && !e.flags.includes('
  * he trains), and the day's timed hard sets up to it as the session so far. `delta`: the day's (restDelta). Null as kneeFrom.
  */
 export function kneeAfter(entries: readonly SetEntry[], set: SetEntry, delta = DELTA): KneeRest | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   if (!hard(set)) return null;
   const core = coreFor(entries, set.date);
   if (!core) return null;
@@ -231,6 +233,7 @@ export function kneeAfter(entries: readonly SetEntry[], set: SetEntry, delta = D
  * lift whose knee is in use, else null (the research default). Whether a lift's is in use is judged once, on its first set's rest.
  */
 export function kneePlan(entries: readonly SetEntry[], date: string, delta = DELTA): KneeAt | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const core = coreFor(entries, date);
   if (!core || !core.rest.sets || !core.rest.gaps) return null;
   const m = modelOf(core);
@@ -254,6 +257,7 @@ export function kneePlan(entries: readonly SetEntry[], date: string, delta = DEL
  */
 export function restDelta(entries: readonly SetEntry[], date: string, slots: readonly PlanSlot[], minutes: number,
   o: { warmups?: (ex: string) => number; kept?: (ex: string) => number | undefined; overhead?: number } = {}): number {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   if (!kneePlan(entries, date)) return DELTA;
   const steps = stepsOf(slots, o.warmups);
   const len = (delta: number) => planSeconds(steps, { kept: o.kept, overhead: o.overhead, knee: kneePlan(entries, date, delta) ?? undefined });

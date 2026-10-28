@@ -53,4 +53,9 @@ export interface SetEntry {
   cardio?: CardioData;
   /** The person's own tags (see domain/tags): plain labels, shown with the set; nothing counts them. */
   tags?: string[];
+  /**
+   * Not used for learning or records (More → Bar sets logged per side: an old machine's sets whose bar weight isn't known):
+   * kept as logged and shown in History, marked; every learner and record reads the log without it (stats.learnable).
+   */
+  excluded?: true;
 }

@@ -9,7 +9,7 @@ import { MUSCLES, type Muscle } from './muscles';
 import { nextDay, type DayPlan, type Program } from './program';
 import { isWorking } from './progression';
 import { liftKey } from './ids';
-import { e1rm, liftSets } from './stats';
+import { e1rm, liftSets, learnable } from './stats';
 import { familyOf } from './statsTiles';
 import { restSeconds, type RestFrom } from './timing';
 import type { SetEntry } from './types';
@@ -65,6 +65,7 @@ export function relativeStrength(lifts: readonly { name: string; points: readonl
 export interface MuscleWeeks { weeks: string[]; sets: Record<Muscle, number[]> }
 /** Fractional sets per muscle each Monday-to-Sunday week from `from`'s week to `to`'s (the last the week under way), as the Muscles tile counts them. */
 export function muscleWeeks(entries: readonly SetEntry[], from: string, to: string): MuscleWeeks {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const weeks: string[] = [];
   for (let w = weekStart(from); w <= weekStart(to); w = addDays(w, 7)) weeks.push(w);
   const sets = Object.fromEntries(MUSCLES.map((m) => [m, [] as number[]])) as Record<Muscle, number[]>;
@@ -94,6 +95,7 @@ export function muscleSpan(weeks: readonly string[], values: readonly number[], 
 
 /** (a) A lift's best set each session over the range by Epley's formula (Epley 1985: stats.e1rm), oldest first: the plain reading. */
 export function bestSetPoints(entries: readonly SetEntry[], name: string, from: string, to: string): { date: string; v: number }[] {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const best = new Map<string, number>();
   for (const e of liftSets(entries, name)) {
     if (e.date < from || e.date > to) continue;

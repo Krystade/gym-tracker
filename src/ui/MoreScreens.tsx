@@ -13,12 +13,14 @@ import { NotificationsCard } from './NotificationsCard';
 import { PeopleCard } from './PeopleCard';
 import { WeeklyGoal } from './PrioritiesScreen';
 import { BoardReview } from './BoardReview';
+import { PerSideReview } from './PerSideReview';
+import { useProfileId } from '../state/profileDb';
 
 // More's own screens (IA plan A3, owner 2026-10-21): each a row on More that opens it, with ‹ More back. The screens More opens
 // that open from elsewhere too (Program, Priorities, Gym, Photos, Characters, Paste) stay where they were, over the tab.
 
 /** `review`: the board's reports, the app's owner's alone (social S4). */
-export type MoreAt = 'goal' | 'cycle' | 'people' | 'account' | 'notifications' | 'backup' | 'review';
+export type MoreAt = 'goal' | 'cycle' | 'people' | 'account' | 'notifications' | 'backup' | 'review' | 'perside';
 
 /** Each screen's title, and the word a screen it opens (Paste, from Backup) names it by on its Back. */
 export const MORE_TITLE: Record<MoreAt, { title: string; back: string }> = {
@@ -29,6 +31,7 @@ export const MORE_TITLE: Record<MoreAt, { title: string; back: string }> = {
   notifications: { title: 'Notifications', back: 'Notifications' },
   backup: { title: 'Backup, import and export', back: 'Backup' },
   review: { title: 'Board review', back: 'Review' },
+  perside: { title: 'Bar sets logged per side', back: 'Per side' },
 };
 
 export function MoreSubScreen({ at, store, profile, rawProfile, body, sync, cloud, people, person, today, onBack, onOpen, onOpenPaste, onOpenFriends }: {
@@ -36,6 +39,7 @@ export function MoreSubScreen({ at, store, profile, rawProfile, body, sync, clou
   people: PeopleStore; person: Person; today: string;
   onBack: () => void; /** Another of More's screens (Notifications' Sign in: Account). */ onOpen: (m: MoreAt) => void; onOpenPaste: () => void; onOpenFriends: () => void;
 }) {
+  const profileId = useProfileId();
   return (
     <>
       <button className="back" onClick={onBack}>‹ More</button>
@@ -44,6 +48,7 @@ export function MoreSubScreen({ at, store, profile, rawProfile, body, sync, clou
         : at === 'cycle' ? <CycleCard name={person.name} />
         : at === 'people' ? <PeopleCard people={people} />
         : at === 'account' ? <AccountScreen cloud={cloud} people={people.people} store={store} body={body} onOpenFriends={onOpenFriends} />
+        : at === 'perside' ? <PerSideReview store={store} profile={profileId} onBack={onBack} />
         : at === 'review' ? (cloud.link && cloud.mine ? <BoardReview uid={cloud.link.uid} /> : <p className="muted">Sign in as the app’s owner to review the board.</p>)
         : at === 'notifications' ? <NotificationsCard signedIn={cloud.mine} goal={rawProfile.profile.weeklyGoal} entries={store.entries} onSignIn={() => onOpen('account')} />
         : <BackupScreen store={store} profile={rawProfile} body={body} sync={sync} cloud={cloud} onOpenPaste={onOpenPaste} />}

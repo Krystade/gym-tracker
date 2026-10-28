@@ -4,7 +4,7 @@ import { isCardio, isCardioEntry } from '../cardio';
 import { resolveLift } from '../lifts';
 import type { Muscle } from '../muscles';
 import { cycleDone, nextDay, type DayPlan, type Program, type Slot } from '../program';
-import { perLog } from '../stats';
+import { perLog, learnable } from '../stats';
 import type { SetEntry } from '../types';
 import { aheadVar, READY, type Core, type Est } from './capacity';
 import { BREAK_DAYS, lightWeek, systemic, type Systemic } from './deload';
@@ -419,6 +419,7 @@ let LAST_FITS: { log: readonly SetEntry[]; body: readonly BodyDay[]; today: stri
 const sameRefs = (a: readonly SetEntry[], b: readonly SetEntry[]) => a === b || (a.length === b.length && a.every((x, i) => x === b[i]));
 
 export function readinessModel(entries: readonly SetEntry[], body: readonly BodyDay[], today: string, tz: string): ReadinessModel {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const log = logBefore(entries, today);
   // A set logged today makes a new log array with the same days before it: the fits are those of the last call (the store never
   // changes a set in place, so the same objects are the same sets).

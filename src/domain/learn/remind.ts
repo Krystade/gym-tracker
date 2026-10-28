@@ -1,5 +1,5 @@
 import { addDays, weekStart } from '../analytics';
-import { perLog } from '../stats';
+import { perLog, learnable } from '../stats';
 import type { SetEntry } from '../types';
 import { dayOf } from './capacity';
 import { betaCdf, normCdf, normPdf } from './num';
@@ -86,6 +86,7 @@ const weekday = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay();
 
 /** Each training date before `today` (sorted), and its first entry's minutes after local midnight, or null (see the header). */
 export function startsOf(entries: readonly SetEntry[], today: string, tz: string): { date: string; min: number | null }[] {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const first = new Map<string, { t: number; iso: string } | null>();
   for (const e of entries) {
     if (e.date >= today) continue;
@@ -371,6 +372,7 @@ const byLog = perLog(() => new Map<string, { date: string; min: number | null }[
 const FITS = new Map<string, ReminderFit>();
 /** The reminder fit as of `today` (dates before it), in zone `tz`. */
 export function fitReminder(entries: readonly SetEntry[], today: string, tz: string): ReminderFit {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const m = byLog(entries), k = `${today}|${tz}`;
   let starts = m.get(k);
   if (!starts) { if (m.size > 4) m.clear(); m.set(k, (starts = startsOf(entries, today, tz))); }

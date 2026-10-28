@@ -21,7 +21,7 @@ export type Replaced =
 const content = (s: SetEntry) => ({
   exercise: s.exercise, weight: s.weight, reps: s.reps, rir: s.rir, flags: [...s.flags].sort(), note: s.note || undefined,
   painRegion: s.painRegion, painSeverity: s.painSeverity, gym: s.gym, cardio: s.cardio, loggedAt: s.loggedAt ? Math.floor(Date.parse(s.loggedAt) / 60_000) : undefined,
-  tags: s.tags?.length ? [...s.tags].sort() : undefined, morning: s.morning, morningNote: s.morningNote || undefined,
+  tags: s.tags?.length ? [...s.tags].sort() : undefined, morning: s.morning, morningNote: s.morningNote || undefined, excluded: s.excluded,
 });
 export const sameSet = (a: SetEntry, b: SetEntry): boolean => metaHash(content(a)) === metaHash(content(b));
 

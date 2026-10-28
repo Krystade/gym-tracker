@@ -1,4 +1,5 @@
 import { derivedFlags } from './buildSet';
+import { BAR } from './plates';
 import { sameExercise, byOrderDone } from './stats';
 import type { SetEntry } from './types';
 
@@ -22,3 +23,10 @@ export function setWeight(day: readonly SetEntry[], ids: readonly string[], weig
   return day.filter((e) => picked.has(e.id) && !e.cardio && e.weight !== weight)
     .map((e) => ({ ...e, weight, flags: derivedFlags(e.flags, weight, e.reps) }));
 }
+
+/** Sets logged as the weight per side, as the bar's total (2 × side + bar: an empty bar logged as 0 is the bar), flags following. */
+export const toTotals = (sets: readonly SetEntry[], bar = BAR): SetEntry[] =>
+  sets.filter((e) => !e.cardio).map((e) => { const weight = 2 * e.weight + bar; return { ...e, weight, flags: derivedFlags(e.flags, weight, e.reps) }; });
+
+/** Sets kept as logged but not used for learning or records (SetEntry.excluded). Ones already marked left out. */
+export const markExcluded = (sets: readonly SetEntry[]): SetEntry[] => sets.filter((e) => !e.excluded).map((e) => ({ ...e, excluded: true as const }));
