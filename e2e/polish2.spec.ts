@@ -90,21 +90,21 @@ test('a hold’s progression settings are in seconds, and go past 50', async ({ 
   const card = page.getByRole('group', { name: 'Progression settings' });
   await expect(card.getByRole('textbox', { name: /reps/i })).toHaveCount(0);
   await card.getByRole('textbox', { name: 'Max seconds' }).fill('90');
-  await expect(card.getByRole('textbox', { name: 'Min seconds' })).toHaveValue('20');
+  await expect(card.getByRole('textbox', { name: 'Min seconds' })).toHaveValue('30');
   await expect(card.getByRole('textbox', { name: 'Add weight' })).toBeVisible();
   await card.getByRole('button', { name: 'Save settings' }).click();
   await expect(card.getByRole('button', { name: 'Saved' })).toBeVisible();
 });
 
-test('a hold held at the top of its range says to add weight or go harder, not “40 s+”', async ({ page }) => {
-  await seed(page, ['2026-10-01,Plank,,1,0,40,,hold,,sample', '2026-10-01,Plank,,2,0,40,,hold,,sample']);
+test('a hold held at the top of its range says to add weight or go harder, not “60 s+”', async ({ page }) => {
+  await seed(page, ['2026-10-01,Plank,,1,0,60,,hold,,sample', '2026-10-01,Plank,,2,0,60,,hold,,sample']);
   await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Plank/ }).click();
   const next = page.getByRole('region', { name: 'Next time' });
-  await expect(next.locator('.big')).toHaveText('2 × 40 s @ BW');
+  await expect(next.locator('.big')).toHaveText('2 × 60 s @ BW');
   await expect(next).toContainText('harder variation');
   await page.getByRole('button', { name: 'Log it today' }).click();
-  await expect(page.locator('[data-card="plank"]').getByLabel('Target')).toHaveText(/^2 × 40 s @ BW/);
+  await expect(page.locator('[data-card="plank"]').getByLabel('Target')).toHaveText(/^2 × 60 s @ BW/);
 });
 
 const marker = (s: ReturnType<Page['locator']>) => s.evaluate((el) => {

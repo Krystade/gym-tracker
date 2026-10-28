@@ -107,7 +107,7 @@ export const PR_GROUPS: readonly { id: PrGroup; label: string }[] = [
   { id: 'strength', label: 'Strength' }, { id: 'reps', label: 'Reps' }, { id: 'volume', label: 'Volume' }, { id: 'cardio', label: 'Cardio' },
 ];
 const GROUP_OF = (k: RecordKind): PrGroup => (k === 'e1rm' || k === 'heaviest' || k.startsWith('rm') ? 'strength'
-  : k === 'reps' || k === 'mostReps' || k === 'sessionReps' || k === 'hold' ? 'reps'
+  : k === 'reps' || k === 'mostReps' || k === 'sessionReps' || k === 'hold' || k === 'holdAt' ? 'reps'
   : k === 'setVolume' || k === 'sessionVolume' ? 'volume' : 'cardio');
 /** A PR set's group: the first of strength, reps, volume, cardio among the records it broke (a set counts once). */
 export function prGroup(kinds: readonly RecordKind[]): PrGroup {

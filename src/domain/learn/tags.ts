@@ -28,7 +28,7 @@ const MOVE_OF: Record<string, Move> = {};
 const set = (move: Move, phrases: string) => { for (const p of phrases.split(',')) MOVE_OF[p.trim()] = move; };
 set('calf', 'seated calf raise, calf raise, calf press, calf extension, calf');
 set('other', 'neck curl, neck extension, neck flexion, tibialis raise, tib raise, tibialis, neck, external rotation, internal rotation, cuban press');
-set('Squat', 'leg press, pendulum squat, hack squat, belt squat, bulgarian split squat, split squat, squat, lunge, stepup, sissy squat, wall sit');
+set('Squat', 'leg press, pendulum squat, hack squat, belt squat, bulgarian split squat, isometric split squat, split squat, spanish squat, squat, lunge, stepup, sissy squat, wall sit');
 set('extension', 'leg extension, knee extension, jm press, tate press, french press, triceps press, triceps extension, overhead extension, skullcrusher, pushdown, kickback, extension');
 set('curl', 'seated leg curl, lying leg curl, leg curl, hamstring curl, ham curl, nordic curl, nordic, glute ham raise, curl, wrist rotation, pronation, supination, finger curl, wrist curl, wrist extension, wrist roller');
 set('Hinge', 'stiff leg deadlift, romanian deadlift, deadlift, good morning, rack pull, back extension, hyperextension');
@@ -42,10 +42,11 @@ set('fly', 'svend press, reverse pec deck, rear delt fly, rear delt row, rear de
 set('pullover', 'pullover, straight arm pulldown, straight arm pullover, straight arm, lat prayer, pull in');
 set('raise', 'upright row, lateral raise, side raise, y raise, lu raise, deltoid raise, scaption, front delt raise, front raise, lateral');
 set('shrug', 'kelso shrug, middle back shrug, shoulder shrug, shrug');
-set('carry', 'farmer carry, farmer walk, farmer, suitcase carry, carry, dead hang, pinch, grip');
+set('carry', 'farmer carry, farmer walk, farmer hold, farmer, suitcase carry, carry, dead hang, active hang, towel hang, flexed arm hang, barbell hold, pinch, grip');
+set('Vertical press', 'handstand');
 set('Vertical pull', 'lat pulldown, pulldown, pullup, chinup, chin, archer pull');
 set('Horizontal pull', 'bench pull, landmine row, meadow row, seal row, inverted row, row');
-set('core', 'curl up, leg pull in, landmine rotation, side plank, plank, bird dog, dead bug, hollow, v up, supported leg raise, leg raise, knee raise, leg lift, flutter kick, jackknife, heel touch, heel toucher, elbow to knee, pike, cable lift, tuck, toetobar, ab wheel, rollout, side bend, russian twist, twist, woodchop, chop, pallof press, pallof, decline crunch, decline situp, crunch, situp, rotation, oblique, ab, abs, core');
+set('core', 'curl up, leg pull in, landmine rotation, side plank, reverse plank, plank, bear, l sit, v sit, superman, front lever, bird dog, dead bug, hollow, v up, supported leg raise, leg raise, knee raise, leg lift, flutter kick, jackknife, heel touch, heel toucher, elbow to knee, pike, cable lift, tuck, toetobar, ab wheel, rollout, side bend, russian twist, twist, woodchop, chop, pallof press, pallof, decline crunch, decline situp, crunch, situp, rotation, oblique, ab, abs, core');
 
 const BARS = new Set<Equipment>(['barbell', 'ez bar', 'trap bar', 'landmine']);
 const CABLES = new Set<Equipment>(['cable stack', 'dual cable', 'lat pulldown']);

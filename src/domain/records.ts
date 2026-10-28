@@ -1,4 +1,4 @@
-import { isHoldLift } from './care';
+import { isHoldLift, isTimedSet } from './care';
 import { fmtClock } from './cardio';
 import { fmtWeight } from './format';
 import { byOrderDone, e1rm, liftIndex, liftSets, learnable } from './stats';
@@ -17,7 +17,7 @@ export type RepMax = (typeof REP_MAXES)[number];
 export type RecordKind =
   | 'e1rm' | 'heaviest' | `rm${RepMax}` | 'reps' | 'setVolume' | 'sessionVolume' // weighted sets
   | 'mostReps' | 'sessionReps' // bodyweight
-  | 'hold' // timed holds, in seconds
+  | 'hold' | 'holdAt' // timed holds, in seconds: the longest, and (never held) a longer hold than any at this weight or heavier
   | 'time' | 'distance' | 'floors' | 'pace'; // cardio
 
 /** Who holds a record: the set (null for a whole session, with its count of sets) and its day. `reps` is never held: it's
@@ -65,6 +65,8 @@ function scan(lift: readonly SetEntry[]): Scan {
   };
   // The sets no earlier set was both as heavy as and did as many reps as: what "more reps at a weight" has to beat.
   let front: { w: number; r: number }[] = [];
+  // The same for holds, in seconds (round 32: the longest hold at each weight).
+  let holds: { w: number; r: number }[] = [];
 
   const sorted = [...lift].sort(chrono);
   // A lift's first day beats nothing: with warm-ups counting, its first working set would always beat them.
@@ -78,8 +80,14 @@ function scan(lift: readonly SetEntry[]): Scan {
       if (floors != null && floors > 0) offer(out, 'floors', floors, s);
       if (miles != null && miles > 0 && seconds > 0) offer(out, 'pace', seconds / miles, s);
     } else if (hold) {
-      // A hold counts its seconds, weighted or not; its weight sets no weight record.
-      if (s.reps != null && s.reps > 0) offer(out, 'hold', s.reps, s);
+      // A hold counts its seconds, weighted or not; its weight sets no weight record. A longer hold than any at its weight or
+      // heavier is a PR there. A set logged as reps before the lift became timed counts for nothing (round 32).
+      if (isTimedSet(s) && s.reps != null && s.reps > 0) {
+        const w = s.weight, r = s.reps;
+        offer(out, 'hold', r, s);
+        if (!out.includes('hold') && holds.some((p) => p.w >= w) && !holds.some((p) => p.w >= w && p.r >= r)) out.push('holdAt');
+        holds = [...holds.filter((p) => p.w > w || p.r > r), { w, r }];
+      }
     } else if (s.weight <= 0 || s.flags.includes('bodyweight')) {
       // Item 14: reps with help (a negative weight, or an older import's "assisted -30 lb" note) aren't reps at bodyweight.
       if (full(s) && addedLoad(s) === 0) { offer(out, 'mostReps', s.reps!, s); add(out, 'sessionReps', s.reps!, s); }
@@ -120,6 +128,17 @@ export const records = (entries: SetEntry[], exercise: string): Map<RecordKind, 
 const trim = (n: number) => String(Math.round(n * 100) / 100);
 const lb = (n: number) => `${fmtWeight(n)} lb`;
 
+/** A timed lift's longest hold at each weight it was held at, lightest first; the earliest set on a tie (round 32). */
+export function holdsByWeight(entries: SetEntry[], exercise: string): Held[] {
+  const best = new Map<number, Held>();
+  for (const s of [...liftSets(learnable(entries), exercise)].sort(chrono)) {
+    if (!isTimedSet(s) || s.cardio || s.reps == null || s.reps <= 0) continue;
+    const h = best.get(s.weight);
+    if (!h || s.reps > h.value) best.set(s.weight, { kind: 'hold', value: s.reps, date: s.date, set: s });
+  }
+  return [...best.values()].sort((a, b) => a.set!.weight - b.set!.weight);
+}
+
 /** A record's name and its value as shown. */
 export function recordLabel(kind: RecordKind): string {
   switch (kind) {
@@ -131,6 +150,7 @@ export function recordLabel(kind: RecordKind): string {
     case 'mostReps': return 'Most reps';
     case 'sessionReps': return 'Most reps in a session';
     case 'hold': return 'Longest hold';
+    case 'holdAt': return 'Longest hold at its weight';
     case 'time': return 'Longest';
     case 'distance': return 'Farthest';
     case 'floors': return 'Most floors';
@@ -143,7 +163,7 @@ export function fmtRecord(kind: RecordKind, v: number): string {
     case 'e1rm': return `${Math.round(v)} lb`;
     case 'setVolume': case 'sessionVolume': return `${Math.round(v).toLocaleString('en-US')} lb`;
     case 'mostReps': case 'sessionReps': case 'reps': case 'floors': return String(v);
-    case 'hold': return `${v} s`;
+    case 'hold': case 'holdAt': return `${v} s`;
     case 'time': return fmtClock(v);
     case 'distance': return `${trim(v)} mi`;
     case 'pace': return `${fmtClock(v)} /mi`;
@@ -154,7 +174,7 @@ export function fmtRecord(kind: RecordKind, v: number): string {
 // The banner names one record: the first of these the set broke. A set that beats a lower rep max beats the higher
 // ones it qualifies for too, so the lowest is the bigger news.
 const RANK: RecordKind[] = ['e1rm', 'heaviest', ...REP_MAXES.map((n) => `rm${n}` as RecordKind), 'reps', 'setVolume', 'sessionVolume',
-  'mostReps', 'sessionReps', 'hold', 'distance', 'floors', 'pace', 'time'];
+  'mostReps', 'sessionReps', 'hold', 'holdAt', 'distance', 'floors', 'pace', 'time'];
 
 /** The banner for a set just saved ("PR! Best e1RM: 209 lb"), or null. `entries` may or may not include it yet. */
 export function prToast(entries: SetEntry[], set: SetEntry): string | null {
@@ -164,6 +184,7 @@ export function prToast(entries: SetEntry[], set: SetEntry): string | null {
   const kind = RANK.find((k) => broke.get(set.id)?.includes(k));
   if (!kind) return null;
   if (kind === 'reps') return `PR! Most reps at ${lb(set.weight)}: ${set.reps}`;
+  if (kind === 'holdAt') return `PR! Longest hold at ${set.weight > 0 ? lb(set.weight) : 'bodyweight'}: ${set.reps} s`;
   // A session record's value is the day's total so far; every other one is this set's own.
   const v = kind === 'sessionVolume' || kind === 'sessionReps' ? tally.get(set.id)!
     : kind === 'e1rm' ? est(set)!

@@ -166,7 +166,7 @@ describe('the next-morning check in the CSV (item 08)', () => {
   const sore = mk(1, { flags: ['pain'], painRegion: 'elbow', painSeverity: 2, morning: 'sore', morningNote: 'stiff, "worse" lifting a kettle, then fine' });
   it('round-trips the answer and its note; a set without one has none', () => {
     const text = toCsv([sore, mk(2)]);
-    expect(text.split('\r\n')[0].split(',').slice(-3, -1)).toEqual(['morning', 'morning_note']);
+    expect(text.split('\r\n')[0].split(',').slice(-4, -2)).toEqual(['morning', 'morning_note']);
     const { entries: back, errors } = parseCsv(text);
     expect(errors).toEqual([]);
     expect(back[0]).toMatchObject({ morning: 'sore', morningNote: sore.morningNote });
@@ -191,7 +191,7 @@ describe('the next-morning check in the CSV (item 08)', () => {
 describe('a set marked not used for learning or records, in the CSV', () => {
   it('round-trips the mark; a set without it has none', () => {
     const text = toCsv([mk(1, { excluded: true }), mk(2)]);
-    expect(text.split('\r\n')[0].split(',').at(-1)).toBe('not_used');
+    expect(text.split('\r\n')[0].split(',').at(-2)).toBe('not_used');
     const { entries: back, errors } = parseCsv(text);
     expect(errors).toEqual([]);
     expect(back[0].excluded).toBe(true);

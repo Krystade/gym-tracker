@@ -2,7 +2,7 @@ import { liftKey } from './ids';
 import { resolveLift } from './lifts';
 import { e1rm, estimateWeightForReps, sessionsFor, learnable } from './stats';
 import type { SetEntry } from './types';
-import { isHold, isHoldLift } from './care';
+import { isHold, isHoldLift, isTimedSet } from './care';
 import { coreBefore, logBefore } from './learn';
 import { dropsOf, type Drop } from './learn/jump';
 import { floorRung, ladderOf, nextRung, prevRung, type Ladder } from './learn/ladder';
@@ -28,10 +28,13 @@ export interface Seed { weight: number; reps: number; from: string; date: string
  * `rangeFrom`: where repMin–repMax came from, set by defaultSettings and resolveSettings as they pick it (never saved: see
  * useSettings): typed on the lift's page, the training goal's (only a barbell compound's range moves with it), or the class default.
  */
-export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number; testSnoozedUntil?: string; seed?: Seed; like?: string; rest?: number; ownRange?: true; rangeFrom?: RangeFrom }
+export interface ExerciseSettings { key: string; repMin: number; repMax: number; increment: number; testSnoozedUntil?: string; seed?: Seed; like?: string; rest?: number; ownRange?: true; rangeFrom?: RangeFrom;
+  /** A lift the table doesn't list, marked timed on its page: logged in seconds (round 32, lifts.setTimedLifts). */ timed?: true }
 export type RangeFrom = 'own' | 'strength' | 'size' | 'default';
 
 export const settingsKey = (name: string): string => liftKey(name);
+/** A timed hold's default range, in seconds. */
+export const HOLD_RANGE = [30, 60] as const;
 
 /** A barbell compound: what the 'strength' goal moves to 5–8 (profile.goalOf). */
 export const isBarbellCompound = (name: string): boolean => !resolveLift(name).iso && tagsOf(name).imp === 'barbell';
@@ -43,8 +46,8 @@ export const isBarbellCompound = (name: string): boolean => !resolveLift(name).i
  * the 5–30 reps growth is alike over).
  */
 export function defaultSettings(name: string, hold = isHold(name), goal: TrainingGoal = 'size'): ExerciseSettings {
-  // Holds count seconds: 20–40 s, as in the back-resilience block.
-  if (hold) return { key: settingsKey(name), repMin: 20, repMax: 40, increment: 5, rangeFrom: 'default' };
+  // Holds count seconds: 30–60 s (round 32, owner), +5 s a set to the top, then weight or a harder variation.
+  if (hold) return { key: settingsKey(name), repMin: HOLD_RANGE[0], repMax: HOLD_RANGE[1], increment: 5, rangeFrom: 'default' };
   const goalMoves = isBarbellCompound(name);
   if (goal === 'strength' && goalMoves) return { key: settingsKey(name), repMin: 5, repMax: 8, increment: 5, rangeFrom: 'strength' };
   const iso = resolveLift(name).iso;
@@ -60,7 +63,9 @@ export function resolveSettings(saved: ExerciseSettings | undefined, name: strin
   const d = defaultSettings(name, hold, goal);
   if (!saved) return d;
   const isDefault = (g: TrainingGoal) => { const x = defaultSettings(name, hold, g); return x.repMin === saved.repMin && x.repMax === saved.repMax; };
-  if (saved.ownRange || (!isDefault('size') && !isDefault('strength'))) return { ...saved, rangeFrom: 'own' };
+  // A hold's row saved before round 32 carries the old default, 20–40 s: a default shown, not a choice.
+  const oldHold = (hold ?? isHold(name)) && saved.repMin === 20 && saved.repMax === 40;
+  if (saved.ownRange || (!isDefault('size') && !isDefault('strength') && !oldHold)) return { ...saved, rangeFrom: 'own' };
   return { ...saved, repMin: d.repMin, repMax: d.repMax, rangeFrom: d.rangeFrom };
 }
 
@@ -343,8 +348,10 @@ function lighten(t: Target, entries: SetEntry[], exercise: string, st: ExerciseS
 const LIGHT_DROPS = new Set<TargetInput>(['hits', 'rir', 'drop', 'plan', 'bodyweight']);
 
 function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned?: number | null): Target | null {
-  const before = sessionsFor(entries, exercise).filter((x) => x.date < date && !lightSession(x.sets));
   const hold = isHoldLift(exercise, entries);
+  // A hold reads only its timed sets: a set logged as reps before the lift became timed is no number of seconds (round 32).
+  const before = sessionsFor(entries, exercise).filter((x) => x.date < date && !lightSession(x.sets))
+    .flatMap((x) => { if (!hold) return [x]; const sets = x.sets.filter(isTimedSet); return sets.length ? [{ ...x, sets }] : []; });
   // Just rotated in: the carried-over estimate, until the first session since the switch.
   const seed = st.seed;
   if (seed && date >= seed.date && !before.some((x) => x.date >= seed.date && x.sets.some(isWorking))) {

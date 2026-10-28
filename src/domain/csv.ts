@@ -5,7 +5,7 @@ import { parseTags } from './tags';
 
 export const CSV_HEADER = ['date', 'exercise', 'as_written', 'set', 'weight_lb', 'reps', 'rir', 'flags', 'note', 'source', 'pain_region', 'pain_severity',
   'logged_at', 'target_weight_lb', 'target_reps', 'target_sets', 'gym', 'entered_at',
-  'duration_s', 'distance_mi', 'incline_pct', 'level', 'floors', 'cardio_aim', 'tags', 'edited_at', 'morning', 'morning_note', 'not_used'] as const;
+  'duration_s', 'distance_mi', 'incline_pct', 'level', 'floors', 'cardio_aim', 'tags', 'edited_at', 'morning', 'morning_note', 'not_used', 'hold_s'] as const;
 const REQUIRED = ['date', 'exercise', 'set', 'weight_lb', 'reps'];
 
 export interface CsvError { row: number; message: string }
@@ -23,7 +23,9 @@ export function toCsv(entries: SetEntry[]): string {
         e.rir == null ? '' : String(e.rir), e.flags.join(';'), e.note ?? '', e.source, e.painRegion ?? '', e.painSeverity == null ? '' : String(e.painSeverity),
         e.loggedAt ?? '', e.target?.weight != null ? String(e.target.weight) : '', e.target ? String(e.target.reps) : '', e.target ? String(e.target.sets) : '', e.gym ?? '', e.enteredAt ?? '',
         ...[e.cardio?.seconds, e.cardio?.miles, e.cardio?.incline, e.cardio?.level, e.cardio?.floors, e.cardio?.aim].map((v) => (v == null ? '' : String(v))), (e.tags ?? []).join(';'),
-        e.editedAt != null ? new Date(e.editedAt).toISOString() : '', e.morning ?? '', e.morningNote ?? '', e.excluded ? 'yes' : ''].map(esc).join(','),
+        e.editedAt != null ? new Date(e.editedAt).toISOString() : '', e.morning ?? '', e.morningNote ?? '', e.excluded ? 'yes' : '',
+        // A hold's seconds (round 32): in reps too, so an older build reads the set as it always did.
+        e.flags.includes('hold') && e.reps != null ? String(e.reps) : ''].map(esc).join(','),
     );
   }
   return lines.join('\r\n') + '\r\n';
@@ -80,14 +82,19 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     const weight = num(col(r, 'weight_lb'));
     if (weight == null) return fail(`Bad weight "${col(r, 'weight_lb')}"`);
     const repsRaw = col(r, 'reps');
-    const reps = repsRaw.trim() === '' ? null : num(repsRaw);
+    let reps = repsRaw.trim() === '' ? null : num(repsRaw);
     if (repsRaw.trim() !== '' && (reps == null || !Number.isInteger(reps) || reps < 0)) return fail(`Bad reps "${repsRaw}"`);
+    // A timed hold's seconds (round 32): they are the set's count, and make it a hold. Older files have no such column.
+    const holdRaw = col(r, 'hold_s').trim(), holdS = holdRaw === '' ? null : num(holdRaw);
+    if (holdRaw !== '' && (holdS == null || !Number.isInteger(holdS) || holdS < 0)) return fail(`Bad hold_s "${holdRaw}"`);
+    if (holdS != null) reps = holdS;
     const rirRaw = col(r, 'rir');
     const rir = rirRaw.trim() === '' ? undefined : num(rirRaw);
     if (rir === null || (rir !== undefined && (rir < 0 || rir > 10))) return fail(`Bad RIR "${rirRaw}"`);
     const flagParts = col(r, 'flags').split(';').map((f) => f.trim()).filter(Boolean);
     const bad = flagParts.filter((f) => !isFlag(f));
     if (bad.length) return fail(`Unknown flag "${bad.join(';')}"`);
+    if (holdS != null && !flagParts.includes('hold')) flagParts.push('hold');
     const regionRaw = col(r, 'pain_region').trim().toLowerCase();
     if (regionRaw && !isRegion(regionRaw)) return fail(`Unknown pain region "${regionRaw}"`);
     const sevRaw = col(r, 'pain_severity').trim();

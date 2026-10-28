@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { fmtCardio } from '../domain/cardio';
-import { fmtDay, fmtSet, plural } from '../domain/format';
-import { fmtRecord, recordLabel, records, REP_MAXES, type Held, type RecordKind } from '../domain/records';
+import { fmtDay, fmtSet, fmtWeight, plural } from '../domain/format';
+import { fmtRecord, holdsByWeight, recordLabel, records, REP_MAXES, type Held, type RecordKind } from '../domain/records';
 import type { SetEntry } from '../domain/types';
 
 // The records in the order they're listed; a lift only shows the ones it holds. Rep maxes get their own grid.
@@ -27,6 +27,8 @@ function shortDay(iso: string, today: string): string {
 export function Records({ entries, name, today, onDay, labels }: { entries: SetEntry[]; name: string; today: string; onDay?: (date: string) => void;
   /** A record's name here, where the page needs it said otherwise (a lift's page: "Best set e1RM"). */ labels?: Partial<Record<RecordKind, string>> }) {
   const held = useMemo(() => records(entries, name), [entries, name]);
+  // A hold's longest at each weight it was held at (round 32), once there's more than one weight.
+  const byWeight = useMemo(() => (held.has('hold') ? holdsByWeight(entries, name) : []), [held, entries, name]);
   if (!held.size) return null;
   const rows = LIST.flatMap((k) => held.get(k) ?? []);
   const rms = REP_MAXES.map((n) => held.get(`rm${n}`));
@@ -49,6 +51,20 @@ export function Records({ entries, name, today, onDay, labels }: { entries: SetE
           ))}
         </ul>
       )}
+      {byWeight.length > 1 && <>
+        <h3 className="rec-sub">Longest hold <span>· at each weight</span></h3>
+        <ul className="rec-grid" aria-label="Longest hold at each weight">
+          {byWeight.map((h) => (
+            <li key={h.set!.weight}>
+              {tap(h, 'rec-cell', <>
+                <span className="rec-name">{h.set!.weight > 0 ? `${fmtWeight(h.set!.weight)} lb` : 'BW'}</span>
+                <b className="rec-val">{fmtRecord('hold', h.value)}</b>
+                <span className="rec-meta">{shortDay(h.date, today)}</span>
+              </>)}
+            </li>
+          ))}
+        </ul>
+      </>}
       {rms.some(Boolean) && <>
         <h3 className="rec-sub">Rep maxes <span>· at least that many reps</span></h3>
         <ul className="rec-grid" aria-label="Rep maxes">

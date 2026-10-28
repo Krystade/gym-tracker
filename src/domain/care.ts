@@ -3,6 +3,7 @@ import { addDays, weekStart } from './analytics';
 import { PROGRAM_LIFTS } from './catalog';
 import { gearOf } from './equipment';
 import { liftKey } from './ids';
+import { isTimedLift } from './lifts';
 import { muscleVector, MUSCLES } from './muscles';
 import type { Slot } from './program';
 import { exerciseNames, liftSets, sameExercise } from './stats';
@@ -39,8 +40,15 @@ const STRESS: Partial<Record<Region, RegExp>> = {
 /** Whether a lift loads a region: the region its name reads as, or one of the lifts that load it hard (STRESS). */
 export const loadsRegion = (exercise: string, region: Region): boolean => likelyRegion(exercise) === region || !!STRESS[region]?.test(exercise);
 
+/** The holds the app timed before the lifts table said so (round 32): an imported set of one with no `hold` flag is still seconds. */
 export const HOLD_EXERCISES = new Set(['plank', 'side plank', 'bird dog', 'dead bug', 'mcgill curl-up', 'plate pinch hold']);
-export const isHold = (name: string): boolean => HOLD_EXERCISES.has(liftKey(name));
+/** A lift logged in seconds: the table's `timed` lifts, and any he marked timed (lifts.isTimedLift). */
+export const isHold = (name: string): boolean => isTimedLift(name);
+/**
+ * A set logged in seconds: flagged a hold, or of a lift the app always timed. A set logged as reps before its lift became timed
+ * (a Dead Hang × 8) stays reps: shown as logged, and read by no hold target or record.
+ */
+export const isTimedSet = (e: SetEntry): boolean => e.flags.includes('hold') || HOLD_EXERCISES.has(liftKey(e.exercise));
 
 /** A lift timed in seconds: a known hold, or one whose logged sets are holds. */
 export const isHoldLift = (exercise: string, sets: readonly SetEntry[]): boolean =>

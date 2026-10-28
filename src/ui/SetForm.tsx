@@ -14,6 +14,7 @@ import { useMinute } from '../state/clock';
 import { Input } from './Field';
 import { bodyShare } from '../domain/learn/bodyweight';
 import { fmtWeight } from '../domain/format';
+import { fmtClock } from '../domain/cardio';
 
 export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3; at?: string | null; tags?: string[] }
 const SEVERITY: [1 | 2 | 3, string][] = [[1, 'Mild'], [2, 'Moderate'], [3, 'Sharp']];
@@ -118,9 +119,24 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   const typo = heaviest > 0 && Number.isFinite(w) && w > heaviest * 2;
   const painBox = useRef<HTMLDivElement>(null);
   useEffect(() => { if (pain) painBox.current?.scrollIntoView({ block: 'nearest' }); }, [pain]);
+  // A hold's stopwatch (round 32): Start counts up from the tap, filling the seconds as it goes; Stop leaves them there to log.
+  // Read off the clock, not counted in ticks, so a screen that sleeps mid-hold still counts the whole hold.
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const timing = startedAt != null;
+  const held = (from: number) => Math.max(0, Math.floor((Date.now() - from) / 1000));
+  useEffect(() => {
+    if (startedAt == null) return;
+    const t = setInterval(() => setReps(String(held(startedAt))), 250);
+    return () => clearInterval(t);
+  }, [startedAt]);
+  const startStop = () => {
+    dirty.current = true;
+    if (startedAt == null) { setReps('0'); setStartedAt(Date.now()); return; }
+    setReps(String(held(startedAt))); setStartedAt(null);
+  };
 
   async function submit() {
-    if (!valid || busy.current) return;
+    if (!valid || busy.current || timing) return;
     if (typo && asked !== w) { setAsked(w); return; }
     busy.current = true; // a fast double tap would otherwise log the set twice
     try {
@@ -158,7 +174,10 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       {!problem && body && w !== 0 && <p className="small muted plates" aria-label="Load">{w < 0 ? `BW − ${fmtWeight(-w)} lb: help` : `BW + ${fmtWeight(w)} lb`}</p>}
       {problem && <p role="status" className={quiet ? 'small muted' : 'small err'}>{problem}</p>}
       {!problem && typo && asked === w && <p role="status" className="small err">{weight} lb is {Math.round(w / heaviest)}× your best: tap {submitLabel.split(' ·')[0]} again to keep it</p>}
-      {/* Reps in reserve doesn't apply to a timed hold. */}
+      {/* A hold has its stopwatch where a lift has RIR, which doesn't apply to a timed hold. */}
+      {hold && <button type="button" className={`hold-timer${timing ? ' on' : ''}`} aria-pressed={timing} onClick={startStop}>
+        <Icon name="timer" size={20} sw={2} />{timing ? <>Stop <b>{fmtClock(Number(reps) || 0)}</b></> : 'Start hold'}
+      </button>}
       {!hold && <div className="chips seg" role="group" aria-label="RIR">
         <span className="chip-label">RIR</span>
         {[0, 1, 2, 3, 4].map((n) => (
@@ -169,7 +188,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       {whenField}
       <div className="form-actions">
         {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
-        <button type="submit" className="primary" disabled={!valid}>{submitLabel}</button>
+        <button type="submit" className="primary" disabled={!valid || timing}>{submitLabel}</button>
       </div>
       <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>{moreOpen || !moreHint ? 'Details' : `Details · ${moreHint}`}<Icon name="chev-down" size={18} sw={2} className="chev" /></button>
       {moreOpen && (

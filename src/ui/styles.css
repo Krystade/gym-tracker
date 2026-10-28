@@ -340,6 +340,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .chip { min-height: 44px; min-width: 44px; padding: 0 14px; border-radius: var(--r-pill); touch-action: manipulation; font-size: var(--fs-sub); font-weight: 600; }
 .chip[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
 .form-actions { display: flex; gap: 8px; }
+/* A hold's stopwatch (round 32): a full-width tonal bar where RIR sits; running, it takes the accent and shows the time held. */
+.hold-timer { width: 100%; min-height: 48px; color: var(--accent-text); touch-action: manipulation; }
+.hold-timer.on { background: var(--accent); color: var(--accent-ink); }
+.hold-timer b { font-variant-numeric: tabular-nums; min-width: 3.5ch; text-align: left; }
 .form-actions .primary { flex: 1; }
 /* Edit tags: a quieter chip at the end of the tag row, and the editor that opens under it. */
 .chip.edit-tags { background: none; color: var(--accent-text); }

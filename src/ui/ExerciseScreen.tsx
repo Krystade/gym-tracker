@@ -23,13 +23,13 @@ import { bodyShare } from '../domain/learn/bodyweight';
 import { weightFor } from '../domain/learn/strength';
 import { localDate } from '../domain/ids';
 import { addDays } from '../domain/analytics';
-import { estimateRir, priorE1rm, rirOffset } from '../domain/progression';
+import { defaultSettings, estimateRir, priorE1rm, rirOffset } from '../domain/progression';
 import { ladderOf } from '../domain/learn/ladder';
 import { fmtDay, fmtSet, fmtWeight, plural } from '../domain/format';
 import { LineChart } from './LineChart';
 import { SetRowContent } from './SetRow';
 import { SwapSuggestions } from './SwapSuggestions';
-import { isHoldLift, swapSuggestions } from '../domain/care';
+import { isHoldLift, isTimedSet, swapSuggestions } from '../domain/care';
 import type { ProgramStore } from '../state/useProgram';
 import { nextTime, plannedMinutes, plannedSets } from '../domain/suggest';
 import { todayPlanFor } from './TodayPlan';
@@ -95,7 +95,8 @@ function holdSeries(sessions: ReturnType<typeof sessionsFor>): SeriesPoint[] {
   const out: SeriesPoint[] = [];
   let top = -Infinity;
   for (const x of [...sessions].reverse()) {
-    const vals = x.sets.map((e) => e.reps).filter((v): v is number => v != null && v > 0);
+    // A set logged as reps before the lift became timed is no hold (round 32).
+    const vals = x.sets.filter(isTimedSet).map((e) => e.reps).filter((v): v is number => v != null && v > 0);
     if (!vals.length) continue;
     const v = Math.max(...vals);
     out.push({ date: x.date, e1rm: v, pr: v > top });
@@ -213,6 +214,30 @@ function WorksLine({ name, settings, readOnly }: { name: string; settings: Setti
         <button className="mini" onClick={() => { setOpen(false); setQ(''); }}>Cancel</button>
       </section>}
     </>
+  );
+}
+
+/**
+ * A lift the table doesn't list can be marked timed (round 32): its sets log seconds, with a stopwatch, from then on. Sets
+ * logged before stay as they were. The table's own lifts are timed or not by the table.
+ */
+function TimedToggle({ name, settings }: { name: string; settings: SettingsStore }) {
+  const how = resolveLift(name).how;
+  if (how === 'catalog' || how === 'alias') return null;
+  const cur = settings.get(name);
+  const on = !!cur.timed;
+  // A range that was only the old kind's default becomes the new kind's (seconds or reps); one typed on this page stays.
+  const flip = () => {
+    const { timed: _t, rangeFrom: _r, ...rest } = cur;
+    const d = cur.ownRange ? cur : defaultSettings(name, !on);
+    void settings.save({ ...rest, repMin: d.repMin, repMax: d.repMax, ...(!on && { timed: true as const }) });
+  };
+  return (
+    <div className="chips timed-toggle" role="group" aria-label="Logged as">
+      <span className="chip-label">Logged as</span>
+      <button type="button" className="chip" aria-pressed={!on} onClick={on ? flip : undefined}>Reps</button>
+      <button type="button" className="chip" aria-pressed={on} onClick={on ? undefined : flip}>Seconds (a hold)</button>
+    </div>
   );
 }
 
@@ -360,7 +385,8 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
       {/* Setup, folded at the foot of a page that's for reading (IA A8, owner 2026-10-21). */}
       <details className="card builder lift-settings">
         <summary>Lift settings</summary>
-        <SettingsEditor key={name} name={name} settings={settings} hold={hold} entries={store.entries} />
+        <TimedToggle name={name} settings={settings} />
+        <SettingsEditor key={`${name}|${hold}`} name={name} settings={settings} hold={hold} entries={store.entries} />
         <RenameLift key={`rename-${name}`} name={name} store={store} settings={settings} gyms={gyms} programs={programs} onRenamed={onRenamed} />
       </details>
       </>}

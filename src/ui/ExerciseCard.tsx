@@ -8,7 +8,7 @@ import { prToast, records } from '../domain/records';
 import { fmtDay, fmtSet, fmtWeight, plural } from '../domain/format';
 import type { Flag, SetEntry } from '../domain/types';
 import { SetForm, type SetFormValue } from './SetForm';
-import { isHoldLift, loadsRegion } from '../domain/care';
+import { isHoldLift, isTimedSet, loadsRegion } from '../domain/care';
 import { painToday } from '../domain/painPlan';
 import { SetRowContent } from './SetRow';
 import { nextSet, suggest } from '../domain/suggest';
@@ -322,7 +322,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       {editing ? (
         <div ref={editBox} className="edit-box">
         <p className="edit-title">Editing set {today.findIndex((x) => x.id === editing.id) + 1}</p>
-        <SetForm key={editing.id} exercise={exercise} plates={plates} hold={hold} initial={editing} submitLabel="Save" tagPrefs={settings.tags} onTagPrefs={settings.saveTags}
+        <SetForm key={editing.id} exercise={exercise} plates={plates} hold={hold && isTimedSet(editing)} initial={editing} submitLabel="Save" tagPrefs={settings.tags} onTagPrefs={settings.saveTags}
           onCancel={() => setEditing(null)}
           onDelete={async () => {
             const no = today.findIndex((x) => x.id === editing.id) + 1; // the number on the row, not the entry order

@@ -17,7 +17,7 @@ describe('training goal', () => {
     expect(defaultSettings('Leg Press', undefined, 'strength')).toMatchObject({ repMin: 8, repMax: 12 }); // machine
     expect(defaultSettings('Flat DB Press', undefined, 'strength')).toMatchObject({ repMin: 8, repMax: 12 }); // dumbbell
     expect(defaultSettings('Cable Curl', undefined, 'strength')).toMatchObject({ repMin: 10, repMax: 15 }); // isolation
-    expect(defaultSettings('Bench Press', true, 'strength')).toMatchObject({ repMin: 20, repMax: 40 }); // a hold
+    expect(defaultSettings('Bench Press', true, 'strength')).toMatchObject({ repMin: 30, repMax: 60 }); // a hold
   });
   it('a lift’s own range wins; a row saved with a default follows the goal', () => {
     const typed = { ...defaultSettings('Bench Press'), repMin: 6, repMax: 10 };

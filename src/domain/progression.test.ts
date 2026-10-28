@@ -16,9 +16,9 @@ describe('settings', () => {
     expect(defaultSettings('Bench Press')).toMatchObject({ repMin: 8, repMax: 12 });
     expect(settingsKey('  Bench   press ')).toBe('bench press');
   });
-  it('defaults a hold, known by name or by its log, to 20–40 s', () => {
-    expect(defaultSettings('Plank')).toMatchObject({ repMin: 20, repMax: 40 });
-    expect(defaultSettings('Wall Sit Hold X', true)).toMatchObject({ repMin: 20, repMax: 40 });
+  it('defaults a hold, known by name or by its log, to 30–60 s', () => {
+    expect(defaultSettings('Plank')).toMatchObject({ repMin: 30, repMax: 60 });
+    expect(defaultSettings('Wall Sit Hold X', true)).toMatchObject({ repMin: 30, repMax: 60 });
   });
 });
 

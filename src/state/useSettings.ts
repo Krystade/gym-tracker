@@ -2,10 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { useDb } from './profileDb';
 import { resolveSettings, settingsKey, type ExerciseSettings } from '../domain/progression';
 import type { TrainingGoal } from '../domain/profile';
-import { setWorksLike } from '../domain/lifts';
+import { setTimedLifts, setWorksLike } from '../domain/lifts';
 
 /** Every lift's "Works like…" choice, read by the resolver (domain/lifts) before anything renders with them. */
-const register = (m: Map<string, ExerciseSettings>) => setWorksLike([...m.values()].flatMap((s) => (s.like ? [[s.key, s.like] as const] : [])));
+const register = (m: Map<string, ExerciseSettings>) => {
+  setWorksLike([...m.values()].flatMap((s) => (s.like ? [[s.key, s.like] as const] : [])));
+  // And the lifts marked timed (round 32), read by care.isHold.
+  setTimedLifts([...m.values()].flatMap((s) => (s.timed ? [s.key] : [])));
+};
 import { defaultTags, type TagPrefs } from '../domain/tags';
 
 /** `goal`: the profile's training goal, for a lift's default range (progression.resolveSettings). */

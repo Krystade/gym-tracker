@@ -21,9 +21,9 @@ export type Needs = Equipment[][];
  * null for cardio, which counts minutes. `needs`: null when the gear is unknown. `p`: its movement pattern, if one of the six.
  * `iso`: isolation, so a 10–15 rep default. `aka`: other names it goes by (search, paste import, a typed name). `common`: listed
  * before searching. `program`: one the program builder, swaps and rotation may offer unasked; any other lift enters a program
- * only once it's logged or added to the gym (round 15, owner).
+ * only once it's logged or added to the gym (round 15, owner). `timed`: a hold, logged in seconds, not reps (round 32).
  */
-export interface Lift { name: string; m: Vector | null; needs: Needs | null; p?: Pattern; iso?: true; aka?: string[]; common?: true; program?: true }
+export interface Lift { name: string; m: Vector | null; needs: Needs | null; p?: Pattern; iso?: true; aka?: string[]; common?: true; program?: true; timed?: true }
 
 const PRESS: Vector = { Chest: 1, Triceps: 0.5, 'Front Delts': 0.5 };
 const OHP: Vector = { 'Front Delts': 1, Triceps: 0.5, 'Side Delts': 0.5 };
@@ -50,6 +50,7 @@ const CARRY: Vector = { Forearms: 1, Traps: 0.5 }, OTHER: Vector = {};
 const NOTHING: Needs = [[]];
 const one = (...alts: Equipment[]): Needs => alts.map((e) => [e]);
 const L = (name: string, m: Vector | null, needs: Needs | null, more: Omit<Lift, 'name' | 'm' | 'needs'> = {}): Lift => ({ name, m, needs, ...more });
+const TIMED = { timed: true } as const;
 
 /** The lifts the app listed before round 15, in their order: all common, and the program builder's pool. */
 const ORIGINAL: Lift[] = [
@@ -90,7 +91,7 @@ const ORIGINAL: Lift[] = [
   L('Reverse Curl', { Forearms: 1, Biceps: 0.5 }, one('barbell', 'cable stack', 'dumbbells'), { iso: true, aka: ['Reverse Barbell Curl', 'Reverse Cable Curl'] }),
   L('Wrist Curl', { Forearms: 1 }, one('dumbbells', 'barbell'), { iso: true, aka: ['Palms-Up Barbell Wrist Curl Over A Bench', 'Seated Palm-Up Barbell Wrist Curl'] }),
   L('Farmer’s Carry', { Forearms: 1, Traps: 0.5 }, one('dumbbells')),
-  L('Plate Pinch Hold', { Forearms: 1 }, one('plates')),
+  L('Plate Pinch Hold', { Forearms: 1 }, one('plates'), { ...TIMED, aka: ['Plate Pinch'] }),
   // Shoulders
   L('Overhead Press', OHP, [['barbell', 'squat rack']], { p: 'Vertical press', aka: ['Military Press', 'Standing Barbell Press', 'Standing Military Press', 'Barbell Shoulder Press'] }),
   L('Machine Shoulder Press', OHP, one('shoulder press machine'), { p: 'Vertical press', aka: ['Leverage Shoulder Press', 'Machine Shoulder (Military) Press'] }),
@@ -122,11 +123,11 @@ const ORIGINAL: Lift[] = [
   L('Hanging Leg Raise', A, one('pull-up bar'), { iso: true }),
   L('Supported Leg Raise', A, one('captain’s chair', 'dip station'), { iso: true, aka: ['Captain’s Chair Leg Raise', 'Roman Chair Leg Raise'] }),
   L('Torso Rotation Machine', A, one('torso rotation machine'), { iso: true }),
-  L('Plank', A, NOTHING),
-  L('Side Plank', { Abs: 1, Erectors: 0.5 }, NOTHING),
-  L('Bird Dog', { Erectors: 1, Glutes: 0.5, Abs: 0.5 }, NOTHING),
-  L('McGill Curl-Up', A, NOTHING, { iso: true }),
-  L('Dead Bug', A, NOTHING),
+  L('Plank', A, NOTHING, { ...TIMED, aka: ['Weighted Plank', 'Front Plank', 'Forearm Plank'] }),
+  L('Side Plank', { Abs: 1, Erectors: 0.5 }, NOTHING, TIMED),
+  L('Bird Dog', { Erectors: 1, Glutes: 0.5, Abs: 0.5 }, NOTHING, TIMED),
+  L('McGill Curl-Up', A, NOTHING, { iso: true, ...TIMED }),
+  L('Dead Bug', A, NOTHING, { ...TIMED, aka: ['Dead Bug Hold'] }),
   L('Back Extension', { Erectors: 1, Glutes: 0.5, Hamstrings: 0.5 }, one('back extension bench'), { iso: true, aka: ['Hyperextension', '45-Degree Back Extension'] }),
   L('Pallof Press', A, one('cable stack')),
   // Legs
@@ -222,7 +223,13 @@ const ADDED: Lift[] = [
   L('Cable Wrist Curl', F, one('cable stack'), { iso: true }),
   L('Finger Curl', F, one('barbell'), { iso: true }),
   L('Wrist Roller', F, one('plates'), { iso: true }),
-  L('Dead Hang', F, one('pull-up bar')),
+  L('Dead Hang', F, one('pull-up bar'), { ...TIMED, aka: ['Bar Hang', 'Passive Hang', 'Weighted Dead Hang'] }),
+  // Round 32: grip and hang holds, in seconds.
+  L('Active Hang', { Forearms: 1, Lats: 0.5, Traps: 0.25 }, one('pull-up bar'), { ...TIMED, aka: ['Scapular Hang'] }),
+  L('Flexed-Arm Hang', { Biceps: 1, Lats: 0.5, Forearms: 0.5 }, one('pull-up bar'), { ...TIMED, aka: ['Chin-over-Bar Hold', 'Bent-Arm Hang', 'Top Pull-up Hold'] }),
+  L('Towel Hang', F, one('pull-up bar'), { ...TIMED, aka: ['Towel Dead Hang'] }),
+  L('Farmer’s Hold', CARRY, one('dumbbells', 'kettlebells', 'trap bar'), { ...TIMED, aka: ['Static Farmer’s Hold'] }),
+  L('Barbell Hold', CARRY, one('barbell'), { ...TIMED, aka: ['Static Bar Hold', 'Barbell Static Hold'] }),
   L('Suitcase Carry', { Forearms: 1, Abs: 0.5 }, one('dumbbells')),
   // Shoulders and traps
   L('Push Press', OHP, [['barbell', 'squat rack']], { p: 'Vertical press', aka: ['Barbell Push Press'] }),
@@ -295,9 +302,11 @@ const ADDED: Lift[] = [
   L('Glute Bridge', GLUTE, NOTHING, { aka: ['Bridge', 'Butt Lift (Bridge)'] }),
   L('Barbell Glute Bridge', GLUTE, one('barbell')),
   L('Single-Leg Glute Bridge', GLUTE, NOTHING),
+  L('Glute Bridge Hold', GLUTE, NOTHING, { ...TIMED, aka: ['Isometric Glute Bridge'] }),
+  L('Single-Leg Glute Bridge Hold', GLUTE, NOTHING, TIMED),
   L('Cable Hip Abduction', { Abductors: 1 }, one('cable stack'), { iso: true }),
   L('Cable Hip Adduction', { Adductors: 1 }, one('cable stack'), { iso: true }),
-  L('Copenhagen Plank', { Adductors: 1 }, NOTHING, { iso: true, aka: ['Copenhagen Side Plank'] }),
+  L('Copenhagen Plank', { Adductors: 1 }, NOTHING, { iso: true, ...TIMED, aka: ['Copenhagen Side Plank'] }),
   // Legs
   L('Hack Squat', SQUAT, one('hack squat'), { p: 'Squat', common: true, aka: ['Hack Squat Machine', 'Narrow Stance Hack Squats'] }),
   L('Barbell Hack Squat', SQUAT, one('barbell'), { p: 'Squat' }),
@@ -327,6 +336,11 @@ const ADDED: Lift[] = [
   L('Barbell Calf Raise', CALVES, one('barbell'), { iso: true, aka: ['Standing Barbell Calf Raise'] }),
   L('Single-Leg Calf Raise', CALVES, NOTHING, { iso: true }),
   L('Tibialis Raise', OTHER, NOTHING, { iso: true, aka: ['Tib Raise'] }),
+  // Round 32: leg holds, in seconds.
+  L('Wall Sit', QUADS, NOTHING, { ...TIMED, aka: ['Wall Squat', 'Wall Sit Hold'] }),
+  L('Isometric Split Squat', { Quads: 1, Glutes: 0.5 }, NOTHING, { ...TIMED, aka: ['Split Squat Hold', 'Isometric Lunge'] }),
+  L('Spanish Squat Hold', QUADS, NOTHING, TIMED),
+  L('Single-Leg Calf Raise Hold', CALVES, NOTHING, { iso: true, ...TIMED, aka: ['Calf Raise Hold'] }),
   // Core
   L('Crunch', A, NOTHING, { iso: true, common: true }),
   L('Sit-up', A, NOTHING, { iso: true }),
@@ -342,7 +356,20 @@ const ADDED: Lift[] = [
   L('Russian Twist', A, NOTHING, { iso: true }),
   L('Cable Woodchop', A, one('cable stack'), { iso: true, aka: ['Woodchopper', 'Standing Cable Wood Chop'] }),
   L('DB Side Bend', A, one('dumbbells'), { iso: true }),
-  L('Hollow Hold', A, NOTHING, { aka: ['Hollow Body Hold'] }),
+  L('Hollow Hold', A, NOTHING, { ...TIMED, aka: ['Hollow Body Hold'] }),
+  // Round 32: core and other holds, in seconds.
+  L('RKC Plank', A, NOTHING, { ...TIMED, aka: ['Hardstyle Plank'] }),
+  L('Reverse Plank', { Erectors: 1, Glutes: 0.5, Hamstrings: 0.5 }, NOTHING, TIMED),
+  L('L-Sit', { Abs: 1, Quads: 0.25, Triceps: 0.25 }, NOTHING, { ...TIMED, aka: ['L-Sit Hold'] }),
+  L('V-Sit Hold', A, NOTHING, { ...TIMED, aka: ['V-Sit', 'Boat Pose'] }),
+  L('Ab Wheel Hold', A, NOTHING, { ...TIMED, aka: ['Rollout Hold'] }),
+  L('Pallof Hold', A, one('cable stack'), { ...TIMED, aka: ['Pallof Isometric Hold', 'Anti-Rotation Hold'] }),
+  L('Bear Hold', { Abs: 1, Quads: 0.25, 'Front Delts': 0.25 }, NOTHING, { ...TIMED, aka: ['Bear Plank'] }),
+  L('Superman Hold', { Erectors: 1, Glutes: 0.5 }, NOTHING, { ...TIMED, aka: ['Superman'] }),
+  L('Handstand Hold', { 'Front Delts': 1, Triceps: 0.5, Traps: 0.5 }, NOTHING, { ...TIMED, aka: ['Freestanding Handstand'] }),
+  L('Wall Handstand', { 'Front Delts': 1, Triceps: 0.5, Traps: 0.5 }, NOTHING, { ...TIMED, aka: ['Wall Handstand Hold'] }),
+  L('Isometric Push-up Hold', PRESS, NOTHING, { ...TIMED, aka: ['Push-up Hold'] }),
+  L('Front Lever Hold', { Lats: 1, Abs: 0.5 }, one('pull-up bar'), { ...TIMED, aka: ['Tuck Front Lever', 'Front Lever'] }),
   L('V-Up', A, NOTHING, { iso: true }),
   L('Flutter Kick', A, NOTHING, { iso: true }),
   L('Neck Curl', OTHER, NOTHING, { iso: true }),
@@ -496,6 +523,10 @@ const BASES: [string, Base][] = [
   ['farmer carry', { m: CARRY, needs: one('dumbbells') }], ['farmer walk', { m: CARRY, needs: one('dumbbells') }], ['farmer', { m: CARRY, needs: one('dumbbells') }],
   ['suitcase carry', { m: { Forearms: 1, Abs: 0.5 }, needs: one('dumbbells') }], ['carry', { m: CARRY, needs: one('dumbbells') }],
   ['dead hang', { m: F, needs: one('pull-up bar') }], ['pinch', { m: F, needs: one('plates') }],
+  // Round 32: hangs and holds.
+  ['active hang', { m: { Forearms: 1, Lats: 0.5, Traps: 0.25 }, needs: one('pull-up bar') }], ['towel hang', { m: F, needs: one('pull-up bar') }],
+  ['flexed arm hang', { m: { Biceps: 1, Lats: 0.5, Forearms: 0.5 }, needs: one('pull-up bar') }],
+  ['farmer hold', { m: CARRY, needs: one('dumbbells', 'kettlebells', 'trap bar') }], ['barbell hold', { m: CARRY, needs: one('barbell') }],
   // Back.
   ['straight arm pulldown', { m: LATS }], ['straight arm pullover', { m: { Chest: 1, Lats: 0.5 }, iso: true, bench: 'flat bench' }], ['straight arm', { m: LATS }], ['lat prayer', { m: LATS, iso: true }],
   ['lat pulldown', { m: PULLDOWN, p: VL, needs: one('lat pulldown'), machine: 'lat pulldown', cable: 'lat pulldown' }],
@@ -512,6 +543,12 @@ const BASES: [string, Base][] = [
   ['side plank', { m: { Abs: 1, Erectors: 0.5 }, needs: NOTHING }], ['plank', { m: A, needs: NOTHING }],
   ['bird dog', { m: { Erectors: 1, Glutes: 0.5, Abs: 0.5 }, needs: NOTHING }], ['dead bug', { m: A, needs: NOTHING }],
   ['hollow', { m: A, needs: NOTHING }], ['v up', { m: A, iso: true, needs: NOTHING }],
+  // Round 32: holds.
+  ['reverse plank', { m: { Erectors: 1, Glutes: 0.5, Hamstrings: 0.5 }, needs: NOTHING }], ['bear', { m: { Abs: 1, Quads: 0.25, 'Front Delts': 0.25 }, needs: NOTHING }],
+  ['l sit', { m: { Abs: 1, Quads: 0.25, Triceps: 0.25 }, needs: NOTHING }], ['v sit', { m: A, needs: NOTHING }],
+  ['superman', { m: { Erectors: 1, Glutes: 0.5 }, needs: NOTHING }], ['handstand', { m: { 'Front Delts': 1, Triceps: 0.5, Traps: 0.5 }, needs: NOTHING }],
+  ['front lever', { m: { Lats: 1, Abs: 0.5 }, needs: one('pull-up bar') }], ['wall sit', { m: QUADS, needs: NOTHING }],
+  ['isometric split squat', { m: { Quads: 1, Glutes: 0.5 }, needs: NOTHING }], ['spanish squat', { m: QUADS, needs: NOTHING }],
   ['supported leg raise', { m: A, iso: true, needs: one('captain’s chair', 'dip station') }],
   ['leg raise', { m: A, iso: true, needs: NOTHING }], ['knee raise', { m: A, iso: true }], ['leg lift', { m: A, iso: true, needs: NOTHING }], ['flutter kick', { m: A, iso: true, needs: NOTHING }],
   ['jackknife', { m: A, iso: true, needs: NOTHING }], ['heel touch', { m: A, iso: true, needs: NOTHING }], ['heel toucher', { m: A, iso: true, needs: NOTHING }],
@@ -650,6 +687,26 @@ export function setWorksLike(pairs: Iterable<readonly [string, string]>): void {
   for (const [k, l] of next) LIKE.set(k, l);
   RESOLVED.clear();
   factsVersion++;
+}
+
+// Lifts he marked timed on their page (round 32): any name the table doesn't list. Keyed by liftKey, set from his settings.
+const TIMED_OWN = new Set<string>();
+/** The lifts marked timed by hand, as names or settings keys; replaces the previous ones. */
+export function setTimedLifts(names: Iterable<string>): void {
+  const next = new Set([...names].map(liftKey));
+  if (next.size === TIMED_OWN.size && [...next].every((k) => TIMED_OWN.has(k))) return;
+  TIMED_OWN.clear();
+  for (const k of next) TIMED_OWN.add(k);
+  factsVersion++;
+}
+/**
+ * A hold, logged in seconds: the table's own record (by its name or another it goes by), or a lift he marked timed. A lift that
+ * only works like a hold ("Works like…", for its muscles) still counts reps.
+ */
+export function isTimedLift(name: string): boolean {
+  if (TIMED_OWN.size && TIMED_OWN.has(liftKey(name))) return true;
+  const r = resolveLift(name);
+  return (r.how === 'catalog' || r.how === 'alias') && !!r.lift?.timed;
 }
 
 function resolve(name: string): Resolved {
