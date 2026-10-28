@@ -1515,12 +1515,14 @@ test('Prompts: pain that keeps coming back, sharp pain, a variation for a stalle
   const csv = [H,
     ...weeks.flatMap((d, k) => [...rows(d, 'Leg Press', ['300x10', '300x10', '300x10']), ...rows(d, 'Cable Pushdown', ['110x15', '110x15', '110x15'], k >= 5 ? 2 : undefined)]),
     ...rows('2026-03-02', 'Machine Chest Press', ['150x10', '150x10', '150x9']), ...rows('2026-03-09', 'Machine Chest Press', ['150x11', '150x10', '150x10']),
+    // Twelve weeks of steady bench progress first: the plateau after it reads P > 0.6 (2026-10-28's stall bar).
+    ...Array.from({ length: 12 }, (_, i) => rows(new Date(Date.UTC(2026, 5, 2 + 7 * i)).toISOString().slice(0, 10), 'Bench Press', [`${130 + 5 * i}x8`, `${130 + 5 * i}x8`, `${130 + 5 * i}x7`])).flat(),
     ...rows('2026-08-25', 'Bench Press', ['185x8', '185x8', '185x7']), ...rows('2026-09-01', 'Bench Press', ['185x8', '185x8', '185x8']),
     ...rows('2026-09-08', 'Bench Press', ['185x8', '185x8', '185x8']), ...rows('2026-09-15', 'Bench Press', ['185x9', '185x8', '185x8']),
     ...rows('2026-09-22', 'Bench Press', ['185x9', '185x8', '185x8']), ...rows('2026-09-29', 'Bench Press', ['185x9', '185x8', '185x7']),
     ...rows('2026-10-06', 'Bench Press', ['185x8', '185x8', '185x8']),
-    // One working set every 3 days, each a PR: a test is due on its screen.
-    ...Array.from({ length: 15 }, (_, i) => `${new Date(Date.UTC(2026, 7, 31 + i * 3)).toISOString().slice(0, 10)},Dumbbell Bench Press,,1,${85 + 5 * i},8,,,,sample,,`),
+    // Two sessions, and today the third: the first a test can be due on, so its one prompt in 6 weeks is today's (2026-10-28).
+    '2026-10-08,Dumbbell Bench Press,,1,85,8,,,,sample,,', '2026-10-11,Dumbbell Bench Press,,1,90,8,,,,sample,,',
   ].join('\n');
   await notched(page);
   await page.clock.install({ time: new Date('2026-10-14T18:00:00') });
@@ -1535,7 +1537,7 @@ test('Prompts: pain that keeps coming back, sharp pain, a variation for a stalle
   await page.getByRole('button', { name: '‹ Back' }).click();
   await page.locator('.plan-name[data-exercise="Bench Press"]').click();
   const bench = page.locator('[data-card="bench press"]');
-  await expect(bench.getByRole('group', { name: 'Suggested variation' })).toContainText('Bench Press flat for 4 weeks — switch to');
+  await expect(bench.getByRole('group', { name: 'Suggested variation' })).toContainText('Bench Press flat for 6 weeks — switch to');
   await check(page, info, found, 'prompt-rotation');
   const push = await addCard(page, 'Cable Pushdown');
   await expect(push.getByRole('group', { name: 'Pain keeps coming back' })).toBeVisible();

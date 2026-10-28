@@ -27,20 +27,22 @@ const TYPED = { key: 'forward-lean dips', repMin: 8, repMax: 12, increment: 2.5 
 const DEF = { ...TYPED, increment: 5 };
 const sharp: Partial<SetEntry> = { flags: ['bodyweight', 'pain'], painSeverity: 3 };
 const NEXT = '2026-09-04';
+/** The same session three days before as well: the range topped two sessions running (owner, 2026-10-28). */
+const twice = (w: number, reps: number[], over: Partial<SetEntry> = {}) => [...sess('2026-08-29', w, reps, over), ...sess('2026-09-01', w, reps, over)];
 
 describe('nextTarget for a bodyweight lift (item 14)', () => {
   it('with help, the range topped: a step less help (typed increment), up to bodyweight and no further', () => {
-    expect(nextTarget(sess('2026-09-01', -30, [12, 12, 12]), DIPS, TYPED, NEXT))
+    expect(nextTarget(twice(-30, [12, 12, 12]), DIPS, TYPED, NEXT))
       .toMatchObject({ kind: 'increase', weight: -27.5, step: 2.5, text: 'Go up: BW − 27.5 lb × 8+' });
-    expect(nextTarget(sess('2026-09-01', -2.5, [12, 12, 12]), DIPS, TYPED, NEXT)).toMatchObject({ kind: 'increase', weight: 0, text: 'Go up: BW × 8+' });
-    // Not topped: the reps climb at that help, capped at the range's top like any weight.
-    expect(nextTarget(sess('2026-09-01', -30, [10, 9, 9]), DIPS, TYPED, NEXT)).toMatchObject({ kind: 'reps', weight: -30, text: 'BW − 30 lb × 11 · 10 · 10' });
+    expect(nextTarget(twice(-2.5, [12, 12, 12]), DIPS, TYPED, NEXT)).toMatchObject({ kind: 'increase', weight: 0, text: 'Go up: BW × 8+' });
+    // Not topped: last time's reps at that help, +1 where 2+ were left, capped at the range's top like any weight.
+    expect(nextTarget(sess('2026-09-01', -30, [10, 9, 9], { rir: 2 }), DIPS, TYPED, NEXT)).toMatchObject({ kind: 'reps', weight: -30, text: 'BW − 30 lb × 10 · 9 · 10' });
   });
 
   it('with help, the range topped: the rung below on the help’s own learned stack (item 01), its counterweight steps', () => {
     // Help logged at 10, 20, 30 and 40 lb (a 10 lb stack), at this gym; the dips at bodyweight and a loaded lift beside them don't move it.
     const HELPED = [...sess('2026-08-01', -10, [8, 8]), ...sess('2026-08-05', -40, [12, 12]), ...sess('2026-08-07', -20, [12, 11]), ...sess('2026-08-09', 0, [6, 5])];
-    const e = [...HELPED, ...sess('2026-08-09', 55, [10, 10], {}, 'Cable Curl'), ...sess('2026-09-01', -30, [12, 12, 12])];
+    const e = [...HELPED, ...sess('2026-08-09', 55, [10, 10], {}, 'Cable Curl'), ...twice(-30, [12, 12, 12])];
     const help = ladderOf(e, DIPS, 'home', true)!;
     expect(help).toMatchObject({ step: 10, known: [10, 20, 30, 40] });
     const t = nextTarget(e, DIPS, DEF, NEXT)!;
@@ -52,8 +54,8 @@ describe('nextTarget for a bodyweight lift (item 14)', () => {
   });
 
   it('reads help an older import kept in its note as help: the same target as the signed weight', () => {
-    const note = sess('2026-09-01', 0, [12, 12, 12], {}).map((x) => ({ ...x, note: 'assisted -30 lb' }));
-    const signed = sess('2026-09-01', -30, [12, 12, 12]);
+    const note = twice(0, [12, 12, 12]).map((x) => ({ ...x, note: 'assisted -30 lb' }));
+    const signed = twice(-30, [12, 12, 12]);
     const t = nextTarget(note, DIPS, TYPED, NEXT)!;
     expect(t).toMatchObject({ kind: 'increase', weight: -27.5 });
     expect({ ...t, last: null }).toEqual({ ...nextTarget(signed, DIPS, TYPED, NEXT)!, last: null });
@@ -93,8 +95,8 @@ describe('nextTarget for a bodyweight lift (item 14)', () => {
   });
 
   it('at bodyweight with the range topped: the reps keep climbing, and it says the range is done', () => {
-    const t = nextTarget(sess('2026-09-01', 0, [12, 12, 12]), DIPS, DEF, NEXT)!;
-    expect(t).toMatchObject({ kind: 'reps', weight: 0, perSet: [13, 13, 13] });
+    const t = nextTarget(twice(0, [12, 12, 12], { rir: 2 }), DIPS, DEF, NEXT)!;
+    expect(t).toMatchObject({ kind: 'reps', weight: 0, perSet: [12, 12, 13] });
     expect(t.why).toMatch(/ · range topped at bodyweight: add weight or a harder variation$/);
     expect(nextTarget(sess('2026-09-01', 0, [10, 9, 9]), DIPS, DEF, NEXT)!.why).not.toMatch(/range topped/);
   });
@@ -103,7 +105,7 @@ describe('nextTarget for a bodyweight lift (item 14)', () => {
     const row = 'Inverted Row';
     const ST = { key: 'inverted row', repMin: 8, repMax: 12, increment: 5 };
     expect(nextTarget(sess('2026-09-01', 0, [10, 10], sharp, row), row, ST, NEXT)).toMatchObject({ kind: 'hold', weight: 0, perSet: [10, 10] });
-    expect(nextTarget(sess('2026-09-01', 0, [12, 12], {}, row), row, ST, NEXT)!.why).not.toMatch(/range topped/);
+    expect(nextTarget([...sess('2026-08-29', 0, [12, 12], {}, row), ...sess('2026-09-01', 0, [12, 12], {}, row)], row, ST, NEXT)!.why).not.toMatch(/range topped/);
     // Its help stays a note: a set at 0 is bodyweight.
     expect(nextTarget(sess('2026-09-01', 0, [12, 12], {}, row).map((x) => ({ ...x, note: 'assisted -30 lb' })), row, ST, NEXT)).toMatchObject({ weight: 0 });
   });
@@ -119,7 +121,7 @@ describe('testDue for a bodyweight lift (item 14)', () => {
       // Weight added from the fifth session on: nothing reads the bodyweight level since, so it drifts out of date.
       const cut = [...new Set(sim.entries.map((e) => e.date))][4];
       const entries = sim.entries.map((e) => (e.exercise === DIPS && e.date >= cut ? { ...e, weight: 25, flags: [], reps: Math.max(1, (e.reps as number) - 6) } : e));
-      const d = testDue(entries, DIPS, today)!;
+      const d = testDue(entries, DIPS, today, undefined, null, 0)!; // the rule itself, without its cooldown
       expect(d, `seed ${seed}`).not.toBeNull();
       const b = bodyStrengthOf(coreBefore(entries, addDays(today, 1))!, DIPS, today)!;
       expect(d).toMatchObject({ weight: 0, reps: Math.round(b.reps), u: b.u, jump: false });
@@ -158,7 +160,7 @@ describe('a set with help, everywhere else (item 14)', () => {
     expect(records(e.map((x) => ({ ...x, exercise: 'Bench Press' })), 'Bench Press').has('e1rm')).toBe(true);
   });
   it('says what moved: less help on the way up, the same load when the reps come down', () => {
-    expect(suggest(sess('2026-09-01', -30, [12, 12, 12]), DIPS, TYPED, NEXT, null).reason).toMatch(/so 2\.5 lb less help\.$/);
+    expect(suggest(twice(-30, [12, 12, 12]), DIPS, TYPED, NEXT, null).reason).toMatch(/so 2\.5 lb less help\.$/);
     expect(suggest(sess('2026-09-01', 0, [10, 10, 10], sharp), DIPS, DEF, NEXT, null).reason)
       .toBe('Sharp pain last time: one rep fewer a set, the same load. Once it’s mild or gone, it builds back up from here.');
     expect(suggest(sess('2026-09-01', -30, [10, 10, 10], sharp), DIPS, TYPED, NEXT, null).reason).toMatch(/a step more help, the same reps\./);

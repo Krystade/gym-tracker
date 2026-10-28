@@ -3,7 +3,7 @@ import type { Flag, SetEntry } from './types';
 import { CATALOG, PATTERNS, VARIATIONS } from './catalog';
 import { NEEDS } from './equipment';
 import { muscleVector } from './muscles';
-import { biasOf, carryOver, mainMuscle, nextVariation, patternOf, rotateProgram, rotation, rotationReason, sinceProgress, stall } from './rotation';
+import { biasOf, carryOver, mainMuscle, nextVariation, patternOf, rotateProgram, rotation as rotationAt, rotationReason, sinceProgress, stall as stallAt, STALL_P, type RotationContext } from './rotation';
 import { trendLog, weekEnd, type TrendLift } from './learn/trendSim.sample';
 import { defaultSettings, nextTarget } from './progression';
 import type { Program } from './program';
@@ -26,6 +26,23 @@ const PLATEAU: [string, string[]][] = [
   ['2026-09-29', ['185x8', '185x8', '185x8']],
 ];
 const TODAY = '2026-10-01';
+// These read the plateau mechanics at the old bar, P > 0.5; the default's own bar (STALL_P, owner 2026-10-28) has its test below.
+const OLD_P = 0.5;
+const stall = (e: SetEntry[], n: string, t: string) => stallAt(e, n, t, OLD_P);
+const rotation = (e: SetEntry[], l: string, t: string, ctx: RotationContext = {}) => rotationAt(e, l, t, { stallP: OLD_P, ...ctx });
+
+describe('the stall bar (owner, 2026-10-28: much stricter)', () => {
+  it('is P(plateau) > 0.6 by default: a short plateau the trend reads at about 0.51 is no stall; the bar is a slot', () => {
+    expect(STALL_P).toBe(0.6);
+    const s = stallAt(log('Bench Press', PLATEAU), 'Bench Press', TODAY, 0.5)!;
+    expect(s.flat.p).toBeGreaterThan(0.5);
+    expect(s.flat.p).toBeLessThan(0.6);
+    expect(stallAt(log('Bench Press', PLATEAU), 'Bench Press', TODAY)).toBeNull();
+    expect(rotationAt(log('Bench Press', PLATEAU), 'Bench Press', TODAY)).toBeNull();
+    expect(rotationAt(log('Bench Press', PLATEAU), 'Bench Press', TODAY, { stallP: 0.5 })).not.toBeNull();
+  });
+});
+
 /** The same plateau at bodyweight (item 14: a weighted set of a bodyweight lift can't be read without his body weight). */
 const BW_PLATEAU = PLATEAU.map(([d, s]): [string, string[]] => [d, s.map((x) => `0x${x.split('x')[1]}`)]);
 

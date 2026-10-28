@@ -159,7 +159,7 @@ describe('Phase 5 review fixes', () => {
     const { defaultSettings } = await import('./progression');
     expect(defaultSettings('Plate Pinch Hold')).toMatchObject({ repMin: 30, repMax: 60 });
     const st = defaultSettings('Plate Pinch Hold');
-    const done = [s('2026-09-28', 'Plate Pinch Hold', { weight: 25, reps: 60, flags: ['hold'] })];
+    const done = ['2026-09-26', '2026-09-28'].map((d) => s(d, 'Plate Pinch Hold', { weight: 25, reps: 60, flags: ['hold'] })); // topped two sessions running
     expect(nextTarget(done, 'Plate Pinch Hold', st, '2026-09-30')?.text).toBe('Go up: 30 lb × 30s+');
   });
   it('keeps unknown pain details unknown when editing an old pain set', async () => {

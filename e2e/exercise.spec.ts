@@ -99,8 +99,10 @@ test('the tiles say lb, and the best set is dated like the rest of the app', asy
 });
 
 test('"Not now" quiets the test banner for this lift, and it stays quiet after a reload', async ({ page }) => {
-  await open(page);
-  await seed(page, 'Bench Press', 15);
+  // The first session a test is due on (2026-10-28: a lift's prompt has one session day in 6 weeks): 7 sessions in, on the 8th.
+  await page.clock.install({ time: new Date('2026-09-09T18:00:00') });
+  await page.goto('/');
+  await seed(page, 'Bench Press', 7);
   await openLift(page, 'Bench Press');
   const banner = page.getByText('Time for a test');
   await expect(banner).toBeVisible();
@@ -111,7 +113,7 @@ test('"Not now" quiets the test banner for this lift, and it stays quiet after a
   await expect(page.locator('.tiles').first()).toBeVisible(); // loaded, so a missing banner is not just a slow render
   await expect(banner).toHaveCount(0);
   // Fourteen days on, it is due again.
-  await page.clock.setFixedTime(new Date('2026-10-16T18:00:00'));
+  await page.clock.setFixedTime(new Date('2026-09-23T18:00:00'));
   await page.reload();
   await openLift(page, 'Bench Press');
   await expect(banner).toBeVisible();

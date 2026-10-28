@@ -23,19 +23,19 @@ describe('plannedSets', () => {
 
 describe('suggest', () => {
   const st = defaultSettings('Bench Press'); // 8–12, +5
-  it('goes up after every set hit the top of the range, with sets from the program', () => {
-    const log = [s('2026-09-28', 'Bench Press', 135, 12), s('2026-09-28', 'Bench Press', 135, 12), s('2026-09-28', 'Bench Press', 135, 12)];
+  it('goes up after every set hit the top of the range two sessions running, with sets from the program', () => {
+    const log = ['2026-09-25', '2026-09-28'].flatMap((d) => [s(d, 'Bench Press', 135, 12), s(d, 'Bench Press', 135, 12), s(d, 'Bench Press', 135, 12)]);
     const x = suggest(log, 'Bench Press', st, '2026-10-02', 4)!;
     expect(x).toMatchObject({ weight: 140, reps: 8, repMax: 12, sets: 4, setsFrom: 'program', kind: 'increase' });
-    expect(x.reason).toBe('36 reps last time, within 2 of 3 × 12, so +5 lb.');
+    expect(x.reason).toBe('Range topped two sessions running (36 reps last time, within 2 of 3 × 12), so +5 lb.');
   });
-  it('stays and chases reps otherwise, matching last session’s working-set count', () => {
+  it('stays at last time’s reps otherwise, matching last session’s working-set count', () => {
     const log = [s('2026-09-28', 'Bench Press', 95, 10, ['warmup']), s('2026-09-28', 'Bench Press', 135, 10), s('2026-09-28', 'Bench Press', 135, 9)];
-    expect(suggest(log, 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: 135, reps: 10, sets: 2, setsFrom: 'last', kind: 'reps' });
+    expect(suggest(log, 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: 135, reps: 9, perSet: [10, 9], sets: 2, setsFrom: 'last', kind: 'reps' });
   });
   it('never uses the day’s own sets, so the suggestion holds all session', () => {
     const log = [s('2026-09-28', 'Bench Press', 135, 9), s('2026-10-02', 'Bench Press', 135, 12), s('2026-10-02', 'Bench Press', 135, 12)];
-    expect(suggest(log, 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: 135, reps: 10, sets: 1 });
+    expect(suggest(log, 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: 135, reps: 9, sets: 1 });
   });
   it('after a test day, takes the weight from the test and the sets from the last working session', () => {
     const log = [s('2026-09-25', 'Bench Press', 135, 10), s('2026-09-25', 'Bench Press', 135, 10), s('2026-09-28', 'Bench Press', 225, 1, ['test'])];
@@ -44,7 +44,7 @@ describe('suggest', () => {
     expect(x).toMatchObject({ weight: 160, reps: 8, sets: 2, setsFrom: 'last', kind: 'test' });
     expect(x.reason).toBe('Your test set puts 12 reps at about 160 lb, so that’s the working weight now.');
     // A test done after the working sets counts toward the weight, not the set count: 10 + 12 + 12 = 34 of 3 × 12 → up, 2 sets.
-    const mixed = [s('2026-09-28', 'Bench Press', 135, 10), s('2026-09-28', 'Bench Press', 135, 12), s('2026-09-28', 'Bench Press', 135, 12, ['test'])];
+    const mixed = ['2026-09-25', '2026-09-28'].flatMap((d) => [s(d, 'Bench Press', 135, 10), s(d, 'Bench Press', 135, 12), s(d, 'Bench Press', 135, 12, ['test'])]);
     expect(suggest(mixed, 'Bench Press', st, '2026-10-02', null)).toMatchObject({ weight: 140, reps: 8, sets: 2, setsFrom: 'last', kind: 'increase' });
   });
   it('pain last time: the same weight and reps (moderate), or a step lighter (sharp), and says why (item 08)', () => {
@@ -87,9 +87,10 @@ describe('warmups', () => {
 describe('Phase 12 review fixes', () => {
   const st = defaultSettings('Bench Press');
   it('after training today, "next time" means the next session', () => {
-    const log = [s('2026-09-28', 'Bench Press', 135, 12), s('2026-10-02', 'Bench Press', 140, 12), s('2026-10-02', 'Bench Press', 140, 12)];
+    const log = [s('2026-09-25', 'Bench Press', 135, 12), s('2026-09-28', 'Bench Press', 135, 12), s('2026-09-30', 'Bench Press', 140, 12), s('2026-09-30', 'Bench Press', 140, 12),
+      s('2026-10-02', 'Bench Press', 140, 12), s('2026-10-02', 'Bench Press', 140, 12)];
     expect(nextTime(log, 'Bench Press', st, '2026-10-02', 4)).toMatchObject({ trainedToday: true, s: { weight: 145, sets: 2, setsFrom: 'last' } });
-    expect(nextTime(log.slice(0, 1), 'Bench Press', st, '2026-10-02', 4)).toMatchObject({ trainedToday: false, s: { weight: 140, sets: 4 } });
+    expect(nextTime(log.slice(0, 2), 'Bench Press', st, '2026-10-02', 4)).toMatchObject({ trainedToday: false, s: { weight: 140, sets: 4 } });
   });
   it('labels timed holds in seconds', () => {
     expect(suggest([], 'Plank', defaultSettings('Plank'), '2026-10-02', null).unit).toBe(' s');

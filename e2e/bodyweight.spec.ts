@@ -9,6 +9,7 @@ const row = (date: string, set: number, w: number, reps: number) => `${date},For
 const ROWS = [
   row('2026-09-20', 1, 0, 7), row('2026-09-20', 2, 0, 6), row('2026-09-20', 3, -30, 10),
   row('2026-09-25', 1, 0, 8), row('2026-09-25', 2, 0, 6), row('2026-09-25', 3, -30, 11),
+  row('2026-09-28', 1, -30, 12), row('2026-09-28', 2, -30, 12), row('2026-09-28', 3, -30, 12),
   row('2026-10-01', 1, -30, 12), row('2026-10-01', 2, -30, 12), row('2026-10-01', 3, -30, 12),
 ];
 
@@ -23,7 +24,7 @@ test('help is a weight below bodyweight: less of it once the range is topped, lo
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Forward-Lean Dips');
   await page.getByRole('button', { name: /^Forward-Lean Dips/ }).first().click();
   const card = page.locator('[data-card="forward-lean dips"]');
-  // 12 · 12 · 12 at BW − 30 tops 8–12: a step less help.
+  // 12 · 12 · 12 at BW − 30 tops 8–12 two sessions running: a step less help.
   await expect(card.getByLabel('Target')).toContainText('Go up: 3 × 8+ @ BW − 25 lb');
   await expect(card.getByLabel('Target').locator('.target-why')).toHaveCount(0);
   const weight = card.getByRole('textbox', { name: 'Weight' });

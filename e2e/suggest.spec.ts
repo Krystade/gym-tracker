@@ -1,25 +1,29 @@
 import { expect, test } from '@playwright/test';
 import { goto } from './nav';
 
+const DAY0 = new Date('2026-09-25T17:00:00');
 const DAY1 = new Date('2026-09-28T17:00:00');
 const DAY2 = new Date('2026-10-02T17:00:00');
 
 test('open an exercise: next sets × reps @ weight with a warm-up, history below, log it today with the suggestion saved', async ({ page }) => {
-  await page.clock.install({ time: DAY1 });
+  await page.clock.install({ time: DAY0 });
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t: string) => { (window as unknown as { copied: string }).copied = t; } } });
   });
   await page.goto('/');
-  // Last session: 3 × 12 @ 135 — time to go up.
-  await page.getByRole('button', { name: 'Add exercise' }).click();
-  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
-  await page.getByRole('button', { name: 'Bench Press', exact: true }).click();
-  for (let i = 0; i < 3; i++) {
-    await page.getByRole('textbox', { name: 'Weight' }).fill('135');
-    await page.getByRole('textbox', { name: 'Reps' }).fill('12');
-    await page.getByRole('button', { name: 'Add set' }).click();
+  // The last two sessions: 3 × 12 @ 135 each — the range topped twice, time to go up (2026-10-28).
+  for (const day of [DAY0, DAY1]) {
+    if (day === DAY1) { await page.clock.setSystemTime(DAY1); await page.reload(); }
+    await page.getByRole('button', { name: 'Add exercise' }).click();
+    await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Bench Press');
+    await page.getByRole('button', { name: /^Bench Press( · logged)?$/ }).first().click();
+    for (let i = 0; i < 3; i++) {
+      await page.getByRole('textbox', { name: 'Weight' }).fill('135');
+      await page.getByRole('textbox', { name: 'Reps' }).fill('12');
+      await page.getByRole('button', { name: 'Add set' }).click();
+    }
+    await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(3);
   }
-  await expect(page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(3);
 
   await page.clock.setSystemTime(DAY2);
   await page.reload();
@@ -47,8 +51,8 @@ test('open an exercise: next sets × reps @ weight with a warm-up, history below
   await page.getByLabel('Target').screenshot({ path: 'screenshots/21-target-line.png' });
   // Trained today: the exercise screen now shows the next session, with nothing to log today.
   await page.getByRole('button', { name: 'Bench Press', exact: true }).click();
-  // One set today, 140 × 8: the next session aims that set at 9 (each set at its own number).
-  await expect(page.getByRole('region', { name: 'Next time' })).toContainText('9 @ 140 lb');
+  // One set today, 140 × 8, no RIR logged: the next session aims that set at 8 again (2026-10-28).
+  await expect(page.getByRole('region', { name: 'Next time' })).toContainText('8 @ 140 lb');
   await expect(page.getByRole('button', { name: 'Log it today' })).toHaveCount(0);
 
   // The backup carries when it was logged and what was suggested; the body file carries energy.

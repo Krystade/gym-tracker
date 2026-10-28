@@ -74,13 +74,24 @@ describe('targets for a timed lift', () => {
     expect(t.text).toBe('BW × 35 · 35 s');
     expect(nextTarget([h('2026-10-01', 0, 58, 'Wall Sit')], 'Wall Sit', st, '2026-10-03')).toMatchObject({ reps: 60 });
   });
-  it('at the top: bodyweight says add weight or a harder variation; weighted goes up a step', () => {
+  it('at the top two sessions running: bodyweight says add weight or a harder variation; weighted goes up a step', () => {
     const st = defaultSettings('Plank');
-    const bw = nextTarget([h('2026-10-01', 0, 60), h('2026-10-01', 0, 60, 'Plank', { setNo: 2 })], 'Plank', st, '2026-10-03')!;
+    const top = (w: number) => ['2026-09-28', '2026-10-01'].flatMap((d) => [h(d, w, 60), h(d, w, 60, 'Plank', { setNo: 2 })]);
+    // Once: the same again.
+    expect(nextTarget(top(0).slice(2), 'Plank', st, '2026-10-03')).toMatchObject({ kind: 'reps', perSet: [60, 60] });
+    const bw = nextTarget(top(0), 'Plank', st, '2026-10-03')!;
     expect(bw).toMatchObject({ kind: 'maxed', reps: 60 });
     expect(bw.text).toMatch(/add weight or try a harder variation/);
-    expect(nextTarget([h('2026-10-01', 25, 60), h('2026-10-01', 25, 60, 'Plank', { setNo: 2 })], 'Plank', st, '2026-10-03'))
+    expect(nextTarget(top(25), 'Plank', st, '2026-10-03'))
       .toMatchObject({ kind: 'increase', weight: 30, reps: 30 });
+  });
+  it('the next set says the number its note says: 47 s again is 47 s, not 45', async () => {
+    const { nextSet, suggest } = await import('./suggest');
+    const st = defaultSettings('Plank');
+    const log = [h('2026-10-01', 0, 45), h('2026-10-01', 0, 45, 'Plank', { setNo: 2 })];
+    const today = [h('2026-10-03', 0, 47)];
+    const n = nextSet([...log, ...today], 'Plank', '2026-10-03', suggest(log, 'Plank', st, '2026-10-03', 3), today)!;
+    expect(n).toMatchObject({ reps: 47, why: '47 s again, as your last set' });
   });
   it('never reads an old rep set of a lift that became timed as seconds', () => {
     const st = defaultSettings('Dead Hang');

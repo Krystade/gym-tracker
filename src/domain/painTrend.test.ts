@@ -26,8 +26,9 @@ describe('one session: the next morning decides', () => {
     expect(next(at('2026-09-10', m(2, 'worse')))).toMatchObject({ kind: 'ease', weight: 105, why: 'Worse next morning: one step lighter' });
   });
   it('mild: settled or unasked progresses, still sore holds, worse eases', () => {
-    expect(next(at('2026-09-10', m(1, 'settled')))).toMatchObject({ kind: 'increase', weight: 115 });
-    expect(next(at('2026-09-10', m(1)))).toMatchObject({ kind: 'increase', weight: 115 });
+    // The range topped the session before as well (owner, 2026-10-28: two sessions running).
+    expect(next([...at('2026-09-06', {}), ...at('2026-09-10', m(1, 'settled'))])).toMatchObject({ kind: 'increase', weight: 115 });
+    expect(next([...at('2026-09-06', {}), ...at('2026-09-10', m(1))])).toMatchObject({ kind: 'increase', weight: 115 });
     expect(next(at('2026-09-10', m(1, 'sore')))).toMatchObject({ kind: 'hold', weight: 110, why: 'Still sore next morning: holding 110 lb' });
     expect(next(at('2026-09-10', m(1, 'worse')))).toMatchObject({ kind: 'ease', weight: 105 });
   });

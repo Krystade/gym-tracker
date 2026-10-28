@@ -4,7 +4,11 @@ import { testDue } from './estimators';
 import { learn } from './learn';
 import { deloadLog, SIM_LIFTS, simDay } from './learn/deloadSim.sample';
 import { defaultSettings, nextTarget, priorE1rm } from './progression';
-import { rotation, sinceProgress, stall } from './rotation';
+import { rotation as rotationAt, sinceProgress, stall as stallAt, type RotationContext } from './rotation';
+// These read the plateau mechanics at the old bar, P > 0.5; the default's own bar (STALL_P, owner 2026-10-28) has its test below.
+const OLD_P = 0.5;
+const stall = (e: SetEntry[], n: string, t: string) => stallAt(e, n, t, OLD_P);
+const rotation = (e: SetEntry[], l: string, t: string, ctx: RotationContext = {}) => rotationAt(e, l, t, { stallP: OLD_P, ...ctx });
 import { suggest } from './suggest';
 import type { SetEntry } from './types';
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { calibratedE1rm, oneRm, painFactor, strength, testDue, TEST_REPS, weightForReps } from './estimators';
+import { calibratedE1rm, oneRm, painFactor, strength, testDue as dueWithCooldown, TEST_COOLDOWN_DAYS, TEST_REPS, weightForReps } from './estimators';
 import { painRisk } from './learn/pain';
 import { painGate } from './painPlan';
 import { likelyRegion } from './care';
@@ -8,6 +8,9 @@ import { simulate, SIM_LIFTS } from './learn/coreSim.sample';
 import { learn, testSd } from './learn';
 import { liftKey } from './ids';
 import { addDays } from './analytics';
+
+/** Item 05's rule itself, without its cooldown (below). */
+const testDue = (...a: Parameters<typeof dueWithCooldown>) => dueWithCooldown(a[0], a[1], a[2], a[3], a[4], 0);
 
 describe('oneRm', () => {
   it('matches Epley and the weight-dependent formula', () => {
@@ -194,5 +197,34 @@ describe('testDue: when a test would at least halve what the app doesn’t know 
     const plank: SetEntry[] = [0, 1, 2, 3].map((i) => ({ id: `h${i}`, date: `2026-09-0${i + 1}`, seq: i, exercise: 'Plank', setNo: 1, weight: 0, reps: 60, flags: ['hold'], source: 't' }));
     expect(testDue(plank, 'Plank', '2026-09-20')).toBeNull();
     expect(testDue([], 'Treadmill', '2026-09-20')).toBeNull();
+  });
+});
+
+describe('testDue’s cooldown: at most one prompt per lift per 6 weeks (owner, 2026-10-28)', () => {
+  const sim = simulate(1, { sessions: 120, pLog: 0.5 }).entries;
+  const l = SIM_LIFTS[0].name;
+  const days = [...new Set(sim.filter((e) => e.exercise === l).map((e) => e.date))].sort();
+  const before = (d: string) => sim.filter((e) => e.date < d);
+  /** The lift's sessions the rule calls due, as it stood each day. */
+  const ruled = days.filter((d) => testDue(before(d), l, d));
+  const day = (d: string) => Math.round((Date.parse(d) - Date.parse(ruled[0])) / 864e5);
+  it('the first due session prompts; the next ones within 6 weeks don’t, though the rule still calls them due; the first after does', () => {
+    expect(TEST_COOLDOWN_DAYS).toBe(42);
+    expect(ruled.length).toBeGreaterThan(4);
+    expect(dueWithCooldown(before(ruled[0]), l, ruled[0])).not.toBeNull();
+    const within = ruled.filter((d) => day(d) > 0 && day(d) < 42);
+    expect(within.length).toBeGreaterThan(0);
+    for (const d of within) expect(dueWithCooldown(before(d), l, d), d).toBeNull();
+    const next = ruled.find((d) => day(d) >= 42)!;
+    expect(dueWithCooldown(before(next), l, next)).not.toBeNull();
+  });
+  it('the cooldown is a slot: a shorter one lets a later session prompt', () => {
+    const d = ruled.find((x) => day(x) >= 21 && day(x) < 42)!;
+    expect(dueWithCooldown(before(d), l, d, undefined, null, 21)).not.toBeNull();
+  });
+  it('a test on the lift in the last 6 weeks holds it off too', () => {
+    const next = ruled.find((d) => day(d) >= 42)!;
+    const t = before(next).filter((e) => e.exercise === l).at(-1)!;
+    expect(dueWithCooldown([...before(next), { ...t, id: 'tst', flags: ['test'] }], l, next)).toBeNull();
   });
 });

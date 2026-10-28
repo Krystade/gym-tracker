@@ -2,7 +2,7 @@ import { lightWeek } from './learn/deload';
 import { addDays } from './analytics';
 import { isHoldLift } from './care';
 import { liftKey } from './ids';
-import { coreBefore, testSd } from './learn';
+import { coreBefore, logBefore, testSd } from './learn';
 import { floorRung, ladderOf, nextRung } from './learn/ladder';
 import { bodyRepsSeries, bodyStrengthOf, levelSeries, strengthOf, weightFor, type BodyStrength, type Strength } from './learn/strength';
 import { REACCLIMATION, runIndex } from './learn/trend';
@@ -103,8 +103,40 @@ export const painFactor = (p: number): number => (p < 0.5 ? 1 / Math.sqrt(1 - 2 
 export interface TestDue { weight: number; reps: number; u: number; after: number; jump: boolean; body?: { u: number; after: number } }
 /** `st`: the lift's settings (a typed increment wins over the learned ladder); `target`: today's target, when known. */
 export function testDue(entries: readonly SetEntry[], exercise: string, today: string, st?: { increment: number },
-  target?: { kind: string; weight: number | null } | null): TestDue | null {
+  target?: { kind: string; weight: number | null } | null, cooldownDays = TEST_COOLDOWN_DAYS): TestDue | null {
   entries = learnable(entries); // the log without sets marked not used (stats.learnable)
+  const due = dueOn(entries, exercise, today, st, target);
+  return due && !(cooldownDays > 0 && cooling(entries, exercise, today, st, cooldownDays)) ? due : null;
+}
+
+/**
+ * At most one test prompt per lift per this many days (owner, 2026-10-28: on his log it fired on 242 lift-days for 1 test). A default:
+ * `testDue` takes another, for a learned one later.
+ */
+export const TEST_COOLDOWN_DAYS = 42;
+
+/**
+ * Item 05's cooldown: the lift had a test in the last 6 weeks, or the prompt was already due on one of its sessions in the last 6
+ * weeks. Read off the log alone (nothing to store, the same on every phone, and a replay gives the same days): walking the lift's
+ * sessions oldest first since its last test, a session prompts when the rule called it due (as it stood that day, from the log
+ * before it) and no session in the 6 weeks before it prompted. The walk starts at most 3 cooldowns back, which bounds its cost.
+ */
+function cooling(entries: readonly SetEntry[], exercise: string, today: string, st: { increment: number } | undefined, days: number): boolean {
+  const mine = liftSets(entries, exercise).filter((e) => e.date < today && e.reps != null && !e.flags.includes('warmup'));
+  const lastTest = mine.filter((e) => e.flags.includes('test')).map((e) => e.date).sort().at(-1);
+  const t = dayOf(today), from = addDays(today, -3 * days);
+  if (lastTest && t - dayOf(lastTest) < days) return true;
+  let prompted: number | null = null;
+  for (const d of [...new Set(mine.map((e) => e.date))].sort()) {
+    if (d <= (lastTest ?? '') || d < from || (prompted != null && dayOf(d) - prompted < days)) continue;
+    if (dueOn(logBefore(entries, d), exercise, d, st, null)) prompted = dayOf(d);
+  }
+  return prompted != null && t - prompted < days;
+}
+
+/** Item 05's rule on `today`, without the cooldown (see `testDue`). */
+function dueOn(entries: readonly SetEntry[], exercise: string, today: string, st?: { increment: number },
+  target?: { kind: string; weight: number | null } | null): TestDue | null {
   if (isCardio(exercise) || isHoldLift(exercise, entries)) return null;
   // (a) One failure set a day: sets to failure need longer recovery (Morán-Navarro 2017), so not two tests in a workout.
   if (entries.some((e) => e.date === today && e.flags.includes('test'))) return null;

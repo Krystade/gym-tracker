@@ -52,7 +52,7 @@ describe('painGate: what last time’s pain allows today (item 08, a)', () => {
 describe('nextTarget with the pain gate', () => {
   const topped = (over: Partial<SetEntry>) => sess('2026-09-01', PD, 110, [15, 15, 15], over);
   it('a topped session that hurt moderately repeats; the same session without pain goes up', () => {
-    expect(nextTarget(topped({}), PD, ST, '2026-09-04')).toMatchObject({ kind: 'increase', weight: 115 });
+    expect(nextTarget([...sess('2026-08-29', PD, 110, [15, 15, 15]), ...topped({})], PD, ST, '2026-09-04')).toMatchObject({ kind: 'increase', weight: 115 });
     const t = nextTarget(topped(pain(2)), PD, ST, '2026-09-04')!;
     expect(t).toMatchObject({ kind: 'hold', weight: 110, perSet: [15, 15, 15] });
     expect(t.pain).toMatchObject({ kind: 'hold', zone: 2 });
@@ -69,7 +69,8 @@ describe('nextTarget with the pain gate', () => {
     const e = [...topped(pain(3)), ...sess('2026-09-04', PD, 105, [15, 15, 15], pain(3))];
     expect(nextTarget(e, PD, ST, '2026-09-08')).toMatchObject({ kind: 'ease', weight: 100 });
     const back = [...e, ...sess('2026-09-08', PD, 100, [15, 15, 15])];
-    expect(nextTarget(back, PD, ST, '2026-09-11')).toMatchObject({ kind: 'increase', weight: 105 });
+    expect(nextTarget(back, PD, ST, '2026-09-11')).toMatchObject({ kind: 'reps', weight: 100 }); // topped once at 100
+    expect(nextTarget([...back, ...sess('2026-09-11', PD, 100, [15, 15, 15])], PD, ST, '2026-09-14')).toMatchObject({ kind: 'increase', weight: 105 });
   });
   it('a bodyweight lift that hurt sharply, with no help known, eases a rep a set (item 14); a hold, with nothing to take off, holds', () => {
     const e = sess('2026-09-01', 'Pull-up', 0, [10, 10, 10], pain(3));

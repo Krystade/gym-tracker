@@ -310,9 +310,18 @@ export const isTraining = (s: SetEntry): boolean => isWorking(s) && !isTest(s);
  * `light`: a light week is on (item 06): the target it would be, lightened (see `lighten`). Sessions of a light week are never
  * progressed from: the first target after it is the one before it.
  */
-export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned?: number | null, light = false): Target | null {
+/**
+ * The slots in the target rules a learned value can fill later (owner, 2026-10-28: "I will still want it to learn"): today's fixed
+ * rules are the defaults. `plusOneRir`: the reps in reserve logged on a set that earn it +1 next time. `toppedSessions`: how many
+ * sessions running must top the range before the weight goes up.
+ */
+export interface TargetRules { plusOneRir: number; toppedSessions: number }
+export const TARGET_RULES: TargetRules = { plusOneRir: 2, toppedSessions: 2 };
+
+export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned?: number | null, light = false,
+  rules: TargetRules = TARGET_RULES): Target | null {
   entries = learnable(entries); // the log without sets marked not used (stats.learnable)
-  const t = baseTarget(entries, exercise, st, date, planned);
+  const t = baseTarget(entries, exercise, st, date, planned, rules);
   return light && t ? lighten(t, entries, exercise, st, date, planned) : t;
 }
 
@@ -347,7 +356,40 @@ function lighten(t: Target, entries: SetEntry[], exercise: string, st: ExerciseS
 /** A light week's reps and sets are its own: the lines that set them in the target it lightens don't carry over. */
 const LIGHT_DROPS = new Set<TargetInput>(['hits', 'rir', 'drop', 'plan', 'bodyweight']);
 
-function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned?: number | null): Target | null {
+/**
+ * A rep lift's sets next time (owner, 2026-10-28): last time's same set again, +1 only on a set logged at 2+ in reserve, never past
+ * `max` (the range's top; a set already past it keeps its reps). Replayed on his log, repeating last time foretold his reps best
+ * (off by 1.41 a set, against 1.61 for the old +1 a set after a hit, which hit 39 % of the time).
+ */
+export function repStep(last: SetEntry[], max: number, plusOneRir = TARGET_RULES.plusOneRir): { aimed: number[]; rule: string; parts: TargetPart[] } {
+  const room = last.map((x) => x.rir != null && x.rir >= plusOneRir && (x.reps as number) < max);
+  const aimed = last.map((x, i) => (x.reps as number) + (room[i] ? 1 : 0));
+  const up = room.flatMap((r, i) => (r ? [i + 1] : []));
+  const rule = !up.length ? `Same reps as last time: +1 only on a set you log at ${plusOneRir}+ in reserve`
+    : up.length === last.length ? `+1 rep a set: each had ${plusOneRir}+ in reserve last time` : `+1 rep on set ${up.join(', ')}: ${plusOneRir}+ in reserve last time`;
+  const parts: TargetPart[] = up.length ? [{ key: 'rir', what: 'Reps in reserve you logged', value: `${plusOneRir}+ on set ${up.join(', ')}: +1 there, the rest as last time`,
+    evidence: { ev: 'b', method: `your log, replayed: last time’s reps foretold yours best; +1 only where you left ${plusOneRir} or more` } }] : [];
+  return { aimed, rule, parts };
+}
+
+/**
+ * A timed hold's sets next time: +5 s a set while its targets are hit (no RIR on a hold), on one set after a miss, and last time
+ * again after two misses in 3 (`targetsHit`, `stepFrom`); never past `max`.
+ */
+function holdStep(sessions: { sets: SetEntry[] }[], last: SetEntry[], max: number): { aimed: number[]; rule: string; parts: TargetPart[] } {
+  const hits = targetsHit(sessions);
+  const wanted = stepFrom(hits);
+  const { perSet: aimed, step } = perSetTargets(last.map((x) => ({ reps: x.reps as number })), wanted, max, 5);
+  const rule = step === 'all' ? (hits[0] ? 'Targets hit last time: +5 s a set' : 'Last time +5 s a set')
+    : step === 'one' ? (wanted === 'one' ? 'Missed last time: +5 s on one set' : 'Most sets at their limit: +5 s on one set')
+    : wanted === 'repeat' ? 'Missed twice lately: repeat last time' : 'Sets at their limit last time: repeat them';
+  const parts: TargetPart[] = hits.some((h) => !h) ? [{ key: 'hits', what: `Targets, last ${hits.length === 1 ? 'session' : `${hits.length} sessions`}`,
+    value: `${hits.map((h) => (h ? 'hit' : 'missed')).join(' · ')}: ${wanted === 'repeat' ? 'repeat last time' : '+5 s on one set'}`,
+    evidence: { ev: 'c', note: 'a fixed rule: missed once, one set goes up; missed twice in 3, repeat' } }] : [];
+  return { aimed, rule, parts };
+}
+
+function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null | undefined, rules: TargetRules): Target | null {
   const hold = isHoldLift(exercise, entries);
   // A hold reads only its timed sets: a set logged as reps before the lift became timed is no number of seconds (round 32).
   const before = sessionsFor(entries, exercise).filter((x) => x.date < date && !lightSession(x.sets))
@@ -384,7 +426,6 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   // A test there counts as strength (its e1RM, below), never as a set to repeat or the weight to repeat it at (owner, 2026-10-23:
   // a 45 × 1 single before 35 × 9, 35 × 7 made the target 1 · 1 · 1 @ 45). A session with a test always has training sets (`at`).
   const working = last.sets.filter(isTraining);
-  const sameTests = last.sets.filter((x) => isTest(x) && isWorking(x));
   // Item 14: a lift whose load is the body reads each set's weight as what was added to it, help kept in an older import's note
   // counted below bodyweight (learn/bodyweight), so "BW × 10" and "BW − 30 × 10" are different sets.
   const unit = hold ? 's' : '';
@@ -403,16 +444,31 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   const fit = learned.drop ? fitRange(exercise, st, Math.max(0, learned.drop.mean)) : null;
   const range = fit && fit.how !== 'fits' && fit.how !== 'too-big' ? fit : null;
   const repMin = range?.repMin ?? st.repMin, repMax = range?.repMax ?? st.repMax;
-  const all = working.filter((x) => load(x) === top);
-  // The best N, kept in the order done.
-  const bestN = planned != null && planned > 0 && all.length > planned ? new Set([...all].sort((a, b) => (b.reps as number) - (a.reps as number)).slice(0, planned)) : null;
-  const atTop = bestN ? all.filter((x) => bestN.has(x)) : all;
-  const minReps = Math.min(...atTop.map((x) => x.reps as number));
-  // The session's best test as e1RM evidence (reps in reserve counted): the reps it puts within reach at the working weight.
-  const bestTest = !unit && !body && top > 0 && sameTests.length ? sameTests.reduce((a, b) => (testE1rm(b) > testE1rm(a) ? b : a)) : null;
-  const testE = bestTest ? testE1rm(bestTest) : 0;
-  const testReps = testE > 0 ? 30 * (testE / top - 1) : null;
-  const byTest = testReps != null && testReps >= repMax - 1e-6;
+  /**
+   * A session's sets at the top weight (the best N, kept in the order done, when the plan has N and it had more), their total and
+   * least reps, its best test as e1RM evidence (reps in reserve counted: the reps it puts within reach at the working weight), and
+   * whether it topped the range: up once the sets total within 2 reps of all at the top (12/12/10 at 3 × 8–12), none below its
+   * bottom (one heavier top set gets no slack), or once a test there puts the top within reach (owner, 2026-10-19).
+   */
+  const read = (sets: SetEntry[]) => {
+    const all = sets.filter((x) => isTraining(x) && load(x) === top);
+    const bestN = planned != null && planned > 0 && all.length > planned ? new Set([...all].sort((a, b) => (b.reps as number) - (a.reps as number)).slice(0, planned)) : null;
+    const atTop = bestN ? all.filter((x) => bestN.has(x)) : all;
+    const total = atTop.reduce((a, x) => a + (x.reps as number), 0), minReps = Math.min(...atTop.map((x) => x.reps as number));
+    const tests = sets.filter((x) => isTest(x) && isWorking(x));
+    const bestTest = !unit && !body && top > 0 && tests.length ? tests.reduce((a, b) => (testE1rm(b) > testE1rm(a) ? b : a)) : null;
+    const testE = bestTest ? testE1rm(bestTest) : 0;
+    const testReps = testE > 0 ? 30 * (testE / top - 1) : null;
+    const bySets = atTop.length > 0 && total >= atTop.length * repMax - Math.min(2, atTop.length - 1) && minReps >= repMin;
+    return { all, bestN, atTop, total, minReps, bestTest, testE, testReps, bySets, byTest: testReps != null && testReps >= repMax - 1e-6 };
+  };
+  const { all, bestN, atTop, total, minReps, bestTest, testE, testReps, bySets: toppedBySets, byTest } = read(last.sets);
+  // The session before it, when it was at the same top weight: the range must be topped there too (owner, 2026-10-28: on his log
+  // one topped session went up and held 12 times in 37).
+  const priors = before.slice(Math.max(0, at) + 1).filter((x) => x.sets.some(isTraining)).slice(0, Math.max(0, rules.toppedSessions - 1))
+    .map((x) => (Math.max(...x.sets.filter(isTraining).map(load)) === top ? read(x.sets) : null));
+  const prev = priors[0] ?? null;
+  const toppedBefore = priors.length === Math.max(0, rules.toppedSessions - 1) && priors.every((x) => !!x && (x.bySets || x.byTest));
   if (bestTest && testReps != null) parts.push({ key: 'test', what: 'Your test set', date: last.date,
     value: `${lb(bestTest.weight)} × ${bestTest.reps}${bestTest.rir ? `, ${bestTest.rir} in reserve` : ''} → e1RM ${Math.round(testE)} lb: about ${Math.max(0, Math.floor(testReps + 1e-6))} reps at ${lb(top)}${byTest ? ', the top of the range' : ''}`,
     evidence: { ev: 'b', method: 'its e1RM by Epley, reps in reserve counted: a test counts as strength, not as reps to repeat' } });
@@ -456,21 +512,25 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
     planLine(reps.length);
     return { kind, weight: w, reps: Math.min(...aimed), perSet: aimed, last: last.sets, why, pain: gate, ...(kind === 'ease' && { easeBy }), text: `${lb(w)} × ${aimed.join(' · ')}${unit ? ' s' : ''}`, parts };
   }
-  // Up once the sets at the top weight total within 2 reps of all at the top of the range (12/12/10 at 3 × 8–12), none below its bottom.
-  const total = atTop.reduce((a, x) => a + (x.reps as number), 0);
-  const toppedBySets = total >= atTop.length * repMax - Math.min(2, atTop.length - 1) && minReps >= repMin; // one heavier top set gets no slack
-  // Or a test there puts the range's top within reach at the working weight: a test counts toward progression (owner, 2026-10-19).
-  const topped = toppedBySets || byTest;
-  const toppedWhat = toppedBySets ? 'Range topped last time' : 'Range topped by your test';
+  // Up once the range is topped two sessions running (owner, 2026-10-28), each by its sets or a test there (a test counts toward
+  // progression: owner, 2026-10-19). Topped once: the same weight again, to top it twice.
+  const toppedNow = toppedBySets || byTest;
+  const topped = toppedNow && toppedBefore;
+  const toppedWhat = !topped ? (toppedNow ? 'Range topped once' : 'Range not topped yet')
+    : rules.toppedSessions <= 1 ? (toppedBySets ? 'Range topped last time' : 'Range topped by your test')
+    : `Range topped ${rules.toppedSessions === 2 ? 'two' : rules.toppedSessions} sessions running${toppedBySets && priors.every((x) => x!.bySets) ? '' : ', with your test'}`;
   const testUp = !toppedBySets && byTest ? { byTest: { weight: bestTest!.weight, reps: bestTest!.reps as number, at: top } } : {};
   // The range, and the fit that moved it (item 03: a, growth alike over 5–30 reps; b, his drop, on its own line), as read here.
   const rangeLines = (): TargetPart[] => [rangePart(st, exercise, hold), ...(range ? [{ key: 'fit' as const, what: range.how === 'top' ? 'Range raised for your jumps' : 'Range lowered for your jumps',
     value: `${range.repMin}–${range.repMax} reps, so the next weight lands inside it`,
     evidence: { ev: 'a' as const, cite: 'Schoenfeld 2017 (JSCR 31:3508), Lopez 2021 (MSSE 53:1206): growth is alike from 5 to 30 reps, so the range can move' } }] : [])];
-  // Topped: the total that went up; not yet, the total it goes up at (and every set at the bottom, when one wasn't).
+  // Topped twice: the totals that went up; once, that it goes up when topped again; not yet, the total it goes up at (and every
+  // set at the bottom, when one wasn't).
   const need = atTop.length * repMax - Math.min(2, atTop.length - 1);
+  const u = unit ? ' s' : ' reps';
   const progress = (what: string): TargetPart => ({ key: 'progress', what, evidence: { ev: 'a', cite: PLOTKIN },
-    value: `${total}${unit ? ' s' : ' reps'} over ${atTop.length} × ${repMax}${unit ? ' s' : ''}${toppedBySets ? '' : `: up at ${need}${minReps < repMin ? `, every set ${repMin}+` : ''}`}` });
+    value: `${total}${u} over ${atTop.length} × ${repMax}${unit ? ' s' : ''}${topped ? (prev ? `, and ${prev.total}${u} the time before` : '')
+      : toppedNow ? ': top it once more to go up' : `: up at ${need}${minReps < repMin ? `, every set ${repMin}+` : ''}, two sessions running`}` });
   // Item 14: an assisted bodyweight lift whose range is topped takes a step less help: the rung below on its assisted machine's
   // stack (learned, item 01; a typed increment wins), up to bodyweight.
   if (body && top < 0 && topped) {
@@ -514,30 +574,21 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   }
   // Bodyweight reps have no weight to add, so their target is not capped by the range. Holds step in 5 s, like the stepper,
   // and have no RIR.
-  const by = unit ? 5 : 1;
-  const hits = targetsHit(before.slice(Math.max(0, at)));
-  const wanted = stepFrom(hits);
   const uncapped = top === 0 && !unit;
-  const { perSet: aimed, step, rir } = perSetTargets(atTop.map((x) => ({ reps: x.reps as number, ...(!unit && x.rir != null && { rir: x.rir }) })),
-    wanted, uncapped ? Infinity : repMax, by);
+  const rep = unit ? holdStep(before.slice(Math.max(0, at)), atTop, repMax) : repStep(atTop, uncapped ? Infinity : repMax, rules.plusOneRir);
+  const { aimed, rule } = rep;
   // A plan with more sets than last time: the extra sets aim at the last one's number.
   const perSet = extend(aimed);
-  const plus = `+${by}${unit || (by === 1 ? ' rep' : ' reps')}`;
-  const rule = step === 'all' ? (hits[0] ? `Targets hit last time: ${plus} a set` : `Last time ${plus} a set`)
-    : step === 'one' ? (wanted === 'one' ? `Missed last time: ${plus} on one set` : `Most sets at their limit: ${plus} on one set`)
-    : wanted === 'repeat' ? 'Missed twice lately: repeat last time' : 'Sets at their limit last time: repeat them';
+  const once = toppedNow && !topped ? ' · range topped once: top it again to go up' : '';
   // Item 03: a range moved by the learned drop says so, in a few words.
   // Item 14: at bodyweight with the range topped there's no weight to go up to here (without his body weight the app can't say how
   // much to add), so the reps keep climbing, and the card says the range is done (display only).
   const atBw = body && top === 0 && topped ? ' · range topped at bodyweight: add weight or a harder variation' : '';
-  const why = (range ? `${rule} · ${range.how === 'top' ? `to ${range.repMax} before going up` : `${range.repMin}+ is fine after going up`}` : rule) + atBw;
-  // The range read for "topped" (and, loaded, each set's cap). Hits: the stall rule, when there were targets to go by; it moved
-  // the step only when one was missed (all hit is what no targets gives too).
-  // Bodyweight reps aren't capped, so the range moves no number there: its own line says what it does.
-  if (!uncapped) parts.push(progress(topped ? toppedWhat : 'Range not topped yet'), ...rangeLines());
-  if (hits.some((h) => !h)) parts.push({ key: 'hits', what: `Targets, last ${hits.length === 1 ? 'session' : `${hits.length} sessions`}`, value: `${hits.map((h) => (h ? 'hit' : 'missed')).join(' · ')}: ${wanted === 'repeat' ? 'repeat last time' : `${plus} on one set`}`,
-    evidence: { ev: 'c', note: 'a fixed rule: missed once, one set goes up; missed twice in 3, repeat' } });
-  if (rir) parts.push({ key: 'rir', what: 'Reps in reserve you logged', value: 'no set aims past its reps + RIR', evidence: { ev: 'b', method: 'your log: a set at RIR 0 gets no rep' } });
+  const why = (range ? `${rule} · ${range.how === 'top' ? `to ${range.repMax} before going up` : `${range.repMin}+ is fine after going up`}` : rule) + once + atBw;
+  // The range read for "topped" (and, loaded, each set's cap). Bodyweight reps aren't capped, so the range moves no number there:
+  // its own line says what it does.
+  if (!uncapped) parts.push(progress(toppedWhat), ...rangeLines());
+  parts.push(...rep.parts);
   if (uncapped) parts.push({ key: 'bodyweight', what: 'Bodyweight reps', value: topped ? `past ${repMax}: add weight or a harder variation` : 'not capped by the range',
     evidence: { ev: 'c', note: 'no weight to add here without your body weight' } });
   planLine(aimed.length);

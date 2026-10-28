@@ -84,7 +84,7 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
   // Item 14: up from help (a weight at or below bodyweight) is less help.
   const up = t.weight <= 0 ? `${t.step ?? st.increment} lb less help` : `+${t.step ?? st.increment} lb`;
   const reason = t.kind === 'increase' ? (t.byTest ? `Your test set (${t.byTest.weight} lb × ${t.byTest.reps}) puts ${top} reps within reach at ${t.byTest.at} lb, so ${up}.`
-      : `${t.done!.total}${unit || ' reps'} last time, within 2 of ${t.done!.sets} × ${top}${unit}, so ${up}.`)
+      : `Range topped two sessions running (${t.done!.total}${unit || ' reps'} last time, within 2 of ${t.done!.sets} × ${top}${unit}), so ${up}.`)
       + (t.drop ? ` Each set aims at last time’s less ${Math.round(Math.max(0, t.drop.mean) * 2) / 2}: what your ${t.drop.all} weight increases cost you.` : '')
     : t.kind === 'repeat' ? 'Last time had no complete sets: repeat the weight and log every rep.'
     : t.kind === 'maxed' ? `You held about ${st.repMax}${unit} a set: add weight, or move to a harder variation.`
@@ -146,8 +146,8 @@ export function nextSet(entries: readonly SetEntry[], exercise: string, date: st
   const learned = s.unit ? null : setDrop(entries, exercise, date, working.length);
   const i = training.length, plan = s.perSet && s.weight === last.weight && i < s.perSet.length ? Math.max(0, s.perSet[i - 1] - s.perSet[i]) : 0;
   const d = learned ?? plan;
-  // A hold steps in 5 s, like its stepper.
-  const by = s.unit ? 5 : 1, reps = Math.max(by, Math.round((last.reps - d) / by) * by);
+  // The number the note says: last set's less the drop (a hold of 47 s again is 47 s, not 45).
+  const reps = Math.max(1, Math.round(last.reps - d));
   const half = Math.round(d * 2) / 2;
   const why = learned != null ? (half > 0 ? `${last.reps}${s.unit} less about ${half}: your sets drop that much` : `${last.reps}${s.unit} again: your sets hold`)
     : plan > 0 ? `${last.reps}${s.unit} less ${plan}, as today’s targets step down` : `${last.reps}${s.unit} again, as your last set`;

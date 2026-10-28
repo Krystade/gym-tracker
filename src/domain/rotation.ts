@@ -117,28 +117,36 @@ export function sinceProgress(entries: SetEntry[], exercise: string, today: stri
 
 /**
  * A lift that has stopped progressing (item 12): its fatigue-adjusted level is more likely on a plateau than progressing (learn/trend
- * `flatness`, P > 1/2: b, his own plateau share and progress rates), its latest session set no new best (c: only withholds, so
+ * `flatness`, P > STALL_P: b, his own plateau share and progress rates), its latest session set no new best (c: only withholds, so
  * the card never calls a lift flat on the day it moved), and that session is within 6 weeks (a plateau before a layoff is stale).
  * The trend replaces the old 3 sessions over 2 weeks with no best: on synthetic plateaus under a 3 % day-to-day noise that rule
  * missed a third outright, as chance bests keep resetting it. Holds, cardio and bodyweight-only lifts (no level yet) never stall.
  * Sessions pain shaped (item 08) don't count toward it (see `sinceProgress`); the trend reads their pain sets as lower bounds
  * (learn/capacity) and a held session as the reading it is.
  */
-export function stall(entries: SetEntry[], exercise: string, today: string): Stall | null {
+/**
+ * How likely a plateau must be to call a stall (owner, 2026-10-28: stricter). At P > 0.5, replayed on his log, 3 of 15 calls held
+ * (no new best in the next 3 sessions); at P > 0.6, 2 of 6 held: 2 of the 3 true calls kept, 8 of the 12 false ones gone. A default:
+ * `stall` and `rotation` (`stallP`) take another, for a learned one later.
+ */
+export const STALL_P = 0.6;
+
+export function stall(entries: SetEntry[], exercise: string, today: string, minP = STALL_P): Stall | null {
   entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   if (isHoldLift(exercise, entries) || isCardio(exercise)) return null;
   const run = sinceProgress(entries, exercise, today);
   if (!run || days(run.last, today) > STALE_DAYS) return null;
   const core = coreBefore(entries, addDays(today, 1));
   const flat = core && flatness(core, exercise, today);
-  return flat && flat.p > 0.5 ? { ...run, weeks: Math.floor(flat.slope.days / 7), flat } : null;
+  return flat && flat.p > minP ? { ...run, weeks: Math.floor(flat.slope.days / 7), flat } : null;
 }
 
 /**
  * `available`: what this gym can do. `include`: lifts added to the gym by hand. `program`: its lifts aren't offered (no lift twice).
  * `body`: his energy, and `light`: a light week he started on this phone, for item 06 (see `rotation`).
  */
-export interface RotationContext { available?: Set<string>; include?: string[]; program?: Program | null; body?: readonly BodyDay[]; light?: { from: string; end?: string } | null }
+export interface RotationContext { available?: Set<string>; include?: string[]; program?: Program | null; body?: readonly BodyDay[]; light?: { from: string; end?: string } | null;
+  /** The P(plateau) a stall needs (`STALL_P` by default). */ stallP?: number }
 
 /** Variations in a rotation: the lift and the two others. */
 const ROTATION = 3;
@@ -199,7 +207,7 @@ export function rotation(entries: SetEntry[], lift: string, today: string, ctx: 
   entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   const pattern = patternOf(lift);
   if (!pattern) return null;
-  const s = stall(entries, lift, today);
+  const s = stall(entries, lift, today, ctx.stallP);
   if (!s) return null;
   // Item 06: while he is down across lifts with a second signal (a deload is suggested), or in a light week, a stall is his
   // fatigue's, not the lift's: rotating would blame the wrong cause (a: Grandou 2020; 06 §3.2). Its offer waits.

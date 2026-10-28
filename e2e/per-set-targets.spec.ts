@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { goto } from './nav';
 
-// Owner, 2026-10-19: each set aims at last time's same set, and its Reps field starts there.
+// Owner, 2026-10-19: each set aims at last time's same set, and its Reps field starts there. 2026-10-28: +1 only where 2+ were left.
 test.use({ serviceWorkers: 'block' });
 const HEADER = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source,duration_s,distance_mi';
-const ROWS = ['2026-10-15,Cable Pushdown,,1,120,11,,,,sample,,', '2026-10-15,Cable Pushdown,,2,120,11,,,,sample,,', '2026-10-15,Cable Pushdown,,3,120,8,,,,sample,,'];
+const ROWS = ['2026-10-15,Cable Pushdown,,1,120,11,2,,,sample,,', '2026-10-15,Cable Pushdown,,2,120,11,1,,,sample,,', '2026-10-15,Cable Pushdown,,3,120,8,2,,,sample,,'];
 
 test('the card lists each set’s target and the rule, and each set’s Reps starts at its own', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-19T18:00:00') });
@@ -18,8 +18,8 @@ test('the card lists each set’s target and the rule, and each set’s Reps sta
   await page.getByRole('button', { name: /^Cable Pushdown/ }).first().click();
   const card = page.locator('[data-card="cable pushdown"]');
   const target = card.getByLabel('Target');
-  await expect(target).toContainText('12 · 12 · 9 @ 120 lb');
-  await expect(target.locator('.target-why')).toHaveText('Last time +1 rep a set');
+  await expect(target).toContainText('12 · 11 · 9 @ 120 lb');
+  await expect(target.locator('.target-why')).toHaveText('+1 rep on set 1, 3: 2+ in reserve last time');
   const reps = card.getByRole('textbox', { name: 'Reps' });
   await expect(reps).toHaveValue('12');
   await card.evaluate((el) => el.scrollIntoView({ block: 'start' }));
@@ -30,7 +30,7 @@ test('the card lists each set’s target and the rule, and each set’s Reps sta
   const rows = card.getByRole('list', { name: 'Sets for Cable Pushdown' }).getByRole('listitem');
   // Item 11: after each set, the next one, recalculated from it (no learned drop here: as the targets step), and the Reps field
   // starts there; past the sets, an extra one.
-  for (const [i, next, label] of [[1, '12', 'Next set'], [2, '9', 'Next set'], [3, '9', 'Extra set']] as const) {
+  for (const [i, next, label] of [[1, '11', 'Next set'], [2, '9', 'Next set'], [3, '9', 'Extra set']] as const) {
     await card.getByRole('button', { name: /^Add set/ }).click();
     await expect(rows).toHaveCount(i);
     await expect(reps).toHaveValue(next);
@@ -51,11 +51,11 @@ test('a test single is never the target, and the next set comes from what was ju
   await page.getByRole('searchbox', { name: 'Search exercises' }).fill('DB Curl');
   await page.getByRole('button', { name: /^DB Curl/ }).first().click();
   const card = page.locator('[data-card="db curl"]');
-  await expect(card.getByLabel('Target')).toContainText('10 · 8 @ 35 lb');
+  await expect(card.getByLabel('Target')).toContainText('9 · 7 @ 35 lb');
   await expect(card.getByLabel('Target')).not.toContainText('45 lb');
   await expect(card.getByRole('textbox', { name: 'Weight' })).toHaveValue('35');
   const reps = card.getByRole('textbox', { name: 'Reps' });
-  await expect(reps).toHaveValue('10');
+  await expect(reps).toHaveValue('9');
   await expect(card.getByLabel('Next set')).toHaveCount(0);
   await reps.fill('9');
   await card.getByRole('button', { name: /^Add set/ }).click();

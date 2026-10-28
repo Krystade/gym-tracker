@@ -24,31 +24,31 @@ test('after a warm-up the form offers the target, not the warm-up, also after a 
   await addBench(page);
   for (let i = 0; i < 3; i++) await logBench(page, '185', '8');
 
-  // Next day: 185 × 8 on every set at 8–12 → 185 × 9.
+  // Next day: 185 × 8 on every set at 8–12, no RIR logged → 185 × 8 again (2026-10-28).
   await page.clock.setFixedTime(new Date('2026-10-02T18:00:00'));
   await page.reload();
   await addBench(page);
   const weight = page.getByRole('textbox', { name: 'Weight' });
   const reps = page.getByRole('textbox', { name: 'Reps' });
   await expect(weight).toHaveValue('185');
-  await expect(reps).toHaveValue('9');
+  await expect(reps).toHaveValue('8');
 
   await logBench(page, '100', '5', true);
   await expect(rows(page).first()).toContainText('warm-up');
   await expect(weight).toHaveValue('185');
-  await expect(reps).toHaveValue('9');
+  await expect(reps).toHaveValue('8');
 
   await page.reload();
   await expect(rows(page)).toHaveCount(1);
   await expect(weight).toHaveValue('185');
-  await expect(reps).toHaveValue('9');
+  await expect(reps).toHaveValue('8');
 
-  // A working set today: the next one aims at its own target (owner, 2026-10-19), 9 for set 2, whatever set 1 did.
+  // A working set today: the next one comes from what was just done (item 11, owner 2026-10-23), and a warm-up after it changes nothing.
   await logBench(page, '185', '10');
-  await expect(reps).toHaveValue('9');
+  await expect(reps).toHaveValue('10');
   await logBench(page, '95', '5', true);
   await expect(weight).toHaveValue('185');
-  await expect(reps).toHaveValue('9');
+  await expect(reps).toHaveValue('10');
   // At another weight, the reps stay as typed: the targets are for 185.
   await logBench(page, '175', '11');
   await expect(reps).toHaveValue('11');

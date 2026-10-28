@@ -39,8 +39,10 @@ async function fits(page: Page) {
 const HEADER = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source';
 const rows = (date: string, lift: string, sets: string[]) => sets.map((s, i) => { const [w, r] = s.split('x'); return `${date},${lift},,${i + 1},${w},${r},,,,sample`; });
 // Machine chest press in the spring; bench level from late August, a rep more on 15 September, then three sessions with nothing
-// better: its fatigue-adjusted level reads flat over 4 weeks (item 12).
+// better: its fatigue-adjusted level reads flat over 6 weeks (item 12), after twelve weeks of steady progress.
 const HISTORY = [
+  // Twelve weeks of steady progress up to it (2026-10-28: a stall needs P(plateau) > 0.6; this reads about 0.69).
+  ...Array.from({ length: 12 }, (_, i) => rows(new Date(Date.UTC(2026, 5, 2 + 7 * i)).toISOString().slice(0, 10), 'Bench Press', [`${130 + 5 * i}x8`, `${130 + 5 * i}x8`, `${130 + 5 * i}x7`])).flat(),
   ...rows('2026-03-02', 'Machine Chest Press', ['150x10', '150x10', '150x9']),
   ...rows('2026-03-09', 'Machine Chest Press', ['150x11', '150x10', '150x10']),
   ...rows('2026-08-25', 'Bench Press', ['185x8', '185x8', '185x7']),
@@ -80,7 +82,7 @@ test('a stalled lift offers the next variation on its card; one tap switches the
   await setUp(page);
   const sug = card(page, 'Bench Press').getByRole('group', { name: 'Suggested variation' });
   // Machine chest press was done in the spring; incline is the variation not yet done, so it's next.
-  await expect(sug).toContainText('Bench Press flat for 4 weeks — switch to Incline Bench Press?');
+  await expect(sug).toContainText('Bench Press flat for 6 weeks — switch to Incline Bench Press?');
   await expect(sug).toContainText(/Fatigue-adjusted strength level, no new best since .*Sep 15 · same pattern and main muscle \(chest\)/);
   await expect(sug).toContainText('Start ≈ 130 lb × 8: an estimate from your Bench Press, on the light side.');
   await card(page, 'Bench Press').scrollIntoViewIfNeeded();
@@ -125,7 +127,7 @@ test('Dismiss hides it for this plateau, on the card and the lift screen, throug
   // Its own screen offers it too, under Next time.
   await card(page, 'Bench Press').getByRole('button', { name: 'Bench Press', exact: true }).click();
   const onScreen = page.getByRole('group', { name: 'Suggested variation' });
-  await expect(onScreen).toContainText('Bench Press flat for 4 weeks — switch to Incline Bench Press?');
+  await expect(onScreen).toContainText('Bench Press flat for 6 weeks — switch to Incline Bench Press?');
   await onScreen.scrollIntoViewIfNeeded();
   await fits(page);
   await page.screenshot({ path: `${SHOTS}/3-lift-screen.png` });

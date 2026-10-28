@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import type { BodyDay } from '../body';
 import { MUSCLES, type Muscle } from '../muscles';
 import { defaultProfile, LEGACY_TARGETS, type Profile, type Tier } from '../profile';
-import { stall } from '../rotation';
+import { stall as stallAt } from '../rotation';
+// These read the plateau mechanics at the old bar, P > 0.5; the default's own bar (STALL_P, owner 2026-10-28) has its test below.
+const OLD_P = 0.5;
+const stall = (e: SetEntry[], n: string, t: string) => stallAt(e, n, t, OLD_P);
 import type { SetEntry } from '../types';
 import { deloadLog, SIM_LIFTS, simDay, type SimLift, type SimOptions } from './deloadSim.sample';
 import { BASE_WEEKS, countedWeeks, planAims, STEP, volumeAdvice, type MuscleVolume } from './volume';

@@ -33,12 +33,12 @@ interface Scenario { log: SetEntry[]; exercise: string; date: string; saved?: Ex
 const B = 'Bench Press', C = 'Cable Curl', PD = 'Cable Pushdown', PU = 'Pull-Up';
 const NEXT = day(120);
 const SC: Record<string, Scenario> = {
-  // Targets hit last time: +1 a set; no stall, so no line for it.
+  // No RIR logged: last time's reps again (owner, 2026-10-28), and targets hit say nothing.
   normal: { exercise: B, date: NEXT, log: [...sess(day(100), B, 135, [9, 9, 8]), ...sess(day(104), B, 135, [10, 10, 9], aimed(135, 9))] },
-  // Missed twice in the last 3: repeat last time.
+  // Missed three times running: targets no longer move the reps (owner, 2026-10-28), so no line for them.
   stall: { exercise: B, date: NEXT, log: [...sess(day(96), B, 135, [10, 9, 8], aimed(135, 10)), ...sess(day(100), B, 135, [10, 10, 9], aimed(135, 10)), ...sess(day(104), B, 135, [10, 9, 9], aimed(135, 10))] },
-  // Range topped: up a learned rung (cable steps), each set less the learned drop.
-  jump: { exercise: C, date: NEXT, log: [...cable(C, 40, 0), ...cable('Face Pull', 20, 1), ...cable(PD, 50, 2), ...sess(day(104), C, 60, [15, 15, 14])] },
+  // Range topped two sessions running: up a learned rung (cable steps), each set less the learned drop.
+  jump: { exercise: C, date: NEXT, log: [...cable(C, 40, 0), ...cable('Face Pull', 20, 1), ...cable(PD, 50, 2), ...sess(day(100), C, 60, [15, 15, 14]), ...sess(day(104), C, 60, [15, 15, 14])] },
   // Moderate pain last time: held.
   hold: { exercise: PD, date: NEXT, log: [...sess(day(100), PD, 100, [12, 11, 10]), ...sess(day(104), PD, 105, [12, 12, 11], {}, { flags: ['pain'], painSeverity: 2 })] },
   // Sharp pain last time: one learned rung down.
@@ -51,15 +51,15 @@ const SC: Record<string, Scenario> = {
   carry: { exercise: 'Incline Bench Press', date: NEXT, log: sess(day(104), B, 135, [10, 10, 9]),
     saved: { key: 'incline bench press', repMin: 8, repMax: 12, increment: 5, seed: { weight: 105, reps: 8, from: B, date: day(110), e1rm: 160, basis: 'catalog' } } },
   // A light week on: lighter, half the sets.
-  light: { exercise: B, date: NEXT, light: true, log: [...sess(day(96), B, 125, [12, 12, 11]), ...sess(day(100), B, 135, [9, 9, 8]), ...sess(day(104), B, 135, [10, 10, 9], aimed(135, 9))] },
-  // A logged RIR 0 on a set: that set gets no rep.
-  rir: { exercise: C, date: NEXT, log: [...sess(day(100), C, 40, [11, 11, 10]), ...sess(day(104), C, 40, [12, 12, 11], {}, { rir: 0 })] },
+  light: { exercise: B, date: NEXT, light: true, log: [...sess(day(96), B, 125, [12, 12, 11]), ...sess(day(100), B, 135, [12, 12, 11]), ...sess(day(104), B, 135, [10, 10, 9], aimed(135, 9))] },
+  // A logged RIR 2 on a set: that set gets +1, the rest repeat.
+  rir: { exercise: C, date: NEXT, log: [...sess(day(100), C, 40, [11, 11, 10]), ...sess(day(104), C, 40, [12, 12, 11], {}, { rir: 2 })] },
   // Four sets planned after three: the fourth aims at the third's number.
   plan: { exercise: C, date: NEXT, planned: 4, log: [...sess(day(100), C, 40, [11, 11, 10]), ...sess(day(104), C, 40, [12, 12, 11])] },
   // Pull-ups at bodyweight: reps not capped by the range.
   body: { exercise: PU, date: NEXT, log: [...sess(day(100), PU, 0, [8, 7, 6]), ...sess(day(104), PU, 0, [9, 8, 7])] },
-  // The strength goal: a barbell compound's 5–8, topped.
-  strength: { exercise: B, date: NEXT, goal: 'strength', log: [...sess(day(100), B, 185, [7, 6, 6]), ...sess(day(104), B, 185, [8, 8, 7])] },
+  // The strength goal: a barbell compound's 5–8, topped two sessions running.
+  strength: { exercise: B, date: NEXT, goal: 'strength', log: [...sess(day(100), B, 185, [8, 7, 7]), ...sess(day(104), B, 185, [8, 8, 7])] },
 };
 
 const settingsOf = (x: Scenario, goal = x.goal ?? 'size') => resolveSettings(x.saved, x.exercise, x.hold, goal);
@@ -72,7 +72,7 @@ const shown = (r: ReturnType<typeof sug>) => JSON.stringify([r.kind, r.weight, r
 describe('Why this weight: each target’s lines are the inputs its branch read', () => {
   const want: Record<string, TargetInput[]> = {
     normal: ['last', 'progress', 'goal', 'sets'],
-    stall: ['last', 'progress', 'goal', 'hits', 'sets'],
+    stall: ['last', 'progress', 'goal', 'sets'],
     jump: ['last', 'progress', 'range', 'step', 'drop', 'sets'],
     hold: ['last', 'pain', 'sets'],
     ease: ['last', 'pain', 'step', 'sets'],
@@ -101,7 +101,7 @@ describe('Why this weight: each target’s lines are the inputs its branch read'
     expect(sug(SC.jump).parts.find((p) => p.key === 'drop')!.evidence).toMatchObject({ ev: 'b', method: expect.stringContaining('fatigue-adjusted') });
     expect(sug(SC.carry).parts[0]).toMatchObject({ value: 'e1RM 160 lb → 105 lb × 8+', evidence: { ev: 'b', method: expect.stringContaining('fatigue-adjusted e1RM') } });
     expect(sug(SC.hold).parts.find((p) => p.key === 'pain')).toMatchObject({ value: 'hold 105 lb and last time’s reps', evidence: { ev: 'a', cite: expect.stringContaining('Silbernagel') } });
-    expect(sug(SC.stall).parts.find((p) => p.key === 'hits')!.value).toBe('missed · missed · missed: repeat last time');
+    expect(sug(SC.rir).parts.find((p) => p.key === 'rir')).toMatchObject({ value: '2+ on set 3: +1 there, the rest as last time', evidence: { ev: 'b' } });
     expect(sug(SC.normal).parts[0]).toMatchObject({ what: 'Last time', date: day(104), value: '135 lb × 10 · 10 · 9' });
   });
 

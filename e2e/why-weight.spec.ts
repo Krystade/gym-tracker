@@ -34,7 +34,7 @@ test('the target’s “?” opens why it is what it is: its lines in order, eac
   for (const tag of await sheet.locator('.why-tag').allInnerTexts()) expect(tag).toMatch(/^[abc] · (Research|Learned|Default)$/);
   await expect(lines.filter({ hasText: 'Up' }).first()).toContainText('47.5 lb → 50 lb');
   await expect(lines.filter({ hasText: 'Reps a jump costs you' })).toContainText('fatigue-adjusted');
-  await expect(lines.filter({ hasText: 'Range topped last time' })).toContainText('Plotkin 2022');
+  await expect(lines.filter({ hasText: 'Range topped two sessions running' })).toContainText('Plotkin 2022');
   // Escape and Done each put it away; the card is as it was.
   await page.keyboard.press('Escape');
   await expect(sheet).toHaveCount(0);
