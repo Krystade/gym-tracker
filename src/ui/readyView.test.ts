@@ -156,8 +156,8 @@ describe('the READY tile, the week strip and the Why sheet, rendered', () => {
     const html = renderToStaticMarkup(h(WeekRow, { s }));
     expect(html.match(/class="ws-mark"/g)).toHaveLength(7);
     expect(html.match(/data-today="true"/g)).toHaveLength(1);
-    expect(text(html)).toContain('Mon done');
-    expect(text(html)).toContain('Tue rest');
+    expect(text(html)).toContain('Mon: done');
+    expect(text(html)).toContain('Tue: rest');
   });
 
   it('the goal met: the strip marks today optional, never rest', () => {
