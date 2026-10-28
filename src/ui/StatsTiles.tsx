@@ -47,7 +47,7 @@ import {
 import { VolumeSteps } from './VolumeSteps';
 import { BodyMap } from './body/BodyMap';
 import { statusTones, TONE_WORD, type StatusTone } from './body/regions';
-import { AchievementsSheet, AchShelf, nextLine } from './AchievementsSheet';
+import { AchievementsSheet, AchShelf, nextLine, type AchAt } from './AchievementsSheet';
 import { WeightSheet } from './WeightSheet';
 import { LastWeek } from './WeekDigest';
 
@@ -96,7 +96,7 @@ export interface StatsInput {
    */
   window?: { prs: ReadonlySet<string> };
   /** Your own Stats: your achievements (lifetime, from the day you started counting), and a family opened from their sheet. */
-  ach?: { a: Achievements; since: string; onOpen: (id: string) => void };
+  ach?: { a: Achievements; since: string; onOpen: (id: string) => void; /** The family the page opens at. */ at?: AchAt | null };
 }
 
 const DAY = 864e5;
@@ -220,12 +220,12 @@ export function useTiles(input: StatsInput): TileModel[] {
 
   // Achievements: one wide tile, lifetime (the range doesn't apply). Yours only: never on a friend's.
   if (ach && owner) {
-    const { a, since, onOpen } = ach, fresh = highest(unlockedOn(a, today)).length, next = nextLine(a);
+    const { a, since, onOpen, at } = ach, fresh = highest(unlockedOn(a, today)).length, next = nextLine(a);
     // On an unlock day it leads Progress, ahead of the other news there (plan §6); else it sits last.
     out[fresh ? 'unshift' : 'push']({
       id: 'achievements', section: 'progress', label: 'Achievements', value: String(a.unlocks.length), unit: fresh ? `earned · ${fresh} today` : 'earned',
       ctx: next ?? 'Every level reached', wide: true, news: fresh > 0, vizHeight: 40, viz: (w) => <AchShelf a={a} w={w} />,
-      sheet: () => <AchievementsSheet a={a} today={today} since={since} onOpen={onOpen} />,
+      sheet: () => <AchievementsSheet a={a} today={today} since={since} onOpen={onOpen} at={at} />,
     });
   }
 

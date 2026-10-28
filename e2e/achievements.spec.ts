@@ -29,7 +29,7 @@ async function logSet(card: Locator, weight: string, reps: string) {
 }
 const lines = (card: Locator) => card.locator('.ach-lines');
 
-test('a set that unlocks something says so under its card, and a tap opens that family’s levels on Stats', async ({ page }) => {
+test('a set that unlocks something says so under its card, and a tap opens the Achievements page at that family', async ({ page }) => {
   await open(page);
   await goto(page, 'Today');
   const card = await addCard(page, 'Bench Press');
@@ -44,10 +44,19 @@ test('a set that unlocks something says so under its card, and a tap opens that 
   await logSet(card, '135', '5');
   await expect(card.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem')).toHaveCount(2);
   await expect(lines(card).getByRole('button')).toHaveCount(0);
-  // Two plates a side: the line names the highest level reached, and a tap opens Plates on Stats at Bench Press.
+  // Two plates a side: the line names the highest level reached, and a tap opens the Achievements page at Plates · Bench Press,
+  // scrolled to it and lit for a moment.
   await logSet(card, '225', '3');
   await expect(lines(card).getByRole('button')).toHaveCount(1);
   await lines(card).getByRole('button', { name: /Silver · Plates/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Achievements' });
+  const row = sheet.locator('[data-ach="plates"][data-lift="Bench Press"]');
+  await expect(row).toHaveClass(/ach-hit/);
+  await expect(row).toBeInViewport({ ratio: 1 });
+  await expect(row).toContainText('Plates · Bench Press');
+  await expect(row).not.toHaveClass(/ach-hit/, { timeout: 5000 });
+  // Its row opens the family's levels.
+  await row.click();
   const plates = page.getByRole('dialog', { name: 'Plates' });
   await expect(plates.getByRole('region', { name: 'Bench Press' })).toContainText('225 lb');
   // No account, no friends: no switch for showing them (stage 4).
@@ -76,4 +85,17 @@ test('a history from before the start counts for nothing: the first set after it
   await expect(lines(card)).toContainText('Your first session');
   await expect(lines(card)).toContainText('Your first PR');
   await expect(lines(card)).toContainText('Bench Press: 225 lb, 2 plates a side');
+});
+
+test('the Achievements page is one tap from the top of Stats and from More', async ({ page }) => {
+  await open(page);
+  await goto(page, 'Today');
+  await logSet(await addCard(page, 'Bench Press'), '135', '5');
+  await goto(page, 'Stats');
+  await page.getByRole('button', { name: 'Achievements', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Achievements' }).getByRole('region', { name: 'New today' })).toContainText('Your first session');
+  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+  await goto(page, 'More');
+  await page.getByRole('button', { name: /^Achievements/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Achievements' }).getByRole('list', { name: 'Earned by tier' })).toBeVisible();
 });

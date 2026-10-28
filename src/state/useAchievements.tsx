@@ -31,7 +31,7 @@ export type AchStart = ReturnType<typeof useAchStart>;
 interface Ctx {
   since: string | null; profile: Profile; program: Program | null; plans: readonly DayPlan[];
   /** Your friends' windows and the ledger, and how each friend is said (state/useTogether): signed in only. */ together?: Together;
-  /** Opens Stats at a family's levels (a line tapped on Today). */ onOpen?: (id: string) => void;
+  /** Opens the Achievements page at a family (a line tapped on Today, the finish card). */ onOpen?: (id: string, lift?: string) => void;
   /** Shows or keeps a group from friends: only for the person whose account publishes the summary. */ onShare?: (group: string, on: boolean) => void;
 }
 const AchCtx = createContext<Ctx | null>(null);
@@ -41,8 +41,8 @@ export function AchProvider({ since, profile, program, plans, together, onOpen, 
   return <AchCtx.Provider value={v}>{children}</AchCtx.Provider>;
 }
 
-/** Opens Stats at a family's levels; undefined outside a person's screens. */
-export const useAchOpen = (): ((id: string) => void) | undefined => useContext(AchCtx)?.onOpen;
+/** Opens the Achievements page at a family; undefined outside a person's screens. */
+export const useAchOpen = (): ((id: string, lift?: string) => void) | undefined => useContext(AchCtx)?.onOpen;
 
 /** What friends see of your achievements: the groups kept from them, and the switch (none: not this phone's account). */
 export function useAchShare(): { hidden: readonly string[]; onShare?: (group: string, on: boolean) => void } {

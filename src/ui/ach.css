@@ -71,3 +71,10 @@
 .ach-rings li.met text { fill: var(--ok); }
 .ach-ring-n { font-size: var(--fs-sm); color: var(--text-2); font-variant-numeric: tabular-nums; }
 .ach-rings li.met .ach-ring-n { color: var(--ok); }
+
+/* Opened at a family (an unlock or a chip tapped): its row lit, then fading back. Opaque fills only. */
+@keyframes ach-hit { 0%, 50% { background: var(--fill-2); box-shadow: 0 0 0 8px var(--fill-2); } 100% { background: transparent; box-shadow: 0 0 0 8px transparent; } }
+.ach-row.ach-hit { position: relative; z-index: 1; animation: ach-hit 2.4s ease-out; border-radius: 2px; }
+@media (prefers-reduced-motion: reduce) { .ach-row.ach-hit { animation: none; background: var(--fill-2); box-shadow: 0 0 0 8px var(--fill-2); } }
+/* Tappable (yours to open): 44 px to tap, the chip itself 32 tall inside it. */
+.ach-chip-btn { display: inline-flex; align-items: center; max-width: 100%; min-height: 44px; padding: 0; background: none; color: var(--text); font-weight: 400; text-align: left; border-radius: 16px; }

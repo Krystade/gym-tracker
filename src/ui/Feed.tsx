@@ -12,7 +12,7 @@ import type { SetEntry } from '../domain/types';
 import { useMinute } from '../state/clock';
 import { crewRange, notePing, peekFriendCache, refreshSummaries, refreshWindow, staleSummaries, staleWindow, useFriendCache, useFriendTags } from '../state/friendCache';
 import { featured, unlocksOf, type Unlock } from '../domain/achievements';
-import { AchChip } from './AchievementsSheet';
+import { AchChip, type AchAt } from './AchievementsSheet';
 import { togetherDay } from '../domain/together';
 import { useAchSince } from '../state/useAchievements';
 import { sideOf } from '../state/useTogether';
@@ -54,7 +54,7 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
   uid: string; /** This phone's person, for your avatar. */ myName?: string; friends: Friend[] | null; entries: SetEntry[];
   /** Your sessions-a-week goal. */ goal: number; today: string; status: StatusStore; news?: FriendNews | null;
   /** Moves on each pull-down or Refresh: every line is read again. */ pulled?: number;
-  onOpenFriend: (f: Friend) => void; onOpenMine: () => void; onInvite: () => void; /** A friend's thread: pings and messages. */ onMessage?: (f: Friend) => void;
+  onOpenFriend: (f: Friend, at?: AchAt) => void; onOpenMine: () => void; onInvite: () => void; /** A friend's thread: pings and messages. */ onMessage?: (f: Friend) => void;
   /** Compare: everyone side by side (ui/ComparePage). */ onCompare?: () => void;
 }) {
   const { from } = crewRange(today);
@@ -166,7 +166,7 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
         <SessionCard key={p.id} p={p} now={now} news={news} onOpen={() => open(p)} onMessage={p.friend && onMessage ? () => onMessage(p.friend!) : undefined}
           sending={sending} burst={burst?.uid === p.id ? burst.k : null} error={sendError?.uid === p.id ? sendError.text : null}
           sent={p.friend ? sentToday(p.friend.uid) : null} got={p.me ? gotToday.map((d) => ({ e: d.e, name: names.get(d.from)!, id: d.id })) : []}
-          onReact={(k) => p.friend && void react(p.friend, k)} />
+          onReact={(k) => p.friend && void react(p.friend, k)} onOpenAch={p.friend ? (at) => onOpenFriend(p.friend!, at) : undefined} />
       ))}
 
       {earlier.length > 0 && <div className="fd-sec"><h2>{cards.length ? 'Earlier' : 'This week'}</h2><span>no session today</span></div>}
@@ -223,10 +223,10 @@ export const topText = (l: CardLift) => (l.seconds != null ? fmtClock(l.seconds)
 export const subText = (l: CardLift) => (l.seconds != null ? (l.miles != null ? `${fmtMiles(l.miles)} mi` : '') : setsNote(l));
 
 /** One person's session today: who, when, the kinds as a bar, each lift's top set, and reactions (yours to send, or theirs to you). */
-function SessionCard({ p, now, news, onOpen, onMessage, sending, burst, error, sent, got, onReact }: {
+function SessionCard({ p, now, news, onOpen, onMessage, sending, burst, error, sent, got, onReact, onOpenAch }: {
   p: Person; now: number; news?: FriendNews | null; onOpen: () => void; onMessage?: () => void;
   sending: string | null; burst: PresetKey | null; error: string | null; sent: InboxDoc | null; got: { e?: string; name: string; id: string }[];
-  onReact: (k: PresetKey) => void;
+  onReact: (k: PresetKey) => void; /** A chip tapped: their Achievements, at it. */ onOpenAch?: (at: AchAt) => void;
 }) {
   const c = p.card!;
   const [all, setAll] = useState(false);
@@ -263,7 +263,7 @@ function SessionCard({ p, now, news, onOpen, onMessage, sending, burst, error, s
       {total > 0 && <div className="fd-split" aria-hidden="true">{Object.entries(c.kinds).map(([k, n]) => <i key={k} style={{ flex: n, background: kindColour(k as never) }} />)}</div>}
       {p.week?.metToday && <span className="fd-goalrib"><Icon name="trophy" size={16} sw={2} />Weekly goal hit · {p.week.sessions} of {p.week.goal}</span>}
       {p.together && <span className="fd-together"><Icon name="friends" size={16} sw={2} />Trained together · {p.together}</span>}
-      {p.ach && <ul className="ach-chips" aria-label="Achievements today">{p.ach.map((u) => <li key={`${u.id}:${u.lift ?? ''}`}><AchChip u={u} /></li>)}</ul>}
+      {p.ach && <ul className="ach-chips" aria-label="Achievements today">{p.ach.map((u) => <li key={`${u.id}:${u.lift ?? ''}`}><AchChip u={u} onOpen={onOpenAch} /></li>)}</ul>}
       <ul className="fd-lifts">
         {shown.map((l) => (
           <li key={l.key} className={fresh(seen.current!.lifts.get(l.key)) ? 'new' : undefined}>

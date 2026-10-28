@@ -30,7 +30,7 @@ import { StatsTile } from './StatsTile';
 import { lastOf } from './StatsCoreSheets';
 import { MuscleWeeks, SECTIONS, useTiles, WeekHero, WeekSheet, type TileModel } from './StatsTiles';
 import { Icon } from './icons';
-import { achDay, AchievementDetail, AchShelf, FriendAchSheet } from './AchievementsSheet';
+import { achDay, AchievementDetail, AchShelf, FriendAchSheet, type AchAt } from './AchievementsSheet';
 import { DEF, TIERS, tierWord, type Unlock } from '../domain/achievements';
 import { useAchievements, useAchShare, useAchSince } from '../state/useAchievements';
 import './stats.css';
@@ -59,7 +59,7 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
   /** Priorities and the training goal live in settings (owner, 2026-10-20): the Muscles sheet's link opens them. */ onOpenPriorities?: () => void;
   /** Each lift's kept rest, for the rest tile's timer. */ settings?: SettingsStore;
   /** Your gyms: a flat lift's next variation is one this gym can do, as on the lift's page. */ gyms?: GymsStore;
-  /** Opened at an achievement family's levels (a line tapped on Today); `onOpenedAch` once it is. */ openAch?: string | null; onOpenedAch?: () => void;
+  /** Opened at the Achievements page (from More), or at a family on it (a line tapped on Today); `onOpenedAch` once it is. */ openAch?: AchAt | null; onOpenedAch?: () => void;
 }) {
   const p = profile.profile, entries = store.entries;
   const [owner] = useState(() => (readOnly ? null : activeProfileDb()));
@@ -67,9 +67,12 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
   const [layout, setLayoutState] = useState<LayoutPrefs>(() => (owner ? layoutOf({ pins: getPref(owner, 'stats:pins'), hidden: getPref(owner, 'stats:hidden') }) : NO_LAYOUT));
   const [editing, setEditing] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
-  const [open, setOpen] = useState<string | null>(() => (openAch && !readOnly ? `ach:${openAch}` : null));
+  const [open, setOpen] = useState<string | null>(() => (openAch && !readOnly ? 'achievements' : null));
+  // The family the Achievements page opens at, until it closes (opened again from its tile, it opens at its top).
+  const [achAt, setAchAt] = useState<AchAt | null>(() => (readOnly ? null : openAch ?? null));
   // Asked for while already here (it isn't, from Today, but a second tap could be): open it; either way, it's been taken.
-  useEffect(() => { if (!openAch) return; if (!readOnly) setOpen(`ach:${openAch}`); onOpenedAch?.(); }, [openAch]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!openAch) return; if (!readOnly) { setOpen('achievements'); setAchAt(openAch); } onOpenedAch?.(); }, [openAch]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (open !== 'achievements') setAchAt(null); }, [open]);
   const setRange = (r: Range) => { setRangeState(r); if (owner) setPref(owner, 'stats:range', r); };
   const setLayout = (l: LayoutPrefs) => { setLayoutState(l); if (owner) { setPref(owner, 'stats:pins', l.pins); setPref(owner, 'stats:hidden', l.hidden); } };
 
@@ -105,7 +108,7 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
   // Your achievements: lifetime, from the day this profile started counting (never on a friend's Stats).
   const since = useAchSince(), share = useAchShare();
   const achAll = useAchievements(entries, today);
-  const ach = useMemo(() => (owner && since && achAll ? { a: achAll, since, onOpen: (id: string) => setOpen(`${ACH}${id}`) } : undefined), [owner, since, achAll]);
+  const ach = useMemo(() => (owner && since && achAll ? { a: achAll, since, onOpen: (id: string) => setOpen(`${ACH}${id}`), at: achAt } : undefined), [owner, since, achAll, achAt]);
   const tiles = useTiles({
     entries, profile: p, today, range, who, owner: owner ?? undefined, alsoLifts, body: body.days, timer, rotationOf, onOpenLift, onOpenPriorities,
     program: programs.program, plans: programs.plans, kept, onOpenMuscle: (m) => setOpen(`${MUSCLE}${m}`), ach,
@@ -155,6 +158,7 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
     <>
       <div className="st-title">
         <h1 className={who ? 'who-title' : undefined}>{title}</h1>
+        {ach && !editing && <button type="button" className="st-edit st-ach" onClick={() => setOpen('achievements')}><Icon name="trophy" size={17} sw={2} />Achievements</button>}
         {owner && <button type="button" className="st-edit" aria-pressed={editing} onClick={() => { setEditing(!editing); setShowHidden(false); }}>{editing ? 'Done' : 'Edit'}</button>}
       </div>
       {editing ? <p className="st-edit-hint">Pin a tile to keep it at the top. Hide one to tuck it away.</p> : (<>
@@ -204,17 +208,22 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
  * phone wrote), so it reads nothing. One range, those 8 weeks. Their week is the page's own head (ring, streak, sessions, PRs),
  * so there's no week tile; tiles that line can't fill, and the owner's own (energy), are left out (statsLayout forViewer).
  */
-export function FriendStats({ who, entries, goal, prs, today, ach }: {
+export function FriendStats({ who, entries, goal, prs, today, ach, achAt }: {
   who: string; entries: SetEntry[]; goal: number; prs: ReadonlySet<string>; today: string;
   /** Their achievements, from their Compare summary (the groups they show): a wide tile first in Progress. */ ach?: readonly Unlock[];
+  /** Opened at their Achievements, at a family (their chip tapped). */ achAt?: AchAt | null;
 }) {
   const profile = useMemo(() => ({ ...defaultProfile(), weeklyGoal: goal }), [goal]);
   const win = useMemo(() => ({ prs }), [prs]);
   const base = useTiles({ entries, profile, today, range: WINDOW_RANGE, who, window: win });
-  const tiles = useMemo(() => (ach?.length ? [friendAchTile(ach, today, who), ...base] : base), [ach, today, who, base]);
+  const [at, setAt] = useState(achAt ?? null);
+  const tiles = useMemo(() => (ach?.length ? [friendAchTile(ach, today, who, at), ...base] : base), [ach, today, who, base, at]);
   // News to the front of its section, as on yours: fixed while the page is open.
   const [front] = useState(() => tiles.filter((t) => t.news).map((t) => t.id));
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(() => (achAt && ach?.length ? 'achievements' : null));
+  // A chip tapped (on their page, or in the feed that opened it): their Achievements, at that family.
+  useEffect(() => { if (achAt && ach?.length) { setAt(achAt); setOpen('achievements'); } }, [achAt, ach?.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (open !== 'achievements') setAt(null); }, [open]);
   if (!tiles.length) return null;
   const a = arrange(SECTIONS.map((s) => ({ id: s.id, tiles: tiles.filter((t) => t.section === s.id) })), NO_LAYOUT, front);
   const opened = open ? tiles.find((t) => t.id === open) : undefined;
@@ -237,12 +246,12 @@ export function FriendStats({ who, entries, goal, prs, today, ach }: {
 }
 
 /** A friend's Achievements tile: how many they show, their medals newest first, the newest said. Lifetime: the 8 weeks don't apply. */
-function friendAchTile(us: readonly Unlock[], today: string, who: string): TileModel {
+function friendAchTile(us: readonly Unlock[], today: string, who: string, at: AchAt | null): TileModel {
   const newest = [...us].sort((a, b) => b.date.localeCompare(a.date) || TIERS.indexOf(b.tier) - TIERS.indexOf(a.tier))[0];
   const a = { unlocks: [...us], tracks: [], counts: {}, hidden: [] };
   return {
     id: 'achievements', section: 'progress', label: 'Achievements', value: String(us.length), unit: 'shown', wide: true, vizHeight: 40,
     ctx: <>Newest: {DEF.get(newest.id)!.title} · {tierWord(newest.tier)}, {achDay(newest.date, today).replace(/^Today$/, 'today')}</>,
-    viz: (w) => <AchShelf a={a} w={w} />, sheet: () => <FriendAchSheet us={us} today={today} who={who} />,
+    viz: (w) => <AchShelf a={a} w={w} />, sheet: () => <FriendAchSheet us={us} today={today} who={who} at={at} />,
   };
 }

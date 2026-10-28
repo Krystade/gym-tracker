@@ -68,6 +68,19 @@ test('a friend’s achievements: silver and up from today beside their session i
   await expect(sheet.getByRole('button')).toHaveText(['Done']);
   await page.waitForTimeout(1000);
   expect(reads.filter((r) => r.includes(`users/${fr.uid}/summary`))).toEqual([]);
+
+  // Their newest, tapped on their page, and their chip tapped in the feed: their Achievements, at that family, lit for a moment.
+  await sheet.getByRole('button', { name: 'Done' }).click();
+  await fp.locator('.fp-ach').getByRole('button').click();
+  const at = sheet.locator('[data-ach="plates"][data-lift="Bench Press"]');
+  await expect(at).toHaveClass(/ach-hit/);
+  await expect(at).toBeInViewport({ ratio: 1 });
+  await sheet.getByRole('button', { name: 'Done' }).click();
+  await fp.getByRole('button', { name: 'Friends' }).first().click();
+  await chips.getByRole('button', { name: /Silver · Plates · Bench Press/ }).click();
+  await expect(fp.locator('.fp-ach')).toBeVisible();
+  await expect(at).toHaveClass(/ach-hit/);
+  await expect(at).toBeInViewport({ ratio: 1 });
 });
 
 test('a friend who shows nothing: no tile, no chip, and their page as before', async ({ browser, request }) => {

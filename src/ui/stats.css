@@ -5,6 +5,8 @@
 .st-title h1 { min-width: 0; }
 .st-edit { min-height: 44px; min-width: 64px; padding: 0 14px; border-radius: var(--r-pill); background: var(--fill); color: var(--accent-text); font-weight: 600; font-size: var(--fs-sub); }
 .st-edit[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
+/* The Achievements page, one tap from the top (owner 2026-10-28). */
+.st-ach { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
 .st-edit-hint { margin: -4px 0 12px; color: var(--text-2); font-size: var(--fs-sub); }
 .st-sub { margin: 0 0 10px; color: var(--text-2); font-size: var(--fs-sub); }
 .st-sub b { color: var(--text); font-weight: 600; }

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { CloudStore } from '../state/useCloud';
 import type { Friend, FriendNews } from '../cloud/friends';
 import type { ThreadWith } from './ThreadSheet';
+import type { AchAt } from './AchievementsSheet';
 import type { Invite } from '../domain/invite';
 import type { SetEntry } from '../domain/types';
 import type { StatusStore } from '../state/useStatus';
@@ -29,7 +30,7 @@ const PULL = 70; // px down from the top of the page that reads everything again
 export function FriendsScreen({ cloud, gyms, pending, entries, status, today, news, newsRev, onPendingDone, onView, onChanged, onMessage, onSignIn, onOpenMine, onCompare, myName, goal }: {
   cloud: CloudStore; gyms: GymsStore; pending: Invite | null; entries: SetEntry[]; status: StatusStore; today: string;
   /** Requests, gyms and unread messages; `newsRev` moves whenever they're read again. */ news: FriendNews | null; newsRev: Box<number>;
-  onPendingDone: () => void; onView: (f: Friend) => void; onChanged: () => void; onMessage: (f: ThreadWith) => void; onSignIn: () => void; onOpenMine: () => void;
+  onPendingDone: () => void; onView: (f: Friend, at?: AchAt) => void; onChanged: () => void; onMessage: (f: ThreadWith) => void; onSignIn: () => void; onOpenMine: () => void;
   /** This phone's person, for your own avatar. */ myName?: string; /** Your sessions-a-week goal, for your ring. */ goal: number;
   /** Compare: everyone side by side. */ onCompare?: () => void;
 }) {

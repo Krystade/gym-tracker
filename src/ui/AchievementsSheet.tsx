@@ -1,4 +1,5 @@
 import { amount, DEF, DEFS, GROUPS, closest, highest, plateLoad, PRIVATE_GROUP, tierWord, TIERS, unlockedOn, unlockText, type Achievements, type Def, type Tier, type Track, type Unlock } from '../domain/achievements';
+import { useEffect, useRef } from 'react';
 import { weekRings, withList, type TogetherId } from '../domain/together';
 import type { SetEntry } from '../domain/types';
 import { useTogetherNames, useTogetherSeen } from '../state/useAchievements';
@@ -8,6 +9,28 @@ import './ach.css';
 
 // Achievements on Stats (plan §6): the sheet the wide tile opens, and a family's detail. Lifetime, from the day this profile
 // started counting: the range control doesn't apply. Each row opens its family's detail; nothing here writes anything.
+
+/** Where the Achievements page opens: at a family (one lift of a per-lift one), or at its top. */
+export interface AchAt { id?: string; lift?: string }
+
+/**
+ * Opens at `at`: its row scrolled to the middle and lit for a moment (an unlock tapped on Today, the finish card, a friend's
+ * chip). Once per `at`; the light goes on its own, whatever renders meanwhile.
+ */
+function useAchFocus(at?: AchAt | null) {
+  const box = useRef<HTMLDivElement>(null);
+  const key = at?.id ? `${at.id}:${at.lift ?? ''}` : null;
+  useEffect(() => {
+    if (!at?.id || !box.current) return;
+    const rows = [...box.current.querySelectorAll<HTMLElement>('[data-ach]')].filter((e) => e.dataset.ach === at.id);
+    const el = rows.find((e) => (e.dataset.lift ?? '') === (at.lift ?? '')) ?? rows[0];
+    if (!el) return;
+    el.scrollIntoView({ block: 'center' });
+    el.classList.add('ach-hit');
+    setTimeout(() => el.classList.remove('ach-hit'), 2400);
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return box;
+}
 
 /** "Today", "Mar 20", or "Mar 20, 2025" in another year. */
 export const achDay = (d: string, today: string) => (d === today ? 'Today'
@@ -58,12 +81,12 @@ export function AchShelf({ a, w }: { a: Achievements; w: number }) {
  * opens Stats at its levels. The box is always there, so a screen reader hears lines as they come (aria-live), and it isn't a
  * status: the PR line is that.
  */
-export function AchLines({ us, onOpen }: { us: readonly Unlock[] | null; onOpen?: (id: string) => void }) {
+export function AchLines({ us, onOpen }: { us: readonly Unlock[] | null; onOpen?: (id: string, lift?: string) => void }) {
   const names = useTogetherNames();
   return (
     <div className="ach-lines" aria-live="polite">
       {us?.map((u) => (
-        <button key={`${u.id}:${u.level}:${u.lift ?? ''}`} type="button" className="ach-line" onClick={() => onOpen?.(u.id)}>
+        <button key={`${u.id}:${u.level}:${u.lift ?? ''}`} type="button" className="ach-line" onClick={() => onOpen?.(u.id, u.lift)}>
           <Medal tier={u.tier} glyph={u.id} size={36} />
           <span className="ach-line-txt">
             <span><span className={`ach-tier t-${u.tier}`}>{tierWord(u.tier)}</span> · <b>{DEF.get(u.id)!.title}</b></span>
@@ -77,10 +100,10 @@ export function AchLines({ us, onOpen }: { us: readonly Unlock[] | null; onOpen?
 }
 
 /** The closest next level, as the finish card shows it. */
-export function NextRow({ t, onOpen }: { t: Track; onOpen?: (id: string) => void }) {
+export function NextRow({ t, onOpen }: { t: Track; onOpen?: (id: string, lift?: string) => void }) {
   const nt = nextTier(t)!;
   return (
-    <button type="button" className="ach-row" onClick={() => onOpen?.(t.id)}>
+    <button type="button" className="ach-row" onClick={() => onOpen?.(t.id, t.lift)}>
       <Medal tier="lock" glyph={t.id} size={44} />
       <span className="ach-row-txt">
         <b>{titleOf(t)} · {tierWord(nt)}</b>
@@ -103,7 +126,7 @@ function FamilyRow({ t, onOpen }: { t: Track; onOpen: (id: string) => void }) {
     : nt ? `${t.value ? amount(t.id, t.value) : 'Not yet'} · ${nt} at ${amount(t.id, t.next!)}`
       : `${amount(t.id, t.value)} · every level`;
   return (
-    <button type="button" className={`ach-row${tier === 'lock' ? ' locked' : ''}`} onClick={() => onOpen(t.id)}>
+    <button type="button" className={`ach-row${tier === 'lock' ? ' locked' : ''}`} data-ach={t.id} data-lift={t.lift} onClick={() => onOpen(t.id)}>
       <Medal tier={tier} glyph={t.id} size={44} />
       <span className="ach-row-txt">
         <b>{titleOf(t)}</b>
@@ -116,10 +139,10 @@ function FamilyRow({ t, onOpen }: { t: Track; onOpen: (id: string) => void }) {
 }
 
 /** An unlock: its medal, tier and what it means. */
-export function UnlockRow({ u, today, onOpen }: { u: Unlock; today?: string; onOpen?: (id: string) => void }) {
+export function UnlockRow({ u, today, onOpen }: { u: Unlock; today?: string; onOpen?: (id: string, lift?: string) => void }) {
   const names = useTogetherNames();
   return (
-    <button type="button" className="ach-row" onClick={() => onOpen?.(u.id)}>
+    <button type="button" className="ach-row" onClick={() => onOpen?.(u.id, u.lift)}>
       <Medal tier={u.tier} glyph={u.id} size={44} />
       <span className="ach-row-txt">
         <b>{DEF.get(u.id)!.title}</b>
@@ -157,12 +180,13 @@ function Foot({ since, today }: { since: string; today: string }) {
   );
 }
 
-export function AchievementsSheet({ a, today, since, onOpen }: { a: Achievements; today: string; since: string; onOpen: (id: string) => void }) {
+export function AchievementsSheet({ a, today, since, onOpen, at }: { a: Achievements; today: string; since: string; onOpen: (id: string) => void; /** Opened at a family. */ at?: AchAt | null }) {
+  const box = useAchFocus(at);
   // Today's, the highest level of each (a first set at 315 is three plates, not one, two and three).
   const fresh = highest(unlockedOn(a, today));
   const next = closest(a, 3);
   return (
-    <div className="ach">
+    <div className="ach" ref={box}>
       <ul className="ach-tiers" aria-label="Earned by tier">
         {TIERS.map((t) => {
           const n = a.unlocks.filter((u) => u.tier === t).length;
@@ -216,7 +240,7 @@ function ShareRow({ group, shown, onShare }: { group: string; shown: boolean; on
 /** A friend's achievement, said as on yours, not a button: their levels aren't yours to open. */
 function ShownRow({ u, today }: { u: Unlock; today: string }) {
   return (
-    <div className="ach-row">
+    <div className="ach-row" data-ach={u.id} data-lift={u.lift}>
       <Medal tier={u.tier} glyph={u.id} size={44} />
       <span className="ach-row-txt">
         <b>{DEF.get(u.id)!.title}</b>
@@ -229,10 +253,11 @@ function ShownRow({ u, today }: { u: Unlock; today: string }) {
 }
 
 /** A friend's achievements (their Compare summary): the highest of each, by group, the groups they show. */
-export function FriendAchSheet({ us, today, who }: { us: readonly Unlock[]; today: string; who: string }) {
+export function FriendAchSheet({ us, today, who, at }: { us: readonly Unlock[]; today: string; who: string; /** Opened at a family (a chip tapped). */ at?: AchAt | null }) {
   const n = (t: Tier) => us.filter((u) => u.tier === t).length;
+  const box = useAchFocus(at);
   return (
-    <div className="ach">
+    <div className="ach" ref={box}>
       <ul className="ach-tiers" aria-label="Highest by tier">
         {TIERS.map((t) => <li key={t}><Medal tier={n(t) ? t : 'lock'} size={36} /><b>{n(t)}</b><span>{tierWord(t)}</span></li>)}
       </ul>
@@ -251,11 +276,10 @@ export function FriendAchSheet({ us, today, who }: { us: readonly Unlock[]; toda
   );
 }
 
-/** One achievement as a chip (a friend's feed card, their page): its medal and what it is. */
-export function AchChip({ u }: { u: Unlock }) {
-  return (
-    <span className="ach-chip"><Medal tier={u.tier} glyph={u.id} size={26} />{tierWord(u.tier)} · {DEF.get(u.id)!.title}{u.lift ? ` · ${u.lift}` : ''}</span>
-  );
+/** One achievement as a chip (a friend's feed card, their page): its medal and what it is; a tap opens it on their Achievements. */
+export function AchChip({ u, onOpen }: { u: Unlock; onOpen?: (at: AchAt) => void }) {
+  const chip = <span className="ach-chip"><Medal tier={u.tier} glyph={u.id} size={26} />{tierWord(u.tier)} · {DEF.get(u.id)!.title}{u.lift ? ` · ${u.lift}` : ''}</span>;
+  return onOpen ? <button type="button" className="ach-chip-btn" onClick={() => onOpen({ id: u.id, lift: u.lift })}>{chip}</button> : chip;
 }
 
 /** A family's levels: the day each was reached, and how far to the next. */

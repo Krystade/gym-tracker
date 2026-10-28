@@ -9,7 +9,7 @@ import type { SetEntry } from '../domain/types';
 import { useMinute } from '../state/clock';
 import { crewRange, peekFriendCache, refreshSummaries, refreshWindow, staleSummaries, staleWindow, useFriendCache } from '../state/friendCache';
 import { featured, TIERS, unlocksOf } from '../domain/achievements';
-import { AchChip } from './AchievementsSheet';
+import { AchChip, type AchAt } from './AchievementsSheet';
 import type { GymsStore } from '../state/useGyms';
 import { clock, kindsFromCard, ReactButton, subText, topText, useReactions } from './Feed';
 import { Screens, type FriendTab } from './FriendView';
@@ -26,9 +26,10 @@ import { FriendStats } from './StatsScreen';
 
 const REACTIONS: PresetKey[] = ['strong', 'fire', 'clap', 'eyes'];
 
-export function FriendPage({ uid, friend, entries, today, gyms, news, onBack, onMessage, backLabel = 'Friends' }: {
+export function FriendPage({ uid, friend, entries, today, gyms, news, onBack, onMessage, backLabel = 'Friends', achAt }: {
   uid: string; friend: Friend; /** Yours, for "You and @them". */ entries: SetEntry[]; today: string; gyms: GymsStore; news: FriendNews | null;
   onBack: () => void; onMessage?: () => void; /** Where Back goes: Friends, or Compare when opened from it. */ backLabel?: string;
+  /** Opened from their chip in the feed: their Achievements, at that family. */ achAt?: AchAt | null;
 }) {
   const [deep, setDeep] = useState<FriendTab | null>(null);
   const [whole, setWhole] = useState<{ data?: FriendData; error?: string } | null>(null);
@@ -51,12 +52,14 @@ export function FriendPage({ uid, friend, entries, today, gyms, news, onBack, on
         : <Screens name={friend.name} data={whole.data} tab={deep} exercise={exercise} today={today} gyms={gyms} onOpen={(n) => { setExercise(n); window.scrollTo(0, 0); }} onExerciseBack={() => setExercise(null)} />}
     </>);
   }
-  return <Profile uid={uid} friend={friend} entries={entries} today={today} news={news} onBack={onBack} onMessage={onMessage} onDeep={go} backLabel={backLabel} />;
+  return <Profile uid={uid} friend={friend} entries={entries} today={today} news={news} onBack={onBack} onMessage={onMessage} onDeep={go} backLabel={backLabel} openAt={achAt} />;
 }
 
-function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep, backLabel }: {
-  uid: string; friend: Friend; entries: SetEntry[]; today: string; news: FriendNews | null; onBack: () => void; onMessage?: () => void; onDeep: (t: FriendTab) => void; backLabel: string;
+function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep, backLabel, openAt }: {
+  uid: string; friend: Friend; entries: SetEntry[]; today: string; news: FriendNews | null; onBack: () => void; onMessage?: () => void; onDeep: (t: FriendTab) => void; backLabel: string; openAt?: AchAt | null;
 }) {
+  // Their Achievements at a family: from the feed's chip, then from the newest one on this page.
+  const [achAt, setAchAt] = useState<AchAt | null>(openAt ?? null);
   const { from } = crewRange(today);
   const minute = useMinute();
   const cache = useFriendCache(uid);
@@ -117,7 +120,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep,
             {v.prsWeek > 0 && <li><span className="fd-pr">PR</span>{v.prsWeek} this week</li>}
           </ul>
         )}
-        {newest && <p className="fp-ach"><AchChip u={newest} /></p>}
+        {newest && <p className="fp-ach"><AchChip u={newest} onOpen={setAchAt} /></p>}
       </div>
       <div className="fp-actions" role="group" aria-label={`React to @${friend.name}`}>
         {REACTIONS.map((k) => <ReactButton key={k} k={k} name={friend.name} burst={r.burst?.uid === friend.uid && r.burst.k === k} sent={false} disabled={!!r.sending} onClick={() => void r.react(friend, k)} />)}
@@ -132,7 +135,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep,
       {error ? <p role="alert" className="warn">{error}</p> : !v ? <p className="muted">Loading…</p> : (<>
         {v.card && <SessionBox c={v.card} today={today} now={now} />}
         <Shared name={friend.name} rows={v.shared} />
-        <FriendStats who={friend.name} entries={line!.sets} goal={line!.goal} prs={line!.prs} today={today} ach={ach} />
+        <FriendStats who={friend.name} entries={line!.sets} goal={line!.goal} prs={line!.prs} today={today} ach={ach} achAt={achAt} />
       </>)}
       {/* Their whole log, where the tiles above are 8 weeks: said so, or "Stats" reads as the tiles again (IA A7). */}
       <div className="fp-links" role="group" aria-labelledby="fp-whole">
