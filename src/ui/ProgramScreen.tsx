@@ -130,7 +130,7 @@ export function ProgramScreen({ programs, profile, entries, body = [], gyms, uid
           setRemoved(null); // an undo for the old program must not land in the new one
           setPrev(p); // no confirm: the old program, edits and all, is one tap away
           // By minutes: the most sets per session whose every day fits, at your own pace.
-          void programs.save(rebuildLike({ days: d, perSession: s, minutes: mode === 'minutes' ? m : undefined }, profile.profile, entries, new Date(), ctx, aims.ranges, dayMinutes));
+          void programs.save(rebuildLike({ days: d, perSession: s, minutes: mode === 'minutes' ? m : undefined }, profile.profile, entries, new Date(), ctx, aims.ranges, dayMinutes, aims.held));
         }}>{p ? 'Rebuild program' : 'Build program'}</button>
         {prev && <p className="undo-note" role="status">Program rebuilt. <button className="mini" onClick={() => { void programs.save(prev); setPrev(null); }}>Undo</button></p>}
       </section>

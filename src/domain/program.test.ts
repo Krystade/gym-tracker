@@ -486,3 +486,28 @@ describe('round 28: the aim orders the fill, the session size sets the total', (
     for (const d of [0, 1, 2]) expect(placed(p, d), `day ${d}`).toBeGreaterThanOrEqual(18); // 3 min a set: 20 sets in 60
   });
 });
+
+describe('round 31: a held muscle fills its range last', () => {
+  // Biceps held at his own 4 a week (learn/volume 'held'), Abs stepped to 6; both priority 1 (range 12–20), the rest excluded.
+  const prof = withTiers({ Biceps: 1, Abs: 1 }, 4);
+  const aims = { Biceps: [4, 4], Abs: [6, 6] } as Partial<Record<Muscle, [number, number]>>;
+  const direct = (p: Program, m: Muscle) => p.days.flatMap((d) => d.slots).filter((sl) => muscleVector(sl.exercise)?.[m] === 1).reduce((a, sl) => a + sl.sets, 0);
+  it('the sets past the aims go to the muscle not held, up to its top, before the held one gets any', () => {
+    const p = buildProgram(prof, [], { days: 2, perSession: 12, aims, held: ['Biceps'] }, NOW);
+    expect(direct(p, 'Biceps')).toBe(4);
+    expect(direct(p, 'Abs')).toBe(20);
+  });
+  it('once every muscle not held is at its top, the held one fills toward its range', () => {
+    const p = buildProgram(prof, [], { days: 3, perSession: 12, aims, held: ['Biceps'] }, NOW);
+    expect(direct(p, 'Abs')).toBe(20);
+    expect(direct(p, 'Biceps')).toBeGreaterThanOrEqual(12);
+  });
+  it('without a held muscle the fill is unchanged: both toward their ranges by fraction', () => {
+    const p = buildProgram(prof, [], { days: 2, perSession: 12, aims }, NOW);
+    expect(direct(p, 'Biceps')).toBeGreaterThan(4);
+  });
+  it('rebuildLike passes the held muscles through', () => {
+    const p = rebuildLike({ days: 2, perSession: 12 }, prof, [], NOW, {}, aims, () => 0, ['Biceps']);
+    expect(direct(p, 'Biceps')).toBe(4);
+  });
+});

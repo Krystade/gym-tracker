@@ -113,9 +113,12 @@ function bestTier(ex: string, p: Profile): Tier {
  * `opts.aims`: each muscle's weekly sets to plan at, [lower, upper] (learn/volume planAims: a +20 % step from his own volume,
  * owner 2026-10-20); a muscle without one is planned at its priority's range. The aims order the fill, they don't cap it (owner,
  * 2026-10-22: 3 days of 20 gave days of 8): once every aim is met, the sets left go toward each range the same way, up to its top.
+ * `opts.held`: the muscles learn/volume held at his own volume (low energy, a decline, pain): they fill toward their ranges
+ * last, only once every muscle not held is at its range's top.
  */
-export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days: number; perSession: number; aims?: Partial<Record<Muscle, [number, number]>> }, now: Date, ctx: BuildContext = {}): Program {
+export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days: number; perSession: number; aims?: Partial<Record<Muscle, [number, number]>>; held?: readonly Muscle[] }, now: Date, ctx: BuildContext = {}): Program {
   const { days, perSession } = opts;
+  const held = new Set(opts.held ?? []);
   const range = (m: Muscle): [number, number] => profile.targets[profile.tiers[m]];
   const goalFor = (m: Muscle): [number, number] => opts.aims?.[m] ?? range(m);
   // The goals in fill order: the aim's lower and upper, then the range's (never below the aim: an aim above the range is his own volume).
@@ -143,7 +146,8 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   const lowBudget = (profile.lowShare ?? DEFAULT_LOW_SHARE) * days * dayCap;
   let low = 0;
   const isLow = (m: Muscle) => profile.tiers[m] >= 3;
-  const prioritiesShort = () => MUSCLES.some((m) => !isLow(m) && !saturated.has(m) && achieved[m] < goals(m)[3]);
+  // A held muscle is short only of its aim: its range comes last, so it never holds priority 3–4 muscles back from theirs.
+  const prioritiesShort = () => MUSCLES.some((m) => !isLow(m) && !saturated.has(m) && achieved[m] < goals(m)[held.has(m) ? 1 : 3]);
   const perDay = Array.from({ length: days }, () => new Map<string, number>());
   const totals = Array(days).fill(0) as number[];
   const room = (ex: string, d: number) => (perDay[d].get(ex) ?? 0) + UNIT <= MAX_SETS_PER_DAY;
@@ -161,7 +165,9 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
     // Over the low-priority budget, priority 3–4 muscles wait — re-checked every pair, so they come back once priorities are covered.
     const capped = low + UNIT > lowBudget && prioritiesShort();
     const below = (bound: number) => open.filter((m) => score(m, bound) > 0 && !(capped && isLow(m))).sort((a, b) => score(b, bound) - score(a, bound));
-    const m = below(0)[0] ?? below(1)[0] ?? below(2)[0] ?? below(3)[0];
+    // Toward the ranges, the muscles not held first, each to its top; then the held ones.
+    const fill = (keep: boolean) => (bound: number) => below(bound).find((x) => held.has(x) === keep);
+    const m = below(0)[0] ?? below(1)[0] ?? fill(false)(2) ?? fill(false)(3) ?? fill(true)(2) ?? fill(true)(3);
     if (!m) break;
     // The pair goes on the day with the fewest sets for m (then the lightest) that has room and a lift for m with room,
     // so each muscle spreads over the days with its best lifts split between them; none means this muscle is done.
@@ -224,9 +230,9 @@ export const programBlock = (p: Program, today: string): number => {
  * day `est`imates within them (minutes).
  */
 export function rebuildLike(p: { days: number; perSession: number; minutes?: number }, profile: Profile, entries: SetEntry[], now: Date, ctx: BuildContext,
-  aims: Partial<Record<Muscle, [number, number]>> | undefined, est: (day: ProgramDay) => number): Program {
+  aims: Partial<Record<Muscle, [number, number]>> | undefined, est: (day: ProgramDay) => number, held: readonly Muscle[] = []): Program {
   const { days } = p;
-  const build = (perSession: number) => buildProgram(profile, entries, { days, perSession, aims }, now, ctx);
+  const build = (perSession: number) => buildProgram(profile, entries, { days, perSession, aims, held }, now, ctx);
   return p.minutes != null ? { ...build(perSessionForMinutes(p.minutes, build, est)), minutes: p.minutes } : build(p.perSession);
 }
 

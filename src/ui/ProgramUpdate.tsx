@@ -18,10 +18,10 @@ import { getPref, setPref } from '../state/prefs';
 const fmt = (n: number) => (Math.abs(n - Math.round(n)) < 0.05 ? String(Math.round(n)) : n.toFixed(1));
 
 /** Each muscle's plan (learn/volume planAims) on `today`, as the builder takes it. */
-export function aimsOn(entries: SetEntry[], body: readonly BodyDay[], profile: Profile, today: string, owner: string): { by: Record<Muscle, PlanAim>; ranges: Record<Muscle, [number, number]>; weeks: number } {
+export function aimsOn(entries: SetEntry[], body: readonly BodyDay[], profile: Profile, today: string, owner: string): { by: Record<Muscle, PlanAim>; ranges: Record<Muscle, [number, number]>; held: Muscle[]; weeks: number } {
   const a = volumeAdvice(entries, body, profile, today, tappedLight(owner));
   const by = planAims(a, profile);
-  return { weeks: a?.weeks.length ?? 0, by, ranges: Object.fromEntries(MUSCLES.map((m) => [m, by[m].plan])) as Record<Muscle, [number, number]> };
+  return { weeks: a?.weeks.length ?? 0, by, held: MUSCLES.filter((m) => by[m].from === 'held'), ranges: Object.fromEntries(MUSCLES.map((m) => [m, by[m].plan])) as Record<Muscle, [number, number]> };
 }
 
 /** A program day's minutes as a minutes program is sized: at his pace, else the timer's rests (learn/session sizing). */
@@ -49,7 +49,7 @@ export function useProgramUpdate(o: { owner: string; program: Program | null; en
     const cur = programVolume(p);
     const ranges = Object.fromEntries(MUSCLES.map((m) => { const [lo, hi] = aims.ranges[m], top = aims.by[m].band[1], keep = Math.min(cur[m], top);
       return [m, [Math.max(lo, keep), Math.max(hi, keep)]]; })) as Record<Muscle, [number, number]>;
-    const next = rebuildLike({ days: p.days.length, perSession: p.perSession, minutes: p.minutes }, profile, entries, new Date(`${today}T12:00:00`), ctx, ranges, dayEstimate(entries, today, o.keptRest));
+    const next = rebuildLike({ days: p.days.length, perSession: p.perSession, minutes: p.minutes }, profile, entries, new Date(`${today}T12:00:00`), ctx, ranges, dayEstimate(entries, today, o.keptRest), aims.held);
     if (!volumeDiffers(p, next)) return null;
     const was = programVolume(p), now = programVolume(next);
     const moves = MUSCLES.filter((m) => Math.abs(now[m] - was[m]) >= 1).sort((a, b) => profile.tiers[a] - profile.tiers[b])
