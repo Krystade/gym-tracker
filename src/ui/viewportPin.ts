@@ -58,8 +58,13 @@ export function pinChromeToVisualViewport(root: HTMLElement = document.documentE
   let picked: Element | null = null;
   // Mid-bounce: the visual viewport above the page, or at the full height past its end. scrollHeight only when it can be.
   let touching = false, flingUntil = 0;
-  const bouncing = () => (touching || Date.now() < flingUntil) && (scrollY < 0 || vv.offsetTop < 0 || vv.pageTop < 0
-    || (vv.offsetTop > 0 && vv.height >= innerHeight - 1 && vv.pageTop + vv.height > (document.scrollingElement ?? document.documentElement).scrollHeight + 1));
+  // Above the page: a pull past the top, or what one left behind. Never a stuck screen, finger or not (owner's 13 mini,
+  // 2026-10-27: after a fling or coming back mid-rest, the viewport stayed 345px above the page with no touch, and the rest bar
+  // and tab bar went 345px up the screen with the status backdrop off the top). The chrome stays on the screen edges.
+  const above = () => scrollY < 0 || vv.offsetTop < 0 || vv.pageTop < 0;
+  // Past the end at the full height: a bounce while a finger is down or its fling runs; without one, a stuck screen.
+  const bouncing = () => (touching || Date.now() < flingUntil)
+    && vv.offsetTop > 0 && vv.height >= innerHeight - 1 && vv.pageTop + vv.height > (document.scrollingElement ?? document.documentElement).scrollHeight + 1;
   const update = () => {
     const active = document.activeElement;
     const field = (active?.matches(FIELD) ?? false) && active !== picked;
@@ -69,7 +74,7 @@ export function pinChromeToVisualViewport(root: HTMLElement = document.documentE
     const inputUp = field && short;
     const pinch = Math.abs(vv.scale - 1) > 0.01; // zoomed in by hand: the chrome is meant to stay put then
     if (!short && !pinch && bouncing()) return; // the bounce settles with a scroll event, and the poll looks again
-    const still = short || pinch;
+    const still = short || pinch || above();
     const top = still ? 0 : vv.offsetTop;
     const bottom = still ? 0 : innerHeight - (vv.offsetTop + vv.height);
     const kb = inputUp && !pinch ? Math.max(0, innerHeight - (vv.offsetTop + vv.height)) : 0;

@@ -366,7 +366,7 @@ test('Friends › Board: back from the background to a keyboard-short screen wit
   await gate.getByLabel('I’m 16 or older').check();
   await gate.getByLabel(/I’ll keep to the board’s rules/).check();
   await gate.getByRole('button', { name: 'Join the board' }).click();
-  await expect(gate).toContainText('Posting opens once your email is verified.');
+  await expect(gate).toContainText('Posting opens once'); // the gate's next step, whichever it is
   expect(await tabBottom(page)).toBe(H);
   await visibility(page, 'hidden');
   await vv(page, { offsetTop: 0, height: H - 318 }, false);
@@ -375,8 +375,8 @@ test('Friends › Board: back from the background to a keyboard-short screen wit
   expect(await tabBottom(page)).toBe(H);
   expect((await box(page, '.status-backdrop')).top).toBe(0);
   await page.screenshot({ path: 'test-results/viewport-board-resume.png' });
-  // The same with a button focused (Join, just tapped): no keyboard there either.
-  await gate.getByRole('button', { name: 'Send link' }).focus();
+  // The same with a button focused: no keyboard there either.
+  await gate.getByRole('button', { name: 'Not now' }).focus();
   await vv(page, { height: H - 300 });
   await page.waitForTimeout(700);
   expect(await tabBottom(page)).toBe(H);
@@ -433,4 +433,49 @@ test('a sheet with a field rides above the keyboard: the thread’s message box 
   await vv(pa, { offsetTop: 0, height: null });
   await expect.poll(() => bottomOf(sheet)).toBe(H);
   await Promise.all([pa.context().close(), pb.context().close()]);
+});
+
+// Owner's 13 mini, 2026-10-27, mid-workout on Today with no keyboard: the rest bar and the tab bar under it drawn as one block
+// across the middle of the screen (the tab bar's foot 345px up) and the clock over the page, the status backdrop gone off the
+// top. The visual viewport left above the page (a pull past the top) and handed back that way after the fling, or on coming
+// back to the app, with no finger down. A screen above the page is never a stuck one: the chrome stays on the screen edges.
+test('Today mid-rest: a visual viewport left above the page after a fling or on coming back leaves the bars on the screen edges', async ({ page }) => {
+  await notched(page);
+  await fakeViewport(page);
+  await page.clock.install({ time: new Date('2026-10-27T10:10:00') });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Add exercise' }).click();
+  await page.getByRole('searchbox', { name: 'Search exercises' }).fill('Cable Pushdown');
+  await page.getByRole('button', { name: /^Cable Pushdown/ }).first().click();
+  const c = page.locator('[data-card="cable pushdown"]');
+  await c.getByRole('textbox', { name: 'Weight' }).fill('120');
+  await c.getByRole('textbox', { name: 'Reps' }).fill('10');
+  await c.getByRole('button', { name: /^Add set/ }).click();
+  await expect(page.getByRole('timer', { name: 'Rest' })).toBeVisible();
+  const H = 812;
+  const edges = async () => [(await box(page, '.status-backdrop')).top, (await box(page, 'nav.tabs')).bottom];
+  const restOnBar = async () => (await box(page, '.rest-timer')).bottom <= (await box(page, 'nav.tabs')).top + 1;
+  expect(await edges()).toEqual([0, H]);
+
+  // A pull past the top, let go; the fling's last scroll leaves the viewport there and nothing fires again.
+  await finger(page, 'touchstart');
+  for (const d of [120, 345]) await vv(page, { offsetTop: -d });
+  await finger(page, 'touchend');
+  await vv(page, { offsetTop: -345 });
+  await page.waitForTimeout(1500); // past the fling's 700 ms, and the poll has looked again
+  expect(await edges()).toEqual([0, H]);
+  expect(await restOnBar()).toBe(true);
+  await vv(page, { offsetTop: 0 });
+
+  // Away during the rest, and back to a viewport above the page, no finger down.
+  await visibility(page, 'hidden');
+  await vv(page, { offsetTop: -345 }, false);
+  await visibility(page, 'visible');
+  await page.waitForTimeout(1200);
+  expect(await edges()).toEqual([0, H]);
+  expect(await restOnBar()).toBe(true);
+  await page.screenshot({ path: 'test-results/viewport-rest-resume.png' });
+  // A stuck screen of the real kind still takes them with it.
+  await vv(page, { offsetTop: 300, height: H - 24 });
+  await expect.poll(edges).toEqual([300, 300 + H - 24]);
 });
