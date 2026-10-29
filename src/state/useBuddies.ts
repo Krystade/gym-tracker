@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ledgerOf, starter, type Ledger, type Spend } from '../domain/buddies/gacha';
 import type { BuddyPrefsMap, Lead } from '../domain/buddies/kept';
-import { BUDDY, type BuddyDef } from '../domain/buddies/roster';
+import { BUDDY, type BuddyDef, type Slot } from '../domain/buddies/roster';
 import { useDb } from './profileDb';
 
 // Gym Buddies for the person whose screens these are (plan §16.10 stage 4): what's kept (db: the start day, each buddy's name
@@ -49,6 +49,17 @@ export function useBuddies(today: string) {
     await reload();
   }, [kept, reload]);
 
-  return { kept, ledger, owned, lead, reload, pickFirst, makeLead, rename };
+  /** A pull, a ticket or a choice (domain/buddies/gacha, rolled by the caller once): kept as is, never rolled again. */
+  const spend = useCallback(async (s: Spend) => { await db.addSpend(s); await reload(); }, [reload]);
+  /** Puts an accessory on a buddy (null takes that slot's off). Accessories are shared: any buddy may wear any you own. */
+  const equip = useCallback(async (id: string, slot: Slot, acc: string | null) => {
+    const p = kept?.prefs[id];
+    const next = { ...p?.equip };
+    if (acc) next[slot] = acc; else delete next[slot];
+    await db.putBuddyPrefs(id, { ...(p?.name && { name: p.name }), ...(Object.keys(next).length && { equip: next }) });
+    await reload();
+  }, [kept, reload]);
+
+  return { kept, ledger, owned, lead, reload, pickFirst, makeLead, rename, spend, equip };
 }
 export type BuddiesStore = ReturnType<typeof useBuddies>;

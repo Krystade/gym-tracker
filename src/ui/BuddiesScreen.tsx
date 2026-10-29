@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { starterOffer, walletOf, type Wallet } from '../domain/buddies/gacha';
+import { PULL, starterOffer, walletOf, type Spend, type Wallet } from '../domain/buddies/gacha';
 import { NAME_MAX } from '../domain/buddies/kept';
 import { earned } from '../domain/buddies/points';
-import { BUDDIES, CREDIT_ROWS, RARITIES, SLOTS, STATS, defaultName, type BuddyDef, type Rarity, type Slot, type Stat } from '../domain/buddies/roster';
+import { ACCESSORY, BUDDIES, BUDDY, CREDIT_ROWS, RARITIES, SLOTS, STATS, defaultName, type Banner, type BuddyDef, type Rarity, type Slot, type Stat } from '../domain/buddies/roster';
 import { statsOf, TRAIT_TENTHS, trainingOf, type BuddyStats } from '../domain/buddies/stats';
 import type { Profile } from '../domain/profile';
 import type { SetEntry } from '../domain/types';
@@ -10,16 +10,18 @@ import { useAchievements } from '../state/useAchievements';
 import type { BuddiesStore } from '../state/useBuddies';
 import { useProfileId } from '../state/profileDb';
 import { BuddySprite } from './buddies/BuddySprite';
+import { PullSheet, type Mode } from './buddies/PullSheet';
+import { AccIcon, accName, SLOT_NAME, WardrobeSheet, wornClass } from './buddies/Worn';
 import { Icon } from './icons';
 
 // The Buddies tab (Gym Buddies plan §16, stage 4): your lead, your buddies, points and tickets; a buddy's card; the first pick
-// of three commons; and the Collection, with the credits (it took Characters' place under More). Pulls, tickets and choosing
-// are stage 5. Everything shown is worked out from the log and what's kept (state/useBuddies): nothing here is stored but
-// the pick, the lead and a name.
+// of three commons; and the Collection, with the credits (it took Characters' place under More). Stage 5: pulls, tickets and
+// choosing (ui/buddies/PullSheet), and the wardrobe (ui/buddies/Worn), a slot's sheet from the card. Everything shown is worked
+// out from the log and what's kept (state/useBuddies): nothing here is stored but the pick, the lead, a name, what's worn and
+// the spends.
 
 const RARITY: Record<Rarity, string> = { 0: 'Common', 1: 'Uncommon', 2: 'Rare', 3: 'Epic', 4: 'Legendary' };
 const STAT: Record<Stat, string> = { power: 'Power', size: 'Size', grit: 'Grit', stamina: 'Stamina' };
-const SLOT: Record<Slot, string> = { held: 'Held', aura: 'Aura', plinth: 'Plinth', backdrop: 'Backdrop' };
 const n = (x: number) => x.toLocaleString('en-US');
 const count = (x: number, one: string, many = `${one}s`) => `${n(x)} ${x === 1 ? one : many}`;
 const traitText = (b: BuddyDef) => `${STAT[b.trait]} ×${(TRAIT_TENTHS[b.rarity] / 10).toFixed(1)}`;
@@ -28,10 +30,12 @@ const traitText = (b: BuddyDef) => `${STAT[b.trait]} ×${(TRAIT_TENTHS[b.rarity]
 export const nameOf = (s: BuddiesStore, id: string) => s.kept?.prefs[id]?.name ?? defaultName(id);
 
 type View = { at: 'home' } | { at: 'card'; id: string; from: 'home' | 'collection' } | { at: 'collection' };
+type Sheet = { at: 'pull'; mode: Mode; banner: Banner } | { at: 'wear'; id: string; slot: Slot } | null;
 
 export function BuddiesScreen({ buddies, entries, today, profile }: { buddies: BuddiesStore; entries: readonly SetEntry[]; today: string; profile: Profile }) {
   const [view, setView] = useState<View>({ at: 'home' });
-  const go = (v: View) => { setView(v); window.scrollTo(0, 0); };
+  const [sheet, setSheet] = useState<Sheet>(null);
+  const go = (v: View) => { setView(v); setSheet(null); window.scrollTo(0, 0); };
   const { kept, ledger, owned, lead } = buddies;
   const ach = useAchievements(entries, today);
   const start = kept?.start;
@@ -40,6 +44,22 @@ export function BuddiesScreen({ buddies, entries, today, profile }: { buddies: B
   if (!kept || !training || !wallet) return <><h1>Buddies</h1><p className="muted">Loading…</p></>;
   if (!owned.length || !lead) return <FirstPick buddies={buddies} />;
   const statsFor = (id: string) => { const o = owned.find((x) => x.def.id === id)!; return statsOf(o.def, o.day, training); };
+  const ownedIds = new Set(ledger!.owned.keys());
+  const onSlot = (id: string, slot: Slot) => setSheet({ at: 'wear', id, slot });
+  const sheets = sheet?.at === 'pull' ? (
+    <PullSheet mode={sheet.mode} banner={sheet.banner} ledger={ledger!} wallet={wallet} today={today} names={(id) => nameOf(buddies, id)}
+      onSpend={buddies.spend} onClose={() => setSheet(null)}
+      onOpen={(sp: Spend) => {
+        if (!sp.got) return;
+        if (BUDDY.has(sp.got)) { go({ at: 'card', id: sp.got, from: 'home' }); return; }
+        void buddies.equip(lead.id, ACCESSORY.get(sp.got)!.slot, sp.got);
+        go({ at: 'home' });
+      }} />
+  ) : sheet?.at === 'wear' ? (
+    <WardrobeSheet slot={sheet.slot} wearing={kept.prefs[sheet.id]?.equip?.[sheet.slot]} owned={ownedIds} name={nameOf(buddies, sheet.id)}
+      onPick={(acc) => void buddies.equip(sheet.id, sheet.slot, acc)} onClose={() => setSheet(null)}
+      onGetMore={() => setSheet({ at: 'pull', mode: 'pull', banner: 'acc' })} />
+  ) : null;
 
   if (view.at === 'collection') {
     return <Collection buddies={buddies} onBack={() => go({ at: 'home' })} onOpen={(id) => go({ at: 'card', id, from: 'collection' })} />;
@@ -49,7 +69,8 @@ export function BuddiesScreen({ buddies, entries, today, profile }: { buddies: B
     return (
       <>
         <button className="back" onClick={() => go(view.from === 'collection' ? { at: 'collection' } : { at: 'home' })}>‹ {view.from === 'collection' ? 'Collection' : 'Buddies'}</button>
-        <BuddyCard key={def.id} buddies={buddies} def={def} stats={statsFor(def.id)} today={today} title />
+        <BuddyCard key={def.id} buddies={buddies} def={def} stats={statsFor(def.id)} today={today} title onSlot={onSlot} />
+        {sheets}
       </>
     );
   }
@@ -60,7 +81,12 @@ export function BuddiesScreen({ buddies, entries, today, profile }: { buddies: B
         <h1>Buddies</h1>
         <WalletPills w={wallet} />
       </div>
-      <BuddyCard key={lead.id} buddies={buddies} def={lead} stats={statsFor(lead.id)} today={today} />
+      <BuddyCard key={lead.id} buddies={buddies} def={lead} stats={statsFor(lead.id)} today={today} onSlot={onSlot} />
+      <section className="bu-get" aria-label="Get more">
+        <button className="primary" onClick={() => setSheet({ at: 'pull', mode: 'pull', banner: 'buddy' })}>Pull<span>{PULL.buddy} points</span></button>
+        <button onClick={() => setSheet({ at: 'pull', mode: 'ticket', banner: 'buddy' })}>Ticket<span>{n(wallet.tickets)} left</span></button>
+        <button onClick={() => setSheet({ at: 'pull', mode: 'choose', banner: 'buddy' })}>Choose<span>save up</span></button>
+      </section>
       <section className="bu-roster" aria-labelledby="bu-roster-h">
         <h2 id="bu-roster-h">Your buddies <span className="muted small">{owned.length} of {BUDDIES.length}</span></h2>
         <ul>
@@ -82,8 +108,10 @@ export function BuddiesScreen({ buddies, entries, today, profile }: { buddies: B
       </button>
       <section className="card bu-how" aria-label="How buddies grow">
         <p className="small"><b>How they grow.</b> Every buddy gets all the training you log after it joins: Power from PRs and steps up, Size from sets, Grit from sessions and goal weeks, Stamina from cardio. Its trait grows faster.</p>
-        <p className="small"><b>Points:</b> 1 a set, 5 a session, 20 a goal week, 1 per 3 cardio minutes, and achievements. Gold and platinum achievements give tickets. Pulls come next.</p>
+        <p className="small"><b>Points:</b> 1 a set, 5 a session, 20 a goal week, 1 per 3 cardio minutes, and achievements. Gold and platinum achievements give tickets, each a free pull.</p>
+        <p className="small"><b>Accessories</b> are shared: any buddy can wear any you own. Tap a slot on a card to change it.</p>
       </section>
+      {sheets}
     </>
   );
 }
@@ -114,18 +142,25 @@ export function fromLine(f: BuddyStats['from'], today: string): string {
 /** How far a stat's xp (tenths) is from its number to the next: 0–1. */
 const toNext = (tenths: number, level: number) => (tenths - 30 * level * level) / (30 * (2 * level + 1));
 
-function BuddyCard({ buddies, def, stats, today, title }: { buddies: BuddiesStore; def: BuddyDef; stats: BuddyStats; today: string; /** Its own screen: the name is the page's title. */ title?: boolean }) {
+function BuddyCard({ buddies, def, stats, today, title, onSlot }: {
+  buddies: BuddiesStore; def: BuddyDef; stats: BuddyStats; today: string; /** Its own screen: the name is the page's title. */ title?: boolean;
+  onSlot: (id: string, slot: Slot) => void;
+}) {
   const isLead = buddies.lead?.id === def.id;
+  // What it wears, of what's owned (a worn id that no spend landed on isn't shown).
+  const has = (x: string | undefined) => (x && buddies.ledger?.owned.has(x) ? x : undefined);
+  const eq = buddies.kept?.prefs[def.id]?.equip ?? {};
+  const worn: Partial<Record<Slot, string>> = { held: has(eq.held), aura: has(eq.aura), plinth: has(eq.plinth), backdrop: has(eq.backdrop) };
   const name = nameOf(buddies, def.id);
   const [naming, setNaming] = useState<string | null>(null);
   const Name = title ? 'h1' : 'h2';
   return (
     <section className={`bu-card r${def.rarity}`} aria-label={`${name}’s card`}>
-      <div className="bu-hero">
+      <div className={`bu-hero ${wornClass(worn.backdrop)}${worn.held ? ' has-held' : ''}`}>
         <span className="bu-tag">Lv {n(stats.lv)}</span>
         {isLead && <span className="bu-tag lead">Lead</span>}
-        <BuddySprite poses={def.poses} scale={8} className="bu-hero-sprite" />
-        <i className="bu-floor" aria-hidden="true" />
+        <BuddySprite poses={def.poses} scale={8} className={`bu-hero-sprite ${wornClass(worn.aura)}`} held={worn.held} />
+        <i className={worn.plinth ? `bu-plinth ${wornClass(worn.plinth)}` : 'bu-floor'} aria-hidden="true" />
       </div>
       {naming == null ? (
         <div className="bu-name">
@@ -150,7 +185,18 @@ function BuddyCard({ buddies, def, stats, today, title }: { buddies: BuddiesStor
       </ul>
       <p className="bu-from">{fromLine(stats.from, today)}</p>
       <ul className="bu-slots" aria-label="Wearing">
-        {SLOTS.map((s) => <li key={s}><span>{SLOT[s]}</span><b>None</b></li>)}
+        {SLOTS.map((s) => {
+          const a = worn[s] ? ACCESSORY.get(worn[s]!) : undefined;
+          return (
+            <li key={s}>
+              <button className={a ? `on r${a.rarity}` : ''} onClick={() => onSlot(def.id, s)} aria-label={`${SLOT_NAME[s]}: ${a ? accName(a.id) : 'none'}. Change`}>
+                <span>{SLOT_NAME[s]}</span>
+                {a ? <AccIcon acc={a} scale={2} /> : <i className="acc-icon none" aria-hidden="true" />}
+                <b>{a ? accName(a.id) : 'None'}</b>
+              </button>
+            </li>
+          );
+        })}
       </ul>
       {naming == null && (
         <div className="bu-actions">

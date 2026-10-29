@@ -1,4 +1,4 @@
-import { HEAD } from '../../domain/buddies/anchors';
+import { HEAD_FIX, headOf } from '../../domain/buddies/anchorFix';
 import { BUDDIES, defaultName } from '../../domain/buddies/roster';
 import { spriteUrl, SPRITE } from './BuddySprite';
 
@@ -13,10 +13,10 @@ export default function AnchorGrid() {
   return (
     <main className="screen anchor-check">
       <h1>Head anchors</h1>
-      <p className="muted small">{poses.length} poses of {BUDDIES.length} buddies at {S}×. Red: the anchor (the top-most pixels, centred over the top three rows). Blue: an {CAP_W}-pixel cap sat {SINK} pixels into the head.</p>
+      <p className="muted small">{poses.length} poses of {BUDDIES.length} buddies at {S}×. Red: the anchor (the top-most pixels, centred over the top three rows). Blue: an {CAP_W}-pixel cap sat {SINK} pixels into the head. “fixed”: placed by hand (anchorFix).</p>
       <ul className="anchor-grid">
         {poses.map(({ p, b, i }) => {
-          const [x, y] = HEAD[p];
+          const [x, y] = headOf(p);
           return (
             <li key={p} data-pose={p}>
               <span className="anchor-box" style={{ width: SPRITE * S, height: SPRITE * S }}>
@@ -24,7 +24,7 @@ export default function AnchorGrid() {
                 <i className="anchor-cap" style={{ left: (x - CAP_W / 2) * S, top: (y + SINK - CAP_H) * S, width: CAP_W * S, height: CAP_H * S }} />
                 <i className="anchor-dot" style={{ left: x * S - 2, top: y * S - 2 }} />
               </span>
-              <small>{defaultName(b.id)}{b.poses.length > 1 ? ` ${i + 1}` : ''}<br />{p}</small>
+              <small>{defaultName(b.id)}{b.poses.length > 1 ? ` ${i + 1}` : ''}<br />{p}{HEAD_FIX[p] ? ' fixed' : ''}</small>
             </li>
           );
         })}
