@@ -14,6 +14,9 @@ import type { TagPrefs } from '../domain/tags';
 import type { CycleDay } from '../domain/cycle';
 import { replacements, stillTaken, type Replaced, type Taken } from '../domain/replaced';
 import { cleanStatus } from '../domain/crew';
+import { parseBuddies, parseLead, parsePrefs, type BuddyPrefs, type BuddyPrefsMap, type Lead } from '../domain/buddies/kept';
+import { parseSpend, type Spend } from '../domain/buddies/gacha';
+import { asDay } from '../domain/buddies/start';
 import { decodeLedger, encodeLedger, hasNew, mergeLedgers, type StoredLedger } from '../domain/together';
 
 const STORE = 'sets';
@@ -225,6 +228,47 @@ export async function startAchievements(today: string): Promise<string> {
   if (!had) await tx.store.put({ key: 'achievements', since: today } satisfies AchStart);
   await tx.done;
   return had ?? today;
+}
+
+/**
+ * Gym Buddies (domain/buddies/kept), in the config store: each owned buddy's name and wear (`buddies`), the lead (`buddy-lead`),
+ * the day buddies count from (`buddy-start`) and the spends (`spends`, synced one item each as `spend:<id>`). Read as untrusted.
+ */
+export const getBuddyPrefs = async (): Promise<BuddyPrefsMap> => parseBuddies(((await (await db()).get('config', 'buddies')) as { map?: unknown } | undefined)?.map);
+/** One buddy's name and wear, saved over its others' in one transaction, stamped `at` (later wins per buddy across phones). */
+export async function putBuddyPrefs(id: string, p: Omit<BuddyPrefs, 'at'>, at = Date.now()): Promise<void> {
+  const tx = (await db()).transaction('config', 'readwrite');
+  const map = parseBuddies((await tx.store.get('buddies'))?.map);
+  const next = parsePrefs({ ...p, at });
+  if (next) await tx.store.put({ key: 'buddies', map: { ...map, [id]: next } });
+  await tx.done;
+}
+export const getBuddyLead = async (): Promise<Lead | undefined> => parseLead(await (await db()).get('config', 'buddy-lead')) ?? undefined;
+export const putBuddyLead = async (id: string, at = Date.now()): Promise<void> => { await (await db()).put('config', { key: 'buddy-lead', id, at } satisfies Lead & { key: string }); };
+export const getBuddyStart = async (): Promise<string | undefined> => asDay((await (await db()).get('config', 'buddy-start'))?.since);
+/** The buddies' start kept, or `today` kept and returned if there's none yet (one transaction, like startAchievements). */
+export async function startBuddies(today: string): Promise<string> {
+  const tx = (await db()).transaction('config', 'readwrite');
+  const had = asDay((await tx.store.get('buddy-start'))?.since);
+  if (!had) await tx.store.put({ key: 'buddy-start', since: today });
+  await tx.done;
+  return had ?? today;
+}
+/** Every spend kept (each under its own id); one that doesn't read is left out. */
+export async function getSpends(): Promise<Spend[]> {
+  const map = ((await (await db()).get('config', 'spends')) as { map?: Record<string, unknown> } | undefined)?.map ?? {};
+  return Object.entries(map).map(([id, v]) => { const s = parseSpend(v); return s && s.id === id ? s : null; }).filter((s): s is Spend => !!s);
+}
+/** Keeps a spend; false (and nothing changed) if one with its id is kept already: a roll is never replaced. */
+export async function addSpend(sp: Spend): Promise<boolean> {
+  const s = parseSpend(sp);
+  if (!s) throw new Error('not a spend');
+  const tx = (await db()).transaction('config', 'readwrite');
+  const row = (await tx.store.get('spends')) as { map?: Record<string, unknown> } | undefined;
+  const fresh = !row?.map?.[s.id];
+  if (fresh) await tx.store.put({ key: 'spends', map: { ...row?.map, [s.id]: s } });
+  await tx.done;
+  return fresh;
 }
 
 /**
@@ -455,6 +499,17 @@ function metaRow(k: string): { store: string; key: string; get: (r: Row) => unkn
   if (k.startsWith('settings:')) return { store: 'settings', key: k.slice(9), ...whole };
   if (k === 'tags') return { store: 'config', key: k, ...whole };
   if (k === 'achievements') return { store: 'config', key: k, get: (r) => r?.since, put: (v) => ({ key: k, since: v }), del: () => null };
+  if (k === 'buddy-start') return { store: 'config', key: k, get: (r) => asDay(r?.since), put: (v) => (asDay(v) ? { key: k, since: v } : undefined), del: () => null };
+  if (k === 'buddy-lead') return { store: 'config', key: k, get: (r) => parseLead(r) ?? undefined, put: (v) => { const l = parseLead(v); return l ? { key: k, ...l } : undefined; }, del: () => null };
+  if (k === 'buddies') {
+    const item = (r: Row) => { const m = parseBuddies(r?.map); return Object.keys(m).length ? m : undefined; };
+    return { store: 'config', key: k, get: item, put: (v) => { const m = parseBuddies(v); return Object.keys(m).length ? { key: k, map: m } : undefined; }, del: () => null };
+  }
+  if (k.startsWith('spend:')) {
+    const id = k.slice(6), read = (v: unknown) => { const s = parseSpend(v); return s && s.id === id ? s : undefined; };
+    return { store: 'config', key: 'spends', get: (r) => read(r?.map?.[id]),
+      put: (v, r) => { const s = read(v); return s ? { key: 'spends', map: { ...r?.map, [id]: s } } : undefined; }, del: (r) => r };
+  }
   if (k === 'status') return { store: 'config', key: k, get: (r) => r?.text, put: (v) => ({ key: 'status', text: cleanStatus(v) }), del: () => null };
   if (k.startsWith('alias:')) {
     const name = k.slice(6);
@@ -482,6 +537,7 @@ export async function applySyncedMeta(base: MetaItems, pull: MetaItems, remove: 
       const s = tx.objectStore(at.store), row = await s.get(at.key);
       if (itemHash(at.get(row)) !== itemHash(base[o.k])) { out.skipped++; continue; }
       const next = o.gone ? at.del(row) : at.put(o.v, row);
+      if (next === undefined) { out.skipped++; continue; } // doesn't read (a synced value is untrusted): this phone's stays
       if (next) await s.put(next); else await s.delete(at.key);
       count(o);
     }
@@ -535,7 +591,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 
 // Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
 const PER_PROFILE = {
-  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, deleteSetsWithTombstones, restoreSet, restoreSets, renameLift, putMany, getAllSettings, putSettings, deleteSettings, getTags, putTags, getStatus, putStatus, getAchStart, startAchievements, getTogether, addTogether, finishTogetherSync, clearTogether, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan, deleteDayPlan,
+  getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, deleteSetsWithTombstones, restoreSet, restoreSets, renameLift, putMany, getAllSettings, putSettings, deleteSettings, getTags, putTags, getStatus, putStatus, getAchStart, startAchievements, getBuddyPrefs, putBuddyPrefs, getBuddyLead, putBuddyLead, getBuddyStart, startBuddies, getSpends, addSpend, getTogether, addTogether, finishTogetherSync, clearTogether, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan, deleteDayPlan,
   getBody, putBody, putBodyMany, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, getTombstoneTimes, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
   getReplaced, putReplaced, deleteReplaced, pruneReplaced, getSyncSnapshot, applySynced, applySyncedMeta,
 };

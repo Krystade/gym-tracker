@@ -6,6 +6,7 @@ import type { SetsStore } from './useSets';
 import type { BodyStore } from './useBody';
 import { replacedChanged } from './useReplaced';
 import { phoneApply } from '../cloud/sync';
+import { readBuddyMeta } from '../cloud/meta';
 
 export type SyncStatus = { kind: 'idle' } | { kind: 'running' } | { kind: 'done'; text: string } | { kind: 'error'; text: string };
 
@@ -32,6 +33,7 @@ export function useSync(store: SetsStore, body: BodyStore, person: Person) {
         client: repoClient(config, (u, i) => fetch(u, i)), sets: log.sets, body: log.body, deleted: log.tombstones, tombAt: log.tombAt, now: new Date(), historySeen: config.historySha,
         paths: pathsFor(person.id === MAIN ? null : person.slug),
         apply: phoneApply(db, { log: async () => { await store.synced(); await body.reload(); }, replaced: replacedChanged }).applyMonth,
+        buddies: { local: await readBuddyMeta(db), apply: (base, pull) => db.applySyncedMeta(base, pull, []) },
       });
       const next = { ...config, lastSync: new Date().toISOString(), historySha: r.historySha ?? config.historySha };
       await putSyncConfig(next); setConfig(next);

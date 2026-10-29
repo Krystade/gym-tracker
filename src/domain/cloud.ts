@@ -1,5 +1,6 @@
 import { BODY_FIELDS, mergeDay, type BodyDay } from './body';
 import type { SetEntry } from './types';
+import { isBuddyKey, mergeBuddyItem } from './buddies/kept';
 
 /**
  * One month of a log in the cloud. `deleted` maps a deleted set's id to when it went (epoch ms), so a delete on one phone
@@ -120,7 +121,7 @@ export function monthsToSync(local: Map<string, LocalMonth>, remoteIndex: Record
 
 /**
  * Everything else that's yours, flattened to one item per key (`profile`, `program`, `day:<date>`, `settings:<lift>`, `alias:<name>`,
- * `gyms`, `tags`, `status`, `achievements`), so two phones merge as a union. `seen` holds each item's fingerprint as the last sync left it.
+ * `gyms`, `tags`, `status`, `achievements`, and Gym Buddies' `buddies`, `buddy-lead`, `buddy-start`, `spend:<id>`), so two phones merge as a union. `seen` holds each item's fingerprint as the last sync left it.
  */
 export type MetaItems = Record<string, unknown>;
 /** `remove`: items deleted on another phone, to delete on this one too. */
@@ -152,6 +153,8 @@ export function mergeMeta(local: MetaItems, remote: MetaItems | null, seen: Reco
     // The day achievements count from (domain/achievements): the earliest any phone kept, so a new phone's first run can't move
     // it later and take back what was earned before it; otherwise the rule below.
     const v = k === 'achievements' && isDay(l) && isDay(r) ? (l < r ? l : r)
+      // Gym Buddies' items merge by their own rules (domain/buddies/kept): per buddy, the later lead, the earliest start.
+      : isBuddyKey(k) && l !== undefined && r !== undefined ? mergeBuddyItem(k, l, r)
       : l !== undefined && (lh !== seen[k] || r === undefined) ? l : r;
     if (v === undefined) continue;
     items[k] = v;

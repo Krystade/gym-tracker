@@ -1,7 +1,8 @@
 import { parseCsv, parseRows, toCsv, type CsvError } from './csv';
 import { BODY_FIELDS, mergeBody, parseBodyFile, toBodyCsv, type BodyDay } from './body';
 import type { SetEntry } from './types';
-import { editStamp, lifeStamp } from './cloud';
+import { editStamp, lifeStamp, metaHash, type MetaItems } from './cloud';
+import { mergeBuddyMeta } from './buddies/kept';
 import { importOverlap } from './duplicates';
 import type { Replaced, Taken } from './replaced';
 
@@ -81,11 +82,11 @@ export function repoClient(cfg: SyncConfig, fetchFn: Fetch) {
   return { get, put, upsert };
 }
 
-export interface SyncPaths { sets: string; body: string; deleted: string; history?: string }
+export interface SyncPaths { sets: string; body: string; deleted: string; history?: string; /** Gym Buddies' settings items (domain/buddies/kept). */ buddies?: string }
 /** The first profile keeps app/ and reads history.csv (its imported notes); every other profile has its own folder and no history. */
 export const pathsFor = (slug: string | null): SyncPaths =>
-  slug == null ? { sets: 'app/sets.csv', body: 'app/body.csv', deleted: 'app/deleted.csv', history: 'history.csv' }
-    : { sets: `profiles/${slug}/sets.csv`, body: `profiles/${slug}/body.csv`, deleted: `profiles/${slug}/deleted.csv` };
+  slug == null ? { sets: 'app/sets.csv', body: 'app/body.csv', deleted: 'app/deleted.csv', history: 'history.csv', buddies: 'app/buddies.json' }
+    : { sets: `profiles/${slug}/sets.csv`, body: `profiles/${slug}/body.csv`, deleted: `profiles/${slug}/deleted.csv`, buddies: `profiles/${slug}/buddies.json` };
 
 /**
  * deleted.csv: the sets deleted from a profile's log, one row each (`id,deleted_at`, an ISO time), so a restore or another
@@ -133,6 +134,17 @@ export function slugError(slug: string, taken: string[], retired: string[] = [])
   return null;
 }
 
+/** buddies.json: `{ v: 1, items }`, Gym Buddies' settings items by key, as the account sync has them. */
+export const toBuddiesFile = (items: MetaItems): string => `${JSON.stringify({ v: 1, items }, null, 1)}
+`;
+/** The items, or undefined when the file isn't one (never overwritten then). Each item is still read as untrusted on merge. */
+export function parseBuddiesFile(text: string): MetaItems | undefined {
+  try {
+    const j = JSON.parse(text) as { v?: unknown; items?: unknown };
+    return j && j.v === 1 && j.items && typeof j.items === 'object' && !Array.isArray(j.items) ? (j.items as MetaItems) : undefined;
+  } catch { return undefined; }
+}
+
 /** A file this build can't fully read is never overwritten: its unreadable rows would vanish from the backup. */
 function unreadable(path: string, errors: { row: number; message: string }[]): never {
   const e = errors[0];
@@ -151,12 +163,17 @@ type SyncDeps = {
    * as `base` had it, so an edit made here while the pull was out stays for the next sync (db applySynced). Throws if it couldn't.
    */
   apply: (base: { sets: SetEntry[]; body: BodyDay[] }, taken: Taken, now: number) => Promise<{ taken: Taken; replaced: Replaced[]; skipped: number }>;
+  /**
+   * Gym Buddies' items on this phone (cloud/meta readBuddyMeta), and how to save what the backup adds (db applySyncedMeta: only
+   * what's still as `local` had it). None: the backup's buddies.json is left alone.
+   */
+  buddies?: { local: MetaItems; apply: (base: MetaItems, pull: MetaItems) => Promise<unknown> };
 };
 /**
  * `historySha`: the history.csv this sync read, to pass back as `historySeen`. `heldBack`: its sets left out because the log
  * already has their day and lift from another import (the same sets imported twice).
  */
-type SyncResult = { pulledSets: number; pulledBody: number; removedSets: number; pushedSets: number; pushedBody: number; historySha?: string; heldBack: number };
+type SyncResult = { pulledSets: number; pulledBody: number; removedSets: number; pushedSets: number; pushedBody: number; historySha?: string; heldBack: number; /** Buddies items the backup added or changed here. */ pulledBuddies?: number };
 
 /** Pull everything first (a failed pull pushes nothing), merge — the newer edit or delete wins — then push.
  *  If the backup moves underneath us, the whole pull→merge→push runs once more, so the other writer's rows are kept. */
@@ -178,6 +195,8 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
   const remoteSets = await client.get(SETS_PATH);
   const remoteDeleted = await client.get(DELETED_PATH);
   const remoteBody = await client.get(BODY_PATH);
+  const BUDDIES_PATH = deps.buddies && (deps.paths ?? pathsFor(null)).buddies;
+  const remoteBuddies = BUDDIES_PATH ? await client.get(BUDDIES_PATH) : null;
 
   const parsedSets = remoteSets ? parseCsv(remoteSets.text, 'backup') : null;
   if (parsedSets?.errors.length) unreadable(SETS_PATH, parsedSets.errors);
@@ -186,6 +205,8 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
   if (parsedBody?.errors.length) unreadable(BODY_PATH, parsedBody.errors);
   const parsedDeleted = remoteDeleted ? parseDeletedCsv(remoteDeleted.text) : null;
   if (parsedDeleted?.errors.length) unreadable(DELETED_PATH, parsedDeleted.errors);
+  const parsedBuddies = remoteBuddies ? parseBuddiesFile(remoteBuddies.text) : null;
+  if (parsedBuddies === undefined) unreadable(BUDDIES_PATH!, [{ row: 0, message: 'it isn’t a buddies file this build reads' }]);
 
   const have = new Map(deps.sets.map((e) => [e.id, e]));
   // Deletes as the account's months keep them (cloud mergeMonth): the backup's and this phone's, the later time for each. A
@@ -239,6 +260,16 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
     ? await deps.apply({ sets: deps.sets, body: deps.body }, { importSets: [...incoming.values()], deleteIds, importBody: bodyIn }, deps.now.getTime()).catch(() => { throw saveFailed(); })
     : { taken: none as Taken };
 
+  // Buddies' items the backup has that this phone lacks or holds older: saved here first (only where still as read), then pushed.
+  let pulledBuddies = 0, buddyText: string | null = null;
+  if (deps.buddies) {
+    const merged = mergeBuddyMeta(deps.buddies.local, parsedBuddies ?? {});
+    const pull = Object.fromEntries(Object.entries(merged).filter(([k, v]) => deps.buddies!.local[k] === undefined || metaHash(v) !== metaHash(deps.buddies!.local[k])));
+    if (Object.keys(pull).length) await deps.buddies.apply(deps.buddies.local, pull).catch(() => { throw saveFailed(); });
+    pulledBuddies = Object.keys(pull).length;
+    buddyText = toBuddiesFile(merged);
+  }
+
   // A delete skipped because the set changed here meanwhile still goes: deleted.csv has it, and the newer set wins it next sync.
   const dropped = new Set(deleteIds);
   const sets = [...deps.sets.filter((e) => !incoming.has(e.id) && !dropped.has(e.id)), ...incoming.values()];
@@ -251,12 +282,14 @@ async function syncOnce(deps: SyncDeps): Promise<SyncResult> {
     if (deletedText !== toDeletedCsv(parsedDeleted?.deleted ?? {})) await client.put(DELETED_PATH, deletedText, remoteDeleted?.sha, message);
     await client.put(SETS_PATH, toCsv(sets.map(forFile)), remoteSets?.sha, message);
     await client.put(BODY_PATH, toBodyCsv(body), remoteBody?.sha, message);
+    // Buddies: the union, merged per item (domain/buddies/kept). Written only when it differs, so a backup without buddies gets no file.
+    if (buddyText !== null && buddyText !== (remoteBuddies?.text ?? toBuddiesFile({}))) await client.put(BUDDIES_PATH!, buddyText, remoteBuddies?.sha, message);
   } catch (e) {
     // What was pulled is already on the phone; the retry starts from there.
     if (e instanceof SyncError && e.kind === 'conflict') e.pulled = { sets, body, counts: [taken.importSets.length, taken.importBody.length, taken.deleteIds.length]};
     throw e;
   }
-  return { pulledSets: taken.importSets.length, pulledBody: taken.importBody.length, removedSets: taken.deleteIds.length, pushedSets: sets.length, pushedBody: body.length, historySha: history?.sha, heldBack: held.size };
+  return { pulledSets: taken.importSets.length, pulledBody: taken.importBody.length, removedSets: taken.deleteIds.length, pushedSets: sets.length, pushedBody: body.length, historySha: history?.sha, heldBack: held.size, pulledBuddies };
 }
 
 /** GitHub's new-token form, pre-filled (template URL). The repository still has to be picked there: GitHub doesn't take it as a parameter. */

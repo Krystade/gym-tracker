@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { fromB64, parseDeletedCsv, pathsFor, repoClient, slugError, sync, SyncError, toB64, toDeletedCsv, TOKEN_URL, type SyncConfig } from './sync';
+import { fromB64, parseBuddiesFile, parseDeletedCsv, pathsFor, toBuddiesFile, repoClient, slugError, sync, SyncError, toB64, toDeletedCsv, TOKEN_URL, type SyncConfig } from './sync';
 import { parseCsv, toCsv } from './csv';
 import { parseBodyFile, toBodyCsv, type BodyDay } from './body';
 import type { SetEntry } from './types';
 import { setId } from './ids';
 import { replacements, type Replaced, type Taken } from './replaced';
+import { BUDDIES } from './buddies/roster';
+import { choose, starter } from './buddies/gacha';
+import type { MetaItems } from './cloud';
 
 const CFG: SyncConfig = { key: 'sync', repo: 'someone/private-data', token: 'test-token-123', branch: 'main' };
 
@@ -232,7 +235,7 @@ describe('token link', () => {
 
 describe('sync per profile', () => {
   it('keeps the first profile on app/ with history.csv', () => {
-    expect(pathsFor(null)).toEqual({ sets: 'app/sets.csv', body: 'app/body.csv', deleted: 'app/deleted.csv', history: 'history.csv' });
+    expect(pathsFor(null)).toEqual({ sets: 'app/sets.csv', body: 'app/body.csv', deleted: 'app/deleted.csv', history: 'history.csv', buddies: 'app/buddies.json' });
   });
   it('backs another profile up under profiles/<slug>/ and never reads history.csv', async () => {
     const gh = fakeGitHub({ 'history.csv': toCsv([set('2025-01-01', 'notes')]), 'app/sets.csv': toCsv([set('2026-09-01')]) });
@@ -561,5 +564,58 @@ describe('history.csv, once and without twins (round 20)', () => {
     expect(parseDeletedCsv(gh.store.get('app/deleted.csv')!.text).deleted).toEqual(tomb);
     // A fresh phone restoring from that backup gets the paste and none of the twins.
     expect(ids((await run(gh, [])).got.sets)).toEqual(ids(pasted));
+  });
+});
+
+describe('Gym Buddies in the backup (buddies.json, plan §16 stage 2)', () => {
+  const NOW = new Date('2026-10-29T12:00:00Z');
+  const [b0, b1] = BUDDIES.filter((b) => b.rarity === 0).map((b) => b.id);
+  const s1 = starter(b0, 1000, '2026-10-28', 'phone-a-s'), s2 = choose('buddy', b1, 2000, '2026-10-29', 'phone-b-c');
+  const run = async (gh: ReturnType<typeof fakeGitHub>, local: MetaItems | null, paths = pathsFor(null)) => {
+    const pulls: MetaItems[] = [];
+    const r = await sync({ client: repoClient(CFG, gh.fetchFn), sets: [], body: [], deleted: new Set(), now: NOW, paths, apply: taking(),
+      ...(local && { buddies: { local, apply: async (_b: MetaItems, p: MetaItems) => { pulls.push(p); } } }) });
+    return { r, pulls };
+  };
+  const buddyPuts = (gh: ReturnType<typeof fakeGitHub>) => gh.calls.filter((c) => c.method === 'PUT' && c.url.includes('buddies.json')).length;
+  it('a profile without buddies gets no file, and a sync that passes none leaves the backup’s alone', async () => {
+    const gh = fakeGitHub();
+    await run(gh, {});
+    expect(gh.store.has('app/buddies.json')).toBe(false);
+    const kept = toBuddiesFile({ 'buddy-start': '2026-10-01' });
+    const gh2 = fakeGitHub({ 'app/buddies.json': kept });
+    await run(gh2, null);
+    expect(gh2.store.get('app/buddies.json')!.text).toBe(kept);
+    expect(buddyPuts(gh2)).toBe(0);
+  });
+  it('two phones’ spends add up; the earliest start and the later lead win; per buddy, the later prefs', async () => {
+    const theirs = { 'buddy-start': '2026-10-20', 'buddy-lead': { id: b1, at: 50 }, [`spend:${s2.id}`]: s2,
+      buddies: { [b0]: { name: 'Old', at: 1 }, [b1]: { name: 'Bee', at: 5 } } };
+    const mine = { 'buddy-start': '2026-10-28', 'buddy-lead': { id: b0, at: 40 }, [`spend:${s1.id}`]: s1, buddies: { [b0]: { name: 'Rex', at: 9 } } };
+    const gh = fakeGitHub({ 'profiles/sam/buddies.json': toBuddiesFile(theirs) });
+    const { r, pulls } = await run(gh, mine, pathsFor('sam'));
+    const want = { 'buddy-start': '2026-10-20', 'buddy-lead': { id: b1, at: 50 }, [`spend:${s1.id}`]: s1, [`spend:${s2.id}`]: s2,
+      buddies: { [b0]: { name: 'Rex', at: 9 }, [b1]: { name: 'Bee', at: 5 } } };
+    expect(parseBuddiesFile(gh.store.get('profiles/sam/buddies.json')!.text)).toEqual(want);
+    expect(pulls).toEqual([{ 'buddy-start': '2026-10-20', 'buddy-lead': { id: b1, at: 50 }, [`spend:${s2.id}`]: s2, buddies: want.buddies }]);
+    expect(r.pulledBuddies).toBe(4);
+    expect(gh.store.has('app/buddies.json')).toBe(false);
+  });
+  it('the same items again: nothing pulled, nothing written', async () => {
+    const mine = { 'buddy-start': '2026-10-28', [`spend:${s1.id}`]: s1 };
+    const gh = fakeGitHub({ 'app/buddies.json': toBuddiesFile(mine) });
+    const { r, pulls } = await run(gh, mine);
+    expect(pulls).toEqual([]);
+    expect(r.pulledBuddies).toBe(0);
+    expect(buddyPuts(gh)).toBe(0);
+  });
+  it('a malformed item in the backup is neither taken nor passed on; a file it can’t read stops the sync unchanged', async () => {
+    const gh = fakeGitHub({ 'app/buddies.json': toBuddiesFile({ 'spend:x': { id: 'x', cost: -1 }, 'buddy-start': 'soon', [`spend:${s2.id}`]: { ...s2, id: 'other' } }) });
+    const { pulls } = await run(gh, { [`spend:${s1.id}`]: s1 });
+    expect(pulls).toEqual([]);
+    expect(parseBuddiesFile(gh.store.get('app/buddies.json')!.text)).toEqual({ [`spend:${s1.id}`]: s1 });
+    const bad = fakeGitHub({ 'app/buddies.json': '{"v":2}' });
+    await expect(run(bad, { [`spend:${s1.id}`]: s1 })).rejects.toThrow(/Can’t read app\/buddies.json/);
+    expect(bad.calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
   });
 });

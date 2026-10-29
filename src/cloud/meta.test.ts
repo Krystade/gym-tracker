@@ -2,7 +2,10 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { boundDb, getGyms, putGyms, resetDbForTests, type ProfileDb } from '../db/db';
-import { readMeta } from './meta';
+import { readBuddyMeta, readMeta } from './meta';
+import { BUDDIES } from '../domain/buddies/roster';
+import { choose, starter } from '../domain/buddies/gacha';
+import { isBuddyKey } from '../domain/buddies/kept';
 import type { MetaItems } from '../domain/cloud';
 import type { TagPrefs } from '../domain/tags';
 
@@ -128,5 +131,48 @@ describe('settings a sync saves onto this phone (round 10)', () => {
     await db.putAliases({ pushdowns: 'Rope Pushdown', rows: 'Cable Row' });
     expect(await db.applySyncedMeta(base, { 'alias:pushdowns': 'Cable Pushdown 2', 'alias:rows': 'Seated Row' }, [])).toEqual({ pulled: 1, removed: 0, skipped: 1 });
     expect(await db.getAliases()).toEqual({ pushdowns: 'Rope Pushdown', rows: 'Seated Row' });
+  });
+});
+
+describe('Gym Buddies in the synced settings (plan §16 stage 2)', () => {
+  const [b0, b1] = BUDDIES.filter((b) => b.rarity === 0).map((b) => b.id);
+  const s1 = starter(b0, 1000, '2026-10-28', 's1'), s2 = choose('buddy', b1, 2000, '2026-10-29', 's2');
+  it('each kind goes up per profile: prefs per buddy, the lead, the start (kept once), every spend', async () => {
+    const db = boundDb('main');
+    expect(Object.keys(await readMeta(db)).filter(isBuddyKey)).toEqual([]);
+    await db.putBuddyPrefs(b0, { name: ' Rex ', equip: { aura: 'aura-mint' } }, 5);
+    await db.putBuddyPrefs(b1, {}, 6);
+    await db.putBuddyLead(b0, 7);
+    expect(await db.startBuddies('2026-10-28')).toBe('2026-10-28');
+    expect(await db.startBuddies('2026-10-29')).toBe('2026-10-28');
+    expect(await db.addSpend(s1)).toBe(true);
+    expect(await db.addSpend({ ...s1, got: b1 })).toBe(false); // never re-rolled
+    const m = await readMeta(db);
+    expect(m.buddies).toEqual({ [b0]: { name: 'Rex', equip: { aura: 'aura-mint' }, at: 5 }, [b1]: { at: 6 } });
+    expect(m['buddy-lead']).toEqual({ id: b0, at: 7 });
+    expect(m['buddy-start']).toBe('2026-10-28');
+    expect(m['spend:s1']).toEqual(s1);
+    expect(await readBuddyMeta(db)).toEqual(Object.fromEntries(Object.entries(m).filter(([k]) => isBuddyKey(k))));
+    expect(await readMeta(boundDb('p2'))).toEqual({});
+  });
+  it('come down onto the phone, a spend beside the ones kept; an item that doesn’t read is skipped, never saved', async () => {
+    const db = boundDb('p2');
+    await db.addSpend(s1);
+    const r = await pull(db, { [`spend:${s2.id}`]: s2, 'buddy-lead': { id: b1, at: 9 }, 'buddy-start': '2026-10-20', buddies: { [b1]: { name: 'Bee', at: 3 } },
+      'spend:s3': { ...s2, id: 's3', cost: -5 }, 'spend:s4': { ...s2 } });
+    expect(r).toEqual({ pulled: 4, removed: 0, skipped: 2 });
+    expect((await db.getSpends()).map((s) => s.id).sort()).toEqual(['s1', 's2']);
+    expect(await db.getBuddyLead()).toEqual({ id: b1, at: 9 });
+    expect(await db.getBuddyStart()).toBe('2026-10-20');
+    expect(await db.getBuddyPrefs()).toEqual({ [b1]: { name: 'Bee', at: 3 } });
+    expect(await boundDb('main').getSpends()).toEqual([]);
+  });
+  it('one changed here while the sync was out stays', async () => {
+    const db = boundDb('main');
+    await db.putBuddyPrefs(b0, { name: 'A' }, 1);
+    const base = await readMeta(db);
+    await db.putBuddyPrefs(b0, { name: 'B' }, 2);
+    expect(await db.applySyncedMeta(base, { buddies: { [b0]: { name: 'C', at: 3 } } }, [])).toEqual({ pulled: 0, removed: 0, skipped: 1 });
+    expect((await db.getBuddyPrefs())[b0].name).toBe('B');
   });
 });
