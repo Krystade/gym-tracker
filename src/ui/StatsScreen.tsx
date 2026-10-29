@@ -248,7 +248,7 @@ export function FriendStats({ who, entries, goal, prs, today, ach, achAt }: {
 /** A friend's Achievements tile: how many they show, their medals newest first, the newest said. Lifetime: the 8 weeks don't apply. */
 function friendAchTile(us: readonly Unlock[], today: string, who: string, at: AchAt | null): TileModel {
   const newest = [...us].sort((a, b) => b.date.localeCompare(a.date) || TIERS.indexOf(b.tier) - TIERS.indexOf(a.tier))[0];
-  const a = { unlocks: [...us], tracks: [], counts: {}, hidden: [] };
+  const a = { unlocks: [...us], tracks: [], counts: {}, hidden: [], repeats: {} };
   return {
     id: 'achievements', section: 'progress', label: 'Achievements', value: String(us.length), unit: 'shown', wide: true, vizHeight: 40,
     ctx: <>Newest: {DEF.get(newest.id)!.title} · {tierWord(newest.tier)}, {achDay(newest.date, today).replace(/^Today$/, 'today')}</>,

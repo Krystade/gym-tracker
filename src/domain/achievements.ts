@@ -115,7 +115,7 @@ const dayMs = (d: string) => Date.parse(`${d}T12:00:00Z`);
 const days = (a: string, b: string) => Math.round((dayMs(b) - dayMs(a)) / 864e5);
 const chrono = (a: SetEntry, b: SetEntry) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.seq - b.seq || a.setNo - b.setNo);
 /** A lifting set that is work: not a warm-up, not cardio. Attendance and volume count every one, pain and light included. */
-const lifted = (e: SetEntry) => !e.flags.includes('warmup') && !isCardioEntry(e);
+export const lifted = (e: SetEntry) => !e.flags.includes('warmup') && !isCardioEntry(e);
 /** A set that may count for strength: lifted, reps done, not a hold, and neither pain-flagged nor a light-week set. */
 const earns = (e: SetEntry) => lifted(e) && e.reps != null && e.reps >= 1 && !e.flags.some((f) => f === 'partial' || f === 'hold' || f === 'pain' || f === 'light');
 const goalOf = (p: Context['profile']) => Math.min(7, Math.max(1, Math.round(p.weeklyGoal) || 2));
@@ -460,6 +460,20 @@ export interface Achievements {
   /** One per family, and one per lift for plates and bodyweight (once a lift has a step). */ tracks: Track[];
   /** For repeats: how many times. */ counts: Record<string, number>;
   /** Families the log can't earn yet (no program, no cardio): left off the sheet until it can. */ hidden: string[];
+  /** For repeats: the day of each time, oldest first (Gym Buddies pays each one: domain/buddies/rewards). */ repeats: Record<string, string[]>;
+}
+
+/** The families Gym Buddies grows stats from (domain/buddies/stats): familySteps' own, without the costly rest. */
+export function buddySteps(entries: readonly SetEntry[], ctx: Pick<Context, 'since' | 'today' | 'profile'>): Record<'sessions' | 'goal-weeks' | 'prs' | 'moved-up', Steps> {
+  const { since, today } = ctx;
+  const post = entries.filter((e) => e.date <= today && e.date >= since);
+  const sessions = sessionDays(post);
+  return {
+    'sessions': cumulative(sessions),
+    'goal-weeks': cumulative(goalWeekDays(sessions, goalOf(ctx.profile)).map((m) => m.date)),
+    'prs': prSteps(entries, since, today),
+    'moved-up': movedUpSteps(entries, since, today),
+  };
 }
 
 /** Every family's steps, each from `since` on. The pure core: everything else is levels and words. */
@@ -518,7 +532,7 @@ const track = (def: Def, value: number, lift?: string): Track => {
 
 export function achievements(entries: readonly SetEntry[], ctx: Context): Achievements {
   const steps = familySteps(entries, ctx);
-  const unlocks: Unlock[] = [], tracks: Track[] = [], counts: Record<string, number> = {}, hidden: string[] = [];
+  const unlocks: Unlock[] = [], tracks: Track[] = [], counts: Record<string, number> = {}, hidden: string[] = [], repeats: Record<string, string[]> = {};
   for (const def of DEFS) {
     const xs = steps[def.id];
     unlocks.push(...crossings(def, xs));
@@ -528,12 +542,12 @@ export function achievements(entries: readonly SetEntry[], ctx: Context): Achiev
       for (const x of xs) best.set(x.lift!, Math.max(best.get(x.lift!) ?? 0, x.value));
       tracks.push(...[...best].sort(([a, x], [b, y]) => y - x || a.localeCompare(b)).map(([lift, v]) => track(def, v, lift)));
     } else tracks.push(track(def, value));
-    if (def.repeat) counts[def.id] = value;
+    if (def.repeat) { counts[def.id] = value; repeats[def.id] = xs.map((x) => x.date).sort(); }
     if (!value && ((def.needs === 'program' && !ctx.program) || (def.needs === 'cardio' && !entries.some(isCardioEntry))
       || (def.needs === 'friends' && !ctx.together?.friends.length))) hidden.push(def.id);
   }
   unlocks.sort((a, b) => a.date.localeCompare(b.date) || TIERS.indexOf(a.tier) - TIERS.indexOf(b.tier) || a.id.localeCompare(b.id));
-  return { unlocks, tracks, counts, hidden };
+  return { unlocks, tracks, counts, hidden, repeats };
 }
 
 /**
