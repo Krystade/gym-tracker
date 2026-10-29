@@ -318,7 +318,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
             onOpenDay={(d) => { setHistoryAt(d); toDays(); }} />
           : tab === 'log' ? <LogScreen view={logView} onView={setLogView} store={store} onOpen={open} focus={historyAt} onFocused={() => setHistoryAt(null)} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'buddies' ? <BuddiesScreen buddies={buddies} entries={store.entries} today={date} profile={rawProfile.profile} />
-          : tab === 'friends' && nav.viewing && uid ? <FriendPage key={nav.viewing.uid} uid={uid} friend={nav.viewing} entries={store.entries} today={date} gyms={gyms} news={nav.news}
+          : tab === 'friends' && nav.viewing && uid ? <FriendPage key={nav.viewing.uid} uid={uid} friend={nav.viewing} entries={store.entries} today={date} gyms={gyms} news={nav.news} buddies={buddies} profile={rawProfile.profile}
             onBack={nav.unview} onMessage={() => nav.openThread(nav.viewing!)} backLabel={nav.comparing ? 'Compare' : 'Friends'} achAt={nav.viewAt} />
           : tab === 'friends' && nav.comparing && uid ? <ComparePage uid={uid} myName={person.name} entries={store.entries} today={date} goal={profile.profile.weeklyGoal}
             onBack={nav.uncompare} onView={nav.view} onOpenMine={top(() => { nav.uncompare(); toDays(); })} />

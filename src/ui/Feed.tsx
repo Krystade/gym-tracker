@@ -1,3 +1,5 @@
+import type { SharedBud } from '../domain/buddies/share';
+import { BudChip } from './buddies/Shared';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { sendPing, type Friend, type FriendNews } from '../cloud/friends';
@@ -42,6 +44,7 @@ interface Person {
   last: { date: string; kinds: string; sets: number } | null;
   /** A friend's achievements reached today, silver and up (their Compare summary; owner Q6). */ ach?: Unlock[];
   /** You trained together today (domain/together), as only you see it: "You and @ana at Iron Den, 6:10–7:05 PM". */ together?: string;
+  /** Their buddies (their Compare summary): their lead beside their name. */ bud?: SharedBud;
 }
 
 export const clock = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -116,7 +119,7 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
       const met = w ? togetherDay(entries, since, sideOf(f.uid, w, cache?.summaries?.[f.uid]), today) : null;
       const together = met ? `You and @${f.name} at ${met.gym}, ${clock(met.from)}–${clock(met.to)}` : undefined;
       return { ...build({ id: f.uid, me: false, friend: f, label: label(f.uid, f.name, f.dn), lead: tags[f.uid] || f.dn, handle: f.dn || f.name, verified: verified[f.uid] != null, status: w?.win.status ?? '', loading: !w && !error, error },
-        sets, w ? friendPrs(w.win) : new Set(), w?.win.goal ?? null), ...(ach?.length && { ach }), ...(together && { together }) };
+        sets, w ? friendPrs(w.win) : new Set(), w?.win.goal ?? null), ...(ach?.length && { ach }), ...(together && { together }), ...(sum?.bud && { bud: sum.bud }) };
     });
     return [me, ...theirs];
     // `minute`: live and today's cards move on with the clock.
@@ -253,6 +256,7 @@ function SessionCard({ p, now, news, onOpen, onMessage, sending, burst, error, s
           <div className="fd-name-line">
             <button className="link fd-name" onClick={onOpen}><Named p={p} /></button>
             {p.friend && <Formerly friend={p.friend} />}
+            {p.bud && <BudChip bud={p.bud} />}
             {p.friend?.muted && <span className="crew-muted" role="img" aria-label="Muted"><Icon name="bell-off" size={15} /></span>}
             {p.status && !p.me && <span className="fd-status">{p.status}</span>}
           </div>
@@ -361,6 +365,7 @@ function EarlierRow({ p, today, news, onOpen, onMessage }: { p: Person; today: s
         <div className="fd-name-line">
           <button className="link fd-name" onClick={onOpen}><Named p={p} /></button>
           <Formerly friend={f} />
+          {p.bud && <BudChip bud={p.bud} />}
           {f.muted && <span className="crew-muted" role="img" aria-label="Muted"><Icon name="bell-off" size={15} /></span>}
           {p.status && <span className="fd-status">{p.status}</span>}
         </div>

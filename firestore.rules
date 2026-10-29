@@ -30,6 +30,17 @@ service cloud.firestore {
       return a.keys().hasOnly(['i', 'l', 'd', 'n']) && a.i is string && a.i.matches('^[a-z-]{1,20}$')
         && a.l is int && a.l >= 0 && a.l <= 4 && isDay(a.d) && (!('n' in a) || nameOk(a.n));
     }
+    // Gym Buddies (domain/buddies/share SharedBud): the lead's id, lifetime points earned, and 1 to 40 buddies, the first in shape
+    // (its id, Lv, four stat numbers, four slots worn). The app reads the rest as untrusted (parseBud).
+    function budIdOk(s) { return s is string && s.matches('^[A-Za-z0-9_-]{1,64}$'); }
+    function buddyOk(x) {
+      return x.keys().hasOnly(['i', 'l', 's', 'e']) && budIdOk(x.i) && x.l is int && x.l >= 0 && x.l <= 100000
+        && x.s is list && x.s.size() == 4 && x.e is list && x.e.size() == 4;
+    }
+    function budOk(b) {
+      return b.keys().hasOnly(['lead', 'pts', 'r']) && budIdOk(b.lead) && b.pts is int && b.pts >= 0 && b.pts <= 100000000
+        && b.r is list && b.r.size() >= 1 && b.r.size() <= 40 && buddyOk(b.r[0]);
+    }
     function rangeOk(x, met) {
       return x.keys().hasOnly(['met', 'vol', 'prs', 'lifts']) && x.met.matches(met)
         && x.vol is list && (x.vol.size() == 0 || x.vol.size() == 13)
@@ -37,14 +48,15 @@ service cloud.firestore {
         && x.lifts is list && x.lifts.size() <= 12 && (x.lifts.size() == 0 || liftOk(x.lifts[0]));
     }
     function summaryOk(d) {
-      return d.keys().hasOnly(['v', 'at', 'day', 'goal', 'streak', 'r', 'firsts', 'ach'])
+      return d.keys().hasOnly(['v', 'at', 'day', 'goal', 'streak', 'r', 'firsts', 'ach', 'bud'])
         && d.v == 1 && d.at == request.time && isDay(d.day)
         && d.goal is int && d.goal >= 1 && d.goal <= 7
         && d.streak is int && d.streak >= 0 && d.streak <= 1000
         && d.r.keys().hasOnly(['4w', '12w', '1y'])
         && rangeOk(d.r['4w'], '^[01]{4}$') && rangeOk(d.r['12w'], '^[01]{12}$') && rangeOk(d.r['1y'], '^[01]{52}$')
         && d.firsts is list && d.firsts.size() <= 8 && (d.firsts.size() == 0 || firstOk(d.firsts[0]))
-        && (!('ach' in d) || (d.ach is list && d.ach.size() <= 32 && (d.ach.size() == 0 || achOk(d.ach[0]))));
+        && (!('ach' in d) || (d.ach is list && d.ach.size() <= 32 && (d.ach.size() == 0 || achOk(d.ach[0]))))
+        && (!('bud' in d) || (d.bud is map && budOk(d.bud)));
     }
 
     // Exact-name lookup only: nobody can list who's here. A name is held by the one profile that goes by it: claimed in the

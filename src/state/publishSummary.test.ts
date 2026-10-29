@@ -4,6 +4,8 @@ import { PUBLISH_MS } from '../cloud/summary';
 import { defaultProfile, type Profile } from '../domain/profile';
 import type { SetEntry } from '../domain/types';
 import { hashOf, publishSummary, type PublishSource } from './publishSummary';
+import { starter } from '../domain/buddies/gacha';
+import { BUDDIES } from '../domain/buddies/roster';
 
 // Synthetic sets only.
 const set = (date: string, weight: number, n: number): SetEntry => ({ id: `t|${date}|bench|${n}`, date, seq: n, exercise: 'Bench Press', setNo: 1, weight, reps: 5, flags: [], source: 't' });
@@ -14,6 +16,7 @@ function phone(sets: SetEntry[], goal = 3, tombstones: string[] = [], since: str
   const src: PublishSource = {
     getSyncSnapshot: async () => log, getProfile: async () => ({ ...defaultProfile(), weeklyGoal: goal, ...extra }),
     getAchStart: async () => since, getProgram: async () => undefined, getDayPlans: async () => [],
+    getBuddyStart: async () => undefined, getBuddyPrefs: async () => ({}), getBuddyLead: async () => undefined, getSpends: async () => [],
   };
   return { src, log };
 }
@@ -55,6 +58,15 @@ describe('publishSummary: your summary, from this phone, when it changed and at 
     expect(await publishSummary(w.cloud, uid, p.src, T + 864e5)).toBe(true);
     expect(w.docs[`users/${uid}/summary/compare`]).toMatchObject({ day: '2026-10-22' });
     expect(await publishSummary(w.cloud, uid, phone(p.log.sets, 5, ['t|2026-10-08|bench|9']).src, T + 2 * 864e5 - 1)).toBe(true);
+  });
+  it('carries your buddies once one is picked (lead, lifetime points, the roster), and none before', async () => {
+    const uid = `u${++account}`, w = fakeFirestore(), p = phone([set('2026-10-20', 135, 1), set('2026-10-20', 135, 2)]);
+    await publishSummary(w.cloud, uid, p.src, T);
+    expect(w.docs[`users/${uid}/summary/compare`]).not.toHaveProperty('bud');
+    const id = BUDDIES[0].id;
+    const withBud: PublishSource = { ...p.src, getBuddyStart: async () => '2026-10-19', getSpends: async () => [starter(id, 1, '2026-10-19')], getBuddyLead: async () => ({ id, at: 1 }) };
+    expect(await publishSummary(w.cloud, uid, withBud, T + PUBLISH_MS)).toBe(true);
+    expect(w.docs[`users/${uid}/summary/compare`]).toMatchObject({ bud: { lead: id, pts: 2 + 5, r: [{ i: id, e: [null, null, null, null] }] } });
   });
   it('a write the cloud refuses waits 15 minutes to try again, and is tried again', async () => {
     const uid = `u${++account}`, w = fakeFirestore(), p = phone([set('2026-10-01', 135, 1)]);

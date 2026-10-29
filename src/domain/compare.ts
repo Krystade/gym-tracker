@@ -1,4 +1,5 @@
 import { MAX_SHARED, type SharedAch } from './achievements';
+import { parseBud, type SharedBud } from './buddies/share';
 import { addDays, weeklySummary } from './analytics';
 import { isWorking } from './crew';
 import { e1rmChange, weekStreak } from './feed';
@@ -57,6 +58,8 @@ export interface Summary {
    * them, or one that hasn't read its start day yet.
    */
   ach?: SharedAch[];
+  /** Their buddies (domain/buddies/share): the lead, lifetime points earned, the roster. None: an app from before them, or no buddy yet. */
+  bud?: SharedBud;
 }
 /** A summary as read: when it was written (ms; 0 unknown). */
 export interface ReadSummary extends Summary { at: number }
@@ -173,7 +176,7 @@ export function firsts(entries: readonly SetEntry[], today: string): First[] {
 }
 
 /** Your summary, from your whole log, for friends to read. `goal`: your weekly goal (sessions). */
-export function summarize(entries: SetEntry[], today: string, goal: number, ach?: readonly SharedAch[]): Summary {
+export function summarize(entries: SetEntry[], today: string, goal: number, ach?: readonly SharedAch[], bud?: SharedBud): Summary {
   const g = Math.min(7, Math.max(1, Math.round(goal) || 2));
   const byId = new Map(entries.map((e) => [e.id, e]));
   const prDays = [...prIds(entries)].map((id) => byId.get(id)!.date).filter((d) => d <= today);
@@ -182,7 +185,7 @@ export function summarize(entries: SetEntry[], today: string, goal: number, ach?
   const weeks = firstDay ? Math.min(1001, Math.ceil((daysBetween(firstDay, today) + 1) / 7) + 1) : 1;
   const streak = Math.min(1000, weekStreak(entries, today, g, weeks).current);
   const r = Object.fromEntries(COMPARE_RANGES.map((k) => [k, rangeSummary(entries, k, today, g, prDays, perDay, firstDay)])) as Record<CompareRange, RangeSummary>;
-  return { v: 1, day: today, goal: g, streak, r, firsts: firsts(entries, today), ...(ach && { ach: ach.slice(0, MAX_SHARED).map((x) => ({ ...x })) }) };
+  return { v: 1, day: today, goal: g, streak, r, firsts: firsts(entries, today), ...(ach && { ach: ach.slice(0, MAX_SHARED).map((x) => ({ ...x })) }), ...(bud && { bud }) };
 }
 
 /** What changed, for deciding whether to write it again: everything but when. */
@@ -236,7 +239,8 @@ export function parseSummary(x: unknown): ReadSummary | null {
     const q = a as Record<string, unknown> | null;
     return !!q && typeof q === 'object' && typeof q.i === 'string' && isInt(q.l, 0, 4) && isDay(q.d) && (q.n === undefined || nameOk(q.n));
   }).map((a) => ({ i: a.i, l: a.l, d: a.d, ...(a.n !== undefined && { n: a.n }) })) : undefined;
-  return { v: 1, day: o.day, goal: o.goal, streak: o.streak, r, firsts, ...(ach && { ach }), at };
+  const bud = parseBud(o.bud);
+  return { v: 1, day: o.day, goal: o.goal, streak: o.streak, r, firsts, ...(ach && { ach }), ...(bud && { bud }), at };
 }
 
 // ---- Setting people side by side ----

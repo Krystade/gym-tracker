@@ -209,3 +209,40 @@
 .fd-compare b { display: block; font-size: var(--fs-sub); line-height: 20px; font-weight: 600; }
 .fd-compare span span { display: block; font-size: var(--fs-xs); line-height: 16px; color: var(--text-2); }
 .fd-compare > .ic:last-child { color: var(--text-3); }
+
+/* Gym Buddies on Friends (stage 6): a friend's lead on Crew, their roster strip and Side by side on their page. */
+.bud-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px 0 2px; min-height: 32px; border-radius: var(--r-pill); background: var(--surface-2); font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fb-pts { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.fp h2 .fb-pts { color: var(--text-2); font-weight: 600; }
+.fb-pts .bu-coin { width: 14px; height: 14px; }
+.fb-strip { list-style: none; margin: 10px -14px 0; padding: 0 14px 2px; display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none; }
+.fb-strip::-webkit-scrollbar { display: none; }
+.fb-strip li { flex: 0 0 76px; scroll-snap-align: start; }
+.fb-strip .bu-tile { min-height: 96px; background: var(--surface-2); }
+.fb-strip .bu-tile b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-hero { flex: none; height: 188px; }
+.fb-hero.has-held { height: 212px; }
+.fb-name { margin: 2px 0 0; }
+.fb-name h3 { margin: 0; font-size: var(--fs-xl); line-height: 30px; font-weight: 700; color: var(--text); text-transform: none; letter-spacing: normal; overflow-wrap: anywhere; }
+.bu-sheet-body.bu-card { margin: 0; }
+.bu-sheet-body .bu-from { margin: 0; }
+
+.sbs-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin: 10px 0 6px; }
+.sbs-who { display: grid; justify-items: start; gap: 6px; min-width: 0; }
+.sbs-who.them { justify-items: end; text-align: right; }
+.sbs-name { display: grid; min-width: 0; font-size: var(--fs-sm); color: var(--text-2); line-height: 18px; overflow-wrap: anywhere; }
+.sbs-name b { font-size: var(--fs-sub); color: var(--text); line-height: 20px; }
+.sbs-whose { color: var(--text-3); }
+.sbs-none { margin: 0; align-self: center; }
+.sbs-rows { list-style: none; margin: 0; padding: 0; }
+.sbs-row { --s: #f06a8a; display: grid; grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 44px; border-top: 1px solid var(--hairline); }
+.sbs-row.s-size { --s: #4ea4ff; } .sbs-row.s-grit { --s: #3fcf8e; } .sbs-row.s-stamina { --s: #a98bff; }
+.sbs-stat { text-align: center; font-size: var(--fs-sm); color: var(--text-2); }
+.sbs-bar { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 6px; }
+.sbs-bar.them { grid-template-columns: minmax(0, 1fr) 28px; }
+.sbs-bar > span { font-size: var(--fs-sub); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+.sbs-bar.me > span { text-align: left; }
+.sbs-bar.them > span { text-align: right; }
+.sbs-bar i { display: flex; height: 8px; border-radius: 4px; background: var(--fill); overflow: hidden; }
+.sbs-bar.me i { justify-content: flex-end; }
+.sbs-bar b { display: block; height: 100%; width: var(--w); border-radius: 4px; background: var(--s); }

@@ -18,6 +18,9 @@ import { FriendName, FriendTagEditor } from './FriendName';
 import { VerifyToggle } from './DisplayNameCard';
 import { kindColour, Ring } from './Ring';
 import { FriendStats } from './StatsScreen';
+import type { Profile as LiftProfile } from '../domain/profile';
+import type { BuddiesStore } from '../state/useBuddies';
+import { FriendBuddies, useMyLead, type MyLead } from './buddies/Shared';
 
 // A friend's page inside Friends (round 18): who they are this week, what they're doing now, how you've each come on against your
 // own start, and their Stats as tiles (owner, 2026-10-20). All of it from the line Friends already keeps (state/friendCache):
@@ -26,8 +29,9 @@ import { FriendStats } from './StatsScreen';
 
 const REACTIONS: PresetKey[] = ['strong', 'fire', 'clap', 'eyes'];
 
-export function FriendPage({ uid, friend, entries, today, gyms, news, onBack, onMessage, backLabel = 'Friends', achAt }: {
+export function FriendPage({ uid, friend, entries, today, gyms, news, onBack, onMessage, backLabel = 'Friends', achAt, buddies, profile }: {
   uid: string; friend: Friend; /** Yours, for "You and @them". */ entries: SetEntry[]; today: string; gyms: GymsStore; news: FriendNews | null;
+  /** Your buddies and profile, for Side by side: your lead beside theirs. */ buddies?: BuddiesStore; profile?: LiftProfile;
   onBack: () => void; onMessage?: () => void; /** Where Back goes: Friends, or Compare when opened from it. */ backLabel?: string;
   /** Opened from their chip in the feed: their Achievements, at that family. */ achAt?: AchAt | null;
 }) {
@@ -42,6 +46,7 @@ export function FriendPage({ uid, friend, entries, today, gyms, news, onBack, on
         (e) => setWhole({ error: (e as { code?: string }).code === 'permission-denied' ? `You can’t see @${friend.name}’s log any more.` : cloudError(e) }));
     }
   };
+  const mine = useMyLead(buddies, entries, today, profile);
   if (deep) {
     return (<>
       <div className="fp-top">
@@ -52,11 +57,12 @@ export function FriendPage({ uid, friend, entries, today, gyms, news, onBack, on
         : <Screens name={friend.name} data={whole.data} tab={deep} exercise={exercise} today={today} gyms={gyms} onOpen={(n) => { setExercise(n); window.scrollTo(0, 0); }} onExerciseBack={() => setExercise(null)} />}
     </>);
   }
-  return <Profile uid={uid} friend={friend} entries={entries} today={today} news={news} onBack={onBack} onMessage={onMessage} onDeep={go} backLabel={backLabel} openAt={achAt} />;
+  return <Profile uid={uid} friend={friend} entries={entries} today={today} news={news} onBack={onBack} onMessage={onMessage} onDeep={go} backLabel={backLabel} openAt={achAt} mine={mine} />;
 }
 
-function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep, backLabel, openAt }: {
+function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep, backLabel, openAt, mine }: {
   uid: string; friend: Friend; entries: SetEntry[]; today: string; news: FriendNews | null; onBack: () => void; onMessage?: () => void; onDeep: (t: FriendTab) => void; backLabel: string; openAt?: AchAt | null;
+  mine: MyLead | null;
 }) {
   // Their Achievements at a family: from the feed's chip, then from the newest one on this page.
   const [achAt, setAchAt] = useState<AchAt | null>(openAt ?? null);
@@ -137,6 +143,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep,
         <Shared name={friend.name} rows={v.shared} />
         <FriendStats who={friend.name} entries={line!.sets} goal={line!.goal} prs={line!.prs} today={today} ach={ach} achAt={achAt} />
       </>)}
+      <FriendBuddies name={friend.name} bud={sum?.bud} mine={mine} />
       {/* Their whole log, where the tiles above are 8 weeks: said so, or "Stats" reads as the tiles again (IA A7). */}
       <div className="fp-links" role="group" aria-labelledby="fp-whole">
         <span id="fp-whole" className="fp-links-k">Whole log</span>

@@ -860,6 +860,13 @@ describe('the compare summary (users/{uid}/summary/compare)', () => {
     await assertSucceeds(write('alice', summary({ ach: [{ i: 'sessions', l: 0, d: '2026-10-03' }] })));
     await assertSucceeds(write('alice', summary({ ach: [{ i: 'goal-weeks', l: 4, d: '2026-10-03' }, ach1] })));
     await assertSucceeds(write('alice', summary({ ach: [{ ...ach1, n: 'x'.repeat(60) }] })));
+    // Gym Buddies (stage 6): the lead, lifetime points, up to 40 buddies, the first in shape.
+    const b1 = { i: 'c004', l: 21, s: [16, 16, 15, 10], e: ['d104', null, 'plinth-wood', null] };
+    const bud = (x: Record<string, unknown> = {}, b: Record<string, unknown> = {}) => summary({ bud: { lead: 'c004', pts: 1530, r: [{ ...b1, ...b }], ...x } });
+    await assertSucceeds(write('alice', bud()));
+    await assertSucceeds(write('alice', bud({ pts: 0 }, { l: 0, s: [0, 0, 0, 0], e: [null, null, null, null] })));
+    await assertSucceeds(write('alice', bud({ pts: 100000000, r: Array.from({ length: 40 }, (_, k) => ({ ...b1, i: `c${k}` })) }, {})));
+    await assertSucceeds(write('alice', bud({}, { l: 100000 })));
     const r = summary().r as Record<string, ReturnType<typeof range>>;
     const withRange = (k: string, x: Record<string, unknown>) => summary({ r: { ...r, [k]: { ...r[k], ...x } } });
     const lift = (x: Record<string, unknown>) => withRange('12w', { lifts: [{ n: 'Bench Press', s: pts(1), ...x }] });
@@ -905,6 +912,16 @@ describe('the compare summary (users/{uid}/summary/compare)', () => {
       ['an achievement id as a number', summary({ ach: [{ ...ach1, i: 7 }] })], ['an achievement lift named past 60', summary({ ach: [{ ...ach1, n: 'x'.repeat(61) }] })],
       ['an achievement lift with no name', summary({ ach: [{ ...ach1, n: '' }] })], ['an achievement with no level', summary({ ach: [{ i: 'plates', d: '2026-10-03' }] })],
       ['an achievement that isn’t one', summary({ ach: ['plates'] })],
+      ['buddies as a list', summary({ bud: [b1] })], ['buddies with more', bud({ spent: 40 })], ['buddies with no lead', summary({ bud: { pts: 1, r: [b1] } })],
+      ['buddies with no points', summary({ bud: { lead: 'c004', r: [b1] } })], ['buddies with no roster', summary({ bud: { lead: 'c004', pts: 1 } })],
+      ['a lead not an id', bud({ lead: 'c 004!' })], ['a lead as a number', bud({ lead: 4 })], ['a lead past 64', bud({ lead: 'c'.repeat(65) })],
+      ['points under 0', bud({ pts: -1 })], ['points not whole', bud({ pts: 1.5 })], ['points as text', bud({ pts: '1530' })], ['points past the cap', bud({ pts: 100000001 })],
+      ['no buddies', bud({ r: [] })], ['41 buddies', bud({ r: Array.from({ length: 41 }, () => b1) })], ['buddies as a map', bud({ r: {} })],
+      ['a buddy with a name', bud({}, { n: 'Rex' })], ['a buddy with no id', bud({ r: [{ l: 1, s: [0, 0, 0, 0], e: [null, null, null, null] }] })], ['a buddy id not one', bud({}, { i: 'c/004' })],
+      ['a buddy Lv under 0', bud({}, { l: -1 })], ['a buddy Lv not whole', bud({}, { l: 2.5 })], ['a buddy Lv past the cap', bud({}, { l: 100001 })],
+      ['three stats', bud({}, { s: [1, 2, 3] })], ['five stats', bud({}, { s: [1, 2, 3, 4, 5] })], ['stats as a map', bud({}, { s: {} })],
+      ['three slots', bud({}, { e: [null, null, null] })], ['slots as text', bud({}, { e: 'none' })],
+      ['a first buddy off shape', bud({ r: [{ ...b1, x: 1 }, b1] })], ['a buddy that isn’t one', bud({ r: ['c004'] })],
       ['another document', summary(), 'other'],
     ];
     const passed: string[] = [];

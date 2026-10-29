@@ -1,6 +1,10 @@
 import type { Cloud } from '../cloud/firebase';
 import { PUBLISH_MS, writeSummary } from '../cloud/summary';
-import { achievementsOf, shareOf } from '../domain/achievements';
+import { achievementsOf, shareOf, type Achievements } from '../domain/achievements';
+import type { Spend } from '../domain/buddies/gacha';
+import type { BuddyPrefsMap, Lead } from '../domain/buddies/kept';
+import { budOf, type SharedBud } from '../domain/buddies/share';
+import { trainingOf } from '../domain/buddies/stats';
 import { summarize, summaryKey } from '../domain/compare';
 import { defaultProfile, type Profile } from '../domain/profile';
 import type { DayPlan, Program } from '../domain/program';
@@ -36,14 +40,31 @@ export interface PublishSource {
   /** The day achievements count from (none yet: the summary goes without them). */ getAchStart(): Promise<string | null | undefined>;
   getProgram(): Promise<Program | null | undefined>;
   getDayPlans(): Promise<DayPlan[]>;
+  /** Gym Buddies, as kept (db): none started yet, the summary goes without them. */ getBuddyStart(): Promise<string | undefined>;
+  getBuddyPrefs(): Promise<BuddyPrefsMap>; getBuddyLead(): Promise<Lead | undefined>; getSpends(): Promise<Spend[]>;
 }
 
-/** Your achievements as friends get them (domain/achievements shareOf): none before the start day is kept. Never fails the summary. */
-function sharedAch(sets: SetEntry[], today: string, profile: Profile | undefined, since: string | null | undefined, program: Program | null | undefined, plans: DayPlan[]) {
-  if (!since) return undefined;
+/** Your achievements (none before the start day is kept). Never fails the summary. */
+function achOf(sets: SetEntry[], today: string, p: Profile, since: string | null | undefined, program: Program | null | undefined, plans: DayPlan[]): Achievements | null {
+  if (!since) return null;
+  try { return achievementsOf(sets, { profile: p, today, since, program: program ?? null, plans }); } catch { return null; }
+}
+
+/** Your achievements as friends get them (domain/achievements shareOf). Never fails the summary. */
+function sharedAch(ach: Achievements | null, hidden?: readonly string[]) {
+  if (!ach) return undefined;
+  try { return shareOf(ach, hidden); } catch { return undefined; }
+}
+
+/**
+ * Your buddies as friends get them (domain/buddies/share): none before the first pick. Points as the Buddies tab works them out,
+ * but for Together's awards, which need friends' windows this phone reads only on Friends. Never fails the summary.
+ */
+async function sharedBud(db: PublishSource, sets: SetEntry[], today: string, p: Profile, ach: Achievements | null): Promise<SharedBud | undefined> {
   try {
-    const p = { ...defaultProfile(), ...profile };
-    return shareOf(achievementsOf(sets, { profile: p, today, since, program: program ?? null, plans }), p.achHidden);
+    const [start, prefs, lead, spends] = await Promise.all([db.getBuddyStart(), db.getBuddyPrefs(), db.getBuddyLead(), db.getSpends()]);
+    if (!start || !spends.length) return undefined;
+    return budOf({ start, prefs, ...(lead && { lead }), spends }, trainingOf(sets, { start, today, profile: p }), ach);
   } catch { return undefined; }
 }
 
@@ -57,7 +78,9 @@ export async function publishSummary(c: Cloud, uid: string, db: PublishSource, n
   if (last && now - Math.max(last.at, last.checked) < PUBLISH_MS) return false;
   const [log, profile, since, program, plans] = await Promise.all([db.getSyncSnapshot(), db.getProfile(), db.getAchStart(), db.getProgram(), db.getDayPlans()]);
   const sets = log.sets.filter((e) => !log.tombstones.has(e.id)), today = localDate(new Date(now));
-  const s = summarize(sets, today, profile?.weeklyGoal ?? 2, sharedAch(sets, today, profile, since, program, plans));
+  const p = { ...defaultProfile(), ...profile };
+  const ach = achOf(sets, today, p, since, program, plans);
+  const s = summarize(sets, today, profile?.weeklyGoal ?? 2, sharedAch(ach, p.achHidden), await sharedBud(db, sets, today, p, ach));
   const hash = hashOf(summaryKey(s));
   if (last?.hash === hash) { setPref(scope(uid), NAME, { ...last, checked: now }); return false; }
   setPref(scope(uid), NAME, { hash: last?.hash ?? '', at: last?.at ?? 0, checked: now });
