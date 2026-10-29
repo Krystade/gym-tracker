@@ -6,7 +6,10 @@
 .st-edit { min-height: 44px; min-width: 64px; padding: 0 14px; border-radius: var(--r-pill); background: var(--fill); color: var(--accent-text); font-weight: 600; font-size: var(--fs-sub); }
 .st-edit[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
 /* The Achievements page, one tap from the top (owner 2026-10-28). */
-.st-ach { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+.st-ach { position: relative; margin-left: auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+/* Under 360 wide, "Stats", Achievements and Edit don't fit in a row: the trophy alone, its word kept for VoiceOver, so the heading
+   is never cut to "St…" (round 33). */
+@media (max-width: 359.98px) { .st-ach-t { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
 .st-edit-hint { margin: -4px 0 12px; color: var(--text-2); font-size: var(--fs-sub); }
 .st-sub { margin: 0 0 10px; color: var(--text-2); font-size: var(--fs-sub); }
 .st-sub b { color: var(--text); font-weight: 600; }

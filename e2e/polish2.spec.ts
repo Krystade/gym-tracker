@@ -35,6 +35,8 @@ test('a warm-up set is tagged “warm-up”, not the raw flag', async ({ page })
   await page.locator('.picker-list').getByRole('button', { name: /^Bench Press/ }).first().click();
   await bench.getByRole('button', { name: /^Details/ }).click();
   await bench.getByRole('group', { name: 'Flags' }).getByRole('button', { name: 'Warm-up' }).click();
+  // The form offers last time's 8 again (round 33), so 9 is typed: a set past the record.
+  await bench.getByRole('textbox', { name: 'Reps' }).fill('9');
   await bench.getByRole('button', { name: 'Add set' }).click();
   // 135 × 9 beats Oct 1's 135 × 8, so it carries a PR mark too: warm-ups count for records.
   await expect(bench.locator('.sets .tag')).toHaveText(['PR', 'warm-up']);
@@ -97,7 +99,8 @@ test('a hold’s progression settings are in seconds, and go past 50', async ({ 
 });
 
 test('a hold held at the top of its range says to add weight or go harder, not “60 s+”', async ({ page }) => {
-  await seed(page, ['2026-10-01,Plank,,1,0,60,,hold,,sample', '2026-10-01,Plank,,2,0,60,,hold,,sample']);
+  // Topped two sessions running (round 33): only then is the range done.
+  await seed(page, ['2026-09-28,Plank,,1,0,60,,hold,,sample', '2026-09-28,Plank,,2,0,60,,hold,,sample', '2026-10-01,Plank,,1,0,60,,hold,,sample', '2026-10-01,Plank,,2,0,60,,hold,,sample']);
   await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Plank/ }).click();
   const next = page.getByRole('region', { name: 'Next time' });

@@ -160,7 +160,7 @@ test('a hold swapped in shows its own target on the plan row', async ({ page }) 
   const plan = page.getByRole('button', { name: /^Today’s plan/ });
   if ((await plan.getAttribute('aria-expanded')) === 'false') await plan.click();
   await expect(first).toContainText('Plank');
-  await expect(first).toContainText('20–40 s hold');
+  await expect(first).toContainText('30–60 s hold');
   await first.scrollIntoViewIfNeeded();
   await page.screenshot({ path: 'screenshots/r7-swapped-hold.png' });
 });

@@ -158,7 +158,7 @@ export function StatsScreen({ store, profile, programs, body, today, readOnly, w
     <>
       <div className="st-title">
         <h1 className={who ? 'who-title' : undefined}>{title}</h1>
-        {ach && !editing && <button type="button" className="st-edit st-ach" onClick={() => setOpen('achievements')}><Icon name="trophy" size={17} sw={2} />Achievements</button>}
+        {ach && !editing && <button type="button" className="st-edit st-ach" onClick={() => setOpen('achievements')}><Icon name="trophy" size={17} sw={2} /><span className="st-ach-t">Achievements</span></button>}
         {owner && <button type="button" className="st-edit" aria-pressed={editing} onClick={() => { setEditing(!editing); setShowHidden(false); }}>{editing ? 'Done' : 'Edit'}</button>}
       </div>
       {editing ? <p className="st-edit-hint">Pin a tile to keep it at the top. Hide one to tuck it away.</p> : (<>

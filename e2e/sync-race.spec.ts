@@ -88,6 +88,14 @@ async function twoPhones(browser: Browser) {
   await enter(b, mail, 'Sign in');
   await goto(b, 'Today');
   await expect(rows(b).first()).toContainText('135 × 8');
+  // Signing in changed each phone's log, and a change syncs 3 s later (useCloud QUIET_MS): run that sync now and let it finish,
+  // so it can't be the one a test's syncHeld catches (round 33: after a quick delete on A, B's own caught the hold).
+  for (const p of [a, b]) {
+    await p.clock.runFor(3500);
+    await goto(p, 'Account');
+    await expect(account(p).getByRole('button', { name: 'Sync now' })).toBeEnabled();
+    await expect(account(p).getByRole('status')).toHaveText(/^Synced/);
+  }
   return [a, b];
 }
 

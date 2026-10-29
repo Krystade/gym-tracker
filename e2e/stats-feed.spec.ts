@@ -10,13 +10,15 @@ mkdirSync(SHOTS, { recursive: true });
 const TOP = 47;
 const add = (d: string, n: number) => { const t = new Date(`${d}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 
-/** 11 weeks: squats climbing 5 lb a week (a PR today), bench stuck at 155 × 5 for two months (a flat fatigue-adjusted level, item 12), rows twice a week, a goal of 3. */
+/** 11 weeks: squats climbing 5 lb a week (a PR today), bench stuck at 155 × 5 twice a week for ten weeks (a flat fatigue-adjusted level, item 12: P(plateau) 0.61, over
+ * round 33's 0.6; once a week, or 150 for its first two weeks, it stays under), rows twice a week, a goal of 3. */
 function csv(): string {
   const rows = ['date,exercise,set,weight_lb,reps,flags,duration_s'];
   for (let w = 10; w >= 1; w--) {
     const mon = add('2026-10-12', -7 * w), wed = add(mon, 2);
     for (let s = 1; s <= 3; s++) rows.push(`${mon},Barbell Squat,${s},${200 - 5 * w},5,,`);
-    for (let s = 1; s <= 3; s++) rows.push(`${mon},Bench Press,${s},${w > 8 ? 150 : 155},5,,`);
+    for (let s = 1; s <= 3; s++) rows.push(`${mon},Bench Press,${s},155,5,,`);
+    for (let s = 1; s <= 3; s++) rows.push(`${wed},Bench Press,${s},155,5,,`);
     for (let s = 1; s <= 3; s++) rows.push(`${wed},Barbell Row,${s},${120 + (10 - w) * 2},8,,`);
   }
   // This week, only today: the squat PR.
