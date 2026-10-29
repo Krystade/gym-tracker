@@ -129,9 +129,9 @@ test('the feed: rings for today, a card per session, the rest below; LIVE is a s
   await page.screenshot({ path: `${SHOTS}/feed-375-full.png`, fullPage: true });
   await info.attach('feed', { path: `${SHOTS}/feed-375.png`, contentType: 'image/png' });
 
-  // Your own ring opens your History.
+  // Your own ring opens your Log, on Days.
   await feed.getByTestId('ring-me').click();
-  await expect(page.getByRole('heading', { name: 'History', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Log', level: 1 })).toBeVisible();
 });
 
 test('a reaction is the ping that already exists: it reaches their inbox, bursts, and the card says you sent it', async ({ browser, request }) => {

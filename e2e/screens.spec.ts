@@ -51,6 +51,9 @@ test('screens at iPhone 13 mini size', async ({ page }) => {
   await check(page, '2-history');
   await goto(page, 'Lifts');
   await check(page, '3-lifts');
+  await goto(page, 'Buddies');
+  await check(page, '3b-buddies');
+  await goto(page, 'Lifts');
   await page.getByRole('button', { name: /Cable Curl/ }).click();
   await check(page, '5-exercise');
   await goto(page, 'Stats');

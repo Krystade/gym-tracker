@@ -124,7 +124,7 @@ test('an unseen past workout is one line under the plan, and opens that day in H
   await expect(past.getByRole('button')).toHaveText(/^Mon’s workout · 12 sets · \d+ minHistory$/);
   expect((await past.boundingBox())!.height).toBeLessThanOrEqual(60);
   await past.getByRole('button').click();
-  await expect(tabBar(page).getByRole('button', { name: 'History' })).toHaveAttribute('aria-current', 'page');
+  await expect(tabBar(page).getByRole('button', { name: 'Log' })).toHaveAttribute('aria-current', 'page');
   // That day, open in History.
   await expect(page.locator('details.day[open]')).toContainText(/Mon/);
   await expect(page.locator('details.day[open]')).toContainText('Overhead Press'); // Monday's was C

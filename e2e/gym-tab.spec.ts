@@ -5,9 +5,9 @@ import { goto, openProgram } from './nav';
 const bar = (page: Page) => page.getByRole('navigation', { name: 'Sections' });
 const tabButton = (page: Page, name: string) => bar(page).getByRole('button', { name, exact: true });
 
-test('the tab bar is Today · History · Lifts · Stats · Friends · More', async ({ page }) => {
+test('the tab bar is Today · Log · Stats · Buddies · Friends · More', async ({ page }) => {
   await page.goto('/');
-  await expect(bar(page).getByRole('button')).toHaveText(['Today', 'History', 'Lifts', 'Stats', 'Friends', 'More']);
+  await expect(bar(page).getByRole('button')).toHaveText(['Today', 'Log', 'Stats', 'Buddies', 'Friends', 'More']);
 });
 
 test('Friends is a tab: lit as itself, with no Back to More', async ({ page }) => {
@@ -139,18 +139,18 @@ test('a screen over a tab lights the tab it came from: Exercise its list, Progra
   await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles(path.join(import.meta.dirname, 'fixtures', 'history.sample.csv'));
   await expect(page.getByText(/Imported \d+ new/)).toBeVisible();
-  // Exercise from Lifts: Lifts.
+  // Exercise from Lifts: Log.
   await goto(page, 'Lifts');
   await page.getByRole('main').getByRole('button', { name: /^Cable Curl/ }).click();
   await expect(page.getByRole('heading', { name: 'Cable Curl', level: 1 })).toBeVisible();
-  await expect(lit).toHaveText('Lifts');
-  // Exercise from History: History.
+  await expect(lit).toHaveText('Log');
+  // Exercise from History: Log.
   await goto(page, 'History');
   const jan5 = page.locator('details.day').filter({ hasText: 'Jan 5' });
   await jan5.locator('summary').click();
   await jan5.getByRole('button', { name: /^Cable Curl/ }).click();
   await expect(page.getByRole('heading', { name: 'Cable Curl', level: 1 })).toBeVisible();
-  await expect(lit).toHaveText('History');
+  await expect(lit).toHaveText('Log');
   // Program from Today: Today, with ‹ Back to it. From More: More.
   await goto(page, 'Today');
   await openProgram(page);

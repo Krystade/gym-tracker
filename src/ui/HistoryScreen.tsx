@@ -4,7 +4,7 @@ import { byOrderDone, exerciseNames, sessionsByDate, sameExercise, type Session 
 import { fmtDay, fmtSet, plural } from '../domain/format';
 import { localDate } from '../domain/ids';
 import type { SetEntry } from '../domain/types';
-import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { sessionMinutes } from '../domain/timing';
 import { gapModel } from '../domain/learn/switch';
 import { prIds } from '../domain/records';
@@ -30,8 +30,8 @@ function byExercise(sets: SetEntry[]): [string, SetEntry[]][] {
 }
 
 /** Without onAddTo (a friend's log) it's read-only. `focus`: a day to open and scroll to (a record tapped on a lift's screen). */
-export function HistoryScreen({ who, store, onOpen, onAddTo, focus = null, onFocused }: {
-  /** A friend's username: their log, read-only. */ who?: string; store: SetsStore; onOpen: (name: string) => void; onAddTo?: (date: string) => void; focus?: string | null; onFocused?: () => void;
+export function HistoryScreen({ who, store, onOpen, onAddTo, focus = null, onFocused, head }: {
+  /** A friend's username: their log, read-only. */ who?: string; /** What tops the screen in place of its title (Log's own). */ head?: ReactNode; store: SetsStore; onOpen: (name: string) => void; onAddTo?: (date: string) => void; focus?: string | null; onFocused?: () => void;
 }) {
   const sessions = useMemo(() => sessionsByDate(store.entries), [store.entries]);
   const today = localDate(new Date());
@@ -107,13 +107,13 @@ export function HistoryScreen({ who, store, onOpen, onAddTo, focus = null, onFoc
     return <ExercisePicker recent={exerciseNames(store.entries)} title={`Change ${picking.name} on ${fmtDay(picking.date, today)} to`} onCancel={() => setPicking(null)}
       onPick={(to) => { const n = changeLift(day, picking.name, to); setPicking(null); void apply(picking.date, n, `${plural(n.length, 'set')}: ${picking.name} → ${to}`); }} />;
   }
-  if (!sessions.length) return (<><h1 className={who ? 'who-title' : undefined}>{title}</h1><p className="muted">{who ? `No sessions from @${who} yet.` : 'No history yet — import it under More.'}</p></>);
+  if (!sessions.length) return (<>{head ?? <h1 className={who ? 'who-title' : undefined}>{title}</h1>}<p className="muted">{who ? `No sessions from @${who} yet.` : 'No history yet — import it under More.'}</p></>);
   const [ty, tm] = today.split('-').map(Number);
   const lastMonth = tm === 1 ? `${ty - 1}-12` : `${ty}-${String(tm - 1).padStart(2, '0')}`;
   const monthName = (key: string) => new Date(Number(key.slice(0, 4)), Number(key.slice(5)) - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   return (
     <>
-      <h1 className={who ? 'who-title' : undefined}>{title}</h1>
+      {head ?? <h1 className={who ? 'who-title' : undefined}>{title}</h1>}
       {months.map((mo, mi) => {
         const open = mi === 0 || mo.key >= lastMonth || mo.key === at?.slice(0, 7), rendered = open || shown.has(mo.key);
         return (

@@ -255,7 +255,7 @@ test('Gym and Program fit each phone', async ({ page }) => {
   await check(page, 'program-gym');
 });
 
-test('Today with a plan, its forms and editors, History, Lifts and Stats fit each phone', async ({ page }) => {
+test('Today with a plan, its forms and editors, Log (Days and Lifts) and Stats fit each phone', async ({ page }) => {
   await start(page);
   await goto(page, 'Today');
   await openProgram(page);
@@ -298,6 +298,8 @@ test('Today with a plan, its forms and editors, History, Lifts and Stats fit eac
   await back(page, '‹ Back');
   await goto(page, 'Stats');
   await check(page, 'stats');
+  await goto(page, 'Buddies');
+  await check(page, 'buddies');
 });
 
 test('the walkthrough fits each phone on every card', async ({ page }) => {
@@ -372,7 +374,7 @@ test('Friends and a friend’s view fit each phone', async ({ browser }) => {
   await expect(b.page.getByRole('heading', { name: `@${a.name}’s stats`, level: 1 })).toBeVisible();
   await check(b.page, 'friend-stats');
   await b.page.getByRole('button', { name: `@${a.name}`, exact: true }).click();
-  await fp.getByRole('button', { name: 'History', exact: true }).click();
+  await fp.getByRole('button', { name: 'Days', exact: true }).click();
   await expect(b.page.getByRole('heading', { name: `@${a.name}’s history`, level: 1 })).toBeVisible();
   await check(b.page, 'friend-history');
   await b.page.getByRole('button', { name: `@${a.name}`, exact: true }).click();

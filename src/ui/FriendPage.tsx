@@ -140,7 +140,7 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep,
       {/* Their whole log, where the tiles above are 8 weeks: said so, or "Stats" reads as the tiles again (IA A7). */}
       <div className="fp-links" role="group" aria-labelledby="fp-whole">
         <span id="fp-whole" className="fp-links-k">Whole log</span>
-        {(['history', 'lifts', 'stats'] as const).map((t) => <button key={t} onClick={() => onDeep(t)}>{t[0].toUpperCase() + t.slice(1)}</button>)}
+        {(['history', 'lifts', 'stats'] as const).map((t) => <button key={t} onClick={() => onDeep(t)}>{t === 'history' ? 'Days' : t[0].toUpperCase() + t.slice(1)}</button>)}
       </div>
       <div className="fp-tag"><FriendTagEditor me={uid} friend={friend} /><VerifyToggle me={uid} uid={friend.uid} name={friend.name} /></div>
     </section>

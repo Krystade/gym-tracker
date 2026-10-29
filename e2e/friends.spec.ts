@@ -86,12 +86,12 @@ test('a request, accepted, lets each see the other’s log read-only; removing e
   // Their page, inside Friends: the tab bar stays yours. Their whole log on your screens, read-only, one tap further.
   const fp = b.page.getByRole('region', { name: `@${a.name}`, exact: true });
   await expect(fp.getByRole('heading', { name: `@${a.name}`, level: 1 })).toBeVisible();
-  await expect(b.page.getByRole('navigation', { name: 'Sections' }).getByRole('button')).toHaveText(['Today', 'History', 'Lifts', 'Stats', 'Friends', 'More']);
+  await expect(b.page.getByRole('navigation', { name: 'Sections' }).getByRole('button')).toHaveText(['Today', 'Log', 'Stats', 'Buddies', 'Friends', 'More']);
   await fp.getByRole('button', { name: 'Stats', exact: true }).click();
   await expect(b.page.getByRole('heading', { name: `@${a.name}’s stats`, level: 1 })).toBeVisible();
   await expect(b.page.getByRole('combobox', { name: 'Chest' })).toBeDisabled();
   await b.page.getByRole('button', { name: `@${a.name}`, exact: true }).click();
-  await fp.getByRole('button', { name: 'History', exact: true }).click();
+  await fp.getByRole('button', { name: 'Days', exact: true }).click();
   await expect(b.page.getByRole('button', { name: /Bench Press/ })).toContainText('135 × 8');
   await expect(b.page.getByRole('button', { name: 'Add to this day' })).toHaveCount(0);
   await expect(b.page.getByRole('button', { name: /^More for / })).toHaveCount(0); // a friend's days have no actions
@@ -152,7 +152,7 @@ test('an invite link asks before it befriends, says what each side sees, and wor
   await friends(c.page).getByRole('region', { name: 'Invite' }).getByRole('button', { name: 'Accept' }).click();
   await expect(note(c.page)).toHaveText(`You and @${a.name} are now friends.`);
   await crew(c.page).getByRole('button', { name: `@${a.name}`, exact: true }).click();
-  await c.page.getByRole('region', { name: `@${a.name}`, exact: true }).getByRole('button', { name: 'History', exact: true }).click();
+  await c.page.getByRole('region', { name: `@${a.name}`, exact: true }).getByRole('button', { name: 'Days', exact: true }).click();
   await expect(c.page.getByRole('button', { name: /Bench Press/ })).toContainText('135 × 8');
 
   // Used once: the next person holding the same link is turned away before anything is asked.

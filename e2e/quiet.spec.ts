@@ -45,7 +45,7 @@ test('a minute going by renders nothing on Today or History, and the day still t
   expect(await commitsOf(today(page))).toBe(0);
 
   await goto(page, 'History');
-  const history = page.getByRole('heading', { name: 'History', level: 1 });
+  const history = page.getByRole('heading', { name: 'Log', level: 1 });
   await expect(page.locator('details.day')).toHaveCount(1);
   await recordRenders(page);
   await page.clock.fastForward(60_000);

@@ -134,7 +134,7 @@ test('a friend’s page opens inside Friends from what the phone keeps, compares
   await expect(fp.getByRole('region', { name: 'Last 8 weeks' })).toHaveCount(0);
   await expect(fp.getByRole('region', { name: 'Recent PRs' })).toHaveCount(0);
   const whole = fp.getByRole('group', { name: 'Whole log' });
-  await expect(whole.getByRole('button')).toHaveText(['History', 'Lifts', 'Stats']);
+  await expect(whole.getByRole('button')).toHaveText(['Days', 'Lifts', 'Stats']);
   // Nothing of their log or settings is read to open it (what the app reads anyway for lists and news isn't the page's).
   expect(reads.filter((r) => r.includes(`users/${fr.uid}/`)), 'their log read on opening the page').toEqual([]);
   expect(await noSideScroll(page)).toBe(true);
@@ -157,7 +157,7 @@ test('a friend’s page opens inside Friends from what the phone keeps, compares
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${SHOTS}/friend-stats-375-full.png`, fullPage: true });
   await page.getByRole('button', { name: `@${fr.name}` }).first().click();
-  await fp.getByRole('button', { name: 'History', exact: true }).click();
+  await fp.getByRole('button', { name: 'Days', exact: true }).click();
   await expect(page.getByRole('heading', { name: `@${fr.name}’s history`, level: 1 })).toBeVisible();
   await expect(page.getByRole('button', { name: /Bench Press/ }).first()).toBeVisible();
   await page.getByRole('button', { name: `@${fr.name}` }).first().click();

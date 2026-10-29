@@ -178,7 +178,7 @@ test('a session that closed while the app was away: the next day it is one line 
   await expect(last.getByRole('button')).toHaveText(/^Yesterday’s workout · 2 sets(?: · \d+ min)?History$/);
   await expect(last.locator('.finish-stats')).toHaveCount(0);
   await last.getByRole('button').click();
-  await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'History' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Log' })).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('details.day[open]')).toContainText('Cable Curl');
   await page.reload();
   await goto(page, 'Today');

@@ -80,9 +80,9 @@ test('Records: worked out from the log, a tap opens the day, and a new best show
   await fits(page);
   await page.screenshot({ path: `${SHOTS}/1-records.png` });
 
-  // A record opens its day in History, in a month that starts folded, scrolled clear of the status bar.
+  // A record opens its day in Log's Days, in a month that starts folded, scrolled clear of the status bar.
   await row(/^Best session volume/).click();
-  await expect(page.getByRole('heading', { name: 'History', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Log', level: 1 })).toBeVisible();
   const july = page.locator('details.day[data-date="2026-07-07"]');
   await expect(july).toHaveAttribute('open', '');
   await expect(july.locator('summary')).toBeInViewport();

@@ -16,7 +16,7 @@ test('a first visit opens the walkthrough; Back and Next step through it, and Do
   await expect(sheet.getByRole('heading')).toHaveText('Log a set');
   await sheet.getByRole('button', { name: 'Back' }).click();
   await expect(sheet.getByRole('heading')).toHaveText('Today');
-  for (const t of ['Log a set', 'The plan', 'History, Lifts and Stats', 'Your data']) {
+  for (const t of ['Log a set', 'The plan', 'Log and Stats', 'Your data']) {
     await sheet.getByRole('button', { name: 'Next' }).click();
     await expect(sheet.getByRole('heading')).toHaveText(t);
     // The plan points at Gym under More, where the gear is listed; the last card at More, where backups are.
@@ -74,7 +74,7 @@ test.describe('the spotlight', () => {
       async () => [(await page.locator('.day-switch').boundingBox())!],
       async () => [(await page.getByRole('button', { name: 'Add exercise' }).boundingBox())!],
       async () => [(await page.getByRole('button', { name: 'Program', exact: true }).boundingBox())!],
-      () => tabs(page, 'History', 'Lifts', 'Stats'),
+      () => tabs(page, 'Log', 'Stats'),
       () => tabs(page, 'More'),
     ];
     for (const [n, target] of targets.entries()) {

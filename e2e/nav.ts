@@ -1,7 +1,11 @@
 import type { Page } from '@playwright/test';
 
-/** Where a spec can go from anywhere in the app: a tab, or a screen one row off More. */
-export type Place = 'Today' | 'History' | 'Lifts' | 'Stats' | 'Friends' | 'More' | MoreRow;
+/**
+ * Where a spec can go from anywhere in the app: a tab, Log's two views, or a screen one row off More. History and Lifts were
+ * tabs until Log took both (Gym Buddies §16.4): they stay as places, Log then its switch, as a person gets there now.
+ */
+export type Place = 'Today' | 'Log' | 'History' | 'Lifts' | 'Stats' | 'Buddies' | 'Friends' | 'More' | MoreRow;
+const LOG_VIEW: Partial<Record<Place, string>> = { History: 'Days', Lifts: 'Lifts' };
 /** More's rows (IA plan A3): Training setup, You, Account and data. */
 export type MoreRow = 'Program' | 'Weekly goal' | 'Priorities' | 'Gym' | 'Photos' | 'Characters' | 'Cycle' | 'People' | 'Account' | 'Notifications' | 'Backup';
 const ROW: Record<MoreRow, RegExp> = {
@@ -25,8 +29,14 @@ export async function goto(page: Page, to: Place) {
     await tab(page, 'More').click();
     return moreRow(page, to as MoreRow).click();
   }
-  return tab(page, to).click();
+  const view = LOG_VIEW[to];
+  if (!view) return tab(page, to).click();
+  await tab(page, 'Log').click();
+  return logView(page, view as 'Days' | 'Lifts').click();
 }
+
+/** Log's Days | Lifts switch: one of its two buttons. */
+export const logView = (page: Page, v: 'Days' | 'Lifts') => page.getByRole('main').getByRole('group', { name: 'Show' }).getByRole('button', { name: v, exact: true });
 
 /** Friends' Add a friend sheet, opened from the person+ icon (or as it is, when it's open). */
 export async function addFriend(page: Page) {
