@@ -5,7 +5,7 @@ import { defaultProfile } from '../profile';
 import type { Flag, SetEntry } from '../types';
 import { earned, INCOME } from './points';
 import { awards, POINTS, rewardOf, TICKETS } from './rewards';
-import { ACCESSORIES, BUDDIES, CREDITS, RARITIES } from './roster';
+import { ACCESSORIES, BUDDIES, CREDITS, RARITIES, defaultName } from './roster';
 import { asDay, countsFrom, startDay } from './start';
 import { bestStat, lvOf, statLevel, statsOf, trainingOf, TRAIT_TENTHS, XP } from './stats';
 
@@ -147,5 +147,9 @@ describe('roster', () => {
     expect(BUDDIES.some((b) => b.poses.length > 1)).toBe(true);
     expect(CREDITS).toMatch(/Clint Bellanger/);
     expect(CREDITS).toMatch(/Kenney/);
+    // Every buddy has a name of its own until it's given one, and no two share it.
+    const names = BUDDIES.map((b) => defaultName(b.id));
+    expect(new Set(names).size).toBe(BUDDIES.length);
+    for (const n of names) expect(n).toMatch(/^[A-Z][a-z]{2,6}$/);
   });
 });

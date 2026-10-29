@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './ui/App';
 import { storagePersistence } from './db/db';
@@ -30,8 +30,12 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Gym Buddies' head-anchor check grid (ui/buddies/AnchorGrid): a page of its own, read by eye, never linked from the app.
+const AnchorGrid = lazy(() => import('./ui/buddies/AnchorGrid'));
+const checking = new URLSearchParams(location.search).get('check') === 'anchors';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    {checking ? <Suspense fallback={null}><AnchorGrid /></Suspense> : <App />}
   </StrictMode>,
 );

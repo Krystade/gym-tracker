@@ -108,12 +108,12 @@ test('More is four groups of rows; each opens its screen with ‹ More back, and
   await expect(main.getByRole('heading', { level: 2 })).toHaveText(['Training setup', 'You', 'Account and data', 'Help']);
   const group = (name: string) => main.getByRole('list', { name, exact: true }).getByRole('button');
   await expect(group('Training setup')).toHaveText([/^Program/, /^Weekly goal/, /^Priorities and goal/, /^Gym/]);
-  await expect(group('You')).toHaveText([/^Achievements/, /^Progress photos/, /^Characters/, /^Cycle tracking/, /^People on this phone/]);
+  await expect(group('You')).toHaveText([/^Achievements/, /^Progress photos/, /^Cycle tracking/, /^People on this phone/]);
   await expect(group('Account and data')).toHaveText([/^Account and sync/, /^Notifications/, /^Backup, import and export/]);
   await expect(group('Help')).toHaveText(['Show walkthrough', 'Accessory placer']);
   await page.screenshot({ path: 'screenshots/88-more.png' });
   for (const [row, heading] of [['Program', 'Program'], ['Weekly goal', 'Weekly goal'], ['Priorities and goal', 'Priorities and goal'], ['Gym', 'Gyms'],
-    ['Progress photos', 'Progress photos'], ['Characters', 'Characters'], ['Cycle tracking', 'Cycle tracking'], ['People on this phone', 'People on this phone'],
+    ['Progress photos', 'Progress photos'], ['Cycle tracking', 'Cycle tracking'], ['People on this phone', 'People on this phone'],
     ['Account and sync', 'Account and sync'], ['Notifications', 'Notifications'], ['Backup, import and export', 'Backup, import and export']]) {
     await main.getByRole('button', { name: new RegExp(`^${row}`) }).click();
     await expect(page.getByRole('heading', { name: heading, level: 1, exact: true })).toBeVisible();

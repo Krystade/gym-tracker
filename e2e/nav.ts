@@ -7,10 +7,10 @@ import type { Page } from '@playwright/test';
 export type Place = 'Today' | 'Log' | 'History' | 'Lifts' | 'Stats' | 'Buddies' | 'Friends' | 'More' | MoreRow;
 const LOG_VIEW: Partial<Record<Place, string>> = { History: 'Days', Lifts: 'Lifts' };
 /** More's rows (IA plan A3): Training setup, You, Account and data. */
-export type MoreRow = 'Program' | 'Weekly goal' | 'Priorities' | 'Gym' | 'Photos' | 'Characters' | 'Cycle' | 'People' | 'Account' | 'Notifications' | 'Backup';
+export type MoreRow = 'Program' | 'Weekly goal' | 'Priorities' | 'Gym' | 'Photos' | 'Cycle' | 'People' | 'Account' | 'Notifications' | 'Backup';
 const ROW: Record<MoreRow, RegExp> = {
   Program: /^Program/, 'Weekly goal': /^Weekly goal/, Priorities: /^Priorities and goal/, Gym: /^Gym/,
-  Photos: /^Progress photos/, Characters: /^Characters/, Cycle: /^Cycle tracking/, People: /^People on this phone/,
+  Photos: /^Progress photos/, Cycle: /^Cycle tracking/, People: /^People on this phone/,
   Account: /^Account and sync/, Notifications: /^Notifications/, Backup: /^Backup, import and export/,
 };
 

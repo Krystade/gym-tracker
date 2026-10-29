@@ -198,10 +198,6 @@ test('More and every screen it opens fit each phone', async ({ page }) => {
   await check(page, 'backup');
   await back(page);
   await check(page, 'more');
-  await row(page, 'Characters');
-  await expect(page.locator('.char canvas').first()).toBeVisible();
-  await check(page, 'characters');
-  await back(page);
   await row(page, 'Photos');
   await check(page, 'photos');
   await back(page);
@@ -300,6 +296,31 @@ test('Today with a plan, its forms and editors, Log (Days and Lifts) and Stats f
   await check(page, 'stats');
   await goto(page, 'Buddies');
   await check(page, 'buddies');
+});
+
+test('Buddies fit each phone: the first pick, the lead and roster, renaming, the Collection, a card, and the lead on Today', async ({ page }) => {
+  await notched(page);
+  await page.clock.install({ time: new Date('2026-09-30T12:00:00') }); // Today's widest date heading, beside the lead
+  await page.goto('/');
+  await goto(page, 'Buddies');
+  await check(page, 'buddies-pick');
+  // Picked: the lead's card, the roster, a card of its own, the Collection, and the lead on Today.
+  const offer = page.getByRole('group', { name: 'Your first buddy' }).getByRole('button');
+  await offer.first().click();
+  await page.getByRole('button', { name: /^Pick / }).click();
+  await expect(page.getByRole('heading', { name: 'Your buddies' })).toBeVisible();
+  await check(page, 'buddies-home');
+  await page.getByRole('button', { name: 'Rename' }).click();
+  await check(page, 'buddies-rename');
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await page.getByRole('button', { name: /^Collection/ }).click();
+  await expect(page.getByRole('heading', { name: 'Credits' })).toBeVisible();
+  await check(page, 'buddies-collection');
+  await page.getByRole('region', { name: 'Common' }).getByRole('button').first().click();
+  await check(page, 'buddy-card');
+  await goto(page, 'Today');
+  await expect(page.getByRole('button', { name: /your lead buddy/ })).toBeVisible();
+  await check(page, 'today-lead');
 });
 
 test('the walkthrough fits each phone on every card', async ({ page }) => {

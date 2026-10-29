@@ -485,9 +485,8 @@ test('Today, History, Lifts, a lift, Stats and More with ten weeks of heavy trai
   await goto(page, 'Stats');
   await expect(page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
   await check(page, info, found, 'stats', [], 'main');
-  for (const screen of ['Priorities', 'Characters', 'Gym', 'Program', 'Photos'] as const) {
+  for (const screen of ['Priorities', 'Gym', 'Program', 'Photos'] as const) {
     await goto(page, screen);
-    if (screen === 'Characters') await expect(page.getByRole('heading', { name: 'Credits' })).toBeVisible(); // loaded, credits and all
     await check(page, info, found, `more-${screen.toLowerCase()}`);
   }
   // The training goal set to Strength: its note, and a barbell lift's range on its page.

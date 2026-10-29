@@ -36,6 +36,21 @@ export const ACCESSORIES: readonly AccDef[] = [
   ...CSS_ACC.map(([id, rarity, slot]): AccDef => ({ id, rarity, slot })),
 ];
 
+/** The packs, for Buddies › Collection's credits (both CC0: credit is a courtesy). */
+export const CREDIT_ROWS = [
+  { what: 'Tiny Creatures', by: 'Clint Bellanger', url: 'https://opengameart.org/content/tiny-creatures' },
+  { what: 'Tiny Dungeon and Tiny Town', by: 'Kenney', url: 'https://kenney.nl/assets/tiny-dungeon' },
+] as const;
+
+// A buddy's name until it's given its own (kept prefs' `name`): two syllables picked by its number, so no two are the same
+// (creatures 1–180 and dungeon 181–312, of 18 × 18 = 324) and a buddy's name never changes when the roster grows.
+const NAME_A = ['Bo', 'Pip', 'Mo', 'Tu', 'Ki', 'Lu', 'Za', 'Fen', 'Ro', 'Bi', 'Nu', 'Wi', 'Ga', 'Do', 'Su', 'Ta', 'Mi', 'Ju'];
+const NAME_B = ['bo', 'pip', 'lo', 'mi', 'ko', 'ba', 'ri', 'zo', 'nu', 'gle', 'fu', 'ty', 'mo', 'wi', 'by', 'sy', 'ro', 'do'];
+export function defaultName(id: string): string {
+  const n = Number(id.slice(1)) + (id[0] === 'd' ? 180 : 0);
+  return NAME_A[n % NAME_A.length] + NAME_B[Math.floor(n / NAME_A.length) % NAME_B.length];
+}
+
 export const BUDDY: ReadonlyMap<string, BuddyDef> = new Map(BUDDIES.map((b) => [b.id, b]));
 export const ACCESSORY: ReadonlyMap<string, AccDef> = new Map(ACCESSORIES.map((a) => [a.id, a]));
 

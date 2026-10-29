@@ -17,7 +17,7 @@ import { PerSideReview } from './PerSideReview';
 import { useProfileId } from '../state/profileDb';
 
 // More's own screens (IA plan A3, owner 2026-10-21): each a row on More that opens it, with ‹ More back. The screens More opens
-// that open from elsewhere too (Program, Priorities, Gym, Photos, Characters, Paste) stay where they were, over the tab.
+// that open from elsewhere too (Program, Priorities, Gym, Photos, Paste) stay where they were, over the tab.
 
 /** `review`: the board's reports, the app's owner's alone (social S4). */
 export type MoreAt = 'goal' | 'cycle' | 'people' | 'account' | 'notifications' | 'backup' | 'review' | 'perside';

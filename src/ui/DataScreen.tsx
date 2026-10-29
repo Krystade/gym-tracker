@@ -20,13 +20,13 @@ import { perSideOffered } from './PerSideReview';
 
 /**
  * The More tab (IA plan A3, owner 2026-10-21): rows in four groups, each opening its screen, so the whole tab is one screen.
- * Training setup (Program, Weekly goal, Priorities and goal, Gym); You (Progress photos, Characters, Cycle tracking, People);
+ * Training setup (Program, Weekly goal, Priorities and goal, Gym); You (Progress photos, Cycle tracking, People);
  * Account and data (Account and sync, Notifications, Backup, import and export); Help.
  */
-export function DataScreen({ store, profile, programs, gyms, photos, cloud, people, onShowWalkthrough, onOpen, onOpenCharacters, onOpenGym, onOpenProgram, onOpenPhotos, onOpenPriorities, onOpenAchievements }: {
+export function DataScreen({ store, profile, programs, gyms, photos, cloud, people, onShowWalkthrough, onOpen, onOpenGym, onOpenProgram, onOpenPhotos, onOpenPriorities, onOpenAchievements }: {
   store: SetsStore; profile: ProfileStore; programs: ProgramStore; gyms: GymsStore; photos: PhotosStore; cloud: CloudStore; people: PeopleStore;
   onShowWalkthrough: () => void; /** One of More's own screens. */ onOpen: (m: MoreAt) => void;
-  onOpenCharacters: () => void; onOpenGym: () => void; onOpenProgram: () => void; onOpenPhotos: () => void; onOpenPriorities: () => void; /** The Achievements page, on Stats. */ onOpenAchievements: () => void;
+  onOpenGym: () => void; onOpenProgram: () => void; onOpenPhotos: () => void; onOpenPriorities: () => void; /** The Achievements page, on Stats. */ onOpenAchievements: () => void;
 }) {
   const [persisted, setPersisted] = useState<boolean | null | undefined>(knownStoragePersistence);
   useEffect(() => { if (persisted === undefined) void storagePersistence().then(setPersisted); }, []);
@@ -52,7 +52,6 @@ export function DataScreen({ store, profile, programs, gyms, photos, cloud, peop
       <Group name="You">
         <Row name="Achievements" sub="Medals earned and what’s next" onClick={onOpenAchievements} />
         <Row name="Progress photos" sub="On this phone only" note={shots ? plural(shots, 'photo') : undefined} onClick={onOpenPhotos} />
-        <Row name="Characters" onClick={onOpenCharacters} />
         <Row name="Cycle tracking" sub="Private, this profile only" note={cycle.loaded ? (cycle.tracking ? 'On' : 'Off') : undefined} onClick={() => onOpen('cycle')} />
         <Row name="People on this phone" note={people.people.length > 1 ? `${people.people.length} people` : people.active?.name} onClick={() => onOpen('people')} />
       </Group>
