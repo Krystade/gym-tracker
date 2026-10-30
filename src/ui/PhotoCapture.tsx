@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { coverCrop, photoId, POSES, seeds, shotIndex, shotName, SHOTS, VARIANTS, type Shot } from '../domain/photos';
+import { coverCrop, lastOf, lightVs, meanLuma, photoId, POSES, seeds, shotIndex, shotName, SHOTS, VARIANTS, type Shot } from '../domain/photos';
 import { localDate } from '../domain/ids';
 import { plural } from '../domain/format';
+import { useDb } from '../state/profileDb';
 import type { PhotosStore } from '../state/usePhotos';
 import { encode } from './photoImage';
 import { HINTS, OUTLINES } from './poseOutlines';
@@ -13,6 +14,8 @@ import './capture.css';
 // scrubber per shot, starting there, to pick the frame to keep; then a review grid with re-pick and retake, and Save. Only the
 // stills are kept: the recording is a blob in memory, let go on Save, Cancel or leaving, never written anywhere. No countdown,
 // no voice. The frame is 3:4 and the still is cut to it (domain/photos coverCrop), so what was framed is what's kept.
+// Once a shot has a photo, its latest is laid over the camera at 30 % in place of the outline (the ghost: the same framing every
+// time), and the camera's brightness is checked against it: more than 25 % off, the frame says darker or brighter than last time.
 
 const MAX_SECONDS = 180; // a recording stops itself here: it sits in memory until Save
 const FRAME = 1 / 30; // the ‹ › step: a frame at 30 fps
@@ -23,6 +26,19 @@ type Phase = 'starting' | 'off' | 'live' | 'rec' | 'pick' | 'review';
 /** A recording, as an object URL of the blob, and how long it ran by the clock here (a recorder's own duration can be missing). */
 interface Take { url: string; length: number }
 interface Picked { take: number; at: number; full: Blob; thumb: Blob; width: number; height: number; url: string }
+/** A shot's ghost: its latest photo as an object URL, that photo's day, and its brightness (domain/photos meanLuma). */
+interface Ghost { url: string; date: string; luma: number }
+
+/** The light check's sample: small enough to read ten times a second, large enough for a mean. */
+const SAMPLE = [32, 24] as const;
+function lumaOf(src: CanvasImageSource, w: number, h: number): number {
+  const cv = document.createElement('canvas');
+  [cv.width, cv.height] = SAMPLE;
+  const g = cv.getContext('2d', { willReadFrequently: true })!;
+  const c = coverCrop(w, h, 3 / 4); // what the frame shows
+  g.drawImage(src, c.x, c.y, c.width, c.height, 0, 0, SAMPLE[0], SAMPLE[1]);
+  return meanLuma(g.getImageData(0, 0, SAMPLE[0], SAMPLE[1]).data);
+}
 
 function cameraError(e: unknown): string {
   const name = e instanceof Error ? e.name : '';
@@ -140,6 +156,11 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
   const gen = useRef(0); // the camera start that counts: a later one, or leaving, makes an earlier one stop its stream
   const alive = useRef(true);
   const shot = SHOTS[queue[step] ?? 0];
+  const db = useDb();
+  const [ghosts, setGhosts] = useState<Record<number, Ghost>>({});
+  const [light, setLight] = useState<'darker' | 'brighter' | null>(null);
+  const live = useRef<HTMLVideoElement | null>(null);
+  const ghost = ghosts[queue[step] ?? 0];
 
   const stopCamera = () => {
     stream.current?.getTracks().forEach((t) => t.stop());
@@ -173,6 +194,7 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
   }
 
   const attach = useCallback((el: HTMLVideoElement | null) => {
+    live.current = el;
     if (!el || !stream.current) return;
     el.srcObject = stream.current;
     void el.play().catch(() => { /* autoplay: muted and inline, so it plays */ });
@@ -249,6 +271,35 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
       urls.current = []; takes.current = [];
     };
   }, []);
+  // Each shot's ghost, read once as the screen opens: its latest photo, full size (a thumb is too soft over the whole frame).
+  useEffect(() => {
+    let on = true;
+    void Promise.all(SHOTS.map(async (s, i) => {
+      const m = lastOf(photos.metas, s);
+      const b = m && await db.getPhotoBlob(m.id, 'full').catch(() => undefined);
+      if (!m || !b || !on) return null;
+      let luma = 0;
+      try { const img = await createImageBitmap(b); luma = lumaOf(img, img.width, img.height); img.close(); } catch { /* no light check for this one */ }
+      const url = URL.createObjectURL(b);
+      urls.current.push(url);
+      return [i, { url, date: m.date, luma }] as const;
+    })).then((xs) => { if (on) setGhosts(Object.fromEntries(xs.filter((x) => x != null))); });
+    return () => { on = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // The same-light check: the camera's brightness, averaged over the last second, against the ghost's.
+  useEffect(() => {
+    setLight(null);
+    if ((phase !== 'live' && phase !== 'rec') || !ghost?.luma) return;
+    const xs: number[] = [];
+    const id = setInterval(() => {
+      const el = live.current;
+      if (!el || !el.videoWidth || el.readyState < 2) return;
+      try { xs.push(lumaOf(el, el.videoWidth, el.videoHeight)); } catch { return; }
+      if (xs.length > 4) xs.shift();
+      if (xs.length >= 2) setLight(lightVs(xs.reduce((a, x) => a + x, 0) / xs.length, ghost.luma));
+    }, 250);
+    return () => clearInterval(id);
+  }, [phase, ghost, camRev]);
   useEffect(() => {
     if (phase !== 'rec') return;
     const id = setInterval(() => { const s = now(); setElapsed(s); if (s >= MAX_SECONDS) stopRec(`Stopped at ${MAX_SECONDS / 60} minutes.`); }, 250);
@@ -305,7 +356,10 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
         <div className="cap-stage">
           <div className="cap-frame">
             {phase !== 'starting' && <video key={camRev} ref={attach} className={facing === 'user' ? 'mirror' : undefined} muted playsInline autoPlay />}
-            <Outline shot={shot} />
+            {/* Mirrored with the preview: the photo was kept unmirrored, as the preview is before it's flipped. */}
+            {ghost ? <img className={`cap-ghost${facing === 'user' ? ' mirror' : ''}`} src={ghost.url} alt="" /> : <Outline shot={shot} />}
+            {ghost && phase !== 'starting' && <span className="cap-tag">Last time · {new Date(`${ghost.date}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
+            {light && <span className="cap-light" role="status">{light === 'darker' ? 'Darker' : 'Brighter'} than last time</span>}
             {phase === 'starting' && <p className="cap-wait">Starting the camera…</p>}
             {phase === 'rec' && <span className="cap-rec" role="timer" aria-label={`Recording, ${Math.floor(elapsed)} seconds`}><i aria-hidden="true" />{time(elapsed).slice(0, -2)}</span>}
           </div>

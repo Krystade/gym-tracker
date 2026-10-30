@@ -41,6 +41,11 @@ const GLYPH: Record<string, ReactNode> = {
   'crew-streak': <><path d="M9 3.5c1 2.5 4 4 4 7.5a4 4 0 0 1-8 0c0-1.7.8-2.8 1.8-3.6.2 1.3.8 2.2 1.7 2.5 0-2.2.1-4.2.5-6.4z" /><path d="M15.5 8c.8 2 3.3 3.2 3.3 6a3.3 3.3 0 0 1-6.6 0" /></>,
   'crew-day': <><circle cx="12" cy="12" r="8" /><path d="M12 7.5V12l3 2" /><circle cx="12" cy="12" r=".8" fill="currentColor" /></>,
   'full-house': <><path d="M4 11.5L12 5l8 6.5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /><path d="M9 15.5l2 2 4-4" /></>,
+  'weigh-ins': <><rect x="4" y="4.5" width="16" height="15" rx="3.5" /><path d="M8 11a4.5 4.5 0 0 1 8 0M12 11l1.6-2.4" /></>,
+  'steady-weeks': <><path d="M3.5 12c2.8-2.6 5.7-2.6 8.5 0s5.7 2.6 8.5 0" /><path d="M3.5 6.5h17M3.5 17.5h17" strokeDasharray="1.5 2.5" /></>,
+  'photo-days': <><path d="M4 9a1.5 1.5 0 0 1 1.5-1.5h2.3L9.3 5.5h5.4l1.5 2h2.3A1.5 1.5 0 0 1 20 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z" /><circle cx="12" cy="13" r="3.2" /></>,
+  'photo-season': <><rect x="8" y="4" width="12" height="12" rx="2" /><path d="M4.5 8v9.5A2.5 2.5 0 0 0 7 20h9.5M10.5 13l2.5-3 2 2 1-1 1.5 2" /></>,
+  'flexed-relaxed': <><circle cx="8.5" cy="5.5" r="1.8" /><path d="M8.5 8.5v6.5M8.5 15l-2 5M8.5 15l2 5M8.5 10.5l-2.5 3M8.5 10.5l2.5 3" /><circle cx="17" cy="5.5" r="1.8" /><path d="M17 8.5v6.5M17 15l-2 5M17 15l2 5M17 10l-3-1.5 1-3M17 10l3-1.5-1-3" /></>,
 };
 
 /** A medal, `size` px square. No glyph: a plain coin (the sheet's tier counts). Decorative: its tier is said beside it. */

@@ -11,10 +11,11 @@ import { notched } from './layout';
 async function fakeCamera(page: Page) {
   await page.addInitScript(() => {
     const W = 720, H = 1280;
-    const w = window as unknown as { cam: { starts: number; stops: number; deny: boolean } };
+    const w = window as unknown as { cam: { starts: number; stops: number; deny: boolean; dim?: boolean } };
     w.cam = { starts: 0, stops: 0, deny: false };
     const paint = (g: CanvasRenderingContext2D, t: number) => {
       g.fillStyle = `hsl(${Math.round(t * 60) % 360} 45% 35%)`; g.fillRect(0, 0, W, H);
+      if (w.cam.dim) { g.fillStyle = '#000'; g.fillRect(0, 0, W, H); return; } // the light gone: a dark room
       g.fillStyle = '#d8d2c8'; // a figure about where the outline is: head near the top of the 3:4 middle, feet near its foot
       g.beginPath(); g.arc(W / 2, 330, 52, 0, 7); g.fill();
       g.fillRect(W / 2 - 95, 400, 190, 380); g.fillRect(W / 2 - 80, 780, 60, 330); g.fillRect(W / 2 + 20, 780, 60, 330);
@@ -226,4 +227,37 @@ test('camera turned down: says how to allow it, and Take photo is still there', 
   await d.getByRole('button', { name: 'Use Take photo instead' }).click();
   await expect(d).toHaveCount(0);
   await expect(page.getByLabel('Take photo')).toBeAttached();
+});
+
+test('the second session: last time’s photo over the camera in place of the outline, and a warning when the light is darker', async ({ page }) => {
+  // A first session: the six recorded, a frame each, saved.
+  await page.getByRole('button', { name: 'Record the 6 poses' }).click();
+  const d = dialog(page);
+  await expect(d.locator('.cap-outline')).toBeVisible();
+  await expect(d.locator('.cap-ghost')).toHaveCount(0);
+  await d.getByRole('button', { name: 'Record' }).click();
+  for (let k = 1; k < 6; k++) { await page.waitForTimeout(200); await d.getByRole('button', { name: 'Next pose' }).click(); }
+  await page.waitForTimeout(200);
+  await d.getByRole('button', { name: 'Done' }).click();
+  for (let k = 1; k <= 6; k++) { await expect(useFrame(page)).toBeEnabled(); await useFrame(page).click(); }
+  await d.getByRole('button', { name: 'Save 6 photos' }).click();
+  await expect(d).toHaveCount(0);
+
+  // The next: the ghost, mirrored with the front camera's preview, named by its day; no outline. Same light: nothing said.
+  await page.getByRole('button', { name: 'Record the 6 poses' }).click();
+  await expect(d.getByRole('button', { name: 'Record' })).toBeEnabled();
+  await expect(d.locator('.cap-ghost')).toBeVisible();
+  await expect(d.locator('.cap-ghost')).toHaveClass(/mirror/);
+  await expect(d.locator('.cap-outline')).toHaveCount(0);
+  await expect(d.getByText(/^Last time · /)).toBeVisible();
+  expect(await d.locator('.cap-ghost').evaluate((e) => getComputedStyle(e).opacity)).toBe('0.3');
+  await page.waitForTimeout(1200); // the check has had time to read the camera
+  await expect(d.getByText(/than last time/)).toHaveCount(0);
+  // The room goes dark: said over the frame, and gone again once the light is back.
+  await page.evaluate(() => { (window as unknown as { cam: { dim: boolean } }).cam.dim = true; });
+  await expect(d.getByRole('status').filter({ hasText: 'Darker than last time' })).toBeVisible();
+  await shoot(page, '35-capture-ghost-darker');
+  await page.evaluate(() => { (window as unknown as { cam: { dim: boolean } }).cam.dim = false; });
+  await expect(d.getByText(/than last time/)).toHaveCount(0);
+  await shoot(page, '36-capture-ghost');
 });

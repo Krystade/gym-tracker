@@ -271,7 +271,8 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   // Together (plan §10): your friends' windows as Friends keeps them, and the ledger of what they showed. Signed in only.
   const together = useTogether(uid, store.entries, date, ach.since, rawProfile.profile.weeklyGoal);
   // Push: the reminder and recap numbers, for the person whose account this is (signed out: this phone's subscription goes).
-  // Achievements for the recap's count (the screens read theirs through AchProvider): a count only, Together's included.
+  // Achievements for the recap's count (the screens read theirs through AchProvider): a count only, Together's included, Your
+  // body's not (the count leaves the phone with the recap).
   const achOf = useMemo(() => {
     const since = ach.since;
     return since ? (es: SetEntry[], d: string) => achievementsOf(es, { profile: rawProfile.profile, today: d, since, program: programs.program, plans: programs.plans, ...(together && { together: together.ctx }) }) : null;
@@ -290,10 +291,12 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   useEffect(() => onMinute(() => { if (moved.current()) recheck(); }), []);
   // Every screen reads targets fitted to your week; More imports and exports the stored profile as it is.
   const profile = useFittedProfile(rawProfile, programs.program, store.entries, day);
+  // Your body's achievements read the weigh-ins and photo dates, on these screens only (domain/achievements BodyCtx).
+  const achBody = useMemo(() => ({ days: body.days, photos: photos.metas }), [body.days, photos.metas]);
   const error = store.error ?? programs.error ?? body.error ?? photos.error ?? gyms.error ?? people.error;
 
   return (
-    <AchProvider since={ach.since} profile={rawProfile.profile} program={programs.program} plans={programs.plans} together={together} onOpen={openAch} onShare={uid ? shareAch : undefined}>
+    <AchProvider since={ach.since} profile={rawProfile.profile} program={programs.program} plans={programs.plans} together={together} body={achBody} onOpen={openAch} onShare={uid ? shareAch : undefined}>
       {uid && <NewsReader uid={uid} rev={nav.newsRev} newsAt={newsAt} />}
       {error && <div role="alert" className="banner">{error}</div>}
       <main className="screen">

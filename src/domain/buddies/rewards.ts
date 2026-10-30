@@ -30,10 +30,19 @@ export const TICKETS: Readonly<Record<string, number>> = {
   'crew-streak:gold': 3, 'crew-streak:platinum': 8,
   'crew-day:gold': 3, 'crew-day:platinum': 5,
   'full-house:gold': 2, 'full-house:platinum': 3,
+  // Your body: weighing in about 4 days a week, a photo day every 2 weeks.
+  'weigh-ins:gold': 2, 'weigh-ins:platinum': 3,
+  'photo-days:gold': 3, 'photo-days:platinum': 5,
 };
+/** Your body's families that pay nothing (owner 2026-10-29: only Weigh-ins and Photo days, the habit; never the scale's rate). */
+export const UNPAID: ReadonlySet<string> = new Set(['steady-weeks', 'photo-season', 'flexed-relaxed']);
 
 export interface Award { points: number; tickets: number }
-export const rewardOf = (id: string, tier: Tier): Award => ({ points: POINTS[tier] ?? 0, tickets: TICKETS[`${id}:${tier}`] ?? 0 });
+export const rewardOf = (id: string, tier: Tier): Award =>
+  (UNPAID.has(id) ? { points: 0, tickets: 0 } : { points: POINTS[tier] ?? 0, tickets: TICKETS[`${id}:${tier}`] ?? 0 });
+/** The points a family has paid once its value reaches `value`, each level once (domain/buddies/gacha's pace for Your body). */
+export const pointsAt = (id: string, value: number): number =>
+  DEF.get(id)!.levels.reduce((a, lv) => a + (value >= lv.at ? rewardOf(id, lv.tier).points : 0), 0);
 
 /** Everything achievements have paid since `start`: each unlock once (per lift for plates and bodyweight), each repeat each time. */
 export function awards(a: Achievements, start: string): Award {

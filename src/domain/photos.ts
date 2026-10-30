@@ -42,6 +42,28 @@ export function coverCrop(w: number, h: number, aspect: number): { x: number; y:
 export const seeds = (marks: readonly number[], end: number): number[] =>
   marks.map((at, i) => { const to = Math.max(at, Math.min(end, marks[i + 1] ?? end)); return Math.min(end, (at + to) / 2); });
 
+/** A shot's latest photo: laid over the camera at 30 % (the ghost), so each session is framed like the last. None: the outline. */
+export function lastOf(metas: readonly PhotoMeta[], s: Shot): PhotoMeta | null {
+  let best: PhotoMeta | null = null;
+  for (const m of metas) if (m.pose === s.pose && m.variant === s.variant && (!best || m.date > best.date)) best = m;
+  return best;
+}
+
+/** Mean brightness of RGBA pixels, 0–255 (Rec. 601 luma). */
+export function meanLuma(px: ArrayLike<number>): number {
+  let sum = 0;
+  const n = Math.floor(px.length / 4);
+  for (let i = 0; i < n * 4; i += 4) sum += 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+  return n ? sum / n : 0;
+}
+/** The same-light check's margin: the camera this much darker or brighter than the ghost's photo is said. */
+export const LIGHT_DIFF = 0.25;
+/** The camera's brightness against last time's photo of the same shot: 'darker', 'brighter', or null within LIGHT_DIFF. */
+export function lightVs(now: number, then: number): 'darker' | 'brighter' | null {
+  if (!(then > 4)) return null; // a black photo is no measure
+  return now < then * (1 - LIGHT_DIFF) ? 'darker' : now > then * (1 + LIGHT_DIFF) ? 'brighter' : null;
+}
+
 export function timeline(metas: PhotoMeta[]): { date: string; photos: PhotoMeta[] }[] {
   const by = new Map<string, PhotoMeta[]>();
   for (const x of metas) by.set(x.date, [...(by.get(x.date) ?? []), x]);

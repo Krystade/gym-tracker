@@ -11,6 +11,8 @@ import { daySets, e1rm, liftIndex, sameExercise, learnable } from './stats';
 import { fitTargets, setYield, weeklyBudget } from './targets';
 import type { SetEntry } from './types';
 import { addedLoad, bodyShare } from './learn/bodyweight';
+import { rate, rateBand, trend, type BodyDay } from './body';
+import { POSES, SHOTS, type PhotoMeta } from './photos';
 import { effective, togetherSteps, TOGETHER_IDS, type Seen, type TogetherCtx } from './together';
 
 // Achievements (.superpowers/redesign/achievements/plan.md): facts about a log, never stored as earned. Like records
@@ -26,12 +28,14 @@ import { effective, togetherSteps, TOGETHER_IDS, type Seen, type TogetherCtx } f
 // - Sets flagged pain or light never count toward the strength families (PRs, Three lifts up, Moved up, Plates, Bodyweight), so
 //   an achievement never rewards pushing through pain. Attendance and volume count every set: flagging pain never costs a session.
 // - Never read: energy, cycle, body weight, photos, pain region or severity, notes (but the assisted-weight note), nutrition.
+//   Your body (owner 2026-10-29) is the one exception: its own families read weigh-ins and photo dates, never anything else, and
+//   it's private like Together, so none of it leaves the phone.
 // - Weekly targets are the ones Stats showed that day (the stored profile fitted to the 8 weeks up to it, as useFittedProfile
 //   fits it), so a refit later never takes a week back. A changed weekly goal or priority does re-judge past weeks (plan Q10).
 
 export type Tier = 'starter' | 'bronze' | 'silver' | 'gold' | 'platinum';
 export const TIERS: readonly Tier[] = ['starter', 'bronze', 'silver', 'gold', 'platinum'];
-export type Group = 'showing' | 'stronger' | 'muscle' | 'milestones' | 'explore' | 'together';
+export type Group = 'showing' | 'stronger' | 'muscle' | 'milestones' | 'explore' | 'together' | 'body';
 export const GROUPS: readonly { id: Group; title: string; note?: string }[] = [
   { id: 'showing', title: 'Showing up' },
   { id: 'stronger', title: 'Getting stronger', note: 'against your own start' },
@@ -40,9 +44,15 @@ export const GROUPS: readonly { id: Group; title: string; note?: string }[] = [
   { id: 'explore', title: 'Exploring' },
   // You and your friends (plan §10, domain/together): only on your phone, never shared (owner Q6).
   { id: 'together', title: 'Together', note: 'you and your friends' },
+  // Weigh-ins and photos (progress-photos plan, owner 2026-10-29): only on your phone, never shared.
+  { id: 'body', title: 'Your body', note: 'only you see these' },
 ];
-/** The group only you see: it names who you trained with, so it never leaves your phone (no summary, no feed chip). */
-export const PRIVATE_GROUP: Group = 'together';
+/**
+ * The groups only you see, whatever the switches say: Together names who you trained with, Your body reads your weigh-ins and
+ * photos. Neither ever leaves your phone (no summary, no feed chip, no friend's page).
+ */
+export const PRIVATE_GROUPS: ReadonlySet<Group> = new Set(['together', 'body']);
+export const isPrivate = (g: string): boolean => PRIVATE_GROUPS.has(g as Group);
 export interface Level { tier: Tier; at: number }
 export interface Def {
   id: string; group: Group; title: string;
@@ -51,7 +61,7 @@ export interface Def {
   levels: readonly Level[];
   /** Earned again and again: one level, a count beside it. */ repeat?: true;
   /** One per lift (plates, bodyweight). */ perLift?: true;
-  /** Only shown once the log can earn it: a program, a cardio set, or a friend (signed in). */ needs?: 'program' | 'cardio' | 'friends';
+  /** Only shown once the log can earn it: a program, a cardio set, a friend (signed in), or your own weigh-ins and photos. */ needs?: 'program' | 'cardio' | 'friends' | 'body';
 }
 
 const L = (...xs: [Tier, number][]): Level[] => xs.map(([tier, at]) => ({ tier, at }));
@@ -85,6 +95,12 @@ export const DEFS: readonly Def[] = [
   { id: 'crew-streak', group: 'together', title: 'Crew streak', unit: 'weeks in a row', how: 'Your longest run of weeks you met your goal with a friend at theirs. A best ever: a missed week never takes it away', levels: L(['bronze', 4], ['silver', 12], ['gold', 26], ['platinum', 52]), needs: 'friends' },
   { id: 'crew-day', group: 'together', title: 'Crew day', unit: 'days', how: 'Days you and two friends or more all trained, anywhere', levels: L(['bronze', 1], ['silver', 10], ['gold', 40], ['platinum', 100]), needs: 'friends' },
   { id: 'full-house', group: 'together', title: 'Full house', unit: 'friends', how: 'The most friends who met their own weekly goal in a week you met yours. Each against their own goal', levels: L(['bronze', 2], ['silver', 3], ['gold', 5], ['platinum', 8]), needs: 'friends' },
+  // Your body (owner 2026-10-29: these, no goal weight): the habit of weighing in and taking photos, never losing or gaining fast.
+  { id: 'weigh-ins', group: 'body', title: 'Weigh-ins', unit: 'days', how: 'Days with a weigh-in', levels: L(['starter', 1], ['bronze', 10], ['silver', 50], ['gold', 150], ['platinum', 365]), needs: 'body' },
+  { id: 'steady-weeks', group: 'body', title: 'Steady weeks', unit: 'weeks', how: 'Weeks with 3 weigh-ins or more in which your trend never read Fast cut or Fast gain. Steady, not fast', levels: L(['bronze', 2], ['silver', 8], ['gold', 26], ['platinum', 52]), needs: 'body' },
+  { id: 'photo-days', group: 'body', title: 'Photo days', unit: 'days', how: 'Days with a front, side and back photo', levels: L(['starter', 1], ['bronze', 4], ['silver', 12], ['gold', 26], ['platinum', 52]), needs: 'body' },
+  { id: 'photo-season', group: 'body', title: 'Photo season', unit: 'weeks', how: 'Weeks from your first photo day to your latest', levels: L(['bronze', 4], ['silver', 12], ['gold', 26], ['platinum', 52]), needs: 'body' },
+  { id: 'flexed-relaxed', group: 'body', title: 'Flexed and relaxed', unit: 'times', how: 'A day with all six poses, relaxed and flexed', levels: L(['bronze', 1]), repeat: true, needs: 'body' },
 ];
 export const DEF: ReadonlyMap<string, Def> = new Map(DEFS.map((d) => [d.id, d]));
 /** The families that never count a pain- or light-flagged set (owner, 2026-10-21: kept). */
@@ -107,7 +123,11 @@ export interface Context {
   program?: Program | null;
   /** Your friends' windows and the ledger (domain/together): the Together families. None: signed out, or a friend's log. */
   together?: TogetherCtx;
+  /** Your weigh-ins and photos: Your body's families. None wherever a count or a summary leaves the phone (the recap, Compare). */
+  body?: BodyCtx;
 }
+/** What Your body reads: each day's weight, and each photo's date, pose and variant (never the image). */
+export interface BodyCtx { days: readonly BodyDay[]; photos: readonly Pick<PhotoMeta, 'date' | 'pose' | 'variant'>[] }
 
 // ---- What counts ----
 
@@ -438,6 +458,55 @@ function cardioSteps(entries: readonly SetEntry[]): Steps {
   return out;
 }
 
+// ---- Your body (owner 2026-10-29) ----
+
+/** Days with a weight, from `since` on. */
+const weighInDays = (b: BodyCtx, since: string, today: string): string[] =>
+  b.days.filter((d) => d.weight != null && d.date >= since && d.date <= today).map((d) => d.date);
+
+/** A week needs this many weigh-ins to count as steady. */
+export const STEADY_MIN = 3;
+/**
+ * Weeks over (Monday to Sunday, before `today`) with STEADY_MIN weigh-ins or more in which the trend's 4-week rate never read
+ * Fast cut or Fast gain (domain/body rateBand), dated at the week's last weigh-in. A week the rate can't be read in yet (under two
+ * weeks of weigh-ins) doesn't count. The trend reads the weigh-ins before `since` too: that's its bar, never a week that counts.
+ */
+function steadyWeeks(b: BodyCtx, since: string, today: string): Steps {
+  const t = trend(b.days.filter((d) => d.date <= today));
+  const byWeek = new Map<string, number[]>();
+  t.forEach((p, i) => { if (p.date >= since) { const w = weekStart(p.date); (byWeek.get(w) ?? byWeek.set(w, []).get(w)!).push(i); } });
+  const out: string[] = [];
+  for (const [w, is] of byWeek) {
+    if (is.length < STEADY_MIN || addDays(w, 6) >= today) continue;
+    if (is.every((i) => { const r = rate(t.slice(0, i + 1)); return r != null && rateBand(r.pctPerWeek).tone === 'ok'; })) out.push(t[is.at(-1)!].date);
+  }
+  return cumulative(out);
+}
+
+/** Days from `since` on with every pose (either variant): a full set. `all`: every pose relaxed and flexed, the whole routine. */
+function photoDays(b: BodyCtx, since: string, today: string, all = false): string[] {
+  const by = new Map<string, Set<string>>();
+  for (const p of b.photos) if (p.date >= since && p.date <= today) (by.get(p.date) ?? by.set(p.date, new Set()).get(p.date)!).add(`${p.pose}:${p.variant}`);
+  return [...by].filter(([, got]) => (all ? SHOTS.every((s) => got.has(`${s.pose}:${s.variant}`)) : POSES.every((p) => got.has(`${p}:relaxed`) || got.has(`${p}:flexed`))))
+    .map(([d]) => d).sort();
+}
+
+/** Whole weeks from the first photo day to each later one. */
+const photoSeason = (ds: readonly string[]): Steps =>
+  ds.map((date) => ({ date, value: Math.floor(days(ds[0], date) / 7) })).filter((x) => x.value > 0);
+
+function bodySteps(b: BodyCtx | undefined, since: string, today: string): Record<string, Steps> {
+  if (!b) return { 'weigh-ins': [], 'steady-weeks': [], 'photo-days': [], 'photo-season': [], 'flexed-relaxed': [] };
+  const full = photoDays(b, since, today);
+  return {
+    'weigh-ins': cumulative(weighInDays(b, since, today)),
+    'steady-weeks': steadyWeeks(b, since, today),
+    'photo-days': cumulative(full),
+    'photo-season': photoSeason(full),
+    'flexed-relaxed': cumulative(photoDays(b, since, today, true)),
+  };
+}
+
 // ---- Levels from steps ----
 
 /** For one family's steps (per lift when the family is), every level crossed and the first day it was. */
@@ -506,6 +575,7 @@ export function familySteps(entries: readonly SetEntry[], ctx: Context): Record<
     'patterns': patternWeeks(post),
     'cardio': cardioSteps(post),
     ...Object.fromEntries(TOGETHER_IDS.map((id) => [id, tog?.[id] ?? []])),
+    ...bodySteps(ctx.body, since, today),
   };
 }
 
@@ -544,7 +614,7 @@ export function achievements(entries: readonly SetEntry[], ctx: Context): Achiev
     } else tracks.push(track(def, value));
     if (def.repeat) { counts[def.id] = value; repeats[def.id] = xs.map((x) => x.date).sort(); }
     if (!value && ((def.needs === 'program' && !ctx.program) || (def.needs === 'cardio' && !entries.some(isCardioEntry))
-      || (def.needs === 'friends' && !ctx.together?.friends.length))) hidden.push(def.id);
+      || (def.needs === 'friends' && !ctx.together?.friends.length) || (def.needs === 'body' && !ctx.body))) hidden.push(def.id);
   }
   unlocks.sort((a, b) => a.date.localeCompare(b.date) || TIERS.indexOf(a.tier) - TIERS.indexOf(b.tier) || a.id.localeCompare(b.id));
   return { unlocks, tracks, counts, hidden, repeats };
@@ -559,7 +629,7 @@ const MEMO = new WeakMap<readonly SetEntry[], { n: number; f: number; ctx: Conte
 export function achievementsOf(entries: readonly SetEntry[], ctx: Context): Achievements {
   const hit = MEMO.get(entries);
   if (hit && hit.n === entries.length && hit.f === liftFactsVersion() && hit.ctx.today === ctx.today && hit.ctx.since === ctx.since
-    && hit.ctx.profile === ctx.profile && hit.ctx.program === ctx.program && hit.ctx.plans === ctx.plans && hit.ctx.together === ctx.together) return hit.v;
+    && hit.ctx.profile === ctx.profile && hit.ctx.program === ctx.program && hit.ctx.plans === ctx.plans && hit.ctx.together === ctx.together && hit.ctx.body === ctx.body) return hit.v;
   const v = achievements(entries, ctx);
   MEMO.set(entries, { n: entries.length, f: liftFactsVersion(), ctx, v });
   return v;
@@ -624,6 +694,10 @@ export function amount(id: string, n: number): string {
     case 'crew-streak': return `${plural(n, 'week')} in a row`;
     case 'crew-day': return plural(n, 'day');
     case 'full-house': return plural(n, 'friend');
+    case 'weigh-ins': return plural(n, 'weigh-in');
+    case 'steady-weeks': case 'photo-season': return plural(n, 'week');
+    case 'photo-days': return plural(n, 'photo day');
+    case 'flexed-relaxed': return plural(n, 'time');
     default: return String(n);
   }
 }
@@ -658,6 +732,11 @@ export function unlockText(u: Unlock, name: (uid: string) => string = () => 'a f
     case 'on-target': return `${amount(u.id, at)} on target`;
     case 'plates': return `${u.lift}: ${amount(u.id, at)}, ${plural(at, 'plate')} a side`;
     case 'bodyweight': return `${u.lift}: ${amount(u.id, at)}`;
+    case 'weigh-ins': return at === 1 ? 'Your first weigh-in' : amount(u.id, at);
+    case 'steady-weeks': return `${amount(u.id, at)} at a steady rate`;
+    case 'photo-days': return at === 1 ? 'Your first photo day' : amount(u.id, at);
+    case 'photo-season': return `${amount(u.id, at)} since your first photos`;
+    case 'flexed-relaxed': return 'All six poses, relaxed and flexed';
     default: return amount(u.id, at);
   }
 }
@@ -677,7 +756,7 @@ export function shareOf(a: Achievements, hidden: readonly string[] = []): Shared
   const top = new Map<string, Unlock>();
   for (const u of a.unlocks) {
     const g = DEF.get(u.id)!.group;
-    if (g === PRIVATE_GROUP || hidden.includes(g)) continue; // Together: never shared, whatever the switches say
+    if (isPrivate(g) || hidden.includes(g)) continue; // Together and Your body: never shared, whatever the switches say
     const k = `${u.id}:${u.lift ? liftKey(u.lift) : ''}`, t = top.get(k);
     if (!t || u.level > t.level || (u.level === t.level && u.date > t.date)) top.set(k, u);
   }
@@ -696,10 +775,20 @@ export function unlocksOf(xs: readonly SharedAch[]): Unlock[] {
   for (const x of xs.slice(0, MAX_SHARED)) {
     const d = typeof x?.i === 'string' ? DEF.get(x.i) : undefined;
     if (x.n !== undefined && (typeof x.n !== 'string' || !x.n.trim() || Array.from(x.n).length > NAME_MAX)) continue;
-    if (!d || d.group === PRIVATE_GROUP || typeof x.d !== 'string' || !Number.isInteger(x.l) || x.l < 0 || x.l >= d.levels.length || !/^\d{4}-\d{2}-\d{2}$/.test(x.d) || !!d.perLift !== !!x.n) continue;
+    if (!d || isPrivate(d.group) || typeof x.d !== 'string' || !Number.isInteger(x.l) || x.l < 0 || x.l >= d.levels.length || !/^\d{4}-\d{2}-\d{2}$/.test(x.d) || !!d.perLift !== !!x.n) continue;
     out.push({ id: x.i, level: x.l, tier: d.levels[x.l].tier, date: x.d, value: 0, ...(x.n && { lift: x.n }) });
   }
   return out;
+}
+
+/**
+ * Your achievements without the private groups: what anything that leaves the phone is worked out from (the points your buddies
+ * show friends, domain/buddies/share), so Together's and Your body's rewards never show there either.
+ */
+export function withoutPrivate(a: Achievements): Achievements {
+  const pub = (id: string) => !isPrivate(DEF.get(id)?.group ?? '');
+  const keep = <T,>(r: Record<string, T>) => Object.fromEntries(Object.entries(r).filter(([id]) => pub(id)));
+  return { unlocks: a.unlocks.filter((u) => pub(u.id)), tracks: a.tracks.filter((t) => pub(t.id)), counts: keep(a.counts), hidden: a.hidden, repeats: keep(a.repeats) };
 }
 
 /** For a friend's feed card and page: silver and up only (owner Q6), so a new friend's first bronzes don't fill the feed. */

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { achievementsOf, gained, highest, togetherOf, type Achievements, type Context, type Unlock } from '../domain/achievements';
+import { achievementsOf, gained, highest, togetherOf, type Achievements, type BodyCtx, type Context, type Unlock } from '../domain/achievements';
 import type { Profile } from '../domain/profile';
 import type { DayPlan, Program } from '../domain/program';
 import type { SetEntry } from '../domain/types';
@@ -31,13 +31,14 @@ export type AchStart = ReturnType<typeof useAchStart>;
 interface Ctx {
   since: string | null; profile: Profile; program: Program | null; plans: readonly DayPlan[];
   /** Your friends' windows and the ledger, and how each friend is said (state/useTogether): signed in only. */ together?: Together;
+  /** Your weigh-ins and photos, for Your body: only these screens read them, never the recap or the summary. */ body?: BodyCtx;
   /** Opens the Achievements page at a family (a line tapped on Today, the finish card). */ onOpen?: (id: string, lift?: string) => void;
   /** Shows or keeps a group from friends: only for the person whose account publishes the summary. */ onShare?: (group: string, on: boolean) => void;
 }
 const AchCtx = createContext<Ctx | null>(null);
 
-export function AchProvider({ since, profile, program, plans, together, onOpen, onShare, children }: Ctx & { children: ReactNode }) {
-  const v = useMemo(() => ({ since, profile, program, plans, together, onOpen, onShare }), [since, profile, program, plans, together, onOpen, onShare]);
+export function AchProvider({ since, profile, program, plans, together, body, onOpen, onShare, children }: Ctx & { children: ReactNode }) {
+  const v = useMemo(() => ({ since, profile, program, plans, together, body, onOpen, onShare }), [since, profile, program, plans, together, body, onOpen, onShare]);
   return <AchCtx.Provider value={v}>{children}</AchCtx.Provider>;
 }
 
@@ -54,7 +55,7 @@ export function useAchShare(): { hidden: readonly string[]; onShare?: (group: st
 export const useAchSince = (): string | null => useContext(AchCtx)?.since ?? null;
 
 const contextOf = (c: Ctx & { since: string }, today: string): Context =>
-  ({ profile: c.profile, today, since: c.since, program: c.program, plans: c.plans, ...(c.together && { together: c.together.ctx }) });
+  ({ profile: c.profile, today, since: c.since, program: c.program, plans: c.plans, ...(c.together && { together: c.together.ctx }), ...(c.body && { body: c.body }) });
 
 /** Achievements for this log on `today`; null until the start day is read, and outside a person's screens. */
 export function useAchievements(entries: readonly SetEntry[], today: string): Achievements | null {

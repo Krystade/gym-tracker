@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { comparePair, coverCrop, fitSize, photoId, relaxedIfOld, seeds, shotName, SHOTS, timeline, weightNear, type PhotoMeta, type Pose, type Variant } from './photos';
+import { comparePair, coverCrop, fitSize, lastOf, lightVs, meanLuma, photoId, relaxedIfOld, seeds, shotName, SHOTS, timeline, weightNear, type PhotoMeta, type Pose, type Variant } from './photos';
 
 const m = (date: string, pose: Pose, variant: Variant = 'relaxed'): PhotoMeta => ({ id: photoId(date, pose, variant), date, pose, variant, width: 900, height: 1600, addedAt: `${date}T08:00:00Z` });
 
@@ -77,5 +77,23 @@ describe('photoDate', () => {
     expect(photoDate('library', '2026-08-01', '2026-09-30')).toBe('2026-08-01');
     expect(photoDate('library', '2026-10-05', '2026-09-30')).toBeNull();
     expect(photoDate('library', '', '2026-09-30')).toBe('2026-09-30');
+  });
+});
+
+describe('the ghost and the same-light check', () => {
+  it('the ghost is the shot’s latest photo, that pose and variant only', () => {
+    const ms = [m('2026-10-01', 'front'), m('2026-10-15', 'front'), m('2026-10-20', 'front', 'flexed'), m('2026-10-22', 'side')];
+    expect(lastOf(ms, { pose: 'front', variant: 'relaxed' })?.date).toBe('2026-10-15');
+    expect(lastOf(ms, { pose: 'front', variant: 'flexed' })?.date).toBe('2026-10-20');
+    expect(lastOf(ms, { pose: 'back', variant: 'relaxed' })).toBeNull();
+  });
+  it('brightness is the mean luma; more than 25 % off last time is said', () => {
+    expect(meanLuma([255, 255, 255, 255, 0, 0, 0, 255])).toBeCloseTo(127.5, 5);
+    expect(meanLuma([])).toBe(0);
+    expect(lightVs(100, 100)).toBeNull();
+    expect(lightVs(76, 100)).toBeNull();
+    expect(lightVs(74, 100)).toBe('darker');
+    expect(lightVs(126, 100)).toBe('brighter');
+    expect(lightVs(50, 2)).toBeNull();
   });
 });

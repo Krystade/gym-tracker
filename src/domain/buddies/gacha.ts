@@ -1,4 +1,5 @@
 import { INCOME } from './points';
+import { pointsAt } from './rewards';
 import { POOL, type Banner, type Rarity } from './roster';
 
 // Pulls, tickets and choosing (plan §16.5, §16.7 with §15.4's odds, pity and refunds; owner 2026-10-28: either banner can
@@ -18,11 +19,18 @@ export const REFUND = [0.2, 0.3, 0.4, 0.5, 0.6] as const;
 export const STARTERS = 3;
 
 /** The pace prices are set for: the owner's own, from his log (2026-10-29: 1.23 sessions a week over 26 weeks, about 10
- *  working sets each), owning everything in about 26 weeks. A goal week 85% of weeks and about 15 achievement points a week. */
-export const TARGET = { weeks: 26, sessionsPerWeek: 1.2, setsPerSession: 10, goalWeekShare: 0.85, achievementPointsPerWeek: 15 } as const;
+ *  working sets each), owning everything in about 26 weeks. A goal week 85% of weeks and about 15 achievement points a week.
+ *  Your body's two paying families on top (owner 2026-10-29): weighing in about 4 days a week, a photo day every 2 weeks. */
+export const TARGET = {
+  weeks: 26, sessionsPerWeek: 1.2, setsPerSession: 10, goalWeekShare: 0.85, achievementPointsPerWeek: 15, weighInsPerWeek: 4, photoDaysPerWeek: 0.5,
+} as const;
+/** Points a week Weigh-ins and Photo days pay at TARGET's pace: the levels they reach in TARGET's weeks, spread over them. */
+export const bodyPointsPerWeek = (): number =>
+  (pointsAt('weigh-ins', TARGET.weighInsPerWeek * TARGET.weeks) + pointsAt('photo-days', TARGET.photoDaysPerWeek * TARGET.weeks)) / TARGET.weeks;
 /** Points a week at TARGET's pace (the income domain/buddies/points pays; no cardio). */
 export const targetIncome = (): number =>
-  TARGET.sessionsPerWeek * (TARGET.setsPerSession * INCOME.set + INCOME.session) + TARGET.goalWeekShare * INCOME.goalWeek + TARGET.achievementPointsPerWeek;
+  TARGET.sessionsPerWeek * (TARGET.setsPerSession * INCOME.set + INCOME.session) + TARGET.goalWeekShare * INCOME.goalWeek + TARGET.achievementPointsPerWeek
+  + bodyPointsPerWeek();
 
 /** Relative prices, scaled to TARGET: a pull, then choosing common → legendary (saving up to pick costs about 2–3× what
  *  gambling does). */

@@ -4,7 +4,7 @@ import { addDays } from '../analytics';
 import { defaultProfile } from '../profile';
 import type { Flag, SetEntry } from '../types';
 import { earned, INCOME } from './points';
-import { awards, POINTS, rewardOf, TICKETS } from './rewards';
+import { awards, POINTS, rewardOf, TICKETS, UNPAID } from './rewards';
 import { ACCESSORIES, BUDDIES, CREDITS, RARITIES, defaultName } from './roster';
 import { asDay, countsFrom, startDay } from './start';
 import { bestStat, lvOf, statLevel, statsOf, trainingOf, TRAIT_TENTHS, XP } from './stats';
@@ -102,14 +102,19 @@ describe('stats', () => {
 });
 
 describe('rewards and points', () => {
-  it('every gold and platinum in DEFS has its tickets, and nothing else does', () => {
-    const want = DEFS.flatMap((d) => d.levels.filter((l) => l.tier === 'gold' || l.tier === 'platinum').map((l) => `${d.id}:${l.tier}`));
+  it('every gold and platinum in DEFS has its tickets, and nothing else does (Your body’s unpaid families none)', () => {
+    const want = DEFS.filter((d) => !UNPAID.has(d.id)).flatMap((d) => d.levels.filter((l) => l.tier === 'gold' || l.tier === 'platinum').map((l) => `${d.id}:${l.tier}`));
     expect(Object.keys(TICKETS).sort()).toEqual([...new Set(want)].sort());
     expect(Object.values(TICKETS).every((n) => [1, 2, 3, 5, 8].includes(n))).toBe(true);
   });
   it('starter, bronze and silver give points; gold and platinum tickets only', () => {
     expect(rewardOf('sessions', 'bronze')).toEqual({ points: POINTS.bronze, tickets: 0 });
     expect(rewardOf('best-run', 'platinum')).toEqual({ points: 0, tickets: 8 });
+    // Your body: Weigh-ins and Photo days pay like any family; the rest of the group never does (owner 2026-10-29).
+    expect(rewardOf('weigh-ins', 'bronze')).toEqual({ points: POINTS.bronze, tickets: 0 });
+    expect(rewardOf('photo-days', 'platinum').tickets).toBeGreaterThan(0);
+    expect([...UNPAID].sort()).toEqual(DEFS.filter((d) => d.group === 'body' && d.id !== 'weigh-ins' && d.id !== 'photo-days').map((d) => d.id).sort());
+    for (const id of UNPAID) for (const t of ['starter', 'bronze', 'silver', 'gold', 'platinum'] as const) expect(rewardOf(id, t)).toEqual({ points: 0, tickets: 0 });
   });
   it('only unlocks from the start pay; repeats pay each time', () => {
     const a: Achievements = {

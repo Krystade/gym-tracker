@@ -1,4 +1,4 @@
-import type { Achievements } from '../achievements';
+import { withoutPrivate, type Achievements } from '../achievements';
 import { ledgerOf, type Spend } from './gacha';
 import type { BuddyPrefsMap, Lead } from './kept';
 import { earned } from './points';
@@ -7,7 +7,7 @@ import { statsOf, type Training } from './stats';
 
 // What friends see of your buddies (plan §16.8, stage 6): the `bud` field of your Compare summary (domain/compare), which a
 // friend already reads once on their page, so it costs no read of its own. Your lead, your lifetime points earned (owner Q5: it
-// only rises with training, never the balance after pulls) and up to 40 buddies, each its Lv, its four stat numbers and what it
+// only rises with training, never the balance after pulls; the private groups' rewards left out) and up to 40 buddies, each its Lv, its four stat numbers and what it
 // wears. No name you gave it, no spends, no tickets. The rules check its shape (firestore.rules budOk); parseBud reads it again
 // as untrusted.
 
@@ -38,7 +38,7 @@ export function budOf(kept: BuddiesKeptLike, t: Training, ach: Achievements | nu
       e: SLOTS.map((s) => { const a = eq[s]; return a && l.owned.has(a) && ACCESSORY.get(a)?.slot === s ? a : null; }),
     };
   });
-  return { lead: lead.def.id, pts: Math.min(PTS_MAX, earned(t, ach).points), r };
+  return { lead: lead.def.id, pts: Math.min(PTS_MAX, earned(t, ach && withoutPrivate(ach)).points), r };
 }
 
 const isInt = (x: unknown, hi: number): x is number => Number.isInteger(x) && (x as number) >= 0 && (x as number) <= hi;

@@ -1,5 +1,6 @@
-import { amount, DEF, DEFS, GROUPS, closest, highest, plateLoad, PRIVATE_GROUP, tierWord, TIERS, unlockedOn, unlockText, type Achievements, type Def, type Tier, type Track, type Unlock } from '../domain/achievements';
+import { amount, DEF, DEFS, GROUPS, closest, highest, isPrivate, plateLoad, tierWord, TIERS, unlockedOn, unlockText, type Achievements, type Def, type Tier, type Track, type Unlock } from '../domain/achievements';
 import { useEffect, useRef } from 'react';
+import { UNPAID } from '../domain/buddies/rewards';
 import { weekRings, withList, type TogetherId } from '../domain/together';
 import type { SetEntry } from '../domain/types';
 import { useTogetherNames, useTogetherSeen } from '../state/useAchievements';
@@ -170,6 +171,16 @@ function TogetherFoot() {
   );
 }
 
+/** Your body's foot: what it reads, that it stays here, and whether it pays buddy points (owner 2026-10-29: the habit only). */
+function BodyFoot({ id, since, today }: { id: string; since: string; today: string }) {
+  return (
+    <p className="ach-foot">
+      Counting from {since === today ? 'today' : achDay(since, today)}: weigh-ins and photos from then on. Worked out on your phone
+      from your weigh-ins and photo dates; only you see these. {UNPAID.has(id) ? 'No buddy points: only Weigh-ins and Photo days pay them.' : 'Each level pays buddy points like any other.'}
+    </p>
+  );
+}
+
 /** Counting from the start: said once at the foot of the sheet and of each detail. */
 function Foot({ since, today }: { since: string; today: string }) {
   return (
@@ -185,6 +196,8 @@ export function AchievementsSheet({ a, today, since, onOpen, at }: { a: Achievem
   // Today's, the highest level of each (a first set at 315 is three plates, not one, two and three).
   const fresh = highest(unlockedOn(a, today));
   const next = closest(a, 3);
+  // The private groups shown (Together, Your body): said once at the foot.
+  const mine = GROUPS.filter((g) => isPrivate(g.id) && DEFS.some((d) => d.group === g.id && !a.hidden.includes(d.id))).map((g) => g.title);
   return (
     <div className="ach" ref={box}>
       <ul className="ach-tiers" aria-label="Earned by tier">
@@ -216,7 +229,7 @@ export function AchievementsSheet({ a, today, since, onOpen, at }: { a: Achievem
         );
       })}
       <Foot since={since} today={today} />
-      {DEFS.some((d) => d.group === PRIVATE_GROUP && !a.hidden.includes(d.id)) && <p className="ach-foot">Together: only you see these, never shared with anyone, whatever the switches say.</p>}
+      {mine.length > 0 && <p className="ach-foot">{mine.join(' and ')}: only you see these, never shared with anyone, whatever the switches say.</p>}
     </div>
   );
 }
@@ -388,10 +401,10 @@ export function AchievementDetail({ a, id, today, since, shown, onShare, entries
             <Levels d={d} t={ts[0]} unlocks={a.unlocks.filter((u) => u.id === id)} today={today} />
           </section>
         )}
-      {d.group === PRIVATE_GROUP && entries && id === 'full-house' && <HouseRings entries={entries} today={today} />}
-      {d.group === PRIVATE_GROUP && entries && <WithList id={id as TogetherId} entries={entries} today={today} />}
-      {onShare && d.group !== PRIVATE_GROUP && <ShareRow group={d.group} shown={shown !== false} onShare={onShare} />}
-      {d.group === PRIVATE_GROUP ? <TogetherFoot /> : <Foot since={since} today={today} />}
+      {d.group === 'together' && entries && id === 'full-house' && <HouseRings entries={entries} today={today} />}
+      {d.group === 'together' && entries && <WithList id={id as TogetherId} entries={entries} today={today} />}
+      {onShare && !isPrivate(d.group) && <ShareRow group={d.group} shown={shown !== false} onShare={onShare} />}
+      {d.group === 'together' ? <TogetherFoot /> : d.group === 'body' ? <BodyFoot id={id} since={since} today={today} /> : <Foot since={since} today={today} />}
     </div>
   );
 }
