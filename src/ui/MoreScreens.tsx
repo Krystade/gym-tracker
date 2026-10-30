@@ -47,7 +47,7 @@ export function MoreSubScreen({ at, store, profile, rawProfile, body, backup, cl
       {at === 'goal' ? <WeeklyGoal profile={profile} entries={store.entries} today={today} />
         : at === 'cycle' ? <CycleCard name={person.name} />
         : at === 'people' ? <PeopleCard people={people} />
-        : at === 'account' ? <AccountScreen cloud={cloud} people={people.people} store={store} body={body} onOpenFriends={onOpenFriends} />
+        : at === 'account' ? <AccountScreen cloud={cloud} people={people.people} store={store} body={body} profile={rawProfile} onOpenFriends={onOpenFriends} />
         : at === 'perside' ? <PerSideReview store={store} profile={profileId} onBack={onBack} />
         : at === 'review' ? (cloud.link && cloud.mine ? <BoardReview uid={cloud.link.uid} /> : <p className="muted">Sign in as the app’s owner to review the board.</p>)
         : at === 'notifications' ? <NotificationsCard signedIn={cloud.mine} goal={rawProfile.profile.weeklyGoal} entries={store.entries} onSignIn={() => onOpen('account')} />

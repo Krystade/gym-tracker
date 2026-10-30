@@ -49,6 +49,11 @@ export interface SetEntry {
   /** What the app suggested when this set was logged, and where: for comparing suggested with done. */
   target?: { weight: number | null; reps: number; sets: number }; // weight null: first session, no weight suggested
   gym?: string;
+  /**
+   * Where the visit this set began was, as codes only friends' phones can compare (domain/place): on a visit's first set, with
+   * Location for Together on. Never a place: no point or cell is kept anywhere.
+   */
+  loc?: string;
   /** A cardio machine session: weight 0, reps null, the `cardio` flag. */
   cardio?: CardioData;
   /** The person's own tags (see domain/tags): plain labels, shown with the set; nothing counts them. */

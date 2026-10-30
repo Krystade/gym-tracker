@@ -19,6 +19,7 @@ import { useFittedProfile } from '../state/useFittedProfile';
 import { useStatus } from '../state/useStatus';
 import { AchProvider, useAchStart } from '../state/useAchievements';
 import { useTogether } from '../state/useTogether';
+import { usePlace } from '../state/usePlace';
 import { achievementsOf } from '../domain/achievements';
 import type { SetEntry } from '../domain/types';
 import { useBox, useOwnBox, type Box } from '../state/box';
@@ -270,6 +271,8 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const openAch = useCallback((id?: string, lift?: string) => { setExercise(null); setTab('stats'); setAchAt({ id, lift }); window.scrollTo(0, 0); }, [setExercise, setTab]);
   // Together (plan §10): your friends' windows as Friends keeps them, and the ledger of what they showed. Signed in only.
   const together = useTogether(uid, store.entries, date, ach.since, rawProfile.profile.weeklyGoal);
+  // Location for Together, on in the profile: a visit's first set takes one rough fix, for its codes (state/usePlace).
+  usePlace(uid, store, rawProfile.profile.placeKey);
   // Push: the reminder and recap numbers, for the person whose account this is (signed out: this phone's subscription goes).
   // Achievements for the recap's count (the screens read theirs through AchProvider): a count only, Together's included, Your
   // body's not (the count leaves the phone with the recap).

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { addFriend, goto, openProgram } from './nav';
 import { audit, check, clean, lines, notched, renderCheck, TOP } from './layout';
 import { deloadLog, SIM_LIFTS, simDay } from '../src/domain/learn/deloadSim.sample';
-import { account, atGym, befriend, boardPost, iso, log, named, onBoard, ownerAccount, ping, put, rand, session, signedIn, Ts, verify, type Seeded } from './seed';
+import { account, atGym, befriend, boardPost, iso, log, named, onBoard, ownerAccount, ping, placed, put, rand, session, signedIn, Ts, verify, type Seeded } from './seed';
 import { convertedRows, pasteRows, toCsv as dupesCsv, TWINS } from './fixtures/dupes';
 import { friendLog, publish, summaryOf } from './fixtures/compare';
 import { sixWeeks, WED } from './fixtures/today';
@@ -1234,10 +1234,12 @@ test('Together: the line on a friend’s session, the group in your sheet, Train
   const gym = 'The Iron Den Strength Club Downtown';
   const bench = (d: number, m: number) => atGym(gym, session(at(d, 17, m), [['Bench Press', Array.from({ length: 10 }, (): [number, number] => [135, 8])]]));
   const since = iso(at(20, 12));
+  // Location for Together on for you and the two there with you: each visit's first set with its codes (domain/place).
+  const K = { me: 'memememememememememem1', f1: 'f1f1f1f1f1f1f1f1f1f1f2', f2: 'f2f2f2f2f2f2f2f2f2f2f3' }, AT = { latitude: 40.74844, longitude: -73.98566 };
   await Promise.all([
-    log(request, me, [...bench(1, 0), ...bench(0, 0)], { since }),
-    log(request, f1, [...bench(1, 4), ...bench(0, 4)], { since, goal: 2 }),
-    log(request, f2, [...bench(1, 8), ...bench(0, 8)], { since, goal: 2 }),
+    log(request, me, await placed([...bench(1, 0), ...bench(0, 0)], AT, K.me, [K.f1, K.f2]), { since }),
+    log(request, f1, await placed([...bench(1, 4), ...bench(0, 4)], AT, K.f1, [K.me]), { since, goal: 2, placeKey: K.f1 }),
+    log(request, f2, await placed([...bench(1, 8), ...bench(0, 8)], AT, K.f2, [K.me]), { since, goal: 2, placeKey: K.f2 }),
     log(request, f3, atGym('Gold Barn', session(at(0, 7), [['Barbell Squat', [[185, 5]]]])), { since, goal: 3 }),
   ]);
   await Promise.all([f1, f2, f3].map((f) => befriend(request, me, f)));

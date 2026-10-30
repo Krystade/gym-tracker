@@ -4,7 +4,12 @@ export type Tier = 1 | 2 | 3 | 4;
 export interface Profile { key: 'profile'; tiers: Record<Muscle, Tier>; weeklyGoal: number; targets: Record<Tier, [number, number]>; lowShare?: number; /** Tiers whose targets were set by hand; the rest fit the week (see domain/targets). */ custom?: Tier[];
   /** Cardio's priority: weekly minutes from CARDIO_TARGETS. Unset means 4 (none planned). */ cardioTier?: Tier;
   /** What the training is for (owner, 2026-10-20): unset means 'size', the default for growth. See goalOf. */ goal?: TrainingGoal;
-  /** Achievement groups kept from friends (domain/achievements GROUPS ids): unset, all shown. */ achHidden?: string[] }
+  /** Achievement groups kept from friends (domain/achievements GROUPS ids): unset, all shown. */ achHidden?: string[];
+  /**
+   * Location for Together (owner 2026-10-29): set while it's on, the random key friends' phones pair with theirs for place codes
+   * (domain/place). Friends read it with the rest of the profile; unset, off.
+   */
+  placeKey?: string }
 /** Share of weekly sets the builder may spend on priority 3–4 muscles while priority 1–2 still need sets. */
 export const DEFAULT_LOW_SHARE = 0.2;
 

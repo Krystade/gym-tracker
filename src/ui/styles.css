@@ -350,8 +350,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 /* Cycle phase: the likely phase, outlined only (no fill, no label); it isn't pressed until tapped. */
 .chip.predicted:not([aria-pressed='true']) { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .chips.cycle .chip { padding: 0 8px; } /* four phases on one line at 375px */
-.cycle-setting { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.cycle-setting h2 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.cycle-setting, .place-setting { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cycle-setting h2, .place-setting h2 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .cycle-who { display: block; font-size: var(--fs-sm); font-weight: 400; color: var(--muted); }
 .tag-editor { display: grid; gap: 8px; padding: 4px 12px 12px; background: var(--surface-2); border: 0; border-radius: var(--r-group); }
 .tag-list { list-style: none; margin: 0; padding: 0; }

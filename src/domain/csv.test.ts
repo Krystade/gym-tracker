@@ -144,6 +144,11 @@ describe('diffSets', () => {
     const back = mk(1, { restoredAt: 5 });
     expect(diffSets([back], parseCsv(toCsv([back]), 'backup').entries).same).toBe(1);
   });
+  it('a set with Together’s codes matches its row in a CSV (which carries none)', () => {
+    const placed = mk(1, { loc: 'AAAAAAAA.' });
+    expect(toCsv([placed])).not.toContain('AAAAAAAA');
+    expect(diffSets([placed], parseCsv(toCsv([placed]), 'backup').entries).same).toBe(1);
+  });
 });
 
 describe('edit times in the CSV (round 10)', () => {

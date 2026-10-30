@@ -1,5 +1,6 @@
 import { addDays, weekStart } from './analytics';
 import { isCardioEntry } from './cardio';
+import { parsePlace, samePlace, type Place } from './place';
 import type { SetEntry } from './types';
 
 // Together (achievements plan §10, owner 2026-10-22: yes to all ten). Six families about you and your friends, worked out on
@@ -10,10 +11,12 @@ import type { SetEntry } from './types';
 // - Counting starts at the later of the two starts (each profile's achievements start, domain/achievements `since`), so
 //   everyone starts at 0, and a pair counts from the same day on both phones. Days from before you were friends in the app
 //   count (they're in the window), provided both had started.
-// - Together: the same day, and visits (first to last set) that share 20 minutes or more, whatever gym each names: time
-//   decides it, not the gym (owner 2026-10-29). A gym of the same name (trimmed, spaces collapsed, case folded) on both only
-//   loosens it: each visit padded 10 minutes either side, as before. Only sets logged as they were done count for it: a set
-//   entered late, or with its time edited (`enteredAt`), never does. Sets an hour or more apart are two visits.
+// - Together: the same place and the same time (owner 2026-10-29: a friend at another gym at the same time wasn't with you).
+//   The place is each visit's codes (domain/place: Location for Together, on for both); the time, visits (first to last set,
+//   each padded 10 minutes either side) sharing 20 minutes or more. A visit without codes (location off on either phone, or
+//   no fix) never counts, nor does a place without the time. The gym each names is only said, never compared: two people at
+//   one gym may each have made their own. Only sets logged as they were done count for it: a set entered late, or with its
+//   time edited (`enteredAt`), never does. Sets an hour or more apart are two visits.
 // - Windows reach 8 weeks back, but nothing earned is taken away: what a window shows is kept in a ledger (the one stored
 //   thing, users/{uid}/private/together, only yours to read), a union, so two phones merge it without conflict. A friend
 //   removed or blocked keeps what you earned together ("a former friend"); nothing new comes from them.
@@ -69,51 +72,69 @@ function byDate(sets: readonly SetEntry[], from: string, to: string): Map<string
   return out;
 }
 
-/** A visit: its first and last live set (ms), and the gyms its sets name (gymKey → the name as first written). */
-interface Visit { s: number; e: number; gyms: Map<string, string> }
+/**
+ * A visit: its first and last live set (ms), the gyms its sets name (gymKey → the name as first written), and where it was (the
+ * codes its sets carry, normally its first set's; none: no fix, or location off).
+ */
+interface Visit { s: number; e: number; gyms: Map<string, string>; place: Place | null }
 /** A day's visits, whatever gym each set names (or none): first to last live set, split where sets are VISIT_GAP_MIN apart. */
 function visits(day: readonly SetEntry[]): Visit[] {
   const sets = day.filter((e) => trained(e) && live(e)).map((e) => ({ t: Date.parse(e.loggedAt!), e })).sort((a, b) => a.t - b.t);
   const out: Visit[] = [];
   let v: Visit | null = null;
   for (const { t, e } of sets) {
-    if (!v || t - v.e >= VISIT_GAP_MIN * MIN) out.push(v = { s: t, e: t, gyms: new Map() });
+    if (!v || t - v.e >= VISIT_GAP_MIN * MIN) out.push(v = { s: t, e: t, gyms: new Map(), place: null });
     v.e = t;
     const k = gymKey(e.gym);
     if (k && !v.gyms.has(k)) v.gyms.set(k, e.gym!.trim());
+    const p = e.loc === undefined ? null : parsePlace(e.loc);
+    if (p) v.place = v.place ? { c: new Set([...v.place.c, ...p.c]), n: new Set([...v.place.n, ...p.n]) } : p;
   }
   return out;
 }
 
 /**
  * Two people's sets on one day together: the gym (as yours names it, when yours names one) and when both were there (ms);
- * null if they weren't. Time decides it, never the gym (owner 2026-10-29: two people at one gym may each have made their own):
- * - any gym, or none: their visits (first to last set) share OVERLAP_MIN minutes or more, i.e. both logging sets through the
- *   same 20 minutes (about five sets each at the usual 2–4 minutes a set);
- * - a gym of the same name on both: the looser rule from before, each visit padded PAD_MIN either side, so a short visit or a
- *   friend arriving as you finish still counts. The name is an extra signal, not a requirement.
+ * null if they weren't. Both, always (owner 2026-10-29):
+ * - the place: both visits carry codes, and they're from one place (domain/place samePlace: the same cell or the next one);
+ * - the time: the visits, each padded PAD_MIN either side (you're there a little before your first set and after your last),
+ *   share OVERLAP_MIN minutes or more (the plan's Q1, owner yes): a short visit inside the other's still counts; a visit that
+ *   ended before the other's first set never does, however near.
  */
 export interface Met { gym?: string; from: number; to: number }
 export function togetherOn(mine: readonly SetEntry[], theirs: readonly SetEntry[]): Met | null {
   const a = visits(mine), b = visits(theirs), pad = PAD_MIN * MIN;
   let best: Met | null = null, most = 0;
   for (const v of a) for (const w of b) {
-    const shared = [...v.gyms.keys()].find((k) => w.gyms.has(k));
-    let from: number, to: number;
-    if (shared) {
-      const pf = Math.max(v.s, w.s) - pad, pt = Math.min(v.e, w.e) + pad;
-      if (pt - pf < OVERLAP_MIN * MIN) continue;
-      from = Math.max(pf, Math.min(v.s, w.s)); to = Math.min(pt, Math.max(v.e, w.e));
-    } else {
-      from = Math.max(v.s, w.s); to = Math.min(v.e, w.e);
-      if (to - from < OVERLAP_MIN * MIN) continue;
-    }
+    if (!v.place || !w.place || !samePlace(v.place, w.place)) continue;
+    const pf = Math.max(v.s, w.s) - pad, pt = Math.min(v.e, w.e) + pad;
+    if (pt - pf < OVERLAP_MIN * MIN) continue;
+    const from = Math.max(pf, Math.min(v.s, w.s)), to = Math.min(pt, Math.max(v.e, w.e));
     if (best && to - from <= most) continue;
     most = to - from;
-    const name = shared ? v.gyms.get(shared) : v.gyms.values().next().value;
+    const name = v.gyms.values().next().value;
     best = { ...(name && { gym: name }), from, to };
   }
   return best;
+}
+
+/** How fresh a set must be for its visit's fix to be taken now: logged on this phone a moment ago, never one a sync brought. */
+const FRESH_MS = 2 * MIN;
+/**
+ * The set a visit's place codes go on now (state/usePlace), with Location for Together on: the newest live set (working or
+ * cardio, as a visit counts them) logged in the last two minutes, when no set of its visit carries codes yet; else null.
+ * `visit` names the visit (its day and first set), so each is tried once.
+ */
+export function placeDue(entries: readonly SetEntry[], now: number): { set: SetEntry; visit: string } | null {
+  let last: SetEntry | null = null, at = -Infinity;
+  for (const e of entries) {
+    if (!trained(e) || !live(e)) continue;
+    const t = Date.parse(e.loggedAt!);
+    if (t > at && t >= now - FRESH_MS && t <= now + MIN) { last = e; at = t; }
+  }
+  if (!last) return null;
+  const { date } = last, v = visits(entries.filter((e) => e.date === date)).find((x) => x.s <= at && at <= x.e);
+  return v && !v.place ? { set: last, visit: `${date}|${v.s}` } : null;
 }
 
 /** The day a pair starts counting: the later of the two starts; null when either hasn't started. */

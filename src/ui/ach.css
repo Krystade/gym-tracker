@@ -40,6 +40,9 @@
 .ach-dh p { margin: 0; flex: 1 1 auto; min-width: 0; font-size: var(--fs-sub); line-height: 21px; color: var(--text-2); }
 
 .ach-foot { margin: 18px 0 4px; font-size: var(--fs-sm); line-height: 19px; color: var(--text-2); }
+/* Trained together without Location for Together: what turns it on, read before the rest of the foot. */
+.ach-place { color: var(--text); }
+.ach-place + .ach-foot { margin-top: 8px; }
 
 /* Under a lift card's PR line: what that set unlocked. Empty, it takes no room (it stays, so a screen reader hears lines come). */
 .ach-lines { display: grid; gap: 8px; }

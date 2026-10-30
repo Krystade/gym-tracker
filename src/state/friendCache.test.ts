@@ -375,11 +375,11 @@ describe('friend cache: a Crew line read from Firestore (refreshWindow)', () => 
       'users/jake/meta/profile': { items: { status: JSON.stringify('cutting') } },
     });
     const { from, to } = crewRange('2026-10-17');
-    expect(await refreshWindow(w.cloud, 'me', 'jake', from, to)).toEqual({ sets: [s('2026-09-20'), s('2026-10-15')], status: 'cutting', goal: 2, start: null, prs: {} });
+    expect(await refreshWindow(w.cloud, 'me', 'jake', from, to)).toEqual({ sets: [s('2026-09-20'), s('2026-10-15')], status: 'cutting', goal: 2, start: null, loc: null, prs: {} });
     expect(w.take()).toBe(4); // index, two months in one query, profile
     await flushFriendCache();
     resetFriendCacheForTests();
-    expect(await refreshWindow(w.cloud, 'me', 'jake', from, to)).toEqual({ sets: [s('2026-09-20'), s('2026-10-15')], status: 'cutting', goal: 2, start: null, prs: {} });
+    expect(await refreshWindow(w.cloud, 'me', 'jake', from, to)).toEqual({ sets: [s('2026-09-20'), s('2026-10-15')], status: 'cutting', goal: 2, start: null, loc: null, prs: {} });
     expect(w.log).toEqual([{ path: 'users/jake/meta/index', n: 1 }]);
     expect(peekFriendCache('me')?.windows.jake.basis).toEqual({ months: { '2026-09': 3, '2026-10': 4 }, meta: 5 });
   });

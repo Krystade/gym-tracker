@@ -142,6 +142,25 @@ describe('readFriendWindow', () => {
     }
   });
 
+  it('keeps their Location for Together key from the same read (null: off, or not a key); a window kept without one reads once more', async () => {
+    const w = world();
+    const KEY = 'benbenbenbenbenbenben2';
+    w.docs['users/b/meta/profile'] = { items: { profile: JSON.stringify({ weeklyGoal: 3, placeKey: KEY }) } };
+    const r = await readFriendWindow(w.cloud, 'b', FROM, TO);
+    expect([r.loc, r.goal]).toEqual([KEY, 3]);
+    w.take();
+    expect((await readFriendWindow(w.cloud, 'b', FROM, TO, { from: FROM, win: r, basis: r.basis })).loc).toBe(KEY);
+    expect(w.log).toEqual([{ path: 'users/b/meta/index', n: 1 }]);
+    const { loc: _none, ...old } = r;
+    w.take();
+    expect((await readFriendWindow(w.cloud, 'b', FROM, TO, { from: FROM, win: old, basis: r.basis })).loc).toBe(KEY);
+    expect(w.log).toEqual([{ path: 'users/b/meta/index', n: 1 }, { path: 'users/b/meta/profile', n: 1 }]);
+    for (const p of [{ weeklyGoal: 3 }, { placeKey: 'short' }, { placeKey: 42 }, null]) {
+      w.docs['users/b/meta/profile'] = { items: { profile: JSON.stringify(p) } };
+      expect((await readFriendWindow(w.cloud, 'b', FROM, TO)).loc).toBeNull();
+    }
+  });
+
   it('a window kept by an older version, with no start, reads their settings once more for it; a null start is kept', async () => {
     const w = world();
     const first = await readFriendWindow(w.cloud, 'b', FROM, TO);

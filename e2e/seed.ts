@@ -2,6 +2,7 @@ import { expect, type APIRequestContext, type Browser, type Page } from '@playwr
 import { goto } from './nav';
 import { DOCS, EMU_HOST, emu } from './emu';
 import { OWNERS } from '../src/cloud/owner';
+import { placeCodes } from '../src/domain/place';
 
 // Synthetic accounts put straight into the local emulators as an admin (rules don't apply), so a screen can be shown with a
 // full crew in seconds instead of logging every set through the UI. Synthetic users and numbers only.
@@ -82,9 +83,22 @@ export async function befriend(request: APIRequestContext, a: Seeded, b: Seeded,
   await put(request, `users/${b.uid}/friends/${a.uid}`, { since: now, via: 'request' });
 }
 
-export interface Set0 { id: string; date: string; seq: number; loggedAt: string; exercise: string; setNo: number; weight: number; reps: number | null; flags: string[]; source: string; gym?: string }
+export interface Set0 { id: string; date: string; seq: number; loggedAt: string; exercise: string; setNo: number; weight: number; reps: number | null; flags: string[]; source: string; gym?: string; loc?: string }
 /** Sets at a gym (the name the phone saves with each set). */
 export const atGym = (gym: string, sets: Set0[]): Set0[] => sets.map((x) => ({ ...x, gym }));
+/**
+ * Sets at a point, as a phone with Location for Together on writes them (state/usePlace): each day's first set carries its visit's
+ * codes, made from `mine` (their profile's key) with each friend's key in `theirs` (domain/place).
+ */
+export async function placed(sets: Set0[], at: { latitude: number; longitude: number }, mine: string, theirs: string[]): Promise<Set0[]> {
+  const out: Set0[] = [], seen = new Set<string>();
+  for (const x of sets) {
+    if (seen.has(x.date)) { out.push(x); continue; }
+    seen.add(x.date);
+    out.push({ ...x, loc: (await placeCodes(at.latitude, at.longitude, x.date, mine, theirs))! });
+  }
+  return out;
+}
 /** A session: each lift's sets, one every `gap` minutes from `start`. */
 export function session(start: Date, lifts: [string, [number, number][]][], gap = 3): Set0[] {
   const out: Set0[] = [];
@@ -100,13 +114,16 @@ export function session(start: Date, lifts: [string, [number, number][]][], gap 
 }
 
 /** Their log into their month documents (with the PR ids a phone writes there), their goal and status into their settings. */
-export async function log(request: APIRequestContext, who: Seeded, sets: Set0[], opts: { goal?: number; status?: string; prs?: Record<string, string[]>; /** Their achievements start day. */ since?: string } = {}) {
+export async function log(request: APIRequestContext, who: Seeded, sets: Set0[], opts: {
+  goal?: number; status?: string; prs?: Record<string, string[]>; /** Their achievements start day. */ since?: string;
+  /** Their Location for Together key (their profile's placeKey): on. */ placeKey?: string;
+} = {}) {
   const months = new Map<string, Set0[]>();
   for (const s of sets) months.set(s.date.slice(0, 7), [...(months.get(s.date.slice(0, 7)) ?? []), s]);
   const at = Date.now();
   for (const [m, ss] of months) await put(request, `users/${who.uid}/months/${m}`, { sets: ss, body: [], deleted: {}, updatedAt: at, prs: opts.prs?.[m] });
   const items: Record<string, string> = {};
-  if (opts.goal) items.profile = JSON.stringify({ weeklyGoal: opts.goal });
+  if (opts.goal || opts.placeKey) items.profile = JSON.stringify({ ...(opts.goal && { weeklyGoal: opts.goal }), ...(opts.placeKey && { placeKey: opts.placeKey }) });
   if (opts.status) items.status = JSON.stringify(opts.status);
   if (opts.since) items.achievements = JSON.stringify(opts.since);
   if (Object.keys(items).length) await put(request, `users/${who.uid}/meta/profile`, { items, updatedAt: at });

@@ -5,6 +5,7 @@ import type { DayPlan, Program } from '../domain/program';
 import type { SetEntry } from '../domain/types';
 import { useDb } from './profileDb';
 import type { Seen } from '../domain/together';
+import { isPlaceKey } from '../domain/place';
 import type { Together, TogetherNames } from './useTogether';
 
 // Achievements for the person whose screens these are (domain/achievements). The day they count from is kept once, the first time
@@ -50,6 +51,9 @@ export function useAchShare(): { hidden: readonly string[]; onShare?: (group: st
   const c = useContext(AchCtx);
   return useMemo(() => ({ hidden: c?.profile.achHidden ?? [], onShare: c?.onShare }), [c]);
 }
+
+/** Whether this profile has Location for Together on (Trained together needs it: domain/together). */
+export const usePlaceOn = (): boolean => isPlaceKey(useContext(AchCtx)?.profile.placeKey);
 
 /** The start day, or null before it is read (and outside a person's screens). */
 export const useAchSince = (): string | null => useContext(AchCtx)?.since ?? null;

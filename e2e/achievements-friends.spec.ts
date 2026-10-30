@@ -2,7 +2,7 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '@
 import { DOCS, FIRESTORE } from './emu';
 import { publish, summaryOf } from './fixtures/compare';
 import { goto } from './nav';
-import { account, atGym, befriend, iso, log, session, signedIn, type Seeded } from './seed';
+import { account, atGym, befriend, iso, log, placed, session, signedIn, type Seeded } from './seed';
 
 // Achievements with friends (plan stages 4-5, owner Q2-Q11): what a friend shows, from their Compare summary, on their page and,
 // silver and up on the day, beside their session in your feed; and a group you keep back, gone from yours. Synthetic only.
@@ -186,19 +186,24 @@ test('trained together: the line on their card, the family and who with on yours
   test.setTimeout(180_000);
   const [me, fr, c] = await Promise.all(['me', 'fr', 'cc'].map((n) => account(request, `${n}${Math.random().toString(36).slice(2, 8)}`)));
   const bench = (): [string, [number, number][]][] => [['Bench Press', Array.from({ length: 10 }, (): [number, number] => [135, 8])]];
+  // Location for Together on for all three: each visit's first set with its codes for the other two. (Only a friend who never signs
+  // in here gets a key in a seeded profile: a phone signing in can't store a profile that's only a key.)
+  const K = { me: 'memememememememememem1', fr: 'frfrfrfrfrfrfrfrfrfrf2', c: 'cccccccccccccccccccc_3' };
+  const GYM = { latitude: 40.74844, longitude: -73.98566 }, ACROSS_TOWN = { latitude: 40.68920, longitude: -74.04450 };
   await Promise.all([
-    log(request, me, atGym('Iron Den', session(at(0, 17, 0), bench())), { since: day(5) }),
-    // Their own gym, by another name (owner 2026-10-29: two people at one gym may each have made their own): time decides it.
-    log(request, fr, atGym('Her Gym', session(at(0, 17, 5), bench())), { since: day(5), goal: 2 }),
+    log(request, me, await placed(atGym('Iron Den', session(at(0, 17, 0), bench())), GYM, K.me, [K.fr, K.c]), { since: day(5) }),
+    // Their own gym, by another name (owner 2026-10-29: two people at one gym may each have made their own): the place decides it.
+    log(request, fr, await placed(atGym('Her Gym', session(at(0, 17, 5), bench())), GYM, K.fr, [K.me, K.c]), { since: day(5), goal: 2, placeKey: K.fr }),
     // Signing in, a phone takes the settings it finds (a goal seeded alone isn't a profile it can store: friends' only).
-    // C trains today too, at Iron Den, in the morning: a friend of both, with them never (the same gym at another time).
-    log(request, c, atGym('Iron Den', session(at(0, 9, 0), bench())), { since: day(5) }),
+    // C trains at the same time, at a gym of the same name across town: a friend of both, with them never (owner 2026-10-29).
+    log(request, c, await placed(atGym('Iron Den', session(at(0, 17, 0), bench())), ACROSS_TOWN, K.c, [K.me, K.fr]), { since: day(5) }),
   ]);
   await Promise.all([befriend(request, me, fr), befriend(request, me, c), befriend(request, fr, c)]);
 
   const page = await signedIn(browser, me, T);
   const card = crew(page).getByTestId(`crew-${fr.name}`);
-  await expect(card.locator('.fd-together')).toHaveText(new RegExp(`^Trained together · You and @${fr.name} at Iron Den, 5:05.?PM–5:27.?PM$`), { timeout: 20_000 });
+  // 5:00–5:27 and 5:05–5:32, each with its 10 minutes either side: both there from 5:00 to 5:32.
+  await expect(card.locator('.fd-together')).toHaveText(new RegExp(`^Trained together · You and @${fr.name} at Iron Den, 5:00.?PM–5:32.?PM$`), { timeout: 20_000 });
   await expect(crew(page).getByTestId(`crew-${c.name}`)).toContainText('Bench Press');
   await expect(crew(page).locator('.fd-together')).toHaveCount(1);
 

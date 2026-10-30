@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import { UNPAID } from '../domain/buddies/rewards';
 import { weekRings, withList, type TogetherId } from '../domain/together';
 import type { SetEntry } from '../domain/types';
-import { useTogetherNames, useTogetherSeen } from '../state/useAchievements';
+import { usePlaceOn, useTogetherNames, useTogetherSeen } from '../state/useAchievements';
 import { Icon, initials } from './icons';
 import { Medal, TIER_COLOUR } from './Medal';
 import './ach.css';
@@ -161,14 +161,21 @@ const tracksOf = (a: Achievements, d: Def): Track[] => {
   return ts.length ? ts : [{ id: d.id, value: 0, level: -1, next: d.levels[0].at }];
 };
 
-/** Together's foot: counted from the later of the two starts, from sets logged as they happened (owner 2026-10-22). */
-function TogetherFoot() {
-  return (
+/**
+ * Together's foot: counted from the later of the two starts, from sets logged as they happened (owner 2026-10-22). Above it, on the
+ * two families that need the same place, a line while your Location for Together is off: without it they can't count.
+ */
+function TogetherFoot({ id }: { id: string }) {
+  const placeOn = usePlaceOn();
+  return (<>
+    {!placeOn && (id === 'trained-together' || id === 'gym-crew') && (
+      <p className="ach-foot ach-place">Turn on Location for Together under More › Account and sync: sessions together count only in the same place at the same time.</p>
+    )}
     <p className="ach-foot">
       Counting from the later of your start and each friend's. A set entered afterwards doesn't count, and nothing is taken away
       if a friend later deletes theirs. Worked out on your phone from both logs; only you see these.
     </p>
-  );
+  </>);
 }
 
 /** Your body's foot: what it reads, that it stays here, and whether it pays buddy points (owner 2026-10-29: the habit only). */
@@ -404,7 +411,7 @@ export function AchievementDetail({ a, id, today, since, shown, onShare, entries
       {d.group === 'together' && entries && id === 'full-house' && <HouseRings entries={entries} today={today} />}
       {d.group === 'together' && entries && <WithList id={id as TogetherId} entries={entries} today={today} />}
       {onShare && !isPrivate(d.group) && <ShareRow group={d.group} shown={shown !== false} onShare={onShare} />}
-      {d.group === 'together' ? <TogetherFoot /> : d.group === 'body' ? <BodyFoot id={id} since={since} today={today} /> : <Foot since={since} today={today} />}
+      {d.group === 'together' ? <TogetherFoot id={id} /> : d.group === 'body' ? <BodyFoot id={id} since={since} today={today} /> : <Foot since={since} today={today} />}
     </div>
   );
 }

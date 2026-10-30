@@ -4,9 +4,10 @@ import { achievements, shareOf, unlocksOf, unlockText, DEF, type Context } from 
 import { summarize } from './compare';
 import { defaultProfile } from './profile';
 import {
-  decodeLedger, effective, encodeLedger, gymKey, hasNew, mergeLedgers, NO_LEDGER, pairStart, togetherDay, togetherOn, togetherSteps,
+  decodeLedger, effective, encodeLedger, gymKey, hasNew, mergeLedgers, NO_LEDGER, pairStart, placeDue, togetherDay, togetherOn, togetherSteps,
   weekRings, windowPairs, withList, type FriendSide, type Ledger, type Pair,
 } from './together';
+import { geohash, neighbours } from './place';
 import type { Flag, SetEntry } from './types';
 
 // Synthetic people and gyms only. Times are UTC; dates are the sets' own.
@@ -15,14 +16,15 @@ const day = (n: number) => addDays(MON, n);
 const TODAY = day(20); // a Sunday, three weeks in
 const START = MON;
 let seq = 0;
-interface O { gym?: string; ex?: string; flags?: Flag[]; enteredAt?: string; source?: string; cardio?: boolean }
+interface O { gym?: string; loc?: string; ex?: string; flags?: Flag[]; enteredAt?: string; source?: string; cardio?: boolean }
 /** One set at `hm` (HH:MM, UTC) on a day. */
 function set(date: string, hm: string, o: O = {}): SetEntry {
   const loggedAt = `${date}T${hm}:00.000Z`;
   return {
     id: `t|${date}|${++seq}`, date, seq: Date.parse(loggedAt), loggedAt, exercise: o.cardio ? 'Treadmill' : o.ex ?? 'Bench Press', setNo: seq,
     weight: o.cardio ? 0 : 135, reps: o.cardio ? null : 8, flags: o.cardio ? ['cardio'] : o.flags ?? [], source: o.source ?? 'app',
-    ...(o.gym !== undefined && { gym: o.gym }), ...(o.enteredAt && { enteredAt: o.enteredAt }), ...(o.cardio && { cardio: { seconds: 1200 } }),
+    ...(o.gym !== undefined && { gym: o.gym }), ...(o.loc !== undefined && { loc: o.loc }), ...(o.enteredAt && { enteredAt: o.enteredAt }),
+    ...(o.cardio && { cardio: { seconds: 1200 } }),
   };
 }
 /** A visit: a set every `gap` minutes from `hm`, `n` sets. */
@@ -30,7 +32,15 @@ function visit(date: string, hm: string, n: number, o: O = {}, gap = 4): SetEntr
   const [h, m] = hm.split(':').map(Number);
   return Array.from({ length: n }, (_, i) => { const t = h * 60 + m + i * gap; return set(date, `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`, o); });
 }
-const IRON = { gym: 'Iron Den' };
+/**
+ * A visit's codes at a point, as placeCodes lays them out ("<cells>.<neighbours>"), with each cell standing in for its code: every
+ * pair's codes are its cells under one key, so here everyone shares one (domain/place's own tests cover the keys).
+ */
+const here = (lat: number, lng: number) => { const c = geohash(lat, lng), code = (x: string) => `${x}_`; return `${code(c)}.${neighbours(c).map(code).join('')}`; };
+const IRON_AT = here(40.71280, -74.00600), PEAK_AT = here(40.73060, -73.93520);
+/** The cell east of Iron Den's (one gym on two cells' edge), and the one past it. */
+const NEXT_DOOR = here(40.71280, -74.00600 + 0.0014), TWO_OVER = here(40.71280, -74.00600 + 0.0028);
+const IRON = { gym: 'Iron Den', loc: IRON_AT };
 const friend = (uid: string, sets: SetEntry[], over: Partial<FriendSide> = {}): FriendSide =>
   ({ uid, start: START, goal: 2, sets, from: addDays(TODAY, -55), met: null, ...over });
 const together = (friends: FriendSide[], ledger: Ledger = NO_LEDGER) => ({ friends, ledger });
@@ -40,37 +50,47 @@ const unlocks = (mine: SetEntry[], c: Context, id: string) => achievements(mine,
 const steps = (mine: SetEntry[], friends: FriendSide[], ledger: Ledger = NO_LEDGER, since = START, goal = 2, today = TODAY) =>
   togetherSteps(effective(mine, since, goal, together(friends, ledger), today));
 
-describe('trained together: one day, 20 minutes, both live; the same gym only loosens it', () => {
-  it('the same gym at the same time counts, named as yours names it', () => {
-    const m = togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:10', 8, { gym: 'iron den' }));
-    expect(m?.gym).toBe('Iron Den');
-    expect(m!.to - m!.from).toBeGreaterThanOrEqual(20 * 60_000);
-  });
-  it('a gym’s name is compared trimmed, spaces collapsed, case folded', () => {
-    expect(gymKey('  Iron   DEN ')).toBe(gymKey('iron den'));
-    expect(togetherOn(visit(day(0), '18:00', 6, { gym: '  Iron   DEN ' }), visit(day(0), '18:00', 6, IRON))).not.toBeNull();
-  });
-  it('time decides, not the gym: the same 20 minutes counts whatever gym each named, or none (owner 2026-10-29)', () => {
-    // Two people at one gym who each made their own: 18:00–18:28 and 18:05–18:33 share 23 minutes.
-    const m = togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:05', 8, { gym: 'Her Gym' }));
-    expect(m).toEqual({ gym: 'Iron Den', from: Date.parse(`${day(0)}T18:05:00.000Z`), to: Date.parse(`${day(0)}T18:28:00.000Z`) });
-    expect(togetherOn(visit(day(0), '18:00', 8, { gym: 'Her Gym' }), visit(day(0), '18:05', 8, IRON))?.gym).toBe('Her Gym');
-    const none = togetherOn(visit(day(0), '18:00', 8), visit(day(0), '18:00', 8, { gym: ' ' }));
+describe('trained together: the same place and the same time, both live; neither alone (owner 2026-10-29)', () => {
+  it('the same place at the same time counts, whatever gym each named, said as yours names it', () => {
+    // Two people at one gym who each made their own: 18:00–18:28 and 18:05–18:33, each padded 10 minutes either side.
+    const m = togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:05', 8, { gym: 'Her Gym', loc: IRON_AT }));
+    expect(m).toEqual({ gym: 'Iron Den', from: Date.parse(`${day(0)}T18:00:00.000Z`), to: Date.parse(`${day(0)}T18:33:00.000Z`) });
+    expect(togetherOn(visit(day(0), '18:00', 8, { gym: 'Her Gym', loc: IRON_AT }), visit(day(0), '18:05', 8, IRON))?.gym).toBe('Her Gym');
+    const none = togetherOn(visit(day(0), '18:00', 8, { loc: IRON_AT }), visit(day(0), '18:00', 8, { gym: ' ', loc: IRON_AT }));
     expect(none).not.toBeNull();
     expect(none!.gym).toBeUndefined();
   });
-  it('the same gym at different times does not count', () => {
+  it('the same time at another place does not count, even at a gym of the same name (another branch)', () => {
+    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:00', 8, { gym: 'Peak', loc: PEAK_AT }))).toBeNull();
+    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:00', 8, { gym: 'iron den', loc: PEAK_AT }))).toBeNull();
+  });
+  it('location off on either side, or no fix: never counts, however long, the same gym name included', () => {
+    expect(togetherOn(visit(day(0), '18:00', 15, IRON), visit(day(0), '18:00', 15, { gym: 'Iron Den' }))).toBeNull();
+    expect(togetherOn(visit(day(0), '18:00', 15, { gym: 'Iron Den' }), visit(day(0), '18:00', 15, IRON))).toBeNull();
+    expect(togetherOn(visit(day(0), '18:00', 15, { gym: 'Iron Den' }), visit(day(0), '18:00', 15, { gym: 'Iron Den' }))).toBeNull();
+  });
+  it('codes are read as untrusted: one out of shape is no place', () => {
+    for (const loc of ['', '.', 'Iron Den', `${IRON_AT}.x`, IRON_AT.replace('.', ''), `${IRON_AT}!`, `${'A'.repeat(4000)}.`]) {
+      expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:00', 8, { gym: 'Iron Den', loc })), loc.slice(0, 20)).toBeNull();
+    }
+  });
+  it('the next cell is the same place (one gym on two cells’ edge), either way round; two cells over is not', () => {
+    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:00', 8, { loc: NEXT_DOOR }))).not.toBeNull();
+    expect(togetherOn(visit(day(0), '18:00', 8, { loc: NEXT_DOOR }), visit(day(0), '18:00', 8, IRON))).not.toBeNull();
+    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:00', 8, { loc: TWO_OVER }))).toBeNull();
+    expect(togetherOn(visit(day(0), '18:00', 8, { loc: TWO_OVER }), visit(day(0), '18:00', 8, IRON))).toBeNull();
+  });
+  it('the codes on any of a visit’s sets place it; a visit without them, the same day, stays unplaced', () => {
+    // Codes on the first set only, as the phone puts them; and a second visit that evening with none.
+    const mine = [...visit(day(0), '08:00', 6, IRON).map((e, i) => (i ? { ...e, loc: undefined } : e)), ...visit(day(0), '19:00', 6, { gym: 'Iron Den' })];
+    expect(togetherOn(mine, visit(day(0), '08:05', 6, IRON))).not.toBeNull();
+    expect(togetherOn(mine, visit(day(0), '19:05', 6, IRON))).toBeNull();
+  });
+  it('the same place at different times does not count', () => {
     expect(togetherOn(visit(day(0), '07:00', 8, IRON), visit(day(0), '18:00', 8, IRON))).toBeNull();
     expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:40', 8, IRON))).toBeNull();
-  });
-  it('without the same gym, it takes 20 minutes both logging sets: no padding', () => {
-    // 18:00–18:28 against 18:09–18:37: 19 minutes shared. At the same gym the padded rule counts it; elsewhere it does not.
-    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:09', 8, { gym: 'Peak' }))).toBeNull();
-    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:09', 8, IRON))).not.toBeNull();
-    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:08', 8, { gym: 'Peak' }))).not.toBeNull();
-    // A single set inside your visit is not 20 minutes of anything, unless it's at your gym.
-    expect(togetherOn(visit(day(0), '18:00', 8, IRON), [set(day(0), '18:10', { gym: 'Peak' })])).toBeNull();
-    expect(togetherOn(visit(day(0), '18:00', 8, IRON), [set(day(0), '18:10', IRON)])).not.toBeNull();
+    // Yours ended 18:28; theirs began 18:29: a minute apart is still apart.
+    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:29', 8, IRON))).toBeNull();
   });
   it('less than 20 minutes of overlap does not count; exactly 20 does (each visit 10 minutes either side)', () => {
     // One set each: spans 17:50–18:10 and 17:50–18:10 overlap 20 minutes; a minute later, 19.
@@ -79,6 +99,8 @@ describe('trained together: one day, 20 minutes, both live; the same gym only lo
     // Yours 18:00–18:20 (17:50–18:30), theirs 18:21–18:41 (18:11–18:51): 19 minutes.
     expect(togetherOn(visit(day(0), '18:00', 6, IRON), visit(day(0), '18:21', 6, IRON))).toBeNull();
     expect(togetherOn(visit(day(0), '18:00', 6, IRON), visit(day(0), '18:20', 6, IRON))).not.toBeNull();
+    // A single set inside your visit, at your place: 20 minutes of it.
+    expect(togetherOn(visit(day(0), '18:00', 8, IRON), [set(day(0), '18:10', IRON)])).not.toBeNull();
   });
   it('late-entered sets do not count, on either side, nor sets with an edited time or an import', () => {
     const late = { ...IRON, enteredAt: `${day(0)}T22:00:00.000Z` };
@@ -97,6 +119,10 @@ describe('trained together: one day, 20 minutes, both live; the same gym only lo
     expect(togetherOn(visit(day(0), '18:00', 6, { ...IRON, flags: ['warmup'] }), visit(day(0), '18:00', 6, IRON))).toBeNull();
     expect(togetherOn(visit(day(0), '18:00', 3, { ...IRON, cardio: true }), visit(day(0), '18:00', 6, IRON))).not.toBeNull();
   });
+  it('a visit’s gym is said as first written; names are compared trimmed, spaces collapsed, case folded', () => {
+    expect(gymKey('  Iron   DEN ')).toBe(gymKey('iron den'));
+    expect(togetherOn(visit(day(0), '18:00', 6, { gym: '  Iron   DEN ', loc: IRON_AT }), visit(day(0), '18:00', 6, IRON))?.gym).toBe('Iron   DEN');
+  });
   it('counts days, starter at 1 and bronze at 5, dated the fifth, with who and where', () => {
     const days = [0, 2, 4, 7, 9, 11];
     const mine = days.flatMap((d) => visit(day(d), '18:00', 6, IRON)), theirs = days.flatMap((d) => visit(day(d), '18:05', 6, IRON));
@@ -105,6 +131,26 @@ describe('trained together: one day, 20 minutes, both live; the same gym only lo
     expect(us[0].with).toEqual(['ana']);
     expect(us[0].gym).toBe('Iron Den');
     expect(unlockText(us[0], (u) => `@${u}_lifts`)).toBe('First session together: @ana_lifts, Iron Den');
+  });
+});
+
+describe('the set a visit’s fix goes on (placeDue)', () => {
+  const now = Date.parse(`${day(0)}T18:30:00.000Z`);
+  it('the newest live set logged in the last two minutes, when its visit has no codes yet; named by the visit', () => {
+    const mine = visit(day(0), '18:00', 8, { gym: 'Iron Den' }); // the last at 18:28
+    expect(placeDue(mine, now)).toEqual({ set: mine[7], visit: `${day(0)}|${Date.parse(`${day(0)}T18:00:00.000Z`)}` });
+    expect(placeDue(mine.slice(0, 1), Date.parse(`${day(0)}T18:01:00.000Z`))?.set).toBe(mine[0]);
+  });
+  it('none once a set of the visit has them, for an older set (a sync brought it), a late one, or a warm-up', () => {
+    const mine = visit(day(0), '18:00', 8, { gym: 'Iron Den' });
+    expect(placeDue(mine.map((e, i) => (i === 2 ? { ...e, loc: IRON_AT } : e)), now)).toBeNull();
+    expect(placeDue(mine, now + 3 * 60_000)).toBeNull();
+    expect(placeDue([...mine.slice(0, 7), { ...mine[7], enteredAt: `${day(0)}T18:28:30.000Z` }], now)).toBeNull();
+    expect(placeDue([set(day(0), '18:29', { flags: ['warmup'] })], now)).toBeNull();
+  });
+  it('an evening visit is its own: the morning’s codes don’t cover it', () => {
+    const mine = [...visit(day(0), '08:00', 6, IRON), ...visit(day(0), '18:20', 3, { gym: 'Iron Den' })];
+    expect(placeDue(mine, now)?.visit).toBe(`${day(0)}|${Date.parse(`${day(0)}T18:20:00.000Z`)}`);
   });
 });
 
@@ -266,14 +312,15 @@ describe('the ledger: what a window showed is kept', () => {
 describe('both phones get the same count from the same data', () => {
   /** Deterministic noise. */
   const rng = (seed: number) => { let s = seed >>> 0; return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 2 ** 32); };
-  const GYMS = ['Iron Den', 'iron den ', 'Peak', ''];
+  // Iron Den by two names, Peak, and Iron Den with location off on that phone.
+  const GYMS: O[] = [IRON, { gym: 'Her Gym', loc: IRON_AT }, { gym: 'Peak', loc: PEAK_AT }, { gym: 'Iron Den' }];
   function person(r: () => number, days: number): SetEntry[] {
     const out: SetEntry[] = [];
     for (let d = 0; d < days; d++) {
       if (r() < 0.45) continue;
       const g = GYMS[Math.floor(r() * GYMS.length)], h = 17 + Math.floor(r() * 3), mm = Math.floor(r() * 60);
       const late = r() < 0.15 ? `${day(d)}T23:00:00.000Z` : undefined;
-      out.push(...visit(day(d), `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`, 2 + Math.floor(r() * 8), { gym: g, ...(late && { enteredAt: late }) }, 2 + Math.floor(r() * 6)));
+      out.push(...visit(day(d), `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`, 2 + Math.floor(r() * 8), { ...g, ...(late && { enteredAt: late }) }, 2 + Math.floor(r() * 6)));
     }
     return out;
   }
