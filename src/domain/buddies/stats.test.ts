@@ -6,7 +6,8 @@ import type { Flag, SetEntry } from '../types';
 import { earned, INCOME } from './points';
 import { awards, POINTS, rewardOf, TICKETS, UNPAID } from './rewards';
 import { ACCESSORIES, BUDDIES, CREDITS, RARITIES, defaultName } from './roster';
-import { asDay, countsFrom, startDay } from './start';
+import { asDay, COUNT_FLOOR, countsFrom, startDay } from './start';
+import { ledgerOf, walletOf } from './gacha';
 import { bestStat, lvOf, statLevel, statsOf, trainingOf, TRAIT_TENTHS, XP } from './stats';
 
 // Synthetic sets only.
@@ -28,13 +29,30 @@ const lifter = (weeks: number, from = 0) => Array.from({ length: weeks }, (_, w)
 
 describe('start', () => {
   it('keeps the earliest real day of the phones’, else today; a bad value starts again', () => {
-    expect(startDay('2026-11-10', '2026-11-03', undefined, 'junk', '2026-11-07')).toBe('2026-11-03');
-    expect(startDay('2026-11-10', 42, '')).toBe('2026-11-10');
+    expect(startDay('2026-09-10', '2026-09-03', undefined, 'junk', '2026-09-07')).toBe('2026-09-03');
+    expect(startDay('2026-09-10', 42, '')).toBe('2026-09-10');
     expect(asDay('2026-1-1')).toBeUndefined();
   });
   it('a buddy counts from the day it joined, never before the start', () => {
     expect(countsFrom('2026-11-20', '2026-11-03')).toBe('2026-11-20');
     expect(countsFrom('2026-10-01', '2026-11-03')).toBe('2026-11-03');
+  });
+  it('owner 2026-10-30: every start is at most Oct 1, so sessions from then on pay and those before it still don’t', () => {
+    expect(COUNT_FLOOR).toBe('2026-10-01');
+    expect(startDay('2026-10-30')).toBe(COUNT_FLOOR); // a profile new today
+    expect(startDay('2026-10-30', '2026-10-22')).toBe(COUNT_FLOOR); // one that started counting after it
+    expect(startDay('2026-10-30', '2026-09-15')).toBe('2026-09-15'); // an earlier start is kept
+    const today = '2026-10-30', log = ['2026-09-29', '2026-09-30', '2026-10-01', '2026-10-15', '2026-10-29'].flatMap((d) => [set(d, 'Bench Press', 135, 8), set(d, 'Barbell Row', 95, 10)]);
+    const was = trainingOf(log, { start: '2026-10-22', today, profile }), now = trainingOf(log, { start: startDay(today, '2026-10-22'), today, profile });
+    expect(was.sessions.length).toBe(1);
+    expect(now.sessions.length).toBe(3); // Oct 1, 15 and 29; Sep 29 and 30 still pay nothing
+    expect(now.sets.every((d) => d >= COUNT_FLOOR)).toBe(true);
+    const gain = earned(now, null).points - earned(was, null).points;
+    expect(gain).toBe(2 * (2 * INCOME.set + INCOME.session));
+    // The balance is worked out (earned − spent): what was spent stays spent, nothing is paid twice, and it's never below 0.
+    const l = ledgerOf([]);
+    expect(walletOf(earned(now, null), l).points - walletOf(earned(was, null), l).points).toBe(gain);
+    expect(countsFrom('2026-10-22', startDay(today, '2026-10-22'))).toBe('2026-10-22'); // a buddy still counts from its join day
   });
 });
 

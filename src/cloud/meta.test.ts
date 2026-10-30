@@ -46,21 +46,32 @@ describe('the day achievements count from (owner 2026-10-21: everyone starts fro
   it('is kept once per profile: the first run’s day, never moved by a later run', async () => {
     expect(await boundDb('main').getAchStart()).toBeUndefined();
     expect(await readMeta(boundDb('main'))).not.toHaveProperty('achievements');
-    expect(await boundDb('main').startAchievements('2026-10-22')).toBe('2026-10-22');
-    expect(await boundDb('main').startAchievements('2026-10-23')).toBe('2026-10-22');
+    expect(await boundDb('main').startAchievements('2026-09-22')).toBe('2026-09-22');
+    expect(await boundDb('main').startAchievements('2026-09-23')).toBe('2026-09-22');
     expect(await boundDb('p2').getAchStart()).toBeUndefined();
-    expect((await readMeta(boundDb('main'))).achievements).toBe('2026-10-22');
+    expect((await readMeta(boundDb('main'))).achievements).toBe('2026-09-22');
   });
   it('comes down onto the phone', async () => {
-    await boundDb('main').startAchievements('2026-10-25');
-    await pull(boundDb('main'), { achievements: '2026-10-22' });
-    expect(await boundDb('main').getAchStart()).toBe('2026-10-22');
+    await boundDb('main').startAchievements('2026-09-25');
+    await pull(boundDb('main'), { achievements: '2026-09-22' });
+    expect(await boundDb('main').getAchStart()).toBe('2026-09-22');
   });
   it('a start that isn’t a day reads as none, and the next run starts again', async () => {
     await pull(boundDb('main'), { achievements: 'soon' });
     expect(await boundDb('main').getAchStart()).toBeUndefined();
-    expect(await boundDb('main').startAchievements('2026-10-24')).toBe('2026-10-24');
-    expect(await boundDb('main').getAchStart()).toBe('2026-10-24');
+    expect(await boundDb('main').startAchievements('2026-09-24')).toBe('2026-09-24');
+    expect(await boundDb('main').getAchStart()).toBe('2026-09-24');
+  });
+  it('owner 2026-10-30: a start after Oct 1 is brought back to it on the next run, both kinds, and a sync keeps it there', async () => {
+    const db = boundDb('main');
+    await pull(db, { achievements: '2026-10-22', 'buddy-start': '2026-10-22' }); // as kept by an earlier build
+    expect(await db.startAchievements('2026-10-30')).toBe('2026-10-01');
+    expect(await db.startBuddies('2026-10-30')).toBe('2026-10-01');
+    const m = await readMeta(db);
+    expect([m.achievements, m['buddy-start']]).toEqual(['2026-10-01', '2026-10-01']);
+    await pull(db, { achievements: '2026-10-22', 'buddy-start': '2026-10-22' }); // another phone's later day
+    expect([await db.getAchStart(), await db.getBuddyStart()]).toEqual(['2026-10-01', '2026-10-01']);
+    expect(await boundDb('p2').startBuddies('2026-11-05')).toBe('2026-10-01'); // a profile new after it
   });
 });
 
@@ -92,7 +103,7 @@ describe('settings a sync saves onto this phone (round 10)', () => {
   }
   /** Another phone's copy of each: a string retyped, the active gym switched, a field added to the rest. */
   const theirsOf = (base: MetaItems) => Object.fromEntries(Object.entries(base).map(([k, v]) =>
-    [k, k === 'achievements' ? '2026-10-20' : typeof v === 'string' ? `${v}x` : k === 'gyms' ? { ...(v as object), active: 'g9' } : { ...(v as object), extra: 1 }]));
+    [k, k === 'achievements' ? '2026-09-20' : typeof v === 'string' ? `${v}x` : k === 'gyms' ? { ...(v as object), active: 'g9' } : { ...(v as object), extra: 1 }]));
   it('reads every kind the way readMeta does: an unchanged item is saved over, not left', async () => {
     const db = boundDb('main');
     await everyKind(db);
@@ -143,14 +154,14 @@ describe('Gym Buddies in the synced settings (plan §16 stage 2)', () => {
     await db.putBuddyPrefs(b0, { name: ' Rex ', equip: { aura: 'aura-mint' } }, 5);
     await db.putBuddyPrefs(b1, {}, 6);
     await db.putBuddyLead(b0, 7);
-    expect(await db.startBuddies('2026-10-28')).toBe('2026-10-28');
-    expect(await db.startBuddies('2026-10-29')).toBe('2026-10-28');
+    expect(await db.startBuddies('2026-09-28')).toBe('2026-09-28');
+    expect(await db.startBuddies('2026-09-29')).toBe('2026-09-28');
     expect(await db.addSpend(s1)).toBe(true);
     expect(await db.addSpend({ ...s1, got: b1 })).toBe(false); // never re-rolled
     const m = await readMeta(db);
     expect(m.buddies).toEqual({ [b0]: { name: 'Rex', equip: { aura: 'aura-mint' }, at: 5 }, [b1]: { at: 6 } });
     expect(m['buddy-lead']).toEqual({ id: b0, at: 7 });
-    expect(m['buddy-start']).toBe('2026-10-28');
+    expect(m['buddy-start']).toBe('2026-09-28');
     expect(m['spend:s1']).toEqual(s1);
     expect(await readBuddyMeta(db)).toEqual(Object.fromEntries(Object.entries(m).filter(([k]) => isBuddyKey(k))));
     expect(await readMeta(boundDb('p2'))).toEqual({});
@@ -158,12 +169,12 @@ describe('Gym Buddies in the synced settings (plan §16 stage 2)', () => {
   it('come down onto the phone, a spend beside the ones kept; an item that doesn’t read is skipped, never saved', async () => {
     const db = boundDb('p2');
     await db.addSpend(s1);
-    const r = await pull(db, { [`spend:${s2.id}`]: s2, 'buddy-lead': { id: b1, at: 9 }, 'buddy-start': '2026-10-20', buddies: { [b1]: { name: 'Bee', at: 3 } },
+    const r = await pull(db, { [`spend:${s2.id}`]: s2, 'buddy-lead': { id: b1, at: 9 }, 'buddy-start': '2026-09-20', buddies: { [b1]: { name: 'Bee', at: 3 } },
       'spend:s3': { ...s2, id: 's3', cost: -5 }, 'spend:s4': { ...s2 } });
     expect(r).toEqual({ pulled: 4, removed: 0, skipped: 2 });
     expect((await db.getSpends()).map((s) => s.id).sort()).toEqual(['s1', 's2']);
     expect(await db.getBuddyLead()).toEqual({ id: b1, at: 9 });
-    expect(await db.getBuddyStart()).toBe('2026-10-20');
+    expect(await db.getBuddyStart()).toBe('2026-09-20');
     expect(await db.getBuddyPrefs()).toEqual({ [b1]: { name: 'Bee', at: 3 } });
     expect(await boundDb('main').getSpends()).toEqual([]);
   });

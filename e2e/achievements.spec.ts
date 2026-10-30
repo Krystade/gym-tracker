@@ -4,7 +4,7 @@ import { goto } from './nav';
 // Achievements (plan stage 3; owner 2026-10-21: everyone starts from 0): what a set unlocks, said under its card, and a tap to
 // its levels on Stats. Counting starts on the profile's first open: a history from before it counts for nothing. Synthetic only.
 
-const TODAY = '2026-10-20'; // a Tuesday; the clock starts at 18:00
+const TODAY = '2026-09-15'; // a Tuesday, before the Oct 1 floor (domain/buddies/start COUNT_FLOOR); the clock starts at 18:00
 const H = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source,pain_region,pain_severity,logged_at';
 /** Twelve sessions of Bench Press at 225 × 5 before today. */
 const history = () => [H, ...Array.from({ length: 12 }, (_, i) => {

@@ -6,10 +6,10 @@ import { goto, openProgram } from './nav';
 
 const TODAY = '2026-10-20'; // a Tuesday; the clock starts at 18:00
 const H = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source,pain_region,pain_severity,logged_at';
-/** Six timed sessions before today, gaps between sets of 2½–5½ min (so a quiet time is learned), three lifts of three sets. */
+/** Six timed sessions before the Oct 1 floor (so they pay nothing), gaps between sets of 2½–5½ min (so a quiet time is learned), three lifts of three sets. */
 function timedLog(): string {
   const rows = [H], gaps = [150, 200, 260, 330, 230, 280, 190, 310];
-  ['2026-10-02', '2026-10-05', '2026-10-08', '2026-10-12', '2026-10-15', '2026-10-17'].forEach((d, k) => {
+  ['2026-09-16', '2026-09-19', '2026-09-22', '2026-09-24', '2026-09-27', '2026-09-30'].forEach((d, k) => {
     let t = Date.parse(`${d}T17:00:00Z`), i = k;
     for (const [lift, w, r] of [['Lat Pulldown', 140, 10], ['Cable Curl', 50, 12], ['Machine Chest Press', 150, 10]] as const) {
       for (let s = 1; s <= 3; s++) {

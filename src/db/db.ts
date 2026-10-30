@@ -16,7 +16,7 @@ import { replacements, stillTaken, type Replaced, type Taken } from '../domain/r
 import { cleanStatus } from '../domain/crew';
 import { parseBuddies, parseLead, parsePrefs, type BuddyPrefs, type BuddyPrefsMap, type Lead } from '../domain/buddies/kept';
 import { parseSpend, type Spend } from '../domain/buddies/gacha';
-import { asDay } from '../domain/buddies/start';
+import { asDay, floored } from '../domain/buddies/start';
 import { decodeLedger, encodeLedger, hasNew, mergeLedgers, type StoredLedger } from '../domain/together';
 
 const STORE = 'sets';
@@ -226,13 +226,16 @@ interface AchStart { key: 'achievements'; since: string }
 /** A kept start that is a day, else none (a bad synced value starts again rather than counting from nonsense). */
 const achDay = (r: unknown): string | undefined => { const v = (r as AchStart | undefined)?.since; return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined; };
 export const getAchStart = async (): Promise<string | undefined> => achDay(await (await db()).get('config', 'achievements'));
-/** The start kept, or `today` kept and returned if there's none yet: one transaction, so two open copies agree on one day. */
+/**
+ * The start kept, or `today` kept and returned if there's none yet: one transaction, so two open copies agree on one day. Either
+ * is kept no later than domain/buddies/start COUNT_FLOOR (owner 2026-10-30), and a sync keeps the earliest, so it stays there.
+ */
 export async function startAchievements(today: string): Promise<string> {
   const tx = (await db()).transaction('config', 'readwrite');
-  const had = achDay(await tx.store.get('achievements'));
-  if (!had) await tx.store.put({ key: 'achievements', since: today } satisfies AchStart);
+  const had = achDay(await tx.store.get('achievements')), day = floored(had ?? today);
+  if (day !== had) await tx.store.put({ key: 'achievements', since: day } satisfies AchStart);
   await tx.done;
-  return had ?? today;
+  return day;
 }
 
 /**
@@ -251,13 +254,13 @@ export async function putBuddyPrefs(id: string, p: Omit<BuddyPrefs, 'at'>, at = 
 export const getBuddyLead = async (): Promise<Lead | undefined> => parseLead(await (await db()).get('config', 'buddy-lead')) ?? undefined;
 export const putBuddyLead = async (id: string, at = Date.now()): Promise<void> => { await (await db()).put('config', { key: 'buddy-lead', id, at } satisfies Lead & { key: string }); };
 export const getBuddyStart = async (): Promise<string | undefined> => asDay((await (await db()).get('config', 'buddy-start'))?.since);
-/** The buddies' start kept, or `today` kept and returned if there's none yet (one transaction, like startAchievements). */
+/** The buddies' start kept, or `today` kept and returned if there's none yet; no later than COUNT_FLOOR, like startAchievements. */
 export async function startBuddies(today: string): Promise<string> {
   const tx = (await db()).transaction('config', 'readwrite');
-  const had = asDay((await tx.store.get('buddy-start'))?.since);
-  if (!had) await tx.store.put({ key: 'buddy-start', since: today });
+  const had = asDay((await tx.store.get('buddy-start'))?.since), day = floored(had ?? today);
+  if (day !== had) await tx.store.put({ key: 'buddy-start', since: day });
   await tx.done;
-  return had ?? today;
+  return day;
 }
 /** Every spend kept (each under its own id); one that doesn't read is left out. */
 export async function getSpends(): Promise<Spend[]> {
@@ -522,8 +525,9 @@ function metaRow(k: string): { store: string; key: string; get: (r: Row) => unkn
   if (k === 'program' || k.startsWith('day:')) return { store: 'program', key: k, ...whole };
   if (k.startsWith('settings:')) return { store: 'settings', key: k.slice(9), ...whole };
   if (k === 'tags') return { store: 'config', key: k, ...whole };
-  if (k === 'achievements') return { store: 'config', key: k, get: (r) => r?.since, put: (v) => ({ key: k, since: v }), del: () => null };
-  if (k === 'buddy-start') return { store: 'config', key: k, get: (r) => asDay(r?.since), put: (v) => (asDay(v) ? { key: k, since: v } : undefined), del: () => null };
+  // Both starts come down no later than COUNT_FLOOR (domain/buddies/start): another phone's later day never moves one back up.
+  if (k === 'achievements') return { store: 'config', key: k, get: (r) => r?.since, put: (v) => ({ key: k, since: asDay(v) ? floored(v as string) : v }), del: () => null };
+  if (k === 'buddy-start') return { store: 'config', key: k, get: (r) => asDay(r?.since), put: (v) => (asDay(v) ? { key: k, since: floored(v as string) } : undefined), del: () => null };
   if (k === 'buddy-lead') return { store: 'config', key: k, get: (r) => parseLead(r) ?? undefined, put: (v) => { const l = parseLead(v); return l ? { key: k, ...l } : undefined; }, del: () => null };
   if (k === 'buddies') {
     const item = (r: Row) => { const m = parseBuddies(r?.map); return Object.keys(m).length ? m : undefined; };
