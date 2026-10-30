@@ -74,10 +74,11 @@ export default defineConfig({
   use: { ...devices['iPhone 13 Mini'], viewport: { width: 375, height: 812 }, baseURL: `${origin}/`,
     // Every spec but e2e/walkthrough starts on a phone that has already seen the walkthrough.
     storageState: { cookies: [], origins: [{ origin, localStorage: [{ name: 'gym-tracker:walkthrough', value: 'done' }] }] } },
-  // Every spec in WebKit (the phone's engine); the layout audit in Chromium too, as the same 13 mini.
+  // Every spec in WebKit (the phone's engine); the layout audit in Chromium too, as the same 13 mini, and guided capture, whose
+  // recording only Chromium can make and play back here (WebKit on this machine has no MediaRecorder or video decoding).
   projects: [
     { name: 'webkit' },
-    { name: 'chromium', testMatch: /layout-audit\.spec\.ts$/, use: { browserName: 'chromium' } },
+    { name: 'chromium', testMatch: /(layout-audit|capture)\.spec\.ts$/, use: { browserName: 'chromium' } },
   ],
   webServer: [app, ...emulators],
 });

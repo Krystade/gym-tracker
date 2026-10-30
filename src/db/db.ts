@@ -1,10 +1,10 @@
-import { deleteDB, openDB, type IDBPDatabase, type IDBPObjectStore } from 'idb';
+import { deleteDB, openDB, type IDBPDatabase, type IDBPObjectStore, type IDBPTransaction } from 'idb';
 import type { SetEntry } from '../domain/types';
 import type { ExerciseSettings } from '../domain/progression';
 import type { Profile } from '../domain/profile';
 import type { DayPlan, Program } from '../domain/program';
 import { mergeDay, type BodyDay } from '../domain/body';
-import type { PhotoMeta } from '../domain/photos';
+import { relaxedIfOld, type PhotoMeta } from '../domain/photos';
 import type { BackupMark } from '../domain/backup';
 import { metaHash, type MetaItems, type Seen } from '../domain/cloud';
 import type { Gym } from '../domain/equipment';
@@ -37,8 +37,8 @@ export const setBlockedHandler = (fn: (() => void) | null) => { onBlocked = fn; 
 function db(id = current): Promise<IDBPDatabase> {
   const open = conns.get(id);
   if (open) return open;
-  const p: Promise<IDBPDatabase> = openDB(dbName(id), 9, {
-    upgrade(d, oldVersion) {
+  const p: Promise<IDBPDatabase> = openDB(dbName(id), 10, {
+    upgrade(d, oldVersion, _newVersion, tx) {
       if (oldVersion < 1) d.createObjectStore(STORE, { keyPath: 'id' }).createIndex('date', 'date');
       if (oldVersion < 2) d.createObjectStore('settings', { keyPath: 'key' });
       if (oldVersion < 3) d.createObjectStore('profile', { keyPath: 'key' });
@@ -51,6 +51,8 @@ function db(id = current): Promise<IDBPDatabase> {
       if (oldVersion < 8) d.createObjectStore('cycle', { keyPath: 'date' });
       // What a sync replaced on this phone, kept 30 days so it can be put back. See domain/replaced.
       if (oldVersion < 9) d.createObjectStore('replaced', { keyPath: 'key' });
+      // Photos relaxed and flexed (domain/photos): each one from before is relaxed, under `date:pose:relaxed`.
+      if (oldVersion >= 6 && oldVersion < 10) void relaxOldPhotos(tx);
     },
     blocked() { onBlocked?.(); },
     // A newer version of the app is upgrading the database: step aside, and reload to pick up the new code.
@@ -388,6 +390,21 @@ export async function finishCycleSync(uid: string, rev: number, pull: CycleDay[]
   const next: CycleConfig = { ...cfg, tracking: cfg.tracking ?? tracking, ...(same ? { synced: { uid, rev }, wiped: false } : {}) };
   await Promise.all([cf.put(next), tx.done]);
   return cfg.tracking == null && tracking != null;
+}
+
+/** In the upgrade's own transaction: each photo's meta and both its images move to the new id together, or none do. */
+async function relaxOldPhotos(tx: IDBPTransaction<unknown, string[], 'versionchange'>) {
+  const metas = tx.objectStore('photos'), blobs = tx.objectStore('photoBlobs');
+  for (const old of (await metas.getAll()) as PhotoMeta[]) {
+    const m = relaxedIfOld(old);
+    if (m.id === old.id) continue;
+    for (const kind of ['full', 'thumb']) {
+      const image: unknown = await blobs.get(`${old.id}:${kind}`);
+      if (image !== undefined) { await blobs.put(image, `${m.id}:${kind}`); await blobs.delete(`${old.id}:${kind}`); }
+    }
+    await metas.delete(old.id);
+    await metas.put(m);
+  }
 }
 
 export const getPhotoMetas = async (): Promise<PhotoMeta[]> => (await db()).getAll('photos');

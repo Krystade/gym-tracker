@@ -222,7 +222,7 @@ describe('db v5', () => {
 });
 
 describe('db v6', () => {
-  const meta = (date: string) => ({ id: `${date}:front`, date, pose: 'front' as const, width: 2, height: 3, addedAt: 'x' });
+  const meta = (date: string) => ({ id: `${date}:front:relaxed`, date, pose: 'front' as const, variant: 'relaxed' as const, width: 2, height: 3, addedAt: 'x' });
   it('upgrades v5 keeping every store, with no photos yet', async () => {
     const v5 = await openDB('gym-tracker', 5, { upgrade(d) {
       d.createObjectStore('sets', { keyPath: 'id' }).createIndex('date', 'date');
@@ -242,13 +242,13 @@ describe('db v6', () => {
     await putPhoto(meta('2026-09-01'), new Blob(['full-2']), new Blob(['t-2']));
     await putPhoto(meta('2026-09-02'), new Blob(['f']), new Blob(['t']));
     const metas = await getPhotoMetas();
-    expect(metas.map((x) => x.id).sort()).toEqual(['2026-09-01:front', '2026-09-02:front']);
-    expect(Object.keys(metas[0]).sort()).toEqual(['addedAt', 'date', 'height', 'id', 'pose', 'width']);
-    expect(await (await getPhotoBlob('2026-09-01:front', 'full'))!.text()).toBe('full-2');
-    expect(await (await getPhotoBlob('2026-09-01:front', 'thumb'))!.text()).toBe('t-2');
-    await deletePhoto('2026-09-01:front');
-    expect((await getPhotoMetas()).map((x) => x.id)).toEqual(['2026-09-02:front']);
-    expect(await getPhotoBlob('2026-09-01:front', 'full')).toBeUndefined();
+    expect(metas.map((x) => x.id).sort()).toEqual(['2026-09-01:front:relaxed', '2026-09-02:front:relaxed']);
+    expect(Object.keys(metas[0]).sort()).toEqual(['addedAt', 'date', 'height', 'id', 'pose', 'variant', 'width']);
+    expect(await (await getPhotoBlob('2026-09-01:front:relaxed', 'full'))!.text()).toBe('full-2');
+    expect(await (await getPhotoBlob('2026-09-01:front:relaxed', 'thumb'))!.text()).toBe('t-2');
+    await deletePhoto('2026-09-01:front:relaxed');
+    expect((await getPhotoMetas()).map((x) => x.id)).toEqual(['2026-09-02:front:relaxed']);
+    expect(await getPhotoBlob('2026-09-01:front:relaxed', 'full')).toBeUndefined();
   });
 });
 
@@ -279,6 +279,38 @@ describe('db v7', () => {
     expect(await getBackupMark()).toEqual({ at: '2026-10-29T12:00:00.000Z', photos: 4 });
     await addTombstone('x'); await addTombstone('y'); await addTombstone('x');
     expect(await getTombstones()).toEqual(new Set(['x', 'y']));
+  });
+});
+
+describe('db v10: photos relaxed and flexed', () => {
+  it('upgrades v9 moving each photo, meta and both images, to `date:pose:relaxed`; nothing is left under the old id', async () => {
+    const v9 = await openDB('gym-tracker', 9, { upgrade(d) {
+      d.createObjectStore('sets', { keyPath: 'id' }).createIndex('date', 'date');
+      for (const [s, k] of [['settings', 'key'], ['profile', 'key'], ['program', 'key'], ['body', 'date'], ['config', 'key'], ['cycle', 'date'], ['replaced', 'key']]) d.createObjectStore(s, { keyPath: k });
+      d.createObjectStore('photos', { keyPath: 'id' }).createIndex('date', 'date');
+      d.createObjectStore('photoBlobs');
+    } });
+    const old = (date: string, pose: string) => ({ id: `${date}:${pose}`, date, pose, width: 3, height: 4, addedAt: 'x' });
+    const image = (s: string) => ({ type: 'image/jpeg', data: new TextEncoder().encode(s).buffer });
+    for (const [date, pose] of [['2026-09-01', 'front'], ['2026-09-01', 'back'], ['2026-09-20', 'front']]) {
+      await v9.put('photos', old(date, pose));
+      await v9.put('photoBlobs', image(`full ${date} ${pose}`), `${date}:${pose}:full`);
+      await v9.put('photoBlobs', image(`thumb ${date} ${pose}`), `${date}:${pose}:thumb`);
+    }
+    v9.close();
+    const metas = (await getPhotoMetas()).sort((a, b) => a.id.localeCompare(b.id));
+    expect(metas).toEqual([
+      { ...old('2026-09-01', 'back'), id: '2026-09-01:back:relaxed', variant: 'relaxed' },
+      { ...old('2026-09-01', 'front'), id: '2026-09-01:front:relaxed', variant: 'relaxed' },
+      { ...old('2026-09-20', 'front'), id: '2026-09-20:front:relaxed', variant: 'relaxed' },
+    ]);
+    expect(await (await getPhotoBlob('2026-09-01:back:relaxed', 'full'))!.text()).toBe('full 2026-09-01 back');
+    expect(await (await getPhotoBlob('2026-09-20:front:relaxed', 'thumb'))!.text()).toBe('thumb 2026-09-20 front');
+    expect(await getPhotoBlob('2026-09-01:front', 'full')).toBeUndefined();
+    resetDbForTests();
+    const raw = await openDB('gym-tracker', 10);
+    expect((await raw.getAllKeys('photoBlobs')).sort()).toEqual(metas.flatMap((m) => [`${m.id}:full`, `${m.id}:thumb`]).sort());
+    raw.close();
   });
 });
 

@@ -3,7 +3,7 @@ import { isFlag, type SetEntry } from './types';
 import { editStamp, lifeStamp, metaHash, type MetaItems } from './cloud';
 import { isBuddyKey, mergeBuddyMeta } from './buddies/kept';
 import { importOverlap } from './duplicates';
-import { photoId, POSES, type PhotoMeta } from './photos';
+import { photoId, POSES, relaxedIfOld, VARIANTS, type PhotoMeta } from './photos';
 import type { Taken } from './replaced';
 
 // The backup file (owner 2026-10-29, in place of the private GitHub backup): one profile's sets, deletes, body days, Gym
@@ -70,12 +70,16 @@ function readBody(x: unknown): BodyDay | null {
   }
   return d;
 }
+/** A photo; one from a file made before variants (no variant, id `date:pose`) is relaxed, as db v10 made it on the phone. */
 function readPhoto(x: unknown): BackupPhoto | null {
   if (!obj(x) || !obj(x.meta) || !str(x.type) || !str(x.full) || !str(x.thumb)) return null;
   const m = x.meta;
-  const ok = str(m.date) && DAY.test(m.date) && (POSES as readonly unknown[]).includes(m.pose) && m.id === photoId(m.date, m.pose as PhotoMeta['pose'])
-    && num(m.width) && num(m.height) && str(m.addedAt);
-  return ok ? { meta: { id: m.id as string, date: m.date as string, pose: m.pose as PhotoMeta['pose'], width: m.width as number, height: m.height as number, addedAt: m.addedAt as string }, type: x.type, full: x.full, thumb: x.thumb } : null;
+  if (!str(m.date) || !DAY.test(m.date) || !(POSES as readonly unknown[]).includes(m.pose) || !num(m.width) || !num(m.height) || !str(m.addedAt)) return null;
+  const pose = m.pose as PhotoMeta['pose'];
+  const old = m.variant === undefined && m.id === `${m.date}:${pose}`;
+  if (!old && !((VARIANTS as readonly unknown[]).includes(m.variant) && m.id === photoId(m.date, pose, m.variant as PhotoMeta['variant']))) return null;
+  const meta = relaxedIfOld({ id: m.id as string, date: m.date, pose, ...(old ? {} : { variant: m.variant as PhotoMeta['variant'] }), width: m.width, height: m.height, addedAt: m.addedAt });
+  return { meta, type: x.type, full: x.full, thumb: x.thumb };
 }
 
 /** The file read, each part as untrusted: what doesn't read is left out and counted in `skipped`. */

@@ -254,28 +254,30 @@ describe('learn/schedule: the week', () => {
     // Sore: a synthetic lifter (learn/recovery fitted) with its upper day done this cycle and the legs to failure yesterday.
     const { entries: sim } = simulateRecovery(1, { sessions: 60, failFrac: 0.3 });
     const SIM_MON = nextMonday(addD(sim.at(-1)!.date, 1)), simPlans = [plan(sim.at(-1)!.date, 0)];
-    for (const lifted of ['none', 'daily', 'sore'] as const) for (let k = 0; k < 7; k++) for (const goal of [1, 2, 3, 4, 5, 6, 7]) {
+    for (const lifted of ['none', 'daily', 'sore'] as const) for (let k = 0; k < 7; k++) {
       const today = addD(lifted === 'sore' ? SIM_MON : MON, k);
       // Daily: a session every day of the week before today (k done).
       const week = lifted === 'daily' ? Array.from({ length: k }, (_, i) => session(addD(MON, i), 'Bench Press', 3, 10, false)).flat() : [];
       const sore = [...session(addD(today, -1), 'Leg Press', 5, 12, true), ...session(addD(today, -1), 'Leg Extension', 4, 12, true)];
+      // One log per day for all seven goals: the same sets, so the recovery fit is the last call's (readinessModel), not refitted.
+      const entries = lifted === 'sore' ? [...sim, ...sore] : [...log, ...week];
       const done = lifted === 'daily' ? k : lifted === 'sore' && k > 0 ? 1 : 0;
-      const r = readinessPlanned(lifted === 'sore'
-        ? input({ entries: [...sim, ...sore], today, weeklyGoal: goal, plans: simPlans })
-        : input({ entries: [...log, ...week], today, weeklyGoal: goal }));
-      const p = r.plan!;
-      const T = Math.min(Math.max(0, goal - done), 7 - k);
-      expect(p.days.filter((d) => d.train).length).toBe(T); // the goal met whenever it can be, never more
-      if (goal - done >= 7 - k) { tight++; expect(p.days.every((d) => d.train)).toBe(true); expect(r.verdict.kind).not.toBe('rest'); }
-      if (r.verdict.kind === 'rest') {
-        rested++;
-        expect(r.week.slack).toBeGreaterThanOrEqual(1); expect(p.todayInPlan).toBe(false); expect(r.week.met).toBe(false);
-        expect(p.restGain!.sets).toBeGreaterThanOrEqual(1);
+      for (const goal of [1, 2, 3, 4, 5, 6, 7]) {
+        const r = readinessPlanned(input({ entries, today, weeklyGoal: goal, ...(lifted === 'sore' ? { plans: simPlans } : {}) }));
+        const p = r.plan!;
+        const T = Math.min(Math.max(0, goal - done), 7 - k);
+        expect(p.days.filter((d) => d.train).length).toBe(T); // the goal met whenever it can be, never more
+        if (goal - done >= 7 - k) { tight++; expect(p.days.every((d) => d.train)).toBe(true); expect(r.verdict.kind).not.toBe('rest'); }
+        if (r.verdict.kind === 'rest') {
+          rested++;
+          expect(r.week.slack).toBeGreaterThanOrEqual(1); expect(p.todayInPlan).toBe(false); expect(r.week.met).toBe(false);
+          expect(p.restGain!.sets).toBeGreaterThanOrEqual(1);
+        }
       }
     }
     expect(tight).toBeGreaterThan(30);
     expect(rested).toBeGreaterThanOrEqual(10); // the table holds rest days too (the sore lifter's)
-  });
+  }, 15_000); // 147 plans: about 2 s alone, past vitest's 5 s default on a loaded deploy runner
 
   it('the goal met: the days ahead rest, “Goal met”; the verdict is a Go, “extra session optional”, never Rest (owner S4); trained today anyway: today is in the plan (pair)', () => {
     const done = [...log, ...session(MON, 'Bench Press', 3, 10, false), ...session('2026-03-03', 'Lat Pulldown', 3, 10, false)];

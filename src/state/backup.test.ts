@@ -21,7 +21,8 @@ const S = (n: number, x: Partial<SetEntry> = {}): SetEntry => ({ id: `app|2026-1
   setNo: 1, weight: 135 + n, reps: 8, flags: [], source: 'app', ...x });
 /** Every byte value, over more than one 32 KB chunk of the base64 encoder. */
 const bytes = (seed: number) => Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 + seed) % 256);
-const photo = (date: string, pose: 'front' | 'side'): PhotoMeta => ({ id: `${date}:${pose}`, date, pose, width: 3, height: 4, addedAt: `${date}T08:00:00.000Z` });
+const photo = (date: string, pose: 'front' | 'side', variant: 'relaxed' | 'flexed' = 'relaxed'): PhotoMeta =>
+  ({ id: `${date}:${pose}:${variant}`, date, pose, variant, width: 3, height: 4, addedAt: `${date}T08:00:00.000Z` });
 const [B0] = BUDDIES.filter((b) => b.rarity === 0).map((b) => b.id);
 
 async function aPhone(db: ProfileDb) {
@@ -35,7 +36,7 @@ async function aPhone(db: ProfileDb) {
   await db.startBuddies('2026-10-01');
   await db.addSpend(starter(B0, 1000, '2026-10-01', 's1'));
   await db.putPhoto(photo('2026-10-01', 'front'), new Blob([bytes(1)], { type: 'image/jpeg' }), new Blob([bytes(2)], { type: 'image/jpeg' }));
-  await db.putPhoto(photo('2026-10-08', 'side'), new Blob([bytes(3)], { type: 'image/jpeg' }), new Blob([bytes(4)], { type: 'image/jpeg' }));
+  await db.putPhoto(photo('2026-10-08', 'side', 'flexed'), new Blob([bytes(3)], { type: 'image/jpeg' }), new Blob([bytes(4)], { type: 'image/jpeg' }));
 }
 
 /** Everything a backup carries, as the database has it, the images as base64 of their bytes. */
@@ -94,6 +95,19 @@ describe('the backup file', () => {
     expect(parseBackup('{"items":{}}')).toEqual({ error: 'That isn’t a backup file.' });
     const r = parseBackup(JSON.stringify({ kind: 'gym-tracker-backup', v: 1, at: AT.toISOString(), person: 'Me', sets: [S(1), { ...S(2), flags: ['nope'] }], deleted: {}, body: [], buddies: {}, photos: [] }));
     expect('backup' in r && [r.backup.sets.length, r.skipped]).toEqual([1, 1]);
+  });
+
+  it('a file from before variants restores its photos as relaxed; a photo whose id isn’t its date, pose and variant is skipped', async () => {
+    const db = boundDb('main');
+    const b64 = (n: number) => Buffer.from(bytes(n)).toString('base64');
+    const old = { meta: { id: '2026-10-01:front', date: '2026-10-01', pose: 'front', width: 3, height: 4, addedAt: 'x' }, type: 'image/jpeg', full: b64(1), thumb: b64(2) };
+    const wrong = { ...old, meta: { ...photo('2026-10-02', 'side', 'flexed'), id: '2026-10-02:side:relaxed' } };
+    const r = parseBackup(JSON.stringify({ kind: 'gym-tracker-backup', v: 1, at: AT.toISOString(), person: 'Me', sets: [], deleted: {}, body: [], buddies: {}, photos: [old, wrong] }));
+    if ('error' in r) throw new Error(r.error);
+    expect(r.skipped).toBe(1);
+    expect(await restoreBackup(db, r.backup, r.skipped, NOW)).toMatchObject({ photos: 1, skipped: 1 });
+    expect(await db.getPhotoMetas()).toEqual([{ ...old.meta, id: '2026-10-01:front:relaxed', variant: 'relaxed' }]);
+    expect(Buffer.from(await (await db.getPhotoBlob('2026-10-01:front:relaxed', 'full'))!.arrayBuffer()).toString('base64')).toBe(b64(1));
   });
 
   it('nudges at 3 photos added since the last backup (or ever, with none), and again 3 after Not now', () => {
