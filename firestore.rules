@@ -295,7 +295,8 @@ service cloud.firestore {
       allow delete: if me(uid);
 
       // The log, one document a month (domain/cloud CloudMonth): a month's id, these keys, and counts far past a real month's
-      // (a heavy month is ~1,500 sets). With the settings below, an account holds a bounded number of documents.
+      // (a heavy month is ~1,500 sets). With the settings below, an account holds a bounded number of documents. Friends read it,
+      // so the app writes its `body` empty and keeps body days in private (below); an older build may still write some here.
       match /months/{m} {
         allow read: if me(uid) || friendOf(uid);
         allow delete: if me(uid);
@@ -307,12 +308,16 @@ service cloud.firestore {
         allow delete: if me(uid);
         allow create, update: if me(uid) && metaOk(d, request.resource.data);
       }
-      // Yours alone, never a friend's to read: the board's (gate, hidden, muted), cycle phase, friend tags, trained-together.
+      // Yours alone, never a friend's to read: the board's (gate, hidden, muted), cycle phase, friend tags, trained-together, and
+      // each month's body days (body-YYYY-MM: weight, food, energy; domain/cloud KeptBody), which the month above no longer carries
+      // for an up-to-date phone (an older build still writes them there until it updates, and the next sync moves them here).
       match /private/{d} {
         allow read, delete: if me(uid);
-        allow create, update: if me(uid) && d in ['board', 'cycle', 'tags', 'together']
+        allow create, update: if me(uid) && ((d in ['board', 'cycle', 'tags', 'together']
           && (d != 'board' || (request.resource.data.keys().hasOnly(['ok', 'at', 'hidden', 'muted'])
-            && request.resource.data.get('hidden', []).size() <= 200 && request.resource.data.get('muted', []).size() <= 200));
+            && request.resource.data.get('hidden', []).size() <= 200 && request.resource.data.get('muted', []).size() <= 200)))
+          || (d.matches('^body-(19|20)[0-9]{2}-(0[1-9]|1[0-2])$') && request.resource.data.keys().hasOnly(['body', 'updatedAt'])
+            && request.resource.data.body is list && request.resource.data.body.size() <= 100));
       }
       // Compare: what your phone publishes for friends to set side by side (domain/compare summarize), one small document of
       // per-range numbers and no sets. A friend gets it, one read; nobody lists it but you. Only you write it, in its shape, at

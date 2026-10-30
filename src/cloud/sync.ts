@@ -1,5 +1,5 @@
 import type { BodyDay } from '../domain/body';
-import { mergeMeta, mergeMonth, metaHash, monthHash, monthOf, monthsToSync, splitByMonth, type CloudMonth, type MetaItems, type Seen } from '../domain/cloud';
+import { keptId, mergeMeta, mergeMonthKept, metaHash, monthHash, monthOf, monthsToSync, splitByMonth, type CloudMonth, type KeptBody, type MetaItems, type Seen } from '../domain/cloud';
 import { prIds } from '../domain/records';
 import type { SetEntry } from '../domain/types';
 import type { Replaced, Taken } from '../domain/replaced';
@@ -55,7 +55,9 @@ export function phoneApply(db: Pick<ProfileDb, 'applySynced' | 'applySyncedMeta'
 
 /**
  * Syncs the months that changed on either side since the last sync. Each month is one transaction (read, merge, write),
- * so two phones syncing at once can't drop each other's sets; the index says which months changed in the cloud.
+ * so two phones syncing at once can't drop each other's sets; the index says which months changed in the cloud. A month's body
+ * days go in the owner's own document beside it (domain/cloud mergeMonthKept), read and written in the same transaction; every
+ * month a sync before this build left is synced once more, so the body days a month still carries leave it for friends' eyes.
  */
 export async function syncCloud({ F, db }: Cloud, uid: string, input: SyncInput, apply: SyncApply, now = Date.now()): Promise<SyncOutcome> {
   const indexRef = F.doc(db, `users/${uid}/meta/index`);
@@ -64,17 +66,19 @@ export async function syncCloud({ F, db }: Cloud, uid: string, input: SyncInput,
   const local = splitByMonth(input.sets, input.body, input.tombstones, input.tombAt);
   const seen: Seen = { ...input.seen };
   const out = { pulled: 0, pushed: 0, removed: 0, replaced: 0, replacedSets: 0, skipped: 0 };
-  for (const m of monthsToSync(local, index, input.seen).sort()) {
+  const todo = new Set([...monthsToSync(local, index, input.seen), ...Object.keys(index).filter((m) => !input.seen[m]?.kept)]);
+  for (const m of [...todo].sort()) {
     const here = local.get(m) ?? { sets: [], body: [], tombstones: new Set<string>() };
-    const ref = F.doc(db, `users/${uid}/months/${m}`);
+    const ref = F.doc(db, `users/${uid}/months/${m}`), keptRef = F.doc(db, `users/${uid}/private/${keptId(m)}`);
     const { merged, at } = await F.runTransaction(db, async (tx) => {
-      const snap = await tx.get(ref);
+      const [snap, keptSnap] = await Promise.all([tx.get(ref), tx.get(keptRef)]);
       const remote = snap.exists() ? (snap.data() as CloudMonth) : null;
-      const merged = mergeMonth(here, remote, now);
-      if (merged.changed) {
+      const merged = mergeMonthKept(here, remote, keptSnap.exists() ? (keptSnap.data() as KeptBody) : null, now);
+      if (merged.write.month) {
         // The month's PRs go with it, for friends' badges: from this phone's whole log, with the month as merged. Only on a write
         // the sets make anyway, so two phones that see a PR differently never trade the month back and forth over it.
-        tx.set(ref, { ...merged.doc, prs: monthPrs(input.sets, m, merged.doc.sets) });
+        tx.set(ref, { ...merged.write.month, prs: monthPrs(input.sets, m, merged.doc.sets) });
+        if (merged.write.kept) tx.set(keptRef, merged.write.kept);
         tx.set(indexRef, { months: { [m]: merged.doc.updatedAt } }, { merge: true });
       }
       return { merged, at: merged.changed ? merged.doc.updatedAt : remote?.updatedAt ?? 0 };
@@ -85,7 +89,7 @@ export async function syncCloud({ F, db }: Cloud, uid: string, input: SyncInput,
       throw new Error(`Saving the synced log on this phone failed: ${e instanceof Error ? e.message : String(e)}`);
     });
     const tombstones = new Set([...here.tombstones, ...taken.deleteIds]);
-    seen[m] = { hash: monthHash({ sets: merged.doc.sets, body: merged.doc.body, tombstones }), at };
+    seen[m] = { hash: monthHash({ sets: merged.doc.sets, body: merged.doc.body, tombstones }), at, kept: true };
     out.pulled += taken.importSets.length;
     out.removed += taken.deleteIds.length;
     out.replaced += replaced.length;

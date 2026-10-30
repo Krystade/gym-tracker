@@ -724,6 +724,41 @@ describe('private (cycle phase)', () => {
     await assertFails(setDoc(doc(as('eve'), 'users/alice/private/cycle'), cycle));
   });
 });
+describe('body days (private/body-YYYY-MM), apart from the month friends read', () => {
+  const kept = { body: [{ date: '2026-10-05', weight: 181.4, energy: 4, at: { weight: 1 } }], updatedAt: 1 };
+  const month = { sets: [{ id: 'app|2026-10-05|squat|1', date: '2026-10-05' }], body: [], deleted: {}, updatedAt: 2, prs: [] };
+  it('the owner reads and writes them, beside the month with its body left empty, in one write as the sync makes it', async () => {
+    const db = as('alice');
+    await assertSucceeds(writeBatch(db).set(doc(db, 'users/alice/months/2026-10'), month).set(doc(db, 'users/alice/private/body-2026-10'), kept).commit());
+    await assertSucceeds(getDoc(doc(db, 'users/alice/private/body-2026-10')));
+    await assertSucceeds(getDocs(collection(db, 'users/alice/private')));
+    await assertSucceeds(deleteDoc(doc(db, 'users/alice/private/body-2026-10')));
+  });
+  it('a friend cannot read them, list them or write them, and still reads the month’s sets', async () => {
+    await seed(async (db) => { await setDoc(doc(db, 'users/alice/private/body-2026-10'), kept); await setDoc(doc(db, 'users/alice/months/2026-10'), month); });
+    await assertFails(getDoc(doc(as('bob'), 'users/alice/private/body-2026-10')));
+    await assertFails(getDocs(collection(as('bob'), 'users/alice/private')));
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/private/body-2026-10'), kept));
+    await assertFails(deleteDoc(doc(as('bob'), 'users/alice/private/body-2026-10')));
+    const read = await assertSucceeds(getDoc(doc(as('bob'), 'users/alice/months/2026-10')));
+    expect(read.data()?.sets).toHaveLength(1);
+    expect(read.data()?.body).toEqual([]);
+    await assertFails(getDoc(doc(as('eve'), 'users/alice/private/body-2026-10')));
+    await assertFails(getDoc(doc(as(null), 'users/alice/private/body-2026-10')));
+  });
+  it('only a month’s id, and only body days in their shape', async () => {
+    const db = as('alice');
+    await assertFails(setDoc(doc(db, 'users/alice/private/body-2026-13'), kept));
+    await assertFails(setDoc(doc(db, 'users/alice/private/body-x'), kept));
+    await assertFails(setDoc(doc(db, 'users/alice/private/weights'), kept));
+    await assertFails(setDoc(doc(db, 'users/alice/private/body-2026-10'), { ...kept, sets: [] }));
+    await assertFails(setDoc(doc(db, 'users/alice/private/body-2026-10'), { body: 'x', updatedAt: 1 }));
+    await assertFails(setDoc(doc(db, 'users/alice/private/body-2026-10'), { body: Array.from({ length: 101 }, (_, i) => ({ date: `d${i}` })), updatedAt: 1 }));
+  });
+  it('an older build still writes body days on the month, until it updates', async () => {
+    await assertSucceeds(setDoc(doc(as('alice'), 'users/alice/months/2026-10'), { sets: [], body: kept.body, deleted: {}, updatedAt: 3 }));
+  });
+});
 describe('Together ledger (private/together)', () => {
   const ledger = { v: 1, p: { bob: { o: '2026-11-02', t: 'AQ' } }, updatedAt: 1 };
   it('the owner can read and write it', async () => {

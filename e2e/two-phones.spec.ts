@@ -48,12 +48,13 @@ async function syncNow(page: Page) {
 }
 
 /** A document of this account, read past the rules (the emulator's owner token). */
+const uidOf = (page: Page) => page.evaluate(() => new Promise<string>((ok, no) => {
+  const r = indexedDB.open('gym-tracker-shared');
+  r.onerror = () => no(r.error);
+  r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('cloud'); g.onsuccess = () => ok((g.result as { uid: string }).uid); g.onerror = () => no(g.error); };
+}));
 async function cloudDoc(page: Page, path: string): Promise<Record<string, unknown> | null> {
-  const uid = await page.evaluate(() => new Promise<string>((ok, no) => {
-    const r = indexedDB.open('gym-tracker-shared');
-    r.onerror = () => no(r.error);
-    r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('cloud'); g.onsuccess = () => ok((g.result as { uid: string }).uid); g.onerror = () => no(g.error); };
-  }));
+  const uid = await uidOf(page);
   const res = await page.request.get(`${DOCS}/users/${uid}/${path}`, { headers: { Authorization: 'Bearer owner' } });
   return res.ok() ? ((await res.json()) as { fields: Record<string, unknown> }).fields : null;
 }
@@ -208,3 +209,36 @@ test('two phones with different copies of a set from before edit times: both tak
   await goto(b, 'Account');
   await expect(account(b).getByRole('heading', { name: /^Replaced by sync/ })).toHaveCount(0);
 });
+
+test('body days an older build left on the month friends read move to a document only the owner reads; another phone gets them from there', async ({ browser }) => {
+  const mail = email();
+  const [a, b] = await Promise.all([phone(browser), phone(browser)]);
+  await logBench(a, '135', '8');
+  await enter(a, mail, 'Create account');
+  // The month as an older build writes it: a weigh-in in its body days, and the index moved on, as every write moves it.
+  const uid = await uidOf(a), auth = { Authorization: 'Bearer owner' };
+  const weighIn = { mapValue: { fields: { date: { stringValue: '2026-10-01' }, weight: { doubleValue: 181.4 }, at: { mapValue: { fields: { weight: { integerValue: '5' } } } } } } };
+  expect((await a.request.patch(`${DOCS}/users/${uid}/months/${MONTH}?updateMask.fieldPaths=body&updateMask.fieldPaths=updatedAt`,
+    { headers: auth, data: { fields: { body: { arrayValue: { values: [weighIn] } }, updatedAt: { integerValue: '7' } } } })).ok()).toBe(true);
+  expect((await a.request.patch(`${DOCS}/users/${uid}/meta/index?updateMask.fieldPaths=${encodeURIComponent(`months.\`${MONTH}\``)}`,
+    { headers: auth, data: { fields: { months: { mapValue: { fields: { [MONTH]: { integerValue: '7' } } } } } } })).ok()).toBe(true);
+
+  await syncNow(a);
+  const month = await cloudDoc(a, `months/${MONTH}`);
+  expect((month?.body as Value).arrayValue?.values ?? []).toEqual([]);
+  expect((month?.sets as Value).arrayValue?.values).toHaveLength(1);
+  const kept = ((await cloudDoc(a, `private/body-${MONTH}`))?.body as Value | undefined)?.arrayValue?.values ?? [];
+  expect(kept.map((d) => d.mapValue!.fields!.weight.doubleValue)).toEqual([181.4]);
+  expect(await phoneBody(a)).toEqual([{ date: '2026-10-01', weight: 181.4, at: { weight: 5 } }]);
+
+  // A second phone signing in takes the weigh-in from the owner's document, and leaves the month without it.
+  await enter(b, mail, 'Sign in');
+  expect(await phoneBody(b)).toEqual([{ date: '2026-10-01', weight: 181.4, at: { weight: 5 } }]);
+  expect(((await cloudDoc(b, `months/${MONTH}`))?.body as Value).arrayValue?.values ?? []).toEqual([]);
+});
+/** The body days saved on this phone. */
+const phoneBody = (page: Page) => page.evaluate(() => new Promise<unknown[]>((ok, no) => {
+  const r = indexedDB.open('gym-tracker');
+  r.onerror = () => no(r.error);
+  r.onsuccess = () => { const g = r.result.transaction('body').objectStore('body').getAll(); g.onsuccess = () => ok(g.result as unknown[]); g.onerror = () => no(g.error); };
+}));

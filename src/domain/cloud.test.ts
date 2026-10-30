@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeMeta, mergeMonth, metaHash, monthHash, monthOf, monthsToSync, splitByMonth, type CloudMonth } from './cloud';
+import { mergeMeta, mergeMonth, mergeMonthKept, metaHash, monthHash, monthOf, monthsToSync, splitByMonth, type CloudMonth, type KeptBody } from './cloud';
 import type { SetEntry } from './types';
 import { mergeBody, type BodyDay } from './body';
 
@@ -353,5 +353,57 @@ describe('meta deletes (round 10)', () => {
     const r = mergeMeta(items, {}, first.seen); // all gone from the cloud
     expect(r.remove.sort()).toEqual(['alias:pushdowns', 'day:2026-10-01', 'gyms']);
     expect(Object.keys(r.items).sort()).toEqual(['profile', 'program']);
+  });
+});
+
+describe('body days kept apart from the month friends read (mergeMonthKept, 2026-10-29)', () => {
+  const day = (date: string, over: Partial<BodyDay> = {}): BodyDay => ({ date, weight: 180, ...over });
+  const local = (body: BodyDay[] = [], sets: SetEntry[] = [set('2026-10-01', 1)]) => ({ sets, body, tombstones: new Set<string>() });
+  /** The cloud after a write: what was written, else what was there. */
+  const after = (r: ReturnType<typeof mergeMonthKept>, shared: CloudMonth | null, kept: KeptBody | null) => [r.write.month ?? shared, r.write.kept ?? kept] as const;
+
+  it('moves the body days a month carries to the owner’s document, leaving the month an empty list, and takes none it already has', () => {
+    const body = [day('2026-10-01', { energy: 4 })];
+    const shared = remote({ sets: [set('2026-10-01', 1)], body });
+    const r = mergeMonthKept(local(body), shared, null, NOW);
+    expect(r.changed).toBe(true);
+    expect(r.write.month).toMatchObject({ body: [], sets: shared.sets, updatedAt: NOW });
+    expect(r.write.kept).toEqual({ body, updatedAt: NOW });
+    expect(r.importBody).toEqual([]);
+  });
+  it('is done once: synced again, nothing is written', () => {
+    const body = [day('2026-10-01')], shared0 = remote({ sets: [set('2026-10-01', 1)], body });
+    const [shared, kept] = after(mergeMonthKept(local(body), shared0, null, NOW), shared0, null);
+    const again = mergeMonthKept(local(body), shared, kept, NOW + 1);
+    expect(again).toMatchObject({ changed: false, write: { month: null, kept: null } });
+  });
+  it('a phone that never had them takes them from the owner’s document (a new phone’s first sync)', () => {
+    const kept = { body: [day('2026-10-02', { weight: 179 })], updatedAt: 3 };
+    const r = mergeMonthKept(local([]), remote({ sets: [set('2026-10-01', 1)] }), kept, NOW);
+    expect(r.importBody).toEqual([{ date: '2026-10-02', weight: 179 }]);
+    expect(r).toMatchObject({ changed: false, write: { month: null, kept: null } });
+  });
+  it('a weigh-in on this phone goes to the owner’s document, never the month; the month is written too, for its time', () => {
+    const shared = remote({ sets: [set('2026-10-01', 1)] }), kept = { body: [day('2026-10-01')], updatedAt: 1 };
+    const r = mergeMonthKept(local([day('2026-10-01'), day('2026-10-03', { weight: 178, at: { weight: 9 } })]), shared, kept, NOW);
+    expect(r.write.kept!.body.map((d) => d.date)).toEqual(['2026-10-01', '2026-10-03']);
+    expect(r.write.month).toMatchObject({ body: [], updatedAt: NOW });
+  });
+  it('days an older phone wrote back on the month since: per field the newer edit wins, the owner’s document a tie, and a field only it has fills in', () => {
+    const kept = { body: [day('2026-10-01', { weight: 181, at: { weight: 20 } }), day('2026-10-02', { weight: 182 })], updatedAt: 1 };
+    const stale = [day('2026-10-01', { weight: 185, at: { weight: 10 } }), day('2026-10-02', { weight: 186, energy: 3 }), day('2026-10-04', { weight: 177, at: { weight: 30 } })];
+    const r = mergeMonthKept(local([]), remote({ sets: [set('2026-10-01', 1)], body: stale }), kept, NOW);
+    expect(r.write.month!.body).toEqual([]);
+    expect(r.write.kept!.body).toEqual([
+      { date: '2026-10-01', weight: 181, at: { weight: 20 } }, { date: '2026-10-02', weight: 182, energy: 3 }, { date: '2026-10-04', weight: 177, at: { weight: 30 } },
+    ]);
+    // A newer edit from that phone wins over the document's.
+    const newer = mergeMonthKept(local([]), remote({ body: [day('2026-10-01', { weight: 183, at: { weight: 40 } })] }), kept, NOW);
+    expect(newer.write.kept!.body[0]).toEqual({ date: '2026-10-01', weight: 183, at: { weight: 40 } });
+  });
+  it('a month with no body days anywhere writes no owner’s document', () => {
+    const r = mergeMonthKept(local([]), null, null, NOW);
+    expect(r.write.month).toMatchObject({ body: [] });
+    expect(r.write.kept).toBeNull();
   });
 });

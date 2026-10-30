@@ -137,7 +137,9 @@ describe('a body field entered on this phone while a sync is out', () => {
     // The weight entered during the sync stays; protein, which the phone didn't touch, still comes in.
     expect(await db.getBody()).toEqual([{ date: '2026-10-01', weight: 182, protein: 150, at: { weight: 200 } }]);
     expect((await sync(store.cloud, r)).skipped).toBe(0);
-    expect((store.docs[MONTH].body as BodyDay[]).map((d) => [d.weight, d.protein])).toEqual([[182, 150]]);
+    // Up to the owner's own document (users/{uid}/private), never the month friends read.
+    expect((store.docs['users/u1/private/body-2026-10'].body as BodyDay[]).map((d) => [d.weight, d.protein])).toEqual([[182, 150]]);
+    expect(store.docs[MONTH].body).toEqual([]);
   });
 });
 

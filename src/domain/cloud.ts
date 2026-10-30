@@ -54,10 +54,18 @@ export function mergeMonth(local: LocalMonth, remote: CloudMonth | null, now: nu
     if (win !== l) importSets.push(win);
   }
 
-  const have = new Map(local.body.map((d) => [d.date, d]));
-  const body = new Map(local.body.map((d) => [d.date, { ...d }]));
+  const { body, importBody } = mergeBodyDays(local.body, remote?.body ?? []);
+  const doc = clean<CloudMonth>({ sets: live.sort(byTime), body, deleted, updatedAt: now });
+  const changed = !remote || contentKey(doc) !== contentKey(clean(remote));
+  return { doc, importSets: clean(importSets), deleteIds, importBody, changed };
+}
+
+/** Body days, per field: the newer edit wins, `theirs` winning a tie; a field only one side has fills in. `importBody`: what `mine` lacked. */
+function mergeBodyDays(mine: BodyDay[], theirs: BodyDay[]): { body: BodyDay[]; importBody: BodyDay[] } {
+  const have = new Map(mine.map((d) => [d.date, d]));
+  const body = new Map(mine.map((d) => [d.date, { ...d }]));
   const importBody: BodyDay[] = [];
-  for (const d of remote?.body ?? []) {
+  for (const d of theirs) {
     const h = have.get(d.date), fill: BodyDay = { date: d.date };
     for (const k of BODY_FIELDS) {
       if (d[k] == null) continue;
@@ -68,14 +76,38 @@ export function mergeMonth(local: LocalMonth, remote: CloudMonth | null, now: nu
     }
     if (Object.keys(fill).length > 1) { importBody.push(fill); body.set(d.date, mergeDay(body.get(d.date), fill)); }
   }
+  return { body: [...body.values()].sort((a, b) => (a.date < b.date ? -1 : 1)), importBody };
+}
 
-  const doc = clean<CloudMonth>({
-    sets: live.sort(byTime),
-    body: [...body.values()].sort((a, b) => (a.date < b.date ? -1 : 1)),
-    deleted, updatedAt: now,
-  });
-  const changed = !remote || contentKey(doc) !== contentKey(clean(remote));
-  return { doc, importSets: clean(importSets), deleteIds, importBody, changed };
+/**
+ * A month's body days (weight, food, energy) in the cloud, apart from the month: users/{uid}/private/body-YYYY-MM, which only
+ * the owner reads (firestore.rules, match /private). Friends read the month, so it carries none (owner, 2026-10-29).
+ */
+export interface KeptBody { body: BodyDay[]; updatedAt: number }
+export const keptId = (month: string) => `body-${month}`;
+/** What a sync writes: the month friends read, with no body days, and the owner's body document; null leaves it as it is. */
+export interface MergedKept extends Merged { write: { month: CloudMonth | null; kept: KeptBody | null } }
+
+/**
+ * mergeMonth, with the body days kept apart. The cloud's body days are the owner's document's, with any the month still carries
+ * merged in (written before this build, or since by a phone still on an older one), the owner's document winning a tie. A month
+ * that carries some is written without them, in the same transaction that puts them in the owner's document, so they're never
+ * in neither. Its `body` stays as an empty list: an older build's sync reads it as one. `changed`: anything to write; the month
+ * is written with any change (its time is the one the index and every phone's last sync go by), the body document when its days do.
+ */
+export function mergeMonthKept(local: LocalMonth, shared: CloudMonth | null, kept: KeptBody | null, now: number): MergedKept {
+  const legacy = Array.isArray(shared?.body) ? shared.body : [];
+  const keptBody = Array.isArray(kept?.body) ? kept.body : [];
+  const remote: CloudMonth | null = shared || kept
+    ? { sets: shared?.sets ?? [], deleted: shared?.deleted ?? {}, updatedAt: shared?.updatedAt ?? 0, body: legacy.length ? mergeBodyDays(legacy, keptBody).body : keptBody }
+    : null;
+  const merged = mergeMonth(local, remote, now);
+  const keptChanged = bodyKey(merged.doc.body) !== bodyKey(keptBody);
+  const changed = merged.changed || legacy.length > 0 || keptChanged;
+  return {
+    ...merged, changed,
+    write: { month: changed ? { ...merged.doc, body: [] } : null, kept: keptChanged ? { body: merged.doc.body, updatedAt: now } : null },
+  };
 }
 
 /** The cloud's copy wins with the newer edit, or with an equal one (none at all, before edit times) when the two differ. */
@@ -84,6 +116,7 @@ const cloudWins = (mine: number, theirs: number, differ: boolean) => theirs > mi
 // Sorted keys at every level: a body day's edit times, or a set's target, read back from Firestore in another order are no change.
 const contentKey = (m: Pick<CloudMonth, 'sets' | 'body' | 'deleted'>) =>
   JSON.stringify(deep([[...m.sets].sort(byTime), [...m.body].sort((a, b) => (a.date < b.date ? -1 : 1)), m.deleted]));
+const bodyKey = (body: BodyDay[]) => JSON.stringify(deep([...body].sort((a, b) => (a.date < b.date ? -1 : 1))));
 const stable = (o: object) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined).sort(([a], [b]) => (a < b ? -1 : 1)));
 
 /** The phone's log, grouped by month (tombstones by the date in their id). */
@@ -108,7 +141,8 @@ function hash(s: string): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
 
-export type Seen = Record<string, { hash: string; at: number }>;
+/** `kept`: synced by a build that keeps body days apart (mergeMonthKept); a month the last sync left without it is synced again. */
+export type Seen = Record<string, { hash: string; at: number; kept?: true }>;
 
 /** Months to sync: changed on the phone since the last sync, changed in the cloud since then, or new on either side. */
 export function monthsToSync(local: Map<string, LocalMonth>, remoteIndex: Record<string, number>, seen: Seen): string[] {
