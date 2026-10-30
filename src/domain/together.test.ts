@@ -40,7 +40,7 @@ const unlocks = (mine: SetEntry[], c: Context, id: string) => achievements(mine,
 const steps = (mine: SetEntry[], friends: FriendSide[], ledger: Ledger = NO_LEDGER, since = START, goal = 2, today = TODAY) =>
   togetherSteps(effective(mine, since, goal, together(friends, ledger), today));
 
-describe('trained together: one day, the same gym, 20 minutes, both live', () => {
+describe('trained together: one day, 20 minutes, both live; the same gym only loosens it', () => {
   it('the same gym at the same time counts, named as yours names it', () => {
     const m = togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:10', 8, { gym: 'iron den' }));
     expect(m?.gym).toBe('Iron Den');
@@ -50,10 +50,27 @@ describe('trained together: one day, the same gym, 20 minutes, both live', () =>
     expect(gymKey('  Iron   DEN ')).toBe(gymKey('iron den'));
     expect(togetherOn(visit(day(0), '18:00', 6, { gym: '  Iron   DEN ' }), visit(day(0), '18:00', 6, IRON))).not.toBeNull();
   });
-  it('a different gym does not count, nor a set with no gym', () => {
-    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:00', 8, { gym: 'Iron Den Annex' }))).toBeNull();
-    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:00', 8))).toBeNull();
-    expect(togetherOn(visit(day(0), '18:00', 8, { gym: '' }), visit(day(0), '18:00', 8, { gym: ' ' }))).toBeNull();
+  it('time decides, not the gym: the same 20 minutes counts whatever gym each named, or none (owner 2026-10-29)', () => {
+    // Two people at one gym who each made their own: 18:00–18:28 and 18:05–18:33 share 23 minutes.
+    const m = togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:05', 8, { gym: 'Her Gym' }));
+    expect(m).toEqual({ gym: 'Iron Den', from: Date.parse(`${day(0)}T18:05:00.000Z`), to: Date.parse(`${day(0)}T18:28:00.000Z`) });
+    expect(togetherOn(visit(day(0), '18:00', 8, { gym: 'Her Gym' }), visit(day(0), '18:05', 8, IRON))?.gym).toBe('Her Gym');
+    const none = togetherOn(visit(day(0), '18:00', 8), visit(day(0), '18:00', 8, { gym: ' ' }));
+    expect(none).not.toBeNull();
+    expect(none!.gym).toBeUndefined();
+  });
+  it('the same gym at different times does not count', () => {
+    expect(togetherOn(visit(day(0), '07:00', 8, IRON), visit(day(0), '18:00', 8, IRON))).toBeNull();
+    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:40', 8, IRON))).toBeNull();
+  });
+  it('without the same gym, it takes 20 minutes both logging sets: no padding', () => {
+    // 18:00–18:28 against 18:09–18:37: 19 minutes shared. At the same gym the padded rule counts it; elsewhere it does not.
+    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:09', 8, { gym: 'Peak' }))).toBeNull();
+    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:09', 8, IRON))).not.toBeNull();
+    expect(togetherOn(visit(day(0), '18:00', 8, IRON), visit(day(0), '18:08', 8, { gym: 'Peak' }))).not.toBeNull();
+    // A single set inside your visit is not 20 minutes of anything, unless it's at your gym.
+    expect(togetherOn(visit(day(0), '18:00', 8, IRON), [set(day(0), '18:10', { gym: 'Peak' })])).toBeNull();
+    expect(togetherOn(visit(day(0), '18:00', 8, IRON), [set(day(0), '18:10', IRON)])).not.toBeNull();
   });
   it('less than 20 minutes of overlap does not count; exactly 20 does (each visit 10 minutes either side)', () => {
     // One set each: spans 17:50–18:10 and 17:50–18:10 overlap 20 minutes; a minute later, 19.

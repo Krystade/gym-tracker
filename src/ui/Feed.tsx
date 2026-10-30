@@ -117,7 +117,7 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
       const sum = cache?.summaries?.[f.uid]?.doc;
       const ach = sum?.ach ? featured(unlocksOf(sum.ach)).filter((u) => u.date === today) : undefined;
       const met = w ? togetherDay(entries, since, sideOf(f.uid, w, cache?.summaries?.[f.uid]), today) : null;
-      const together = met ? `You and @${f.name} at ${met.gym}, ${clock(met.from)}–${clock(met.to)}` : undefined;
+      const together = met ? `You and @${f.name}${met.gym ? ` at ${met.gym}` : ''}, ${clock(met.from)}–${clock(met.to)}` : undefined;
       return { ...build({ id: f.uid, me: false, friend: f, label: label(f.uid, f.name, f.dn), lead: tags[f.uid] || f.dn, handle: f.dn || f.name, verified: verified[f.uid] != null, status: w?.win.status ?? '', loading: !w && !error, error },
         sets, w ? friendPrs(w.win) : new Set(), w?.win.goal ?? null), ...(ach?.length && { ach }), ...(together && { together }), ...(sum?.bud && { bud: sum.bud }) };
     });

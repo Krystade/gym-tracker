@@ -188,16 +188,17 @@ test('trained together: the line on their card, the family and who with on yours
   const bench = (): [string, [number, number][]][] => [['Bench Press', Array.from({ length: 10 }, (): [number, number] => [135, 8])]];
   await Promise.all([
     log(request, me, atGym('Iron Den', session(at(0, 17, 0), bench())), { since: day(5) }),
-    log(request, fr, atGym('iron den ', session(at(0, 17, 5), bench())), { since: day(5), goal: 2 }),
+    // Their own gym, by another name (owner 2026-10-29: two people at one gym may each have made their own): time decides it.
+    log(request, fr, atGym('Her Gym', session(at(0, 17, 5), bench())), { since: day(5), goal: 2 }),
     // Signing in, a phone takes the settings it finds (a goal seeded alone isn't a profile it can store: friends' only).
-    // C trains today too, at another gym, the same hour: a friend of both, with them never.
-    log(request, c, atGym('Gold Barn', session(at(0, 17, 0), bench())), { since: day(5) }),
+    // C trains today too, at Iron Den, in the morning: a friend of both, with them never (the same gym at another time).
+    log(request, c, atGym('Iron Den', session(at(0, 9, 0), bench())), { since: day(5) }),
   ]);
   await Promise.all([befriend(request, me, fr), befriend(request, me, c), befriend(request, fr, c)]);
 
   const page = await signedIn(browser, me, T);
   const card = crew(page).getByTestId(`crew-${fr.name}`);
-  await expect(card.locator('.fd-together')).toHaveText(new RegExp(`^Trained together · You and @${fr.name} at Iron Den, 5:00.?PM–5:32.?PM$`), { timeout: 20_000 });
+  await expect(card.locator('.fd-together')).toHaveText(new RegExp(`^Trained together · You and @${fr.name} at Iron Den, 5:05.?PM–5:27.?PM$`), { timeout: 20_000 });
   await expect(crew(page).getByTestId(`crew-${c.name}`)).toContainText('Bench Press');
   await expect(crew(page).locator('.fd-together')).toHaveCount(1);
 

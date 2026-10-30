@@ -10,9 +10,10 @@ import type { SetEntry } from './types';
 // - Counting starts at the later of the two starts (each profile's achievements start, domain/achievements `since`), so
 //   everyone starts at 0, and a pair counts from the same day on both phones. Days from before you were friends in the app
 //   count (they're in the window), provided both had started.
-// - Together: the same day, a gym of the same name (trimmed, spaces collapsed, case folded), and visits that overlap by 20
-//   minutes or more, each visit its first to last set with 10 minutes either side. Only sets logged as they were done count
-//   for it: a set entered late, or with its time edited (`enteredAt`), never does. Sets an hour or more apart are two visits.
+// - Together: the same day, and visits (first to last set) that share 20 minutes or more, whatever gym each names: time
+//   decides it, not the gym (owner 2026-10-29). A gym of the same name (trimmed, spaces collapsed, case folded) on both only
+//   loosens it: each visit padded 10 minutes either side, as before. Only sets logged as they were done count for it: a set
+//   entered late, or with its time edited (`enteredAt`), never does. Sets an hour or more apart are two visits.
 // - Windows reach 8 weeks back, but nothing earned is taken away: what a window shows is kept in a ledger (the one stored
 //   thing, users/{uid}/private/together, only yours to read), a union, so two phones merge it without conflict. A friend
 //   removed or blocked keeps what you earned together ("a former friend"); nothing new comes from them.
@@ -68,46 +69,49 @@ function byDate(sets: readonly SetEntry[], from: string, to: string): Map<string
   return out;
 }
 
-/** A day's visits per gym: each its first and last set, split where sets are VISIT_GAP_MIN apart. */
-function visits(day: readonly SetEntry[]): Map<string, { name: string; spans: [number, number][] }> {
-  const at = new Map<string, { name: string; ts: number[] }>();
-  for (const e of day) {
+/** A visit: its first and last live set (ms), and the gyms its sets name (gymKey → the name as first written). */
+interface Visit { s: number; e: number; gyms: Map<string, string> }
+/** A day's visits, whatever gym each set names (or none): first to last live set, split where sets are VISIT_GAP_MIN apart. */
+function visits(day: readonly SetEntry[]): Visit[] {
+  const sets = day.filter((e) => trained(e) && live(e)).map((e) => ({ t: Date.parse(e.loggedAt!), e })).sort((a, b) => a.t - b.t);
+  const out: Visit[] = [];
+  let v: Visit | null = null;
+  for (const { t, e } of sets) {
+    if (!v || t - v.e >= VISIT_GAP_MIN * MIN) out.push(v = { s: t, e: t, gyms: new Map() });
+    v.e = t;
     const k = gymKey(e.gym);
-    if (!k || !trained(e) || !live(e)) continue;
-    (at.get(k) ?? at.set(k, { name: e.gym!.trim(), ts: [] }).get(k)!).ts.push(Date.parse(e.loggedAt!));
-  }
-  const out = new Map<string, { name: string; spans: [number, number][] }>();
-  for (const [k, { name, ts }] of at) {
-    ts.sort((a, b) => a - b);
-    const spans: [number, number][] = [];
-    let first = ts[0], last = ts[0];
-    for (const t of ts.slice(1)) {
-      if (t - last >= VISIT_GAP_MIN * MIN) { spans.push([first, last]); first = t; }
-      last = t;
-    }
-    spans.push([first, last]);
-    out.set(k, { name, spans });
+    if (k && !v.gyms.has(k)) v.gyms.set(k, e.gym!.trim());
   }
   return out;
 }
 
 /**
- * Two people's sets on one day together: the gym (as yours names it) and when both were there (the overlap, kept within the
- * first and last set of the two visits, ms); null if they weren't.
+ * Two people's sets on one day together: the gym (as yours names it, when yours names one) and when both were there (ms);
+ * null if they weren't. Time decides it, never the gym (owner 2026-10-29: two people at one gym may each have made their own):
+ * - any gym, or none: their visits (first to last set) share OVERLAP_MIN minutes or more, i.e. both logging sets through the
+ *   same 20 minutes (about five sets each at the usual 2–4 minutes a set);
+ * - a gym of the same name on both: the looser rule from before, each visit padded PAD_MIN either side, so a short visit or a
+ *   friend arriving as you finish still counts. The name is an extra signal, not a requirement.
  */
-export interface Met { gym: string; from: number; to: number }
+export interface Met { gym?: string; from: number; to: number }
 export function togetherOn(mine: readonly SetEntry[], theirs: readonly SetEntry[]): Met | null {
   const a = visits(mine), b = visits(theirs), pad = PAD_MIN * MIN;
   let best: Met | null = null, most = 0;
-  for (const [k, v] of a) {
-    const w = b.get(k);
-    if (!w) continue;
-    for (const [s1, e1] of v.spans) for (const [s2, e2] of w.spans) {
-      const from = Math.max(s1, s2) - pad, to = Math.min(e1, e2) + pad;
-      if (to - from < OVERLAP_MIN * MIN || (best && to - from <= most)) continue;
-      most = to - from;
-      best = { gym: v.name, from: Math.max(from, Math.min(s1, s2)), to: Math.min(to, Math.max(e1, e2)) };
+  for (const v of a) for (const w of b) {
+    const shared = [...v.gyms.keys()].find((k) => w.gyms.has(k));
+    let from: number, to: number;
+    if (shared) {
+      const pf = Math.max(v.s, w.s) - pad, pt = Math.min(v.e, w.e) + pad;
+      if (pt - pf < OVERLAP_MIN * MIN) continue;
+      from = Math.max(pf, Math.min(v.s, w.s)); to = Math.min(pt, Math.max(v.e, w.e));
+    } else {
+      from = Math.max(v.s, w.s); to = Math.min(v.e, w.e);
+      if (to - from < OVERLAP_MIN * MIN) continue;
     }
+    if (best && to - from <= most) continue;
+    most = to - from;
+    const name = shared ? v.gyms.get(shared) : v.gyms.values().next().value;
+    best = { ...(name && { gym: name }), from, to };
   }
   return best;
 }
