@@ -48,7 +48,11 @@ test('private backup: save settings, sync through a mocked GitHub, token stays h
   await card.getByRole('button', { name: 'Sync now' }).click();
   await expect(card.getByRole('status')).toContainText('Synced: 6 sets');
   await expect(page.getByText(/^6 sets/)).toBeVisible();
-  expect(puts.map((x) => x.path).sort()).toEqual(['app/body.csv', 'app/sets.csv']);
+  // The profile has Gym Buddies items (at least its start), so the backup carries buddies.json beside the CSVs.
+  expect(puts.map((x) => x.path).sort()).toEqual(['app/body.csv', 'app/buddies.json', 'app/sets.csv']);
+  const buddies = JSON.parse(files.get('app/buddies.json')!.text) as { v: number; items: Record<string, unknown> };
+  expect(buddies.v).toBe(1);
+  expect(Object.keys(buddies.items).length).toBeGreaterThan(0);
   for (const x of puts) { expect(x.auth).toBe(`Bearer ${TOKEN}`); expect(x.message).toMatch(/^Backup from phone /); }
   expect(files.get('app/sets.csv')!.text.split(/\r?\n/).filter(Boolean)).toHaveLength(7);
   await expect(card).toContainText('Last synced');
