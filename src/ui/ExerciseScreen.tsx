@@ -35,8 +35,8 @@ import { nextTime, plannedMinutes, plannedSets } from '../domain/suggest';
 import { todayPlanFor } from './TodayPlan';
 import { SuggestionCard } from './SuggestionCard';
 import { Input } from './Field';
-import { carryOver, rotation } from '../domain/rotation';
-import { applyRotation, inProgram, RotationSuggestion } from './RotationSuggestion';
+import { carryOver, flatFor, rotation } from '../domain/rotation';
+import { applyRotation, FlatNote, inProgram, RotationSuggestion } from './RotationSuggestion';
 import { activeProfileDb } from '../db/db';
 import { lightOn, tappedLight } from '../state/lightWeek';
 import type { BodyDay } from '../domain/body';
@@ -312,6 +312,7 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
   const available = gyms.active ? availableSet(gyms.active, [...PROGRAM_LIFTS, ...exerciseNames(store.entries), ...gyms.active.include]) : undefined;
   const rot = readOnly || hold || switched ? null : rotation(store.entries, name, today, { available, include: gyms.active?.include, program: programs.program, body: bodyDays, light: tappedLight(owner) });
   const carry = rot && carryOver(store.entries, rot.from, rot.to, today, settings.get(rot.to));
+  const flat = readOnly || switched || rot ? null : flatFor(store.entries, name, today);
   return (
     <>
       <button className="back" onClick={onBack}>‹ Back</button>
@@ -322,6 +323,7 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
       {!readOnly && <SuggestionCard s={sug} onLog={trainedToday ? undefined : onLog} />}
       {rot && <RotationSuggestion owner={owner} r={rot} carry={carry} known={store.entries.some((e) => sameExercise(e.exercise, rot.to))} today={today}
         onSwitch={inProgram(programs, name) ? async () => setSwitched({ to: rot.to, undo: await applyRotation(rot, carry, programs, settings, today, todayPlanFor(programs, store.entries, today)) }) : undefined} />}
+      {flat && <FlatNote owner={owner} lift={name} flat={flat} today={today} />}
       {switched && (
         <p className="undo-note card note-card" role="status"><span>{switched.to} replaces {name} in your program.</span>
           <button className="mini" onClick={async () => { await switched.undo(); setSwitched(null); }}>Undo</button></p>

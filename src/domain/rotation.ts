@@ -142,6 +142,35 @@ export function stall(entries: SetEntry[], exercise: string, today: string, minP
 }
 
 /**
+ * How long a lift may go without a new best before the app says so (owner, 2026-10-29: "max like 3 weeks, then it should pick up
+ * on it. Not necessarily say it's a plateau"). A default: `flatFor` takes another, for a learned one later.
+ */
+export const FLAT_DAYS = 21;
+/** Sessions of the lift within those days a flat note needs: one session can't make a lift flat. */
+export const FLAT_MIN_SESSIONS = 2;
+
+/** `weeks`: whole weeks since its last best. `sessions`: how many in the window since then, with nothing better. */
+export interface Flat { since: string; weeks: number; sessions: number }
+
+/**
+ * The softer note beside the stall (owner, 2026-10-29): a lift whose working sets haven't beaten the sessions before them (see
+ * `progressed`: a new best e1RM, a heavier top weight, or more reps at it, which is how a hold moves) for FLAT_DAYS, with at
+ * least FLAT_MIN_SESSIONS sessions of it in that window. It reads the log alone, not the trend, so it doesn't wait on P(plateau):
+ * a lift trained once a week shows by its third flat week. It calls nothing a plateau and swaps nothing; the stall still does
+ * that. Cardio never shows; pain-shaped and light-week sessions don't count (see `sinceProgress`).
+ */
+export function flatFor(entries: SetEntry[], exercise: string, today: string, flatDays = FLAT_DAYS): Flat | null {
+  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
+  if (isCardio(exercise)) return null;
+  const run = sinceProgress(entries, exercise, today);
+  if (!run || days(run.since, today) < flatDays) return null;
+  const from = addDays(today, -flatDays);
+  const n = new Set(sessionsFor(entries, exercise).filter((x) => x.date > run.since && x.date > from && x.date <= today
+    && x.sets.some(isProgressionSet) && !x.sets.filter(isProgressionSet).every(isLight) && !painShaped(entries, exercise, x.date)).map((x) => x.date)).size;
+  return n >= FLAT_MIN_SESSIONS ? { since: run.since, weeks: Math.floor(days(run.since, today) / 7), sessions: n } : null;
+}
+
+/**
  * `available`: what this gym can do. `include`: lifts added to the gym by hand. `program`: its lifts aren't offered (no lift twice).
  * `body`: his energy, and `light`: a light week he started on this phone, for item 06 (see `rotation`).
  */

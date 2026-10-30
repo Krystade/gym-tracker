@@ -3,7 +3,7 @@ import { fmtDay, fmtWeight, plural } from '../domain/format';
 import type { DayPlan } from '../domain/program';
 import { settingsKey } from '../domain/progression';
 import { renameInPlan } from '../domain/rename';
-import { rotateProgram, rotationReason, type Carry, type Rotation } from '../domain/rotation';
+import { rotateProgram, rotationReason, type Carry, type Flat, type Rotation } from '../domain/rotation';
 import { sameExercise } from '../domain/stats';
 import { getPref, setPref } from '../state/prefs';
 import type { ProgramStore } from '../state/useProgram';
@@ -35,6 +35,25 @@ export function RotationSuggestion({ owner, r, carry, known, today, onSwitch }: 
       <div className="target-suggest-actions">
         {onSwitch && <button type="button" className="primary" onClick={onSwitch}>Switch to {r.to}</button>}
         <button type="button" onClick={() => { setPref(owner, prefName(r.from), sig(r)); bump((n) => n + 1); }}>Dismiss</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The softer note (domain/rotation `flatFor`): no new best for 3 weeks, said plainly, no plateau called and nothing to switch.
+ * Shown where the stall's offer would be, only when there is none. Dismiss hides it until the lift next sets a best.
+ */
+const flatPref = (lift: string) => `suggest:flat:${settingsKey(lift)}`;
+export function FlatNote({ owner, lift, flat, today }: { owner: string; lift: string; flat: Flat; today: string }) {
+  const [, bump] = useState(0);
+  if (getPref<string>(owner, flatPref(lift)) === flat.since) return null;
+  return (
+    <div className="target-suggest flat-note" role="group" aria-label="No new best lately">
+      <p><b>{lift}: no new best in {plural(Math.max(1, flat.weeks), 'week')}</b></p>
+      <p className="muted small">Your best has held since {fmtDay(flat.since, today)}, over {plural(flat.sessions, 'session')}. Not a plateau call, just a heads-up.</p>
+      <div className="target-suggest-actions">
+        <button type="button" onClick={() => { setPref(owner, flatPref(lift), flat.since); bump((n) => n + 1); }}>Got it</button>
       </div>
     </div>
   );

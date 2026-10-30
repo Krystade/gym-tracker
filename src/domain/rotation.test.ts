@@ -3,11 +3,12 @@ import type { Flag, SetEntry } from './types';
 import { CATALOG, PATTERNS, VARIATIONS } from './catalog';
 import { NEEDS } from './equipment';
 import { muscleVector } from './muscles';
-import { biasOf, carryOver, mainMuscle, nextVariation, patternOf, rotateProgram, rotation as rotationAt, rotationReason, sinceProgress, stall as stallAt, STALL_P, type RotationContext } from './rotation';
+import { biasOf, carryOver, FLAT_DAYS, flatFor, mainMuscle, nextVariation, patternOf, rotateProgram, rotation as rotationAt, rotationReason, sinceProgress, stall as stallAt, STALL_P, type RotationContext } from './rotation';
 import { trendLog, weekEnd, type TrendLift } from './learn/trendSim.sample';
 import { defaultSettings, nextTarget } from './progression';
 import type { Program } from './program';
 import { strength } from './estimators';
+import { addDays as addDaysT } from './analytics';
 
 // Synthetic logs only. A session is a lift on a date with sets written "185x8".
 let seq = 0;
@@ -40,6 +41,30 @@ describe('the stall bar (owner, 2026-10-28: much stricter)', () => {
     expect(stallAt(log('Bench Press', PLATEAU), 'Bench Press', TODAY)).toBeNull();
     expect(rotationAt(log('Bench Press', PLATEAU), 'Bench Press', TODAY)).toBeNull();
     expect(rotationAt(log('Bench Press', PLATEAU), 'Bench Press', TODAY, { stallP: 0.5 })).not.toBeNull();
+  });
+});
+
+describe('the flat note (owner, 2026-10-29: 3 weeks at most)', () => {
+  // Once a week, rising for 4 weeks, then dead flat: the trend's P(plateau) never clears STALL_P on this.
+  const day = (i: number) => addDaysT('2026-08-03', 7 * i);
+  const weekly = (n: number) => log('Bench Press', Array.from({ length: n }, (_, i): [string, string[]] => [day(i), [`${185 + 5 * Math.min(i, 3)}x8`, '185x8']]));
+  it('a lift trained once a week shows by 3 weeks flat, with no stall called', () => {
+    expect(FLAT_DAYS).toBe(21);
+    // Last best on week 3; weeks 4 and 5 flat: 14 days, not yet.
+    expect(flatFor(weekly(6), 'Bench Press', day(5))).toBeNull();
+    // Week 6: 21 days since the best, 3 sessions in the window.
+    expect(flatFor(weekly(7), 'Bench Press', day(6))).toEqual({ since: day(3), weeks: 3, sessions: 3 });
+    expect(stallAt(weekly(7), 'Bench Press', day(6))).toBeNull();
+  });
+  it('one session in the window is not enough', () => {
+    // Best on week 3, then only week 5 before day 21: one session in the window. A second (week 6) makes it flat.
+    const e = weekly(4).concat(log('Bench Press', [[day(5), ['200x8', '185x8']]]));
+    expect(flatFor(e, 'Bench Press', day(6))).toBeNull();
+    expect(flatFor(e.concat(log('Bench Press', [[day(6), ['200x8', '185x8']]])), 'Bench Press', day(6))).toEqual({ since: day(3), weeks: 3, sessions: 2 });
+  });
+  it('a lift trained twice a week and still rising never shows', () => {
+    const e = log('Bench Press', Array.from({ length: 16 }, (_, i): [string, string[]] => [addDaysT('2026-08-03', i * 3 + (i % 2)), [`${150 + 2.5 * i}x8`, '150x8']]));
+    for (let d = 7; d <= 50; d += 1) expect(flatFor(e, 'Bench Press', addDaysT('2026-08-03', d))).toBeNull();
   });
 });
 

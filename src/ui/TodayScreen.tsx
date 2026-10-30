@@ -46,8 +46,8 @@ import { switchFor, type RestPart } from '../domain/timing';
 import { lastSupersets, restsOf, supersets, switchesOf, timedWorking, type Superset } from '../domain/superset';
 import { gapModel } from '../domain/learn/switch';
 import { allNotSupersets, markNotSuperset, notSupersets } from '../state/notSuperset';
-import { carryOver, rotation, type Carry, type Rotation } from '../domain/rotation';
-import { applyRotation, inProgram, RotationSuggestion } from './RotationSuggestion';
+import { carryOver, flatFor, rotation, type Carry, type Rotation } from '../domain/rotation';
+import { applyRotation, FlatNote, inProgram, RotationSuggestion } from './RotationSuggestion';
 import { FriendName } from './FriendName';
 import { persistentPain } from '../domain/painPlan';
 import { PainPrompt } from './PainPrompt';
@@ -361,7 +361,10 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     const lastPain = pain ? store.entries.reduce((d, e) => (sameExercise(e.exercise, n) && e.flags.includes('pain') && e.date > d ? e.date : d), '') : '';
     const sore = pain && <PainPrompt owner={owner} lift={n} pain={pain} lastPain={lastPain} onSwap={planned ? () => setSwapFor(planned) : undefined} />;
     const x = programs.program && inProgram(programs, n) ? rotationOf(n) : null;
-    const rot = x && <RotationSuggestion owner={owner} r={x.r} carry={x.carry} known={x.known} today={today} onSwitch={() => void rotate(x.r, x.carry)} />;
+    // No swap offered: the softer note, a lift with no new best for 3 weeks (owner 2026-10-29), in or out of the program.
+    const fl = !x ? flatFor(store.entries, n, today) : null;
+    const rot = x ? <RotationSuggestion owner={owner} r={x.r} carry={x.carry} known={x.known} today={today} onSwitch={() => void rotate(x.r, x.carry)} />
+      : fl && <FlatNote owner={owner} lift={n} flat={fl} today={today} />;
     return sore || rot ? <>{sore}{rot}</> : null;
   };
   // The week as Ready's Week row shows it, for the day tapped (only while one is).

@@ -55,13 +55,13 @@ const HISTORY = [
 ];
 
 /** The history in, and a one-day program built from it, back on Today with Bench Press's card open. */
-async function setUp(page: Page) {
+async function setUp(page: Page, history = HISTORY) {
   await notched(page);
   await page.clock.install({ time: new Date('2026-10-14T18:00:00') });
   await page.goto('/');
   await goto(page, 'Backup');
-  await page.getByLabel('Import CSV').setInputFiles({ name: 'plateau.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...HISTORY].join('\n')) });
-  await expect(page.getByText(`✓ Imported ${HISTORY.length} new sets`)).toBeVisible();
+  await page.getByLabel('Import CSV').setInputFiles({ name: 'plateau.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...history].join('\n')) });
+  await expect(page.getByText(`✓ Imported ${history.length} new sets`)).toBeVisible();
   await goto(page, 'Today');
   await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('1');
@@ -157,4 +157,36 @@ test('switching from the lift screen changes the program, with an undo', async (
   await page.getByRole('button', { name: 'Switch to Incline Bench Press' }).click();
   await page.getByRole('button', { name: '‹ Back' }).click();
   expect(await programLifts(page)).toContain('Incline Bench Press');
+});
+
+// Owner, 2026-10-29: 3 weeks at most. Once a week, a best on 22 September, then three sessions with nothing better: the trend
+// doesn't call it a plateau (no swap), but the card says it has gone 3 weeks without a new best.
+const WEEKLY = [
+  ...Array.from({ length: 13 }, (_, i) => rows(new Date(Date.UTC(2026, 5, 30 + 7 * i)).toISOString().slice(0, 10), 'Bench Press', [`${125 + 5 * i}x8`, `${125 + 5 * i}x8`])).flat(),
+  ...['2026-09-29', '2026-10-06', '2026-10-13'].flatMap((d) => rows(d, 'Bench Press', ['185x8', '185x8'])),
+];
+
+test('a lift flat for 3 weeks gets a softer note on its card, no swap; Got it hides it through a reload', async ({ page }) => {
+  await setUp(page, WEEKLY);
+  const c = card(page, 'Bench Press');
+  const note = c.getByRole('group', { name: 'No new best lately' });
+  await expect(note).toContainText('Bench Press: no new best in 3 weeks');
+  await expect(note).toContainText(/Your best has held since .*Sep 22, over 3 sessions\. Not a plateau call, just a heads-up\./);
+  await expect(c.getByRole('group', { name: 'Suggested variation' })).toHaveCount(0);
+  await note.scrollIntoViewIfNeeded();
+  const bad = await page.evaluate(() => {
+    const out: string[] = [];
+    if (document.documentElement.scrollWidth > innerWidth) out.push('scrolls sideways');
+    for (const el of document.querySelectorAll<HTMLElement>('.flat-note button')) if (el.offsetHeight < 44) out.push(`${el.textContent} is ${el.offsetHeight}px tall`);
+    for (const el of document.querySelectorAll('.flat-note *')) { const r = el.getBoundingClientRect(); if (r.width && (r.right > innerWidth + 0.5 || r.left < -0.5)) out.push(`off the side: ${el.textContent}`); }
+    return out;
+  });
+  expect(bad).toEqual([]);
+  await page.screenshot({ path: process.env.FLAT_PNG ?? `${SHOTS}/5-flat-note.png` });
+  await note.getByRole('button', { name: 'Got it' }).click();
+  await expect(note).toHaveCount(0);
+  await page.reload();
+  await page.locator('.plan-name[data-exercise="Bench Press"]').click();
+  await expect(c.getByLabel('Target')).toBeVisible();
+  await expect(note).toHaveCount(0);
 });
