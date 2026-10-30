@@ -1,11 +1,11 @@
-import { addDays, weekStart, weeklyMuscleSets } from './analytics';
+import { addDays, SESSION_CAP, weekStart, weeklyMuscleSets } from './analytics';
 import { trend as weightTrend, type BodyDay } from './body';
 import { bodyShare } from './learn/bodyweight';
 import { decay, type Core } from './learn/capacity';
 import { kneeFrom, kneePlan } from './learn/rest';
 import { sessionLengths, type Forecast } from './learn/session';
 import { liftSimilarity } from './learn/tags';
-import { MUSCLES, type Muscle } from './muscles';
+import { muscleVector, MUSCLES, type Muscle } from './muscles';
 import { nextDay, type DayPlan, type Program } from './program';
 import { isWorking } from './progression';
 import { liftKey } from './ids';
@@ -89,6 +89,39 @@ export function muscleSpan(weeks: readonly string[], values: readonly number[], 
   const whole = live.length > 1 ? live.slice(0, -1) : live;
   const st = whole.map((v) => bandStatus(v, band));
   return { weeks: whole.length, avg: whole.length ? mean(whole) : null, under: st.filter((s) => s === 'under').length, within: st.filter((s) => s === 'within').length, over: st.filter((s) => s === 'over').length };
+}
+
+export interface MuscleSource { exercise: string; /** Working sets of it in the weeks. */ sets: number; /** Its share per set for the muscle (direct 1, indirect ½). */ factor: number; /** What it gave the muscle: sets × factor, less its part of any day over SESSION_CAP. */ contrib: number }
+/**
+ * Where a muscle's sets came from over the weeks muscleWeeks reads (`from`'s week to `to`'s, the week under way included): each lift,
+ * its working sets, and what they gave, counted as weeklyMuscleSets does. A day over SESSION_CAP is cut back to it with each lift's
+ * part cut in proportion, so the parts add to the total of the weeks' bars. Most first.
+ */
+export function muscleSources(entries: readonly SetEntry[], muscle: Muscle, from: string, to: string): { total: number; rows: MuscleSource[] } {
+  entries = learnable(entries); // as muscleWeeks reads the log
+  const lo = weekStart(from), hi = addDays(weekStart(to), 7);
+  const days = new Map<string, Map<string, number>>(); // day → lift → sets
+  const factor = new Map<string, number>();
+  for (const e of entries) {
+    if (e.date < lo || e.date >= hi || e.flags.includes('warmup') || e.cardio) continue;
+    const f = muscleVector(e.exercise)?.[muscle];
+    if (!f) continue;
+    factor.set(e.exercise, f);
+    const day = days.get(e.date) ?? days.set(e.date, new Map()).get(e.date)!;
+    day.set(e.exercise, (day.get(e.exercise) ?? 0) + 1);
+  }
+  const rows = new Map<string, MuscleSource>();
+  for (const day of days.values()) {
+    let raw = 0;
+    for (const [ex, n] of day) raw += n * factor.get(ex)!;
+    const cut = raw > SESSION_CAP ? SESSION_CAP / raw : 1;
+    for (const [ex, n] of day) {
+      const r = rows.get(ex) ?? rows.set(ex, { exercise: ex, sets: 0, factor: factor.get(ex)!, contrib: 0 }).get(ex)!;
+      r.sets += n; r.contrib += n * r.factor * cut;
+    }
+  }
+  const out = [...rows.values()].sort((a, b) => b.contrib - a.contrib || a.exercise.localeCompare(b.exercise));
+  return { total: out.reduce((t, r) => t + r.contrib, 0), rows: out };
 }
 
 // ---- The best set beside the core's level (C2's toggle) ----

@@ -8,7 +8,7 @@ import { kneeFrom, kneePlan } from './learn/rest';
 import { tagsOf } from './learn/tags';
 import type { Program } from './program';
 import {
-  bandStatus, bestRests, bestSetPoints, CARRY, FATIGUE_GATE, fatiguePerSet, muscleSpan, muscleWeeks, movesTogether, nextSession, REL_STALE, relativeStrength,
+  bandStatus, bestRests, bestSetPoints, CARRY, FATIGUE_GATE, fatiguePerSet, muscleSources, muscleSpan, muscleWeeks, movesTogether, nextSession, REL_STALE, relativeStrength,
 } from './statsCore';
 import { restSeconds } from './timing';
 import type { SetEntry } from './types';
@@ -52,6 +52,38 @@ describe('relativeStrength: e1RM over the trended body weight that day', () => {
     expect(s.change).toBeNull();
     const [u] = relativeStrength([{ name: 'Bench Press', points: [{ date: '2026-08-02', v: 250 }, { date: '2026-08-16', v: 255 }] }], body, '2026-08-01', '2026-10-01');
     expect(u.change).not.toBeNull();
+  });
+});
+
+describe("muscleSources: where a muscle's sets came from", () => {
+  const sets = (date: string, exercise: string, n: number, o: Partial<SetEntry> = {}) =>
+    Array.from({ length: n }, (_, i) => set(date, exercise, 100, 8, { setNo: i + 1, ...o }));
+  // Mondays 2026-09-07 to 09-28; 09-10 goes over SESSION_CAP for Chest (8 + 8 + 4 = 20).
+  const log = [
+    ...sets('2026-09-08', 'Bench Press', 6), ...sets('2026-09-08', 'Incline DB Press', 4), ...sets('2026-09-08', 'Triceps Pushdown', 3),
+    ...sets('2026-09-10', 'Bench Press', 8), ...sets('2026-09-10', 'Machine Chest Press', 8), ...sets('2026-09-10', 'Push-up', 4),
+    ...sets('2026-09-16', 'Bench Press', 2, { flags: ['warmup'] }), ...sets('2026-09-29', 'Bench Press', 3),
+    ...sets('2026-08-20', 'Bench Press', 5), // before the range
+  ];
+  it("the parts add up to the weeks' bars for every muscle, a capped day included", () => {
+    const w = muscleWeeks(log, '2026-09-01', '2026-09-30');
+    for (const m of ['Chest', 'Triceps', 'Front Delts'] as const) {
+      const s = muscleSources(log, m, '2026-09-01', '2026-09-30');
+      const bars = w.sets[m].reduce((a, b) => a + b, 0);
+      expect(s.total).toBeCloseTo(bars, 9);
+      expect(s.rows.reduce((a, r) => a + r.contrib, 0)).toBeCloseTo(bars, 9);
+    }
+  });
+  it("a lift's sets and share: bench 6 sets → 6 chest and 6 × ½ = 3 triceps; warm-ups and other weeks left out", () => {
+    const day = log.filter((e) => e.date === '2026-09-08');
+    const chest = Object.fromEntries(muscleSources(day, 'Chest', '2026-09-01', '2026-09-30').rows.map((r) => [r.exercise, r]));
+    expect(chest['Bench Press']).toMatchObject({ sets: 6, factor: 1, contrib: 6 });
+    expect(chest['Incline DB Press']).toMatchObject({ sets: 4, factor: 1, contrib: 4 });
+    const tri = Object.fromEntries(muscleSources(day, 'Triceps', '2026-09-01', '2026-09-30').rows.map((r) => [r.exercise, r]));
+    expect(tri['Bench Press']).toMatchObject({ sets: 6, factor: 0.5, contrib: 3 });
+    expect(tri['Cable Pushdown'] ?? tri['Triceps Pushdown']).toMatchObject({ sets: 3, factor: 1, contrib: 3 });
+    const all = muscleSources(log, 'Chest', '2026-09-01', '2026-09-30');
+    expect(all.rows.find((r) => r.exercise === 'Bench Press')!.sets).toBe(6 + 8 + 3);
   });
 });
 

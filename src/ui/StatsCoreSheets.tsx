@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { plural } from '../domain/format';
 import type { Muscle } from '../domain/muscles';
 import { rangeWords, type Range } from '../domain/statsLayout';
-import { CARRY, FATIGUE_GATE, REL_STALE, type BestRest, type CarryPair, type Fatigue, type MuscleSpan, type NextSession, type RelRow } from '../domain/statsCore';
+import { SESSION_CAP } from '../domain/analytics';
+import { CARRY, FATIGUE_GATE, REL_STALE, type BestRest, type CarryPair, type Fatigue, type MuscleSource, type MuscleSpan, type NextSession, type RelRow } from '../domain/statsCore';
 import { BarChart } from './charts/BarChart';
 import { ChartTable } from './charts/ChartTable';
 import { Bars, Hero, mss, signed } from './StatsSheets';
@@ -48,9 +49,10 @@ export function RelStrengthSheet({ rows, range }: { rows: RelRow[]; range: Range
 
 // ---- A muscle's weeks against its band ----
 
-export function MuscleWeeksSheet({ muscle, weeks, values, band, span, range, own }: {
+export function MuscleWeeksSheet({ muscle, weeks, values, band, span, range, own, sources }: {
   muscle: Muscle; weeks: readonly string[]; values: readonly number[]; /** Its target, or null for a muscle not planned. */ band: readonly [number, number] | null;
   span: MuscleSpan; range: Range; /** The target was set by hand. */ own?: boolean;
+  /** Where the weeks' sets came from (muscleSources over the same weeks): each lift's part adds to the bars. */ sources?: { total: number; rows: MuscleSource[] };
 }) {
   return (<>
     <Hero k={`Sets a week · ${lastOf(range)}`}><b>{span.avg == null ? '—' : f1(span.avg)}</b>{band ? `target ${band[0]}–${band[1]}` : 'not a priority'}</Hero>
@@ -64,12 +66,31 @@ export function MuscleWeeksSheet({ muscle, weeks, values, band, span, range, own
         <div><dt>Over</dt><dd><b>{span.over}</b></dd></div>
       </dl>
     )}
+    {sources && sources.rows.length > 0 && <MuscleSources muscle={muscle} weeks={weeks.length} {...sources} />}
     <p className="muted small">Fractional sets each Monday-to-Sunday week (direct 1, indirect ½), the week under way last. The average and the counts read the whole weeks since your first logged set; this week joins them once it’s done.</p>
     {band && (own
       ? <EvLine ev="c">The band is the range you set for this priority.</EvLine>
       : <EvLine ev="a">The band is this priority’s weekly sets: priorities 1–2 grow with more sets, at least 10 a week (Pelland 2026; Currier 2026, ACSM), priority 3 holds with about a third of that (Bickel 2011; Spiering 2021).</EvLine>)}
     <ChartTable caption={`${muscle}, fractional sets per week`} head={['Week of', 'Sets']} rows={weeks.map((w, i) => [w, f1(values[i])])} />
   </>);
+}
+
+const SHARE: Record<string, string> = { '1': '1', '0.5': '½', '0.25': '¼', '0.75': '¾' };
+const share = (f: number) => SHARE[String(f)] ?? f.toFixed(2);
+
+/** Each lift's part of a muscle's sets over the weeks of its sheet (owner, 2026-10-29): its working sets, its share, what it gave. */
+function MuscleSources({ muscle, weeks, total, rows }: { muscle: Muscle; weeks: number; total: number; rows: MuscleSource[] }) {
+  const max = rows[0].contrib || 1, cut = rows.some((r) => r.contrib < r.sets * r.factor - 1e-9);
+  return (
+    <section className="st-src" aria-label={`${muscle}, sets from each lift`}>
+      <h3>From each lift · {f1(total)} sets in {plural(weeks, 'week')}</h3>
+      <Bars label={`${muscle}: sets from each lift`} rows={rows.map((r) => ({
+        key: r.exercise, label: r.exercise, frac: r.contrib / max,
+        value: <>{r.sets} × {share(r.factor)} = <b>{f1(r.contrib)}</b></>,
+      }))} />
+      <p className="muted small">Each lift’s working sets in these weeks, times its share for the {muscle.toLowerCase()} (direct 1, indirect ½): together, the bars above.{cut && ` A session over ${SESSION_CAP} sets for one muscle counts ${SESSION_CAP}, each lift’s part cut to match.`}</p>
+    </section>
+  );
 }
 
 // ---- Fatigue per set ----

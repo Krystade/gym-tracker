@@ -17,7 +17,7 @@ import { stall as stallOf } from '../domain/rotation';
 import { e1rm, liftSets } from '../domain/stats';
 import { DEFAULT_RANGE, forViewer, isRange, rangeDays, rangeFrom, rangeLabel, rangeWeeks, rangeWords, type Range } from '../domain/statsLayout';
 import type { DayPlan, Program } from '../domain/program';
-import { bestRests, bestSetPoints, fatiguePerSet, movesTogether, muscleSpan, muscleWeeks, nextSession, relativeStrength } from '../domain/statsCore';
+import { bestRests, bestSetPoints, fatiguePerSet, movesTogether, muscleSources, muscleSpan, muscleWeeks, nextSession, relativeStrength } from '../domain/statsCore';
 import { warmupCount } from '../domain/suggest';
 import {
   balance, effort, energyVsLifts, hitRate, liftsInRotation, milestoneDate, MILESTONE_MIN_SESSIONS, plateaus, prTimeline, rateOfGain, rests, sessionsAWeek, strengthIndex, whenTrained, type LiftState,
@@ -751,7 +751,8 @@ function MuscleRows({ entries, profile, today, range, onOpen }: { entries: SetEn
 export function MuscleWeeks({ entries, profile, today, range, muscle }: { entries: SetEntry[]; profile: Profile; today: string; range: Range; muscle: Muscle }) {
   const { weeks, rows } = useMuscleWeeks(entries, profile, today, range);
   const r = rows.find((x) => x.m === muscle)!;
-  return <MuscleWeeksSheet muscle={muscle} weeks={weeks} values={r.values} band={r.band} span={r.span} range={range} own={!!profile.custom?.includes(profile.tiers[muscle])} />;
+  const sources = useMemo(() => muscleSources(entries, muscle, rangeFrom(range, today), today), [entries, muscle, range, today]);
+  return <MuscleWeeksSheet muscle={muscle} weeks={weeks} values={r.values} band={r.band} span={r.span} range={range} own={!!profile.custom?.includes(profile.tiers[muscle])} sources={sources} />;
 }
 
 /**

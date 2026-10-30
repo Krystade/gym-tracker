@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { notched, renderCheck, lines } from './layout';
 import { goto, openProgram } from './nav';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -432,4 +433,35 @@ test('stats: the Muscles sheet’s body map sits over the bars, coloured as each
   expect(off!.there).toBeNull();
   await page.mouse.click(off!.x, off!.y);
   await expect(page.getByRole('dialog', { name: 'Forearms · last 12 weeks' })).toBeVisible();
+});
+
+// ---- A muscle's sets by lift (owner, 2026-10-29): tapped from the Muscles sheet, each lift's sets, share and part, adding to the bars. ----
+
+test('stats: a muscle tapped on the Muscles sheet shows each lift’s sets and share, adding up to its weeks’ bars', async ({ page }) => {
+  await notched(page);
+  const rows = ['date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source'];
+  for (const d of ['2026-09-21', '2026-09-23', '2026-09-28', '2026-09-30']) {
+    for (const [ex, n] of [['Bench Press', 3], ['Incline DB Press', 2], ['Cable Pushdown', 3]] as const) for (let s = 1; s <= n; s++) rows.push(`${d},${ex},,${s},100,10,2,,,sample`);
+  }
+  await page.clock.install({ time: new Date(`${TODAY}T09:00:00`) });
+  await page.goto('/');
+  await goto(page, 'Backup');
+  await page.getByLabel('Import CSV').setInputFiles([{ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from(rows.join('\n')) }]);
+  await expect(page.getByText(/Imported 32 new/)).toBeVisible();
+  await goto(page, 'Stats');
+  const mus = await sheet(page, 'muscles');
+  await mus.getByRole('region', { name: 'Each muscle, last 12 weeks' }).getByRole('button', { name: /^Triceps/ }).click();
+  const tri = page.getByRole('dialog', { name: 'Triceps · last 12 weeks' });
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  const src = tri.getByRole('region', { name: 'Triceps, sets from each lift' });
+  // Pushdown direct (1 a set), the presses indirect (½ a set): 12 + 6 + 4.
+  await expect(src.locator('h3')).toHaveText('From each lift · 22.0 sets in 13 weeks');
+  await expect(src.locator('.st-b-l')).toHaveText(['Cable Pushdown', 'Bench Press', 'Incline DB Press']);
+  await expect(src.locator('.st-b-v')).toHaveText(['12 × 1 = 12.0', '12 × ½ = 6.0', '8 × ½ = 4.0']);
+  const bars = (await tri.locator('tbody tr td:nth-child(2)').allTextContents()).reduce((a, t) => a + Number(t), 0);
+  expect(bars).toBeCloseTo(22, 6);
+  // Fits the 13 mini: nothing overlaps, escapes or is cut off.
+  await src.scrollIntoViewIfNeeded();
+  expect(lines(await renderCheck(page, '.st-src'))).toEqual([]);
+  await page.screenshot({ path: 'screenshots/r40-muscle-breakdown.png' });
 });
