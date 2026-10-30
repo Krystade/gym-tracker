@@ -118,6 +118,10 @@ test('records the poses in one video, picks a frame for each, and saves only the
   const d = dialog(page);
   await expect(d.getByRole('button', { name: 'Record' })).toBeEnabled();
   await expect(d.getByText('Front', { exact: true })).toBeVisible();
+  // Manual: each pose comes up on a tap of Next pose (Auto, the default, is below).
+  await expect(d.getByRole('group', { name: 'Next pose' }).getByRole('button', { name: 'Auto' })).toHaveAttribute('aria-pressed', 'true');
+  await d.getByRole('button', { name: 'Manual' }).click();
+  await expect(d.getByRole('group', { name: 'Seconds a pose' })).toHaveCount(0);
   await shoot(page, '30-capture-live');
 
   await d.getByRole('button', { name: 'Record' }).click();
@@ -260,4 +264,39 @@ test('the second session: last time’s photo over the camera in place of the ou
   await page.evaluate(() => { (window as unknown as { cam: { dim: boolean } }).cam.dim = false; });
   await expect(d.getByText(/than last time/)).toHaveCount(0);
   await shoot(page, '36-capture-ghost');
+});
+
+test('Auto: each pose comes up by itself after the seconds picked, a ring counting down; each picker starts as the pose settled', async ({ page }) => {
+  await page.getByRole('button', { name: 'Record the 6 poses' }).click();
+  const d = dialog(page);
+  const secs = d.getByRole('group', { name: 'Seconds a pose' });
+  await expect(secs.getByRole('button', { name: '4 s' })).toHaveAttribute('aria-pressed', 'true');
+  await secs.getByRole('button', { name: '2 s' }).click();
+  await shoot(page, '37-capture-auto');
+  await d.getByRole('button', { name: 'Record' }).click();
+  await expect(d.getByRole('timer', { name: /^Next pose in [12] seconds$/ })).toBeVisible();
+  await shoot(page, '38-capture-auto-count');
+  await expect(d.getByText('2 of 6')).toBeVisible({ timeout: 4000 }); // no tap
+  // Next still goes early.
+  await d.getByRole('button', { name: 'Next pose' }).click();
+  await expect(d.getByText('3 of 6')).toBeVisible();
+  // The rest by itself; after the last, the recording stops and the picking starts.
+  await expect(d.getByRole('heading', { name: 'Pick 1 of 6' })).toBeVisible({ timeout: 15000 });
+  const starts: number[] = [];
+  for (let k = 1; k <= 6; k++) {
+    await expect(d.getByRole('heading', { name: `Pick ${k} of 6` })).toBeVisible();
+    await expect(useFrame(page)).toBeEnabled();
+    starts.push(Number(await d.getByRole('slider', { name: 'Frame' }).inputValue()));
+    await useFrame(page).click();
+  }
+  // Near each pose's end (0.4 s before it), not its middle: pose 1 ran about 2 s.
+  expect(starts[0]).toBeGreaterThan(1.3);
+  expect(starts[0]).toBeLessThan(2.1);
+  for (let k = 1; k < 6; k++) expect(starts[k]).toBeGreaterThan(starts[k - 1]);
+  expect(starts[2] - starts[1]).toBeGreaterThan(1.3); // pose 3 ran its full 2 s
+  // The choice is kept for next time.
+  page.once('dialog', (x) => void x.accept());
+  await d.getByRole('button', { name: 'Cancel' }).click();
+  await page.getByRole('button', { name: 'Record the 6 poses' }).click();
+  await expect(d.getByRole('group', { name: 'Seconds a pose' }).getByRole('button', { name: '2 s' })).toHaveAttribute('aria-pressed', 'true');
 });

@@ -34,13 +34,22 @@ export function coverCrop(w: number, h: number, aspect: number): { x: number; y:
   return { x: 0, y: Math.round((h - height) / 2), width: w, height };
 }
 
+/** Auto capture (owner 2026-10-30): the next pose comes up by itself after one of these, in seconds; 4 unless he picks another. */
+export const AUTO_DELAYS = [2, 4, 6] as const;
+export type AutoDelay = (typeof AUTO_DELAYS)[number];
+export const AUTO_DEFAULT: AutoDelay = 4;
+
 /**
- * Where each shot's scrubber starts in a recording: the middle of the time it was on screen. `marks[i]`: the second the i-th
- * shot came up (Next pose); `end`: when recording stopped. He walks to the phone to tap Next, so both ends of a span are
- * walking and the middle is the pose held. Shots that never came up (the recording stopped first) get none.
+ * Where each shot's scrubber starts in a recording. `marks[i]`: the second the i-th shot came up (Next pose, or Auto's timer);
+ * `end`: when recording stopped. Manual: the middle of its time on screen, as he walks to the phone to tap Next, so both ends
+ * are walking. Auto (`settled`): near the end, when he has settled into the pose (a fifth of the span before it, 0.4 s at
+ * most). Shots that never came up (the recording stopped first) get none.
  */
-export const seeds = (marks: readonly number[], end: number): number[] =>
-  marks.map((at, i) => { const to = Math.max(at, Math.min(end, marks[i + 1] ?? end)); return Math.min(end, (at + to) / 2); });
+export const seeds = (marks: readonly number[], end: number, settled = false): number[] =>
+  marks.map((at, i) => {
+    const to = Math.max(at, Math.min(end, marks[i + 1] ?? end));
+    return Math.min(end, settled ? to - Math.min(0.4, (to - at) * 0.2) : (at + to) / 2);
+  });
 
 /** A shot's latest photo: laid over the camera at 30 % (the ghost), so each session is framed like the last. None: the outline. */
 export function lastOf(metas: readonly PhotoMeta[], s: Shot): PhotoMeta | null {

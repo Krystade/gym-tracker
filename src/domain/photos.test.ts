@@ -58,6 +58,11 @@ describe('seeds', () => {
     expect(seeds([], 8)).toEqual([]);
     expect(seeds([0, 4], 3)).toEqual([1.5, 3]); // a mark past the end (the clocks a hair apart) stays in the recording
   });
+  it('Auto: near the end of each pose, when he has settled into it', () => {
+    expect(seeds([0, 4, 8], 12, true)).toEqual([3.6, 7.6, 11.6]);
+    expect(seeds([0, 1], 2, true)).toEqual([0.8, 1.8]); // tapped Next early: a fifth before the end
+    expect(seeds([0], 0, true)).toEqual([0]);
+  });
 });
 
 describe('weightNear', () => {

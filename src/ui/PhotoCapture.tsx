@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { coverCrop, lastOf, lightVs, meanLuma, photoId, POSES, seeds, shotIndex, shotName, SHOTS, VARIANTS, type Shot } from '../domain/photos';
+import { AUTO_DEFAULT, AUTO_DELAYS, coverCrop, lastOf, lightVs, meanLuma, photoId, POSES, seeds, shotIndex, shotName, SHOTS, VARIANTS, type AutoDelay, type Shot } from '../domain/photos';
 import { localDate } from '../domain/ids';
 import { plural } from '../domain/format';
+import { getPref, setPref } from '../state/prefs';
 import { useDb } from '../state/profileDb';
 import type { PhotosStore } from '../state/usePhotos';
 import { encode } from './photoImage';
@@ -16,11 +17,34 @@ import './capture.css';
 // no voice. The frame is 3:4 and the still is cut to it (domain/photos coverCrop), so what was framed is what's kept.
 // Once a shot has a photo, its latest is laid over the camera at 30 % in place of the outline (the ghost: the same framing every
 // time), and the camera's brightness is checked against it: more than 25 % off, the frame says darker or brighter than last time.
+// Auto (owner 2026-10-30, the default): the next pose comes up by itself after 2, 4 or 6 s, a ring counting it down, Next still
+// there to go early; Manual: only Next. The phone keeps the last choice.
 
 const MAX_SECONDS = 180; // a recording stops itself here: it sits in memory until Save
 const FRAME = 1 / 30; // the ‹ › step: a frame at 30 fps
 const CANT = 'This browser can’t record video here. Take each photo with Take photo instead.';
 const GONE = 'The camera stopped when the app left the screen.';
+/** Auto or Manual and Auto's delay: this phone's last choice (a camera habit, not a profile's). */
+const PREF: [string, string] = ['device', 'capture:auto'];
+type Pace = { auto: boolean; delay: AutoDelay };
+function paceOf(): Pace {
+  const p = getPref<Partial<Pace>>(...PREF);
+  return { auto: p?.auto !== false, delay: AUTO_DELAYS.find((d) => d === p?.delay) ?? AUTO_DEFAULT };
+}
+
+/** Auto's countdown for the pose on screen: a ring emptying over the delay, the whole seconds left in it. Silent. */
+function Countdown({ left, of }: { left: number; of: number }) {
+  const c = 2 * Math.PI * 26, f = Math.max(0, Math.min(1, left / of));
+  return (
+    <span className="cap-count" role="timer" aria-label={`Next pose in ${Math.ceil(left)} seconds`}>
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="26" className="track" />
+        <circle cx="32" cy="32" r="26" className="left" strokeDasharray={`${f * c} ${c}`} transform="rotate(-90 32 32)" />
+      </svg>
+      <b aria-hidden="true">{Math.max(1, Math.ceil(left))}</b>
+    </span>
+  );
+}
 
 type Phase = 'starting' | 'off' | 'live' | 'rec' | 'pick' | 'review';
 /** A recording, as an object URL of the blob, and how long it ran by the clock here (a recorder's own duration can be missing). */
@@ -150,7 +174,9 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
   const stream = useRef<MediaStream | null>(null);
   const rec = useRef<MediaRecorder | null>(null);
   const lock = useRef<WakeLockSentinel | null>(null);
-  const clock = useRef({ t0: 0, marks: [] as number[], end: 0, queue: [] as number[] });
+  const clock = useRef({ t0: 0, marks: [] as number[], end: 0, queue: [] as number[], auto: 0 });
+  const [pace, setPaceState] = useState(paceOf);
+  const setPace = (p: Pace) => { setPaceState(p); setPref(...PREF, p); };
   const takes = useRef<Take[]>([]);
   const urls = useRef<string[]>([]); // every object URL made here, revoked on the way out
   const gen = useRef(0); // the camera start that counts: a later one, or leaving, makes an earlier one stop its stream
@@ -210,7 +236,7 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
     const chunks: Blob[] = [];
     r.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
     r.onstop = () => recorded(new Blob(chunks, { type: r.mimeType || type || 'video/mp4' }));
-    clock.current = { t0: performance.now(), marks: [0], end: 0, queue };
+    clock.current = { t0: performance.now(), marks: [0], end: 0, queue, auto: pace.auto ? pace.delay : 0 };
     r.start(1000); // in pieces, so what was recorded survives the camera being taken away
     rec.current = r;
     setStep(0); setElapsed(0); setMsg(null); setPhase('rec');
@@ -240,7 +266,7 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
     const url = URL.createObjectURL(blob);
     urls.current.push(url);
     const take = takes.current.push({ url, length: c.end }) - 1;
-    const at = seeds(c.marks, c.end);
+    const at = seeds(c.marks, c.end, c.auto > 0);
     const reached = c.queue.slice(0, at.length);
     setSeed((s) => ({ ...s, ...Object.fromEntries(reached.map((i, k) => [i, { take, at: at[k] }])) }));
     setToPick(reached); setPickAt(0); setPhase('pick');
@@ -302,7 +328,13 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
   }, [phase, ghost, camRev]);
   useEffect(() => {
     if (phase !== 'rec') return;
-    const id = setInterval(() => { const s = now(); setElapsed(s); if (s >= MAX_SECONDS) stopRec(`Stopped at ${MAX_SECONDS / 60} minutes.`); }, 250);
+    // Auto: the pose on screen has had its seconds, so the next comes up (after the last, the recording stops).
+    const id = setInterval(() => {
+      const s = now(), c = clock.current;
+      setElapsed(s);
+      if (s >= MAX_SECONDS) stopRec(`Stopped at ${MAX_SECONDS / 60} minutes.`);
+      else if (c.auto && s - c.marks[c.marks.length - 1] >= c.auto) next();
+    }, 100);
     return () => clearInterval(id);
   }, [phase]);
 
@@ -359,6 +391,7 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
             {/* Mirrored with the preview: the photo was kept unmirrored, as the preview is before it's flipped. */}
             {ghost ? <img className={`cap-ghost${facing === 'user' ? ' mirror' : ''}`} src={ghost.url} alt="" /> : <Outline shot={shot} />}
             {ghost && phase !== 'starting' && <span className="cap-tag">Last time · {new Date(`${ghost.date}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
+            {phase === 'rec' && clock.current.auto > 0 && <Countdown left={clock.current.auto - (elapsed - clock.current.marks[clock.current.marks.length - 1])} of={clock.current.auto} />}
             {light && <span className="cap-light" role="status">{light === 'darker' ? 'Darker' : 'Brighter'} than last time</span>}
             {phase === 'starting' && <p className="cap-wait">Starting the camera…</p>}
             {phase === 'rec' && <span className="cap-rec" role="timer" aria-label={`Recording, ${Math.floor(elapsed)} seconds`}><i aria-hidden="true" />{time(elapsed).slice(0, -2)}</span>}
@@ -368,6 +401,19 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
           <p><b>{shotName(shot)}</b>{queue.length > 1 && <span className="muted"> · {step + 1} of {queue.length}</span>}</p>
           <p className="muted small">{HINTS[shot.pose][shot.variant]}</p>
         </div>
+        {phase !== 'rec' && (
+          <div className="cap-pace">
+            <div className="cap-seg" role="group" aria-label="Next pose">
+              <button type="button" aria-pressed={pace.auto} onClick={() => setPace({ ...pace, auto: true })}>Auto</button>
+              <button type="button" aria-pressed={!pace.auto} onClick={() => setPace({ ...pace, auto: false })}>Manual</button>
+            </div>
+            {pace.auto
+              ? <div className="cap-seg" role="group" aria-label="Seconds a pose">
+                {AUTO_DELAYS.map((d) => <button key={d} type="button" aria-pressed={pace.delay === d} onClick={() => setPace({ ...pace, delay: d })}>{d} s</button>)}
+              </div>
+              : <p className="muted small">Tap Next pose for each</p>}
+          </div>
+        )}
         {msg && <p className="cap-msg warn small" role="status">{msg}</p>}
         <div className="cap-bar">
           {phase === 'rec'

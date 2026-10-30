@@ -35,6 +35,19 @@ html.cap-open { overflow: hidden; overscroll-behavior: none; }
 .cap-pose { flex: none; padding: 8px 16px 0; text-align: center; }
 .cap-pose p { margin: 0; }
 .cap-pose b { font-size: var(--fs-xl); line-height: 28px; }
+/* Auto's countdown: big enough to read from where he stands, in the frame's corner clear of the light check. */
+.cap-count { position: absolute; right: 10px; bottom: 10px; width: 64px; height: 64px; display: grid; place-items: center; }
+.cap-count svg { position: absolute; inset: 0; }
+.cap-count circle { fill: #000; stroke-width: 6px; }
+.cap-count .track { stroke: var(--fill-2); }
+.cap-count .left { fill: none; stroke: var(--accent); stroke-linecap: round; transition: stroke-dasharray 0.1s linear; }
+.cap-count b { position: relative; font-size: var(--fs-xl); font-variant-numeric: tabular-nums; }
+/* Auto or Manual, and Auto's seconds: one row under the pose's name. */
+.cap-pace { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: center; padding: 8px 16px 0; }
+.cap-pace p { margin: 0; text-align: center; }
+.cap-seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; padding: 2px; border-radius: var(--r-md); background: var(--fill); }
+.cap-seg button { min-height: 40px; padding: 0; border-radius: 8px; background: none; color: var(--text-2); font-size: var(--fs-sub); font-weight: 600; }
+.cap-seg button[aria-pressed='true'] { background: var(--fill-2); color: var(--text); }
 .cap-msg { flex: none; margin: 6px 16px 0; text-align: center; }
 .cap-bar { flex: none; display: grid; grid-template-columns: 2fr 3fr; gap: 8px; padding: 12px 16px; }
 .cap-bar.one { grid-template-columns: 1fr; }
