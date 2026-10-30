@@ -53,6 +53,8 @@ import { persistentPain } from '../domain/painPlan';
 import { PainPrompt } from './PainPrompt';
 import { MorningCheck } from './MorningCheck';
 import { systemic } from '../domain/learn/deload';
+import { photoDayDue, type PhotoMeta } from '../domain/photos';
+import { photoDaySnoozed, photoEvery, snoozePhotoDay } from '../state/photoDay';
 import { deloadSnoozed, endLight, lightOn, snoozeDeload, startLight, tappedLight } from '../state/lightWeek';
 import { DeloadPrompt, LightWeekLine } from './DeloadPrompt';
 import { ReadyCard, WeekCard } from './ReadyTile';
@@ -76,7 +78,7 @@ function useSameRefs<T>(xs: readonly T[]): readonly T[] {
   return last.current;
 }
 
-export function TodayScreen({ me, who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews, onOpenDay, lead, onOpenBuddies }: {
+export function TodayScreen({ me, who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews, onOpenDay, lead, onOpenBuddies, photos, onOpenPhotos }: {
   /** Whose sets these are, named only when several people share the phone. */
   who?: string;
   /** The signed-in account, for your tag for whoever the news is from. */ me?: string | null;
@@ -84,6 +86,8 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   carried?: boolean; onSplit?: () => void; onDay: (d: string) => void; onOpen: (name: string) => void; onOpenProgram: () => void; onOpenGym?: () => void;
   /** The lead buddy (Gym Buddies §16.4), beside the day; a tap opens Buddies. None before the first is picked. */
   lead?: { poses: readonly string[]; name: string } | null; onOpenBuddies?: () => void;
+  /** Progress photos' dates, for the photo-day line (domain/photos photoDayDue); a tap opens Photos. */
+  photos?: readonly PhotoMeta[]; onOpenPhotos?: () => void;
   /** A friend's newest unread ping or message: one line, and a tap opens their thread to reply. */
   news?: { uid: string; name: string; text: string } | null; onOpenNews?: (f: ThreadWith) => void;
   /** When the weekly recap push was tapped: Today opens at the week's digest. */
@@ -108,6 +112,9 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   if (recap !== recapSeen) { setRecapSeen(recap); setPicking(false); setSwapFor(null); }
   // Cards added but not logged yet: kept per profile for the day, so leaving the tab or switching profile keeps them.
   const [owner] = useState(activeProfileDb);
+  // Not now on the photo-day line is kept in prefs; this only reads it again.
+  const [, setPhotoTaps] = useState(0);
+  const photoDue = date === today && photos ? photoDayDue(photos, today, photoEvery(owner), photoDaySnoozed(owner)) : null;
   // One list per day, so opening a past day doesn't overwrite today's.
   const [extra, setExtra] = useState<string[]>(() => getDraft<string[]>(owner, `${CARDS}:${date}`, date) ?? []);
   useEffect(() => { saveDraft(owner, `${CARDS}:${date}`, date, extra); }, [owner, date, extra]);
@@ -442,6 +449,16 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
         <SuggestedToday profile={profile} entries={store.entries} date={date} gym={gyms.active} loadFor={loadFor} onOpen={goTo} />
       )}
       {date === today && <TodayDigest owner={owner} entries={store.entries} profile={profile} today={today} recap={recap} />}
+      {/* Plan S6: one line once the last photos are N days old (picked on Photos); gone once he shoots or taps Not now. */}
+      {photoDue != null && onOpenPhotos && (
+        <div className="card note-card photo-day" role="group" aria-label="Photo day">
+          <span><b>Photo day</b> · {photoDue} days since your last photos</span>
+          <span className="photo-day-acts">
+            <button type="button" className="mini primary" onClick={onOpenPhotos}>Take them</button>
+            <button type="button" className="mini" onClick={() => { snoozePhotoDay(owner, today); setPhotoTaps((n) => n + 1); }}>Not now</button>
+          </span>
+        </div>
+      )}
       {light && <LightWeekLine to={light.to} today={today} onEnd={() => { endLight(owner, store.entries, date); snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
       {offerDeload && sys && <DeloadPrompt s={sys} onStart={() => { startLight(owner, today); setDeloadTaps((n) => n + 1); }} onLater={() => { snoozeDeload(owner, today); setDeloadTaps((n) => n + 1); }} />}
       {date === today && update && programs.program && <ProgramUpdateCard owner={owner} program={programs.program} update={update}

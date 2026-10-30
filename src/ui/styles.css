@@ -688,6 +688,34 @@ details.builder[open] > summary { margin-bottom: 8px; }
 .compare figure { margin: 0; display: grid; gap: 6px; }
 .compare select { min-height: 44px; width: 100%; }
 .compare figcaption { text-align: center; }
+.compare-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.compare-pick select { min-height: 44px; width: 100%; }
+/* Wipe compare (plan S5): after laid over before and cut at the divider; drag or tap anywhere on it. pan-y keeps the page
+   scrolling under a vertical swipe. The crop below the chin is shown as a dark band where Save as image cuts. */
+.wipe { position: relative; aspect-ratio: 3 / 4; overflow: hidden; border-radius: var(--r-md); background: var(--surface-2); touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: ew-resize; }
+.wipe img, .wipe .photo-ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; -webkit-touch-callout: none; }
+.wipe-after { position: absolute; inset: 0; }
+.wipe-bar { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35); }
+.wipe-bar i { position: absolute; top: 50%; left: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / 0.4); }
+.wipe-bar i::before { content: '‹ ›'; position: absolute; inset: 0; display: grid; place-items: center; color: #222; font: 600 15px/1 system-ui, sans-serif; letter-spacing: 2px; }
+.wipe-tag { position: absolute; top: 8px; display: grid; padding: 4px 8px; border-radius: 8px; background: rgb(0 0 0 / 0.62); color: #fff; font-size: var(--fs-xs); line-height: 16px; pointer-events: none; }
+.wipe-tag b { font-size: var(--fs-sm); line-height: 18px; }
+.wipe-tag.before { left: 8px; }
+.wipe-tag.after { right: 8px; text-align: right; }
+.wipe-crop { position: absolute; left: 0; right: 0; top: 0; background: rgb(0 0 0 / 0.72); border-bottom: 2px dashed #fff; pointer-events: none; }
+.wipe-apart { text-align: center; margin: 8px 0 0; }
+.photo-cmp .form-actions { margin-top: 4px; }
+.pv { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.pv p { margin: 8px 0 0; }
+.pv video, .pv img { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: var(--r-md); background: #121212; margin-bottom: 8px; }
+.photo-every { margin-top: 8px; gap: 6px; }
+.photo-every .chip-label { flex-basis: 100%; min-height: 0; }
+.photo-every .chip { padding: 0 12px; }
+/* The photo-day line on Today (plan S6): the note card's shape, its two taps under the words. */
+.note-card.photo-day { display: grid; gap: 8px; }
+.note-card.photo-day > span:first-child { color: var(--text); font-weight: 400; }
+.photo-day-acts { display: flex; gap: 8px; }
+.photo-day-acts .mini { flex: 1; }
 .tl-day { padding: 6px 0; border-top: 1px solid var(--line); }
 .tl-day:first-of-type { border-top: 0; }
 .tl-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

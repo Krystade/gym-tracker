@@ -78,7 +78,7 @@ export default defineConfig({
   // recording only Chromium can make and play back here (WebKit on this machine has no MediaRecorder or video decoding).
   projects: [
     { name: 'webkit' },
-    { name: 'chromium', testMatch: /(layout-audit|capture)\.spec\.ts$/, use: { browserName: 'chromium' } },
+    { name: 'chromium', testMatch: /(layout-audit|capture|photo-compare)\.spec\.ts$/, use: { browserName: 'chromium' } },
   ],
   webServer: [app, ...emulators],
 });

@@ -62,7 +62,7 @@ const size = (n: number) => (n < 1e6 ? `${Math.max(1, Math.round(n / 1e3))} KB` 
  * Saves a file through the share sheet where it takes one (an installed iOS app ignores <a download>; Save to Files is in the
  * sheet), else as a download. 'tap': the sheet wants a tap of its own, the first having been spent while the file was built.
  */
-async function saveFile(file: File): Promise<'saved' | 'cancelled' | 'tap'> {
+export async function saveFile(file: File): Promise<'saved' | 'cancelled' | 'tap'> {
   if (navigator.canShare?.({ files: [file] })) {
     try { await navigator.share({ files: [file] }); return 'saved'; }
     catch (e) {

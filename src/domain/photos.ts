@@ -102,3 +102,42 @@ export function photoDate(source: 'camera' | 'library', field: string, today: st
   if (source === 'camera' || !field) return today;
   return field > today ? null : field;
 }
+
+/** The dates with a photo of shot `s` from `from` to `to`, oldest first: the progress video's frames, one each. */
+export function shotDates(metas: readonly PhotoMeta[], s: Shot, from = '', to = '9999-12-31'): string[] {
+  return [...new Set(metas.filter((m) => m.pose === s.pose && m.variant === s.variant && m.date >= from && m.date <= to).map((m) => m.date))].sort();
+}
+
+/** The progress video (plan S5): a timelapse of one shot's stills, each date held this long, built on the phone and never stored. */
+export const FRAME_SECONDS = 0.6;
+/** What the phone records the video as: MP4 first (all iOS Safari makes), else WebM; null: no recorder, so the flipbook instead. */
+export function videoType(supported: (type: string) => boolean): string | null {
+  return ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find((t) => { try { return supported(t); } catch { return false; } }) ?? null;
+}
+
+/** Save as image's crop line, as a share of the photo's height: just under the chin of the capture outline (head 8–19 %). */
+export const CHIN = 0.2;
+
+/** Under a before and after: how far apart they are and the PRs set between, as "12 weeks apart · 3 PRs between". */
+export function apartLine(from: string, to: string, prs: number): string {
+  const d = Math.round(days(from, to));
+  const span = d < 14 ? `${d} ${d === 1 ? 'day' : 'days'}` : `${Math.round(d / 7)} weeks`;
+  return `${span} apart · ${prs === 0 ? 'no' : prs} PR${prs === 1 ? '' : 's'} between`;
+}
+
+/** The photo-day line on Today (plan S6): every this many days since the last photo, two weeks unless he picks another; 0 is off. */
+export const PHOTO_EVERY = [7, 14, 28, 0] as const;
+export type PhotoEvery = (typeof PHOTO_EVERY)[number];
+export const PHOTO_EVERY_DEFAULT: PhotoEvery = 14;
+/** Not now puts the line away this long. */
+export const PHOTO_SNOOZE = 7;
+/**
+ * Days since the last photo when the photo-day line is due: `every` days or more, not put off past today, and only once there's
+ * a photo at all (no photos is no habit to keep). Null: no line.
+ */
+export function photoDayDue(metas: readonly PhotoMeta[], today: string, every: number, snoozedTo?: string): number | null {
+  if (!every || !metas.length || (snoozedTo ?? '') > today) return null;
+  const last = metas.reduce((d, m) => (m.date > d ? m.date : d), '');
+  const n = Math.round(days(last, today));
+  return last < today && n >= every ? n : null;
+}

@@ -18,6 +18,7 @@ export async function notched(page: Page) {
   const inset = (s: string) => s.replace(/env\(\s*safe-area-inset-(top|right|bottom|left)\s*(?:,[^)]*)?\)/g, (_, side: string) => `${side === 'top' ? TOP : side === 'bottom' ? BOTTOM : 0}px`);
   await page.route('**/*', async (route) => {
     const req = route.request();
+    if (/^(blob|data):/.test(req.url())) return route.continue(); // a photo read on the page (WebKit routes those too)
     if (!req.url().startsWith('http://127.0.0.1')) { if (process.env.LAYOUT_LOG) console.log('aborted', req.url()); return route.abort(); }
     // Only the stylesheet (index.html has no env()): a document served through the route counts as public to Chromium,
     // which then refuses its calls to the emulators on this machine (local network access).

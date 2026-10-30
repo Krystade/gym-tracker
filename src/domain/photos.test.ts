@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { comparePair, coverCrop, fitSize, lastOf, lightVs, meanLuma, photoId, relaxedIfOld, seeds, shotName, SHOTS, timeline, weightNear, type PhotoMeta, type Pose, type Variant } from './photos';
+import { apartLine, comparePair, coverCrop, fitSize, lastOf, lightVs, meanLuma, photoDayDue, photoId, relaxedIfOld, seeds, shotDates, shotName, SHOTS, timeline, videoType, weightNear, type PhotoMeta, type Pose, type Variant } from './photos';
 
 const m = (date: string, pose: Pose, variant: Variant = 'relaxed'): PhotoMeta => ({ id: photoId(date, pose, variant), date, pose, variant, width: 900, height: 1600, addedAt: `${date}T08:00:00Z` });
 
@@ -100,5 +100,43 @@ describe('the ghost and the same-light check', () => {
     expect(lightVs(74, 100)).toBe('darker');
     expect(lightVs(126, 100)).toBe('brighter');
     expect(lightVs(50, 2)).toBeNull();
+  });
+});
+
+describe('the progress video and the before and after', () => {
+  it('takes one shot’s dates, oldest first, within the range', () => {
+    const ms = [m('2026-09-20', 'front'), m('2026-08-01', 'front'), m('2026-08-01', 'front', 'flexed'), m('2026-09-01', 'side'), m('2026-10-05', 'front')];
+    expect(shotDates(ms, { pose: 'front', variant: 'relaxed' })).toEqual(['2026-08-01', '2026-09-20', '2026-10-05']);
+    expect(shotDates(ms, { pose: 'front', variant: 'relaxed' }, '2026-08-02', '2026-09-30')).toEqual(['2026-09-20']);
+  });
+  it('records MP4 where it can, WebM else, and nothing (the flipbook) with no recorder', () => {
+    expect(videoType((t) => t.startsWith('video/mp4'))).toBe('video/mp4;codecs=avc1');
+    expect(videoType((t) => t === 'video/mp4')).toBe('video/mp4');
+    expect(videoType((t) => t === 'video/webm')).toBe('video/webm');
+    expect(videoType(() => false)).toBeNull();
+    expect(videoType(() => { throw new Error('no'); })).toBeNull();
+  });
+  it('says how far apart and the PRs between', () => {
+    expect(apartLine('2026-08-01', '2026-10-24', 3)).toBe('12 weeks apart · 3 PRs between');
+    expect(apartLine('2026-08-01', '2026-08-02', 1)).toBe('1 day apart · 1 PR between');
+    expect(apartLine('2026-08-01', '2026-08-11', 0)).toBe('10 days apart · no PRs between');
+  });
+});
+
+describe('the photo-day line', () => {
+  const ms = [m('2026-10-01', 'front'), m('2026-09-01', 'back')];
+  it('is due every N days since the last photo, with the days', () => {
+    expect(photoDayDue(ms, '2026-10-14', 14)).toBeNull();
+    expect(photoDayDue(ms, '2026-10-15', 14)).toBe(14);
+    expect(photoDayDue(ms, '2026-10-08', 7)).toBe(7);
+  });
+  it('never with no photos, when off, or while put off', () => {
+    expect(photoDayDue([], '2026-12-01', 14)).toBeNull();
+    expect(photoDayDue(ms, '2026-12-01', 0)).toBeNull();
+    expect(photoDayDue(ms, '2026-10-20', 14, '2026-10-21')).toBeNull();
+    expect(photoDayDue(ms, '2026-10-21', 14, '2026-10-21')).toBe(20);
+  });
+  it('goes once today’s photos are in', () => {
+    expect(photoDayDue([...ms, m('2026-10-20', 'side')], '2026-10-20', 14)).toBeNull();
   });
 });

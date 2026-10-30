@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useDb } from '../state/profileDb';
-import { comparePair, photoDate, photoId, POSES, shotName, timeline, VARIANTS, weightNear, type PhotoMeta, type Shot } from '../domain/photos';
+import { comparePair, photoDate, photoId, PHOTO_EVERY, POSES, shotName, timeline, VARIANTS, weightNear, type PhotoEvery, type PhotoMeta, type Shot } from '../domain/photos';
 import { localDate } from '../domain/ids';
 import { trend } from '../domain/body';
 import { fmtDate, fmtDay, plural } from '../domain/format';
@@ -11,6 +11,10 @@ import { Input } from './Field';
 import { BackupNudge } from './BackupCard';
 import { decode, encode } from './photoImage';
 import { PhotoCapture } from './PhotoCapture';
+import { Img, PhotoCompare } from './PhotoCompare';
+import { activeProfileDb } from '../db/db';
+import { photoEvery, setPhotoEvery } from '../state/photoDay';
+import type { SetEntry } from '../domain/types';
 
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
 const alt = (m: Shot & { date: string }) => `${shotName(m)}, ${m.date}`;
@@ -27,26 +31,18 @@ function ShotChips({ label, shot, onPick }: { label: string; shot: Shot; onPick:
   </div>;
 }
 
-/** An object URL for a stored image, revoked when the view goes away or the photo changes. */
-function useBlobUrl(id: string | null, kind: 'full' | 'thumb', version: number): string | null {
-  const db = useDb();
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!id) { setUrl(null); return; }
-    let u: string | null = null, live = true;
-    void db.getPhotoBlob(id, kind).then((b) => { if (live && b) { u = URL.createObjectURL(b); setUrl(u); } });
-    return () => { live = false; if (u) URL.revokeObjectURL(u); };
-  }, [id, kind, version]);
-  return url;
-}
+/** The photo-day line's choices (domain/photos PHOTO_EVERY), as Photos says them. */
+const EVERY_LABEL: Record<PhotoEvery, string> = { 7: 'Weekly', 14: '2 weeks', 28: '4 weeks', 0: 'Off' };
 
-function Img({ id, kind, version, label }: { id: string | null; kind: 'full' | 'thumb'; version: number; label: string }) {
-  const url = useBlobUrl(id, kind, version);
-  return url ? <img src={url} alt={label} /> : <span className="photo-ph" aria-hidden="true" />;
-}
-
-export function PhotosScreen({ photos, backup, body, today, backLabel = '‹ Back', onBack }: { photos: PhotosStore; backup: BackupStore; body: BodyStore; today: string; backLabel?: string; onBack: () => void }) {
+/**
+ * More › Photos. `entries`: the log, for the PRs between a before and after. `shootFirst`: opened from Today's photo-day line, so
+ * the backup nudge waits till the new photos are in (then it's about them) rather than stacking on top of the reminder.
+ */
+export function PhotosScreen({ photos, backup, body, entries, today, shootFirst = false, backLabel = '‹ Back', onBack }: { photos: PhotosStore; backup: BackupStore; body: BodyStore; entries: SetEntry[]; today: string; shootFirst?: boolean; backLabel?: string; onBack: () => void }) {
   const db = useDb();
+  const [owner] = useState(activeProfileDb);
+  const [every, setEveryNow] = useState(() => photoEvery(owner));
+  const [held, setHeld] = useState(shootFirst);
   const [shot, setShot] = useState<Shot>({ pose: 'front', variant: 'relaxed' });
   const [capturing, setCapturing] = useState(false);
   const [capMsg, setCapMsg] = useState<string | null>(null);
@@ -108,13 +104,17 @@ export function PhotosScreen({ photos, backup, body, today, backLabel = '‹ Bac
     <>
       <button className="back" onClick={onBack}>{backLabel}</button>
       <h1>Progress photos</h1>
-      <BackupNudge backup={backup} />
+      {!held && <BackupNudge backup={backup} />}
       <section className="card">
         <p className="muted small">Kept only on this phone, never uploaded or synced; the backup file under More › Backup is their one copy. Same spot, light and time of day each time.</p>
         <button type="button" className="primary wide" onClick={() => { setCapMsg(null); setCapturing(true); }}>Record the 6 poses</button>
         <p className="muted small" role="status">{capMsg ?? 'Prop the phone up, step back into the outline and walk through front, side and back, relaxed then flexed. Then pick the best frame of each; the video isn’t kept.'}</p>
+      <div className="chips photo-every" role="group" aria-label="Photo day reminder">
+          <span className="chip-label small muted">Remind me on Today</span>
+          {PHOTO_EVERY.map((n) => <button key={n} type="button" className="chip" aria-pressed={every === n} onClick={() => { setEveryNow(n); setPhotoEvery(owner, n); }}>{EVERY_LABEL[n]}</button>)}
+        </div>
       </section>
-      {capturing && <PhotoCapture photos={photos} onClose={(n) => { setCapturing(false); if (n) setCapMsg(`Saved ${plural(n, 'photo')} for today.`); }} />}
+      {capturing && <PhotoCapture photos={photos} onClose={(n) => { setCapturing(false); if (n) { setCapMsg(`Saved ${plural(n, 'photo')} for today.`); setHeld(false); } }} />}
 
       <section className="card" aria-labelledby="one-h">
         <h2 id="one-h">One photo</h2>
@@ -134,19 +134,16 @@ export function PhotosScreen({ photos, backup, body, today, backLabel = '‹ Bac
       <section className="card" aria-labelledby="cmp-h">
         <h2 id="cmp-h">Compare</h2>
         <ShotChips label="Compare pose" shot={cmp} onPick={(s) => { setCmp(s); setPick(null); }} />
-        {!pair ? <p className="muted">Two dates with a {shotName(cmp).toLowerCase()} photo are needed to compare.</p> : (
-          <div className="compare">
+        {!pair ? <p className="muted">Two dates with a {shotName(cmp).toLowerCase()} photo are needed to compare.</p> : (<>
+          <div className="compare-pick">
             {[0, 1].map((k) => (
-              <figure key={k}>
-                <select aria-label={k === 0 ? 'Before' : 'After'} value={pair[k]} onChange={(e) => setPick(k === 0 ? [e.target.value, pair[1]] : [pair[0], e.target.value])}>
-                  {dates.map((d) => <option key={d} value={d}>{fmtDay(d, today)}</option>)}
-                </select>
-                <Img id={photoId(pair[k], cmp.pose, cmp.variant)} kind="full" version={photos.version} label={alt({ ...cmp, date: pair[k] })} />
-                <figcaption>{weight(pair[k]) ? <b>{weight(pair[k])}</b> : <span className="muted small">no weigh-in</span>}</figcaption>
-              </figure>
+              <select key={k} aria-label={k === 0 ? 'Before' : 'After'} value={pair[k]} onChange={(e) => setPick(k === 0 ? [e.target.value, pair[1]] : [pair[0], e.target.value])}>
+                {dates.map((d) => <option key={d} value={d}>{fmtDay(d, today)}</option>)}
+              </select>
             ))}
           </div>
-        )}
+          <PhotoCompare photos={photos} shot={cmp} pair={pair} weight={weight} entries={entries} today={today} />
+        </>)}
       </section>
 
       <section className="card" aria-labelledby="tl-h">
