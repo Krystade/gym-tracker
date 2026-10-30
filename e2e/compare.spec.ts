@@ -130,15 +130,16 @@ test('your phone publishes your summary after a sync, in its shape and nothing m
     doc = r.ok() ? await r.json() : {};
     return Object.keys(doc.fields ?? {}).sort();
   }, { timeout: 20_000 }).toEqual(['ach', 'at', 'day', 'firsts', 'goal', 'r', 'streak', 'v']);
-  // Achievements count from the day this phone started them, today: none from the weeks of log before it, and each one only
-  // its id, level, day and lift.
+  // Achievements count from the Oct 1 floor (domain/buddies/start COUNT_FLOOR): none from the log's days before it, none after
+  // today, and each one only its id, level, day and lift.
   type Ach = { mapValue: { fields: Record<string, { stringValue?: string }> } };
   const ach = (doc.fields!.ach as { arrayValue: { values?: Ach[] } }).arrayValue.values ?? [];
   for (const a of ach) {
     expect(Object.keys(a.mapValue.fields).filter((k) => !['i', 'l', 'd', 'n'].includes(k))).toEqual([]);
-    expect(a.mapValue.fields.d.stringValue).toBe(T.toLocaleDateString('en-CA'));
+    expect(a.mapValue.fields.d.stringValue! >= '2026-10-01' && a.mapValue.fields.d.stringValue! <= T.toLocaleDateString('en-CA'), a.mapValue.fields.d.stringValue).toBe(true);
   }
-  const text = JSON.stringify(doc);
+  // The Bodyweight achievement's id (one of the log's, from Oct 1) is not a weight.
+  const text = JSON.stringify(doc).replaceAll('{"stringValue":"bodyweight"}', '{"stringValue":"<id>"}');
   for (const word of ['pain', 'elbow', 'twinge', 'note', 'cycle', 'energy', 'reps', 'weight']) expect(text, word).not.toContain(word);
   expect(JSON.stringify(doc.fields!.goal)).toContain('"2"'); // the app's default goal
   await page.context().close();

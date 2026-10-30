@@ -5,7 +5,7 @@ import { goto } from './nav';
 // signed out, the list sits under the backup card. Synthetic data only.
 const T = new Date('2026-10-02T18:00:00');
 const DAY = 864e5;
-const backup = (page: Page) => page.getByRole('region', { name: 'Private backup' });
+const backup = (page: Page) => page.getByRole('region', { name: 'Backup file' });
 const list = (page: Page) => backup(page).getByRole('list', { name: 'Replaced by sync' });
 const heading = (page: Page) => backup(page).getByRole('heading', { name: /^Replaced by sync/ });
 const rows = (page: Page) => page.getByRole('list', { name: 'Sets for Bench Press' }).getByRole('listitem');

@@ -72,7 +72,9 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   const [severity, setSeverity] = useState<1 | 2 | 3 | undefined>(() => (d ? d.severity : painDefaults(initial, exercise).severity));
   // Only a form the user has touched leaves a draft, so an untouched one keeps following the suggested next set.
   const dirty = useRef(d != null);
-  const touch = <T,>(set: (v: T) => void) => (v: T) => { dirty.current = true; set(v); };
+  // Counts typing, so a save that comes back after the next set's reps were typed leaves them as typed.
+  const edits = useRef(0);
+  const touch = <T,>(set: (v: T) => void) => (v: T) => { dirty.current = true; edits.current++; set(v); };
   useEffect(() => {
     if (keepDraft && dirty.current) saveDraft<Draft>(owner.profile, draftKey, owner.date, { weight, reps, rir, flags, note, region, severity, tags, ...(whenOpen && { at: time }) });
   }, [keepDraft, owner, draftKey, weight, reps, rir, flags, note, region, severity, tags, whenOpen, time]);
@@ -146,13 +148,16 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
         painRegion: pain ? region : undefined, painSeverity: pain ? severity : undefined, tags: tags.length ? tags : undefined,
         ...(whenOpen && { at: time || null }),
       };
+      const typed = edits.current;
       const ok = await onSubmit(value);
-      const next = ok ? nextReps?.(value) : undefined;
+      // Typed into while the set saved: what was typed is the next set's, not the suggestion (nor a draft to clear).
+      const fresh = edits.current === typed;
+      const next = ok && fresh ? nextReps?.(value) : undefined;
       if (next != null) setReps(String(next));
       if (ok && when) { if (when.always) resuggest.current = true; else setWhenOpen(false); }
-      if (ok && keepDraft) { clearDraft(owner.profile, draftKey); dirty.current = false; }
+      if (ok && keepDraft && fresh) { clearDraft(owner.profile, draftKey); dirty.current = false; }
       // A warm-up or a test doesn't move the next set: back to what the card suggested before it (the next set, else the target).
-      if (ok && keepDraft && (flags.includes('warmup') || flags.includes('test'))) { setWeight(initial.weight == null ? '' : String(initial.weight)); setReps(initial.reps == null ? '' : String(initial.reps)); }
+      if (ok && keepDraft && fresh && (flags.includes('warmup') || flags.includes('test'))) { setWeight(initial.weight == null ? '' : String(initial.weight)); setReps(initial.reps == null ? '' : String(initial.reps)); }
       if (ok) { setLoud(false); setAsked(null); setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setTags([]); setEditTags(false); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); setMoreOpen(false); }
     } finally { busy.current = false; }
   }

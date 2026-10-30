@@ -393,13 +393,15 @@ test('Compare: Ranks, Table and Chart with 12, 5 and 2 friends, the People sheet
 // ---- On the phone alone: a realistic log, imported. ----
 
 const DAY0 = '2026-10-20'; // a Tuesday; the clock is held at 18:00
+/** DAY0 three weeks earlier, a Tuesday before the Oct 1 floor (domain/buddies/start COUNT_FLOOR): for a history wholly before the start. */
+const PRE = '2026-09-29';
 const add = (d: string, n: number) => { const t = new Date(`${d}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 const HEADER = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source,pain_region,pain_severity,logged_at,target_weight_lb,target_reps,target_sets,gym,entered_at,duration_s,distance_mi,incline_pct,level,floors,cardio_aim,tags,edited_at';
 /**
  * Ten weeks, three days a week: heavy numbers, a long lift name, a hold, a bodyweight lift, cardio, and an elbow that hurts.
  * `effort`: the weighted sets carry an RIR and the target the app suggested (some missed), as sets logged in the app do.
  */
-function history({ effort = false } = {}): string {
+function history({ effort = false, monday = '2026-10-19' } = {}): string {
   const rows: string[] = [HEADER];
   // Each set 3 min after the day's last, lift after lift, as he logs them: sets of different lifts at the same second would read
   // as a superset whose switches take as long as its rests (learn/switch), and no lift would have a rest of its own.
@@ -411,7 +413,7 @@ function history({ effort = false } = {}): string {
       aimed ? w : '', aimed ? r + (miss ? 1 : 0) : '', aimed ? 3 : '', '', '', o.dur ?? '', o.mi ?? '', '', '', '', '', '', ''].join(','));
   };
   for (let w = 9; w >= 1; w--) {
-    const mon = add('2026-10-19', -7 * w), wed = add(mon, 2), fri = add(mon, 4);
+    const mon = add(monday, -7 * w), wed = add(mon, 2), fri = add(mon, 4);
     for (let k = 1; k <= 3; k++) row(mon, 'Bench Press', k, 225 + 5 * (9 - w), 5);
     for (let k = 1; k <= 3; k++) row(mon, 'Single Arm Cable Lateral Raise Behind Back', k, 22.5, 15);
     for (let k = 1; k <= 3; k++) row(mon, 'Cable Pushdown', k, 110, 12, w <= 3 && k === 3 ? { flags: 'pain', pain: ['elbow', 2] } : {});
@@ -424,11 +426,14 @@ function history({ effort = false } = {}): string {
   }
   return rows.join('\n');
 }
-const BODY = ['date,weight_lb,calories,protein_g,energy,edited_at', ...Array.from({ length: 30 }, (_, i) => `${add(DAY0, -30 + i)},${(231.4 - i * 0.1).toFixed(1)},3150,215,${3 + (i % 3)},`)].join('\n');
+const bodyCsv = (day: string) => ['date,weight_lb,calories,protein_g,energy,edited_at', ...Array.from({ length: 30 }, (_, i) => `${add(day, -30 + i)},${(231.4 - i * 0.1).toFixed(1)},3150,215,${3 + (i % 3)},`)].join('\n');
+const BODY = bodyCsv(DAY0);
+/** The ten weeks and the body log moved back with PRE, all before the floor. */
+const importPre = (page: Page) => importLog(page, history({ monday: add(PRE, -1) }), bodyCsv(PRE));
 
-async function phone(page: Page) {
+async function phone(page: Page, day = DAY0) {
   await notched(page);
-  await page.clock.install({ time: new Date(`${DAY0}T18:00:00`) });
+  await page.clock.install({ time: new Date(`${day}T18:00:00`) });
   await page.goto('/');
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--sat').trim())).toBe(`${TOP}px`);
 }
@@ -565,9 +570,10 @@ test('Today mid-session: big numbers, Details, a superset, the rest bar and its 
 
 test('Finishing: the Finish bar, the summary in the plan’s place, and a session that closed while away on the next open', async ({ page }, info) => {
   test.setTimeout(180_000);
-  await phone(page);
+  // Before the Oct 1 floor, so the ten weeks count for nothing and today's is the first session.
+  await phone(page, PRE);
   const found: string[] = [];
-  await importLog(page);
+  await importPre(page);
   await goto(page, 'Today');
   await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('3');
@@ -584,7 +590,7 @@ test('Finishing: the Finish bar, the summary in the plan’s place, and a sessio
   for (let i = 0; i < sets; i++) {
     const w = card.getByRole('textbox', { name: 'Weight' });
     if ((await w.inputValue()) === '') await w.fill('1225');
-    await logSet(page, card, `18:${String(30 + 3 * i).padStart(2, '0')}:00`);
+    await logSet(page, card, `${PRE}T18:${String(30 + 3 * i).padStart(2, '0')}:00`);
     if (i < sets - 1) await expect(card.getByRole('list', { name: /^Sets for/ }).getByRole('listitem')).toHaveCount(i + 1);
   }
   const bar = page.getByRole('group', { name: 'Plan done' });
@@ -603,7 +609,7 @@ test('Finishing: the Finish bar, the summary in the plan’s place, and a sessio
     await page.screenshot({ path: `${process.env.STATS_PNG}/${info.project.name}-ach-finish-next.png` });
   }
   // The next day, two sets and away: it closes while the app is gone, and its summary waits for the next open, the morning after.
-  const day2 = add(DAY0, 1);
+  const day2 = add(PRE, 1);
   await page.goto('about:blank');
   await page.clock.setSystemTime(new Date(`${day2}T18:00:00`));
   await page.goto('/');
@@ -611,7 +617,7 @@ test('Finishing: the Finish bar, the summary in the plan’s place, and a sessio
   for (const t of ['18:30:00', '18:33:00']) { await page.clock.pauseAt(new Date(`${day2}T${t}`)); await curl.getByRole('button', { name: /^Add set/ }).click(); }
   await expect(curl.getByRole('list', { name: /^Sets for/ }).getByRole('listitem')).toHaveCount(2);
   await page.goto('about:blank');
-  await page.clock.setSystemTime(new Date(`${add(DAY0, 2)}T09:00:00`));
+  await page.clock.setSystemTime(new Date(`${add(PRE, 2)}T09:00:00`));
   await page.goto('/');
   await expect(page.getByRole('region', { name: 'Last workout' })).toBeVisible();
   await check(page, info, found, 'finish-next-open');
@@ -1085,9 +1091,9 @@ test('Achievements on day one: a history from before the start counts nothing; t
   const found: string[] = [];
   const { png, sheetEnd } = achShots(page, info, found);
   const tile = page.locator('[data-tile="achievements"]');
-  // Day one: his whole history is from before the start, so nothing counts yet; the tile shows the next ones, locked.
-  await phone(page);
-  await importLog(page);
+  // Day one, before the Oct 1 floor: his whole history is from before the start, so nothing counts yet; the tile shows the next ones, locked.
+  await phone(page, PRE);
+  await importPre(page);
   await goto(page, 'Stats');
   await expect(tile).toContainText('0earned');
   await tile.scrollIntoViewIfNeeded();
@@ -1153,12 +1159,12 @@ test('Achievements on Today: what a set unlocked, said under its card, the tier 
   const found: string[] = [];
   const { png } = achShots(page, info, found);
   // Counting from today, the first open: the ten weeks imported count for nothing, so today's first set is a first session,
-  // its first PR (it still has to beat them), and four plates a side from here.
-  await phone(page);
-  await importLog(page);
+  // its first PR (it still has to beat them), and four plates a side from here. Before the Oct 1 floor, so that holds.
+  await phone(page, PRE);
+  await importPre(page);
   await goto(page, 'Today');
   const card = await addCard(page, 'Barbell Squat');
-  await logSet(page, card, '18:30:00', '450', '5');
+  await logSet(page, card, `${PRE}T18:30:00`, '450', '5');
   // The lines are worked out on a timer once the set is saved (its PR line shown), and logSet holds the clock.
   await expect(card.getByRole('status')).toContainText('PR');
   await page.clock.runFor(100);
@@ -1591,9 +1597,10 @@ test('Prompts: the morning pain question, answered with a note (item 08)', async
 // folded by hand, not started, a long name, no planned count.
 test('Today’s folded cards: one layout for every state, and a last set’s unlock row inside its card, clear of the Left row', async ({ page }, info) => {
   test.setTimeout(180_000);
-  await phone(page);
+  // Before the Oct 1 floor: the ten weeks count for nothing, so the last set's PR unlocks a row.
+  await phone(page, PRE);
   const found: string[] = [];
-  await importLog(page);
+  await importPre(page);
   await goto(page, 'Today');
   await openProgram(page);
   await page.getByRole('textbox', { name: 'Days per week' }).fill('3');
@@ -1609,7 +1616,7 @@ test('Today’s folded cards: one layout for every state, and a last set’s unl
   const sq = page.locator('[data-card="barbell squat"]');
   const sets = Number((await rows.first().locator('.plan-count').textContent())!.split('/')[1]);
   for (let i = 0; i < sets; i++) {
-    await logSet(page, sq, `18:${String(10 + 3 * i).padStart(2, '0')}:00`, i < sets - 1 ? '135' : '450', '5');
+    await logSet(page, sq, `${PRE}T18:${String(10 + 3 * i).padStart(2, '0')}:00`, i < sets - 1 ? '135' : '450', '5');
     if (i < sets - 1) await expect(sq.getByRole('list', { name: 'Sets for Barbell Squat' }).getByRole('listitem')).toHaveCount(i + 1);
   }
   // The lines are worked out on a timer once the set is saved (its PR line shown), and logSet holds the clock.
@@ -1625,14 +1632,14 @@ test('Today’s folded cards: one layout for every state, and a last set’s unl
   const extra = [['Single Arm Cable Lateral Raise Behind Back', '22.5', '15'], ['Pull-up', '0', '12']] as const;
   for (const [lift, w, r] of extra) {
     const card = await addCard(page, lift);
-    await logSet(page, card, '18:50:00', w, r);
+    await logSet(page, card, `${PRE}T18:50:00`, w, r);
     await expect(card.getByRole('list', { name: `Sets for ${lift}` }).getByRole('listitem')).toHaveCount(1);
   }
   const nameOf = async (k: number) => (await rows.nth(k).locator('.plan-name').getAttribute('data-exercise'))!;
   const b = await nameOf(1), c = await nameOf(2);
   await rows.nth(1).locator('.plan-name').click();
   const cb = page.locator(`[data-card="${b.toLowerCase()}"]`);
-  await logSet(page, cb, '18:55:00', '100', '10');
+  await logSet(page, cb, `${PRE}T18:55:00`, '100', '10');
   await expect(cb.getByRole('list', { name: `Sets for ${b}` }).getByRole('listitem')).toHaveCount(1);
   await rows.nth(2).locator('.plan-name').click();
   for (const lift of [b, c, ...extra.map(([l]) => l)]) await page.locator(`[data-card="${lift.toLowerCase()}"]`).getByRole('button', { name: `Fold ${lift}` }).click();

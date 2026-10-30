@@ -67,8 +67,11 @@ test('Import CSV looks inert, not faded mustard, while the confirm card asks', a
   await page.getByLabel('Import CSV').setInputFiles(file(info, 'b.csv', head + row(1, 110)));
   await expect(page.getByRole('alert')).toBeVisible();
   const [bg, opacity] = await btn.evaluate((el) => { const s = getComputedStyle(el); return [s.backgroundColor, s.opacity]; });
-  expect(bg).not.toBe(accent);
-  expect(opacity).toBe('1');
+  // Since the backup file's Download took the accent (7c9f35c), Import is a plain button: off, it dims like any other, never mustard.
+  const mustard = await page.evaluate(() => { const b = document.createElement('button'); b.className = 'primary'; document.body.append(b); const c = getComputedStyle(b).backgroundColor; b.remove(); return c; });
+  expect(accent).not.toBe(mustard);
+  expect(bg).not.toBe(mustard);
+  expect(Number(opacity)).toBeLessThan(1);
   // No press feedback either: the control is inert.
   await btn.hover();
   await page.mouse.down();
