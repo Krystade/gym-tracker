@@ -8,8 +8,6 @@ import { metaHash, type Seen } from '../domain/cloud';
 import type { BodyDay } from '../domain/body';
 import type { SetEntry } from '../domain/types';
 import type { Cloud } from './firebase';
-import { fromB64, parseDeletedCsv, repoClient, sync as backup, toB64, toDeletedCsv } from '../domain/sync';
-import { parseCsv, toCsv } from '../domain/csv';
 
 // An edit made on the phone while a sync is in flight (round 10): the sync's imports and deletes were worked out from what the
 // phone had when it started, so they must not land on anything changed since. Synthetic data only.
@@ -168,111 +166,5 @@ describe('a setting changed on this phone while a sync is out', () => {
     expect(await db.getAllSettings()).toEqual([X3]);
     expect((await sync(store.cloud, r)).skipped).toBe(0);
     expect(cloudItems(store.docs)).toEqual({ 'settings:bench press': X3 });
-  });
-});
-
-describe('a set edited on this phone while the private backup is pulled (domain/sync)', () => {
-  it('survives the backup’s older edit of it; the backup gets the phone’s at the next sync', async () => {
-    const db = boundDb('main');
-    const mine = { ...S, id: 'backup|2026-10-01|bench press|1', source: 'backup' };
-    await db.putSet(mine);
-    const files = new Map([['app/sets.csv', { text: toCsv([{ ...mine, reps: 10, editedAt: 100 }]), sha: 'a' }]]);
-    let release!: () => void, reached!: () => void, holding = true;
-    const gate = new Promise<void>((r) => { release = r; }), held = new Promise<void>((r) => { reached = r; });
-    const fetchFn = async (url: string, init: RequestInit = {}): Promise<Response> => {
-      const path = decodeURIComponent(new URL(url).pathname.replace(/^\/repos\/[^/]+\/[^/]+\/contents\//, ''));
-      if ((init.method ?? 'GET') === 'GET') {
-        if (path === 'app/body.csv' && holding) { holding = false; reached(); await gate; } // the last read before the pull lands
-        const f = files.get(path);
-        return f ? Response.json({ encoding: 'base64', content: toB64(f.text), sha: f.sha }) : new Response('{}', { status: 404 });
-      }
-      const body = JSON.parse(String(init.body)) as { content: string };
-      files.set(path, { text: fromB64(body.content), sha: `${path}-${files.size}` });
-      return Response.json({}, { status: 201 });
-    };
-    const run = async () => {
-      const log = await db.getSyncSnapshot();
-      return backup({ client: repoClient({ key: 'sync', repo: 'someone/data', token: 't', branch: 'main' }, fetchFn), sets: log.sets, body: log.body, deleted: log.tombstones,
-        now: new Date(NOW), apply: phoneApply(db).applyMonth });
-    };
-    const first = run();
-    await held;
-    await db.putSet({ ...mine, weight: 150, editedAt: 200 });
-    release();
-    expect(await first).toMatchObject({ pulledSets: 0 });
-    expect((await db.getAllSets()).map((s) => s.weight)).toEqual([150]);
-    expect(await db.getReplaced()).toEqual([]);
-    await run();
-    expect(parseCsv(files.get('app/sets.csv')!.text).entries.map((s) => s.weight)).toEqual([150]);
-  });
-});
-
-describe('deletes and the private backup, through this phone’s database (round 10, 2b)', () => {
-  const H: SetEntry = { ...S, id: 'notes|2026-10-01|bench press|1', source: 'notes' };
-  /** A repo in memory; a GET of `hold` waits once, as a slow read would, until released. */
-  function repo(init: Record<string, string>, hold?: string) {
-    const files = new Map(Object.entries(init).map(([p, t]) => [p, { text: t, sha: `${p}-0` }]));
-    let release!: () => void, reached!: () => void;
-    const gate = new Promise<void>((r) => { release = r; }), held = new Promise<void>((r) => { reached = r; });
-    const fetchFn = async (url: string, init: RequestInit = {}): Promise<Response> => {
-      const path = decodeURIComponent(new URL(url).pathname.replace(/^\/repos\/[^/]+\/[^/]+\/contents\//, ''));
-      if ((init.method ?? 'GET') === 'GET') {
-        if (path === hold) { hold = undefined; reached(); await gate; }
-        const f = files.get(path);
-        return f ? Response.json({ encoding: 'base64', content: toB64(f.text), sha: f.sha }) : new Response('{}', { status: 404 });
-      }
-      const body = JSON.parse(String(init.body)) as { content: string };
-      files.set(path, { text: fromB64(body.content), sha: `${path}-${files.size}-${Math.random()}` });
-      return Response.json({}, { status: 201 });
-    };
-    return { files, fetchFn, held, release };
-  }
-  /** One backup sync, reading and saving to the phone as useSync does. */
-  const backupSync = async (db: ProfileDb, fetchFn: (u: string, i?: RequestInit) => Promise<Response>) => {
-    const log = await db.getSyncSnapshot();
-    return backup({ client: repoClient({ key: 'sync', repo: 'someone/data', token: 't', branch: 'main' }, fetchFn), sets: log.sets, body: log.body,
-      deleted: log.tombstones, tombAt: log.tombAt, now: new Date(NOW), apply: phoneApply(db).applyMonth });
-  };
-
-  it('a set deleted here goes into deleted.csv at its delete time, and a fresh phone restoring the backup leaves it out', async () => {
-    const r = repo({ 'history.csv': toCsv([H, { ...H, id: 'notes|2026-10-01|bench press|2', setNo: 2 }]) });
-    const db = boundDb('main');
-    await backupSync(db, r.fetchFn);
-    expect(await db.getAllSets()).toHaveLength(2);
-    await db.deleteSetWithTombstone(H.id, NOW - 1000);
-    await backupSync(db, r.fetchFn);
-    expect(parseDeletedCsv(r.files.get('app/deleted.csv')!.text).deleted).toEqual({ [H.id]: NOW - 1000 });
-
-    globalThis.indexedDB = new IDBFactory(); resetDbForTests(); // a new phone
-    const fresh = boundDb('main');
-    await backupSync(fresh, r.fetchFn);
-    expect((await fresh.getAllSets()).map((s) => s.id)).toEqual(['notes|2026-10-01|bench press|2']);
-  });
-
-  it('a set another device deleted goes from this phone with a tombstone, its copy kept under Replaced by sync', async () => {
-    const db = boundDb('main');
-    await db.putSet(S);
-    const r = repo({ 'app/sets.csv': toCsv([S]), 'app/deleted.csv': toDeletedCsv({ [S.id]: NOW - 1000 }) });
-    expect(await backupSync(db, r.fetchFn)).toMatchObject({ removedSets: 1, pushedSets: 0 });
-    expect(await db.getAllSets()).toEqual([]);
-    expect(await db.getTombstones()).toEqual(new Set([S.id]));
-    expect((await db.getReplaced()).map((x) => [x.kind, x.kind === 'set' && x.mine.id, x.kind === 'set' && x.theirs])).toEqual([['set', S.id, null]]);
-    expect(parseCsv(r.files.get('app/sets.csv')!.text).entries).toEqual([]);
-  });
-
-  it('a set edited here while the pull is out survives another device’s earlier delete, and goes back up at the next sync', async () => {
-    const db = boundDb('main');
-    await db.putSet(S);
-    const r = repo({ 'app/sets.csv': toCsv([S]), 'app/deleted.csv': toDeletedCsv({ [S.id]: NOW - 1000 }) }, 'app/body.csv');
-    const first = backupSync(db, r.fetchFn);
-    await r.held;
-    await db.putSet({ ...S, weight: 150, editedAt: NOW });
-    r.release();
-    expect(await first).toMatchObject({ removedSets: 0 });
-    expect((await db.getAllSets()).map((s) => s.weight)).toEqual([150]);
-    expect(await db.getReplaced()).toEqual([]);
-    await backupSync(db, r.fetchFn);
-    expect((await db.getAllSets()).map((s) => s.weight)).toEqual([150]);
-    expect(parseCsv(r.files.get('app/sets.csv')!.text).entries.map((s) => s.weight)).toEqual([150]);
   });
 });

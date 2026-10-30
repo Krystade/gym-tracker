@@ -7,7 +7,7 @@ import { goalOf } from '../domain/profile';
 import { useProgram } from '../state/useProgram';
 import { useBody } from '../state/useBody';
 import { usePhotos } from '../state/usePhotos';
-import { useSync } from '../state/useSync';
+import { useBackup } from '../state/useBackup';
 import { useCloud } from '../state/useCloud';
 import { useGyms, type GymsStore } from '../state/useGyms';
 import { usePeople, type PeopleStore } from '../state/usePeople';
@@ -227,7 +227,8 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const ach = useAchStart(nav.date);
   // Gym Buddies: what's kept, read again after a sync like the rest (state/useBuddies).
   const buddies = useBuddies(nav.date);
-  const sync = useSync(store, body, person);
+  // The backup file: a restore reads the log and the buddies again; Photos and Backup show its nudge.
+  const backup = useBackup(person, photos, { log: async () => { await store.synced(); await body.reload(); }, buddies: buddies.reload });
   // Settings pulled from the account are saved on the phone, then every screen reads them again.
   // Friends' news after a sync, at most once a minute (a workout syncs after every set); anything done in Friends reads it at once.
   // And everything Friends shows, read in the background when the phone is idle after a sync, at most every 5 minutes.
@@ -301,10 +302,10 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : pasteOpen ? <PasteScreen store={store} today={date} backLabel={sub ? `‹ ${MORE_TITLE[sub].back}` : back} onBack={top(() => setPasteOpen(false))} onDone={() => { setPasteOpen(false); setMoreAt(null); toDays(); window.scrollTo(0, 0); }} />
           : prioOpen ? <PrioritiesScreen profile={profile} entries={store.entries} today={date} backLabel={back} onBack={top(() => setPrioOpen(false))} />
           : gymOpen ? <GymsScreen gyms={gyms} logged={exerciseNames(store.entries)} uid={uid} backLabel={back} onBack={top(() => setGymOpen(false))} />
-          : photosOpen ? <PhotosScreen photos={photos} body={body} today={date} backLabel={back} onBack={() => setPhotosOpen(false)} />
+          : photosOpen ? <PhotosScreen photos={photos} backup={backup} body={body} today={date} backLabel={back} onBack={() => setPhotosOpen(false)} />
           : programOpen ? <ProgramScreen programs={programs} profile={profile} entries={store.entries} body={body.days} gyms={gyms} uid={uid} backLabel={back} keptRest={(ex) => settings.get(ex).rest} onBack={() => setProgramOpen(false)}
             onOpenPriorities={top(() => { setProgramOpen(false); setPrioOpen(true); })} />
-          : sub ? <MoreSubScreen at={sub} store={store} profile={profile} rawProfile={rawProfile} body={body} sync={sync} cloud={cloud} people={people} person={person} today={date}
+          : sub ? <MoreSubScreen at={sub} store={store} profile={profile} rawProfile={rawProfile} body={body} backup={backup} cloud={cloud} people={people} person={person} today={date}
             onBack={top(() => setMoreAt(null))} onOpen={toMore} onOpenPaste={top(() => setPasteOpen(true))} onOpenFriends={top(() => { setMoreAt(null); setTab('friends'); })} />
           : exercise ? <ExerciseScreen name={exercise} store={store} settings={settings} gyms={gyms} programs={programs} date={day} bodyDays={body.days} profile={profile.profile} onBack={() => setExercise(null)}
             onRenamed={(to) => { renameToday(person.id, day, exercise, to); setExercise(to); window.scrollTo(0, 0); }}
@@ -327,7 +328,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
             onSignIn={() => toMore('account')} onOpenMine={top(toDays)} myName={person.name} goal={profile.profile.weeklyGoal} onCompare={nav.compare} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} today={date} settings={settings} gyms={gyms} onOpenLift={open} onOpenPriorities={top(() => setPrioOpen(true))}
             openAch={achAt} onOpenedAch={() => setAchAt(null)} />
-          : <DataScreen store={store} profile={rawProfile} programs={programs} gyms={gyms} photos={photos} cloud={cloud} people={people} onShowWalkthrough={showTour} onOpen={toMore}
+          : <DataScreen store={store} profile={rawProfile} programs={programs} gyms={gyms} photos={photos} backup={backup} cloud={cloud} people={people} onShowWalkthrough={showTour} onOpen={toMore}
             onOpenGym={top(() => setGymOpen(true))} onOpenProgram={top(() => setProgramOpen(true))} onOpenPhotos={top(() => setPhotosOpen(true))} onOpenPriorities={top(() => setPrioOpen(true))} onOpenAchievements={() => openAch()} />}
       </main>
     </AchProvider>

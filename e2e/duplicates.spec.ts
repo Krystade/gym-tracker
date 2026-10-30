@@ -1,9 +1,8 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { goto } from './nav';
-import { dataSettled } from './settle';
 import { DOCS } from './emu';
 import { account, put, signedIn } from './seed';
-import { asSets, convertedRows, CONVERTED, DIFFERING, IDENTICAL, MONTH, PASTE, PASTE_ONLY, pasteRows, toCsv, TWINS } from './fixtures/dupes';
+import { asSets, convertedRows, DIFFERING, IDENTICAL, MONTH, PASTE, PASTE_ONLY, pasteRows, toCsv, TWINS } from './fixtures/dupes';
 
 // Round 20: the same notes log imported twice. The import guards hold the second copy back; More → Duplicate imports removes
 // one that got in anyway, through the store's delete, so it stays gone on every phone and through every re-import.
@@ -109,7 +108,7 @@ async function cloudMonth(request: APIRequestContext, uid: string) {
   };
 }
 
-test('removed on one phone: gone on the other, never sent back up by it, and not brought back by a CSV or GitHub re-import', async ({ browser, request }) => {
+test('removed on one phone: gone on the other, never sent back up by it, and not brought back by a CSV re-import', async ({ browser, request }) => {
   test.setTimeout(180_000);
   const me = await account(request);
   const at = Date.now();
@@ -141,34 +140,5 @@ test('removed on one phone: gone on the other, never sent back up by it, and not
   await expect(b.getByText(`✓ Imported ${TWINS} new sets`)).toBeVisible(); // the count may already be back by the time it's read
   await syncNow(b);
   await setCount(b, KEPT);
-  expect(await cloudMonth(request, me.uid)).toEqual({ sources: Array(KEPT).fill(PASTE), deleted: convertedIds });
-
-  // The GitHub backup's history.csv still holds the converter's rows, and its sets.csv is from before the removal.
-  const files = new Map<string, { text: string; sha: string }>([
-    ['history.csv', { text: toCsv(convertedRows), sha: 'h1' }], ['app/sets.csv', { text: toCsv([...pasteRows, ...convertedRows]), sha: 's0' }],
-  ]);
-  await a.route('https://api.github.com/**', async (route) => {
-    const req = route.request();
-    const path = decodeURIComponent(new URL(req.url()).pathname.replace(/^\/repos\/someone\/backup\/contents\//, ''));
-    if (req.method() === 'GET') {
-      const f = files.get(path);
-      return f ? route.fulfill({ json: { encoding: 'base64', content: Buffer.from(f.text).toString('base64'), sha: f.sha } }) : route.fulfill({ status: 404, json: {} });
-    }
-    const body = req.postDataJSON() as { content: string };
-    files.set(path, { text: Buffer.from(body.content, 'base64').toString('utf8'), sha: `p${files.size}` });
-    return route.fulfill({ status: 201, json: {} });
-  });
-  await goto(a, 'Backup');
-  await dataSettled(a);
-  const backup = a.getByRole('region', { name: 'Private backup' });
-  await backup.getByRole('textbox', { name: 'Repository' }).fill('someone/backup');
-  await backup.getByLabel('Access token').fill('fake-e2e-token-not-real');
-  await backup.getByRole('button', { name: 'Save' }).click();
-  await backup.getByRole('button', { name: 'Sync now' }).click();
-  await expect(backup.getByRole('status')).toContainText('Synced: 0 sets');
-  await setCount(a, KEPT);
-  expect(files.get('app/deleted.csv')!.text).toContain(convertedIds[0]);
-  expect(files.get('app/sets.csv')!.text).not.toContain(CONVERTED);
-  await syncNow(a);
   expect(await cloudMonth(request, me.uid)).toEqual({ sources: Array(KEPT).fill(PASTE), deleted: convertedIds });
 });

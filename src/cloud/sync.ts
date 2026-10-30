@@ -34,7 +34,7 @@ export interface SyncApply {
 export interface SyncOutcome { seen: Seen; metaSeen: MetaSeen; pulled: number; pushed: number; removed: number; metaPulled: number; replaced: number; replacedSets: number; skipped: number }
 
 /**
- * The phone's side of a sync, on one profile's database (shared with the backup sync, domain/sync). `after` re-reads what a save
+ * The phone's side of a sync, on one profile's database (shared with Restore from backup, state/useBackup). `after` re-reads what a save
  * changed: the log (sets and body days), the settings, the list of copies a sync replaced.
  */
 export function phoneApply(db: Pick<ProfileDb, 'applySynced' | 'applySyncedMeta'>, after: { log?: () => unknown; meta?: () => unknown; replaced?: () => unknown } = {}): SyncApply {

@@ -4,6 +4,7 @@ import type { ProfileStore } from '../state/useProfile';
 import type { ProgramStore } from '../state/useProgram';
 import type { GymsStore } from '../state/useGyms';
 import type { PhotosStore } from '../state/usePhotos';
+import type { BackupStore } from '../state/useBackup';
 import { useCloudStatus, type CloudStore } from '../state/useCloud';
 import type { PeopleStore } from '../state/usePeople';
 import { useCycle } from '../state/useCycle';
@@ -23,8 +24,8 @@ import { perSideOffered } from './PerSideReview';
  * Training setup (Program, Weekly goal, Priorities and goal, Gym); You (Progress photos, Cycle tracking, People);
  * Account and data (Account and sync, Notifications, Backup, import and export); Help.
  */
-export function DataScreen({ store, profile, programs, gyms, photos, cloud, people, onShowWalkthrough, onOpen, onOpenGym, onOpenProgram, onOpenPhotos, onOpenPriorities, onOpenAchievements }: {
-  store: SetsStore; profile: ProfileStore; programs: ProgramStore; gyms: GymsStore; photos: PhotosStore; cloud: CloudStore; people: PeopleStore;
+export function DataScreen({ store, profile, programs, gyms, photos, backup, cloud, people, onShowWalkthrough, onOpen, onOpenGym, onOpenProgram, onOpenPhotos, onOpenPriorities, onOpenAchievements }: {
+  store: SetsStore; profile: ProfileStore; programs: ProgramStore; gyms: GymsStore; photos: PhotosStore; backup: BackupStore; cloud: CloudStore; people: PeopleStore;
   onShowWalkthrough: () => void; /** One of More's own screens. */ onOpen: (m: MoreAt) => void;
   onOpenGym: () => void; onOpenProgram: () => void; onOpenPhotos: () => void; onOpenPriorities: () => void; /** The Achievements page, on Stats. */ onOpenAchievements: () => void;
 }) {
@@ -58,8 +59,8 @@ export function DataScreen({ store, profile, programs, gyms, photos, cloud, peop
       <Group name="Account and data">
         <AccountRow cloud={cloud} people={people} onClick={() => onOpen('account')} />
         {PUSH_ON && <Row name="Notifications" sub="Reminders, friends and the weekly recap" onClick={() => onOpen('notifications')} />}
-        <Row name="Backup, import and export" sub={`${plural(store.entries.length, 'set')} · CSV · paste · GitHub`}
-          note={persisted === false ? <><span aria-hidden="true">!</span><span className="sr-only">Storage not marked persistent</span></> : undefined} warn onClick={() => onOpen('backup')} />
+        <Row name="Backup, import and export" sub={[plural(store.entries.length, 'set'), backup.mark === undefined ? null : backup.mark?.at ? `backed up ${time(backup.mark.at)}` : 'no backup yet'].filter(Boolean).join(' · ')}
+          note={persisted === false || backup.due ? <><span aria-hidden="true">!</span><span className="sr-only">{backup.due ? 'Photos not backed up' : 'Storage not marked persistent'}</span></> : undefined} warn onClick={() => onOpen('backup')} />
         {/* The app's owner alone (social S4): the board's reports. */}
         {cloud.mine && isOwner(cloud.link?.uid) && <Row name="Board review" sub="Reported posts · owner only" onClick={() => onOpen('review')} />}
       </Group>
@@ -92,7 +93,7 @@ function Row({ name, sub, note, warn, action, onClick }: { name: string; sub?: s
   );
 }
 
-/** A sync today by its time, an older one by its day. */
+/** A sync or a backup today by its time, an older one by its day. */
 const time = (iso: string) => {
   const d = new Date(iso);
   return d.toDateString() === new Date().toDateString() ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleDateString([], { month: 'short', day: 'numeric' });

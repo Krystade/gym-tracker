@@ -692,6 +692,11 @@ details.builder[open] > summary { margin-bottom: 8px; }
 .tl-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .tl-thumb { display: grid; gap: 4px; padding: 4px; justify-items: center; }
 .tl-thumb img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; }
+/* The backup nudge (ui/BackupCard): one quiet strip above the first card. */
+.backup-nudge { margin: 0 0 16px; padding: 10px 14px 12px; background: var(--surface-2); box-shadow: inset 3px 0 var(--warn); border-radius: var(--r-group); }
+.backup-nudge p { margin: 0 0 8px; }
+.backup-nudge .form-actions { margin: 0; }
+.backup-nudge .form-actions + p { margin: 8px 0 0; }
 
 /* sync */
 .sync-form { display: grid; gap: 8px; }
@@ -701,7 +706,6 @@ details.builder[open] > summary { margin-bottom: 8px; }
 .danger-zone { margin-top: 12px; }
 .danger-zone > summary { min-height: 44px; display: flex; align-items: center; color: var(--danger-text); cursor: pointer; }
 .sync-form ol { padding-left: 18px; margin: 6px 0; }
-.sync-saved { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; overflow-wrap: anywhere; }
 /* What a sync replaced, inside the sync card: both copies side by side, then Keep / Combine / Dismiss. */
 .replaced { margin: 12px 0; padding-top: 12px; border-top: 1px solid var(--line); }
 .replaced h3 { font-size: var(--fs-md); margin: 0 0 2px; }

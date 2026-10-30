@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { SetsStore } from '../state/useSets';
 import type { ProfileStore } from '../state/useProfile';
 import type { BodyStore } from '../state/useBody';
-import type { SyncStore } from '../state/useSync';
+import type { BackupStore } from '../state/useBackup';
 import type { CloudStore } from '../state/useCloud';
-import { SyncCard } from './SyncCard';
+import { BackupCard } from './BackupCard';
 import { ReplacedList } from './ReplacedList';
 import { useReplaced } from '../state/useReplaced';
 import { parseBodyFile, stampDay, toBodyCsv, type CsvKind } from '../domain/body';
@@ -22,11 +22,11 @@ import { fmtDay, plural } from '../domain/format';
 const KIND: Partial<Record<CsvKind, string>> = { body: 'Body data', 'mfp-weight': 'MyFitnessPal weight', 'mfp-nutrition': 'MyFitnessPal nutrition' };
 
 /**
- * More › Backup, import and export (IA plan A3): what the log holds and whether the phone keeps it, Import (CSV, a profile or
- * name-mappings .json, body and MyFitnessPal files), Paste from notes, Export, duplicate imports, and the private GitHub backup.
+ * More › Backup, import and export (IA plan A3): what the log holds and whether the phone keeps it, the backup file (Download and
+ * Restore), Import (CSV, a profile or name-mappings .json, body and MyFitnessPal files), Paste from notes, Export, and duplicate imports.
  */
-export function BackupScreen({ store, profile, body, sync, cloud, onOpenPaste }: {
-  store: SetsStore; profile: ProfileStore; body: BodyStore; sync: SyncStore; cloud: CloudStore; onOpenPaste: () => void;
+export function BackupScreen({ store, profile, body, backup, cloud, onOpenPaste }: {
+  store: SetsStore; profile: ProfileStore; body: BodyStore; backup: BackupStore; cloud: CloudStore; onOpenPaste: () => void;
 }) {
   const db = useDb();
   const profileId = useProfileId();
@@ -38,7 +38,7 @@ export function BackupScreen({ store, profile, body, sync, cloud, onOpenPaste }:
   const [persisted, setPersisted] = useState<boolean | null | undefined>(knownStoragePersistence);
   useEffect(() => { if (persisted === undefined) void storagePersistence().then(setPersisted); }, []);
   const sessions = sessionsByDate(store.entries);
-  // What syncs replaced on this phone: here, under the GitHub backup, when this person isn't the account's (else under Account).
+  // What a restore or a sync replaced on this phone: here, under the backup file, when this person isn't the account's (else under Account).
   const replaced = useReplaced(store, body);
 
   async function onFiles(files: File[]) {
@@ -50,6 +50,8 @@ export function BackupScreen({ store, profile, body, sync, cloud, onOpenPaste }:
     let text: string;
     try { text = await file.text(); } catch (e) { setResult({ added: 0, updated: 0, same: 0, kept: false, held: 0, errors: [{ row: 0, message: `Could not read the file: ${String(e)}` }] }); return; }
     if (/\.json$/i.test(file.name)) {
+      // A backup file picked here: restored, as Restore from backup would.
+      if (/^\s*\{"kind":"gym-tracker-backup"/.test(text)) { await backup.restore(file); return; }
       const al = parseAliasesJson(text);
       if (al) {
         try { await db.putAliases({ ...(await db.getAliases()), ...al.aliases }); } catch (e) { setProfileMsg({ ok: false, text: `Saving the name mappings failed: ${String(e)}` }); return; }
@@ -121,12 +123,13 @@ export function BackupScreen({ store, profile, body, sync, cloud, onOpenPaste }:
         <p>{plural(store.entries.length, 'set')} · {plural(sessions.length, 'session')} · {plural(exerciseNames(store.entries).length, 'lift')}</p>
         {sessions.length > 0 && <p className="muted">{fmtDay(sessions.at(-1)!.date, localDate(new Date()))} → {fmtDay(sessions[0].date, localDate(new Date()))}</p>}
         <p className={persisted === false ? 'warn' : 'muted'}>
-          {persisted ? 'Storage is persistent.' : persisted === false ? 'Storage not marked persistent — export a backup regularly.' : 'Storage status unknown.'}
+          {persisted ? 'Storage is persistent.' : persisted === false ? 'Storage not marked persistent — download a backup regularly.' : 'Storage status unknown.'}
         </p>
       </section>
+      <BackupCard backup={backup} replaced={cloud.mine ? undefined : <ReplacedList replaced={replaced} />} />
       <section className="card">
         {/* Off while the card asks, so a second pick can't leave the first file unanswered. */}
-        <label className="button primary wide" aria-disabled={ask ? true : undefined}>Import CSV
+        <label className="button wide" aria-disabled={ask ? true : undefined}>Import CSV
           <input type="file" disabled={ask != null} multiple accept=".csv,.json,text/csv,application/json" hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; if (fs.length) void onFiles(fs); }} />
         </label>
         <button className="wide" onClick={onOpenPaste}>Paste from notes</button>
@@ -182,7 +185,6 @@ export function BackupScreen({ store, profile, body, sync, cloud, onOpenPaste }:
           : <textarea className="csv" aria-label="Body CSV export" readOnly value={bodyFallback} onFocus={(e) => e.currentTarget.select()} />)}
       </section>
       <DuplicatesCard store={store} profile={profileId} onBackup={exportCsv} />
-      <SyncCard sync={sync} newestSet={sessions[0]?.date ?? null} replaced={cloud.mine ? undefined : <ReplacedList replaced={replaced} />} />
     </>
   );
 }

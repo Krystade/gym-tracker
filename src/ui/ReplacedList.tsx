@@ -5,7 +5,7 @@ import { localDate } from '../domain/ids';
 import type { ReplacedStore } from '../state/useReplaced';
 
 /**
- * Under the sync card: what a sync replaced on this phone, each with both copies side by side, to put this phone's back
+ * Under the account or the backup file: what a sync or a restore replaced on this phone, each with both copies side by side, to put this phone's back
  * (or combine the two) or dismiss. Nothing at all while there's nothing.
  */
 export function ReplacedList({ replaced }: { replaced: ReplacedStore }) {

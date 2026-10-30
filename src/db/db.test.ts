@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { addSet, getReplaced, putReplaced, deleteReplaced, pruneReplaced, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, deleteSyncConfig, getSyncConfig, getTombstones, getTombstoneTimes, deleteSettings, deleteDayPlan, putSyncConfig, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync } from './db';
+import { addSet, getReplaced, putReplaced, deleteReplaced, pruneReplaced, getGyms, putGyms, getAliases, putAliases, addTombstone, deletePhoto, deleteSet, deleteSetWithTombstone, restoreSet, renameLift, getBackupMark, putBackupMark, getTombstones, getTombstoneTimes, deleteSettings, deleteDayPlan, getAllSets, getBody, getPhotoBlob, getPhotoMetas, putPhoto, putBody, putBodyMany, getAllSettings, getDayPlans, getProfile, getProgram, putDayPlan, putMany, putProfile, putProgram, putSet, putSettings, resetDbForTests, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync } from './db';
 import { defaultProfile } from '../domain/profile';
 import { parseCsv } from '../domain/csv';
 import { buildAppSet, buildNamedSet } from '../domain/buildSet';
@@ -271,14 +271,12 @@ describe('db v7', () => {
     expect(await getProfile()).toBeDefined();
     expect(await getBody()).toHaveLength(1);
     expect(await getPhotoMetas()).toHaveLength(1);
-    expect(await getSyncConfig()).toBeUndefined();
+    expect(await getBackupMark()).toBeUndefined();
     expect(await getTombstones()).toEqual(new Set());
   });
-  it('stores the sync config and deleted-set ids', async () => {
-    await putSyncConfig({ key: 'sync', repo: 'a/b', token: 't', branch: 'main' });
-    expect((await getSyncConfig())?.repo).toBe('a/b');
-    await deleteSyncConfig();
-    expect(await getSyncConfig()).toBeUndefined();
+  it('stores the last backup and deleted-set ids', async () => {
+    await putBackupMark({ at: '2026-10-29T12:00:00.000Z', photos: 4 });
+    expect(await getBackupMark()).toEqual({ at: '2026-10-29T12:00:00.000Z', photos: 4 });
     await addTombstone('x'); await addTombstone('y'); await addTombstone('x');
     expect(await getTombstones()).toEqual(new Set(['x', 'y']));
   });

@@ -21,7 +21,7 @@ export async function readMeta(db: ProfileDb): Promise<MetaItems> {
   return { ...out, ...(await readBuddyMeta(db)) };
 }
 
-/** Gym Buddies' items alone (domain/buddies/kept), as readMeta has them: what the GitHub backup carries of the settings. */
+/** Gym Buddies' items alone (domain/buddies/kept), as readMeta has them: what the backup file carries of the settings. */
 export async function readBuddyMeta(db: Pick<ProfileDb, 'getBuddyPrefs' | 'getBuddyLead' | 'getBuddyStart' | 'getSpends'>): Promise<MetaItems> {
   const [prefs, lead, start, spends] = await Promise.all([db.getBuddyPrefs(), db.getBuddyLead(), db.getBuddyStart(), db.getSpends()]);
   const out: MetaItems = {};

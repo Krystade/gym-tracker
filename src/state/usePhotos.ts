@@ -9,6 +9,10 @@ export function usePhotos() {
   // Bumped on every write so image views re-read a retaken photo under the same id.
   const [version, setVersion] = useState(0);
   useEffect(() => { void db.getPhotoMetas().then(setMetas).catch((e) => setError(`Could not load photos: ${String(e)}`)); }, []);
+  /** Read again after a restore brought photos in (state/useBackup). */
+  const reload = useCallback(async () => {
+    try { setMetas(await db.getPhotoMetas()); setVersion((v) => v + 1); } catch (e) { setError(`Could not load photos: ${String(e)}`); }
+  }, []);
   const add = useCallback(async (meta: PhotoMeta, full: Blob, thumb: Blob): Promise<boolean> => {
     try { await db.putPhoto(meta, full, thumb); setMetas((xs) => [...xs.filter((x) => x.id !== meta.id), meta]); setVersion((v) => v + 1); setError(null); return true; }
     catch (e) { setError(`Saving the photo failed: ${String(e)}`); return false; }
@@ -17,6 +21,6 @@ export function usePhotos() {
     try { await db.deletePhoto(id); setMetas((xs) => xs.filter((x) => x.id !== id)); setVersion((v) => v + 1); setError(null); return true; }
     catch (e) { setError(`Deleting the photo failed: ${String(e)}`); return false; }
   }, []);
-  return { metas, error, version, add, remove };
+  return { metas, error, version, add, remove, reload };
 }
 export type PhotosStore = ReturnType<typeof usePhotos>;

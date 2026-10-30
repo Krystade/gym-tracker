@@ -2,11 +2,12 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
-import { boundDb, deletePersonData, getAllSets, getGyms, getPeople, getPhotoMetas, getSyncConfig, MAIN, putPeople, putPhoto, putSet, putSyncConfig, resetDbForTests, setProfileDb } from './db';
+import { boundDb, deletePersonData, getAllSets, getGyms, getPeople, getPhotoMetas, MAIN, putPeople, putPhoto, putSet, resetDbForTests, setProfileDb } from './db';
 import { parseCsv } from '../domain/csv';
 
 const CSV = 'date,exercise,set,weight_lb,reps,note,source\n2026-01-05,Cable Curl,1,52.5,12,,s\n';
 const [SET] = parseCsv(CSV).entries;
+/** The GitHub backup's settings, removed 2026-10-29: never copied, and deleted wherever they're left. */
 const SYNC = { key: 'sync' as const, repo: 'someone/backup', token: 'test-token', branch: 'main' };
 
 beforeEach(() => { globalThis.indexedDB = new IDBFactory(); resetDbForTests(); });
@@ -47,20 +48,24 @@ describe('profiles', () => {
     expect(await getPhotoMetas()).toHaveLength(1);
   });
 
-  it('moves sync settings and gyms to the shared database once, then deletes the old copies', async () => {
+  it('moves gyms to the shared database once, then deletes the old copies; the GitHub backup’s token goes, never copied', async () => {
+    const token = async () => { const s = await openDB('gym-tracker-shared', 1); const v = await s.get('kv', 'sync'); s.close(); return v; };
     await oldPhone();
-    expect(await getSyncConfig()).toEqual(SYNC);
     expect((await getGyms()).active).toBe('g1');
     const d = await openDB('gym-tracker', 9);
     expect(await d.get('config', 'sync')).toBeUndefined();
     expect(await d.get('config', 'gyms')).toBeUndefined();
     d.close();
-    await putSyncConfig({ ...SYNC, branch: 'other' });
+    expect(await token()).toBeUndefined();
+    // A phone that kept the token in the shared database: gone at the next launch.
     resetDbForTests();
-    expect((await getSyncConfig())?.branch).toBe('other');
+    const s = await openDB('gym-tracker-shared', 1);
+    await s.put('kv', SYNC);
+    s.close();
+    expect(await token()).toEqual(SYNC);
     setProfileDb('b');
-    expect((await getSyncConfig())?.branch).toBe('other'); // shared, whoever is active
-    expect((await getGyms()).gyms).toHaveLength(1);
+    expect((await getGyms()).gyms).toHaveLength(1); // shared, whoever is active
+    expect(await token()).toBeUndefined();
   });
 
   it('deletes one profile’s data and nothing else', async () => {

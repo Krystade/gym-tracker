@@ -1,4 +1,4 @@
-// Progress photos live only in this device's IndexedDB. Nothing here is ever exported or synced.
+// Progress photos live only in this device's IndexedDB: never synced, and copied out only in the backup file (domain/backup).
 
 export const POSES = ['front', 'side', 'back'] as const;
 export type Pose = (typeof POSES)[number];

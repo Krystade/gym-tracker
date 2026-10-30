@@ -1,29 +1,26 @@
 import { useState } from 'react';
 import { MAIN } from '../db/db';
-import { slugError } from '../domain/sync';
 import type { PeopleStore } from '../state/usePeople';
 import { Input } from './Field';
 
-const toSlug = (name: string) => name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
+/** A profile's short name, for its backup file's name (domain/backup backupName). */
+const toSlug = (name: string) => name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'person';
 
 // What's typed in the new-person form. Every switch of person remounts the More screen, so it lives here, outside it.
-let kept: { name: string; slug: string | null } = { name: '', slug: null };
+let kept = '';
 
 /** Add, rename and delete the people tracked on this phone. Each has their own sets, body log, priorities and program. */
 export function PeopleCard({ people }: { people: PeopleStore }) {
-  const [{ name, slug }, setForm] = useState(kept);
-  const change = (n: string, s: string | null) => { kept = { name: n, slug: s }; setForm(kept); };
+  const [name, setName] = useState(kept);
+  const change = (n: string) => { kept = n; setName(n); };
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirm, setConfirm] = useState('');
-  const folder = slug ?? toSlug(name);
-  const taken = people.people.map((p) => p.slug);
-  const err = name.trim() ? slugError(folder, taken, people.retired) : null;
   const target = people.people.find((p) => p.id === deleting);
 
   return (
     <section className="card">
       <h2>{people.people.length > 1 ? 'Profiles' : 'Add a person'}</h2>
-      <p className="muted small">Track someone training with you. Their sets, body log, priorities and program stay separate; gyms and the backup are shared.</p>
+      <p className="muted small">Track someone training with you. Their sets, body log, photos, priorities and program stay separate; gyms are shared.</p>
       {people.people.length > 1 && (
         <ul className="people">
           {people.people.map((p) => (
@@ -34,7 +31,7 @@ export function PeopleCard({ people }: { people: PeopleStore }) {
               {/* Under the row that opened it, not after the whole list. */}
               {target?.id === p.id && (
                 <div className="confirm-delete">
-                  <p className="warn">Deletes everything {p.name} logged on this phone. Their backup folder (profiles/{p.slug}) stays in the repo.</p>
+                  <p className="warn">Deletes everything {p.name} logged on this phone, photos too.</p>
                   <label className="field">Type {p.name} to confirm<Input value={confirm} onChange={(e) => setConfirm(e.target.value)} /></label>
                   <div className="form-actions">
                     <button onClick={() => setDeleting(null)}>Cancel</button>
@@ -46,12 +43,8 @@ export function PeopleCard({ people }: { people: PeopleStore }) {
           ))}
         </ul>
       )}
-      <label className="field">Name<Input value={name} onChange={(e) => change(e.target.value, slug)} placeholder="e.g. Sam" /></label>
-      {name.trim() && (
-        <label className="field">Backup folder<Input value={folder} onChange={(e) => change(name, e.target.value)} aria-describedby="slug-help" /></label>
-      )}
-      {name.trim() && <p id="slug-help" className={`small ${err ? 'warn' : 'muted'}`}>{err ?? `Backed up to profiles/${folder}/ in your private repo.`}</p>}
-      <button className="wide" disabled={!name.trim() || err != null} onClick={() => { void people.add(name.trim(), folder); change('', null); }}>Add {name.trim() || 'person'}</button>
+      <label className="field">Name<Input value={name} onChange={(e) => change(e.target.value)} placeholder="e.g. Sam" /></label>
+      <button className="wide" disabled={!name.trim()} onClick={() => { void people.add(name.trim(), toSlug(name.trim())); change(''); }}>Add {name.trim() || 'person'}</button>
     </section>
   );
 }

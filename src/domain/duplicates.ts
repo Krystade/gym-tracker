@@ -7,7 +7,7 @@ import type { SetEntry } from './types';
 // lining up each day's sets from the two imports in the order each import read them, lift by lift, set by set. Never by value
 // alone: two sets of 100×12 in one session are two sets, and each pairs with exactly one twin or with none.
 
-/** Sets logged in the app are live; every other source is an import (a paste, a CSV, the backup's history.csv). */
+/** Sets logged in the app are live; every other source is an import (a paste, a CSV, the converter's history.csv). */
 export const isImported = (e: SetEntry): boolean => e.source !== 'app';
 /** The in-app "Paste from notes" importer's source: an import checked line by line before it was added. */
 export const PASTE_SOURCE = 'notes';

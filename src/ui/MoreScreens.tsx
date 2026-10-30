@@ -2,7 +2,7 @@ import type { SetsStore } from '../state/useSets';
 import type { ProfileStore } from '../state/useProfile';
 import type { FittedProfileStore } from '../state/useFittedProfile';
 import type { BodyStore } from '../state/useBody';
-import type { SyncStore } from '../state/useSync';
+import type { BackupStore } from '../state/useBackup';
 import type { CloudStore } from '../state/useCloud';
 import type { PeopleStore } from '../state/usePeople';
 import type { Person } from '../db/db';
@@ -34,8 +34,8 @@ export const MORE_TITLE: Record<MoreAt, { title: string; back: string }> = {
   perside: { title: 'Bar sets logged per side', back: 'Per side' },
 };
 
-export function MoreSubScreen({ at, store, profile, rawProfile, body, sync, cloud, people, person, today, onBack, onOpen, onOpenPaste, onOpenFriends }: {
-  at: MoreAt; store: SetsStore; profile: FittedProfileStore; rawProfile: ProfileStore; body: BodyStore; sync: SyncStore; cloud: CloudStore;
+export function MoreSubScreen({ at, store, profile, rawProfile, body, backup, cloud, people, person, today, onBack, onOpen, onOpenPaste, onOpenFriends }: {
+  at: MoreAt; store: SetsStore; profile: FittedProfileStore; rawProfile: ProfileStore; body: BodyStore; backup: BackupStore; cloud: CloudStore;
   people: PeopleStore; person: Person; today: string;
   onBack: () => void; /** Another of More's screens (Notifications' Sign in: Account). */ onOpen: (m: MoreAt) => void; onOpenPaste: () => void; onOpenFriends: () => void;
 }) {
@@ -51,7 +51,7 @@ export function MoreSubScreen({ at, store, profile, rawProfile, body, sync, clou
         : at === 'perside' ? <PerSideReview store={store} profile={profileId} onBack={onBack} />
         : at === 'review' ? (cloud.link && cloud.mine ? <BoardReview uid={cloud.link.uid} /> : <p className="muted">Sign in as the app’s owner to review the board.</p>)
         : at === 'notifications' ? <NotificationsCard signedIn={cloud.mine} goal={rawProfile.profile.weeklyGoal} entries={store.entries} onSignIn={() => onOpen('account')} />
-        : <BackupScreen store={store} profile={rawProfile} body={body} sync={sync} cloud={cloud} onOpenPaste={onOpenPaste} />}
+        : <BackupScreen store={store} profile={rawProfile} body={body} backup={backup} cloud={cloud} onOpenPaste={onOpenPaste} />}
     </>
   );
 }

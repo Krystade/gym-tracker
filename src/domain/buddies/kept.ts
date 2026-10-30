@@ -3,7 +3,7 @@ import { SLOTS, type Slot } from './roster';
 import { asDay } from './start';
 
 // What Gym Buddies keeps (plan §16.10 stage 2): everything else is worked out from the log and these. Each is a settings item
-// (db applySyncedMeta, cloud/meta readMeta) that the account sync and the GitHub backup both carry:
+// (db applySyncedMeta, cloud/meta readMeta) that the account sync and the backup file both carry:
 // - `buddies`: each owned buddy's name and what it wears, per buddy with the time it last changed, so two phones changing
 //   different buddies both keep their change (the later wins per buddy, not per item).
 // - `buddy-lead`: the lead's id, with when it was picked (the later pick wins).
@@ -66,7 +66,7 @@ export function mergeBuddyItem(k: string, a: unknown, b: unknown): unknown {
 const keptOk = (k: string, v: unknown): boolean => k === 'buddy-start' ? !!asDay(v) : k === 'buddy-lead' ? !!parseLead(v)
   : k === 'buddies' ? Object.keys(parseBuddies(v)).length > 0 : !!parseSpend(v) && (parseSpend(v)!.id === k.slice(6));
 
-/** All of the buddies items from two sides (the GitHub backup, which keeps no record of the last sync): a union, merged per item. */
+/** All of the buddies items from two sides (a backup file, which keeps no record of the last sync): a union, merged per item. */
 export function mergeBuddyMeta(a: Record<string, unknown>, b: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k of [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(isBuddyKey).sort()) {

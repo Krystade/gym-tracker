@@ -5,7 +5,7 @@ import type { Profile } from '../domain/profile';
 import type { DayPlan, Program } from '../domain/program';
 import { mergeDay, type BodyDay } from '../domain/body';
 import type { PhotoMeta } from '../domain/photos';
-import type { SyncConfig } from '../domain/sync';
+import type { BackupMark } from '../domain/backup';
 import { metaHash, type MetaItems, type Seen } from '../domain/cloud';
 import type { Gym } from '../domain/equipment';
 import { renameAliases, renameInPlan, renameInProgram, renameSets } from '../domain/rename';
@@ -66,7 +66,7 @@ function db(id = current): Promise<IDBPDatabase> {
   return p;
 }
 
-// Shared by every profile: the profile list, gyms, and the backup settings.
+// Shared by every profile: the profile list, gyms, the account link and friends' cache.
 let sharedp: Promise<IDBPDatabase> | null = null;
 function shared(): Promise<IDBPDatabase> {
   return (sharedp ??= (async () => {
@@ -75,20 +75,23 @@ function shared(): Promise<IDBPDatabase> {
       blocking() { d.close(); sharedp = null; if (typeof location !== 'undefined') location.reload(); },
       terminated() { sharedp = null; },
     });
-    // Before profiles, sync settings and gyms lived in the main profile's config: copy them over once, then delete the old copies.
+    // Before profiles, gyms lived in the main profile's config: copy them over once, then delete the old copy. (The GitHub
+    // backup's settings lived there too: deleted, never copied.)
     if (!(await d.get('kv', 'migrated'))) {
       const old = await db(MAIN);
-      const moved = (await Promise.all([old.get('config', 'sync'), old.get('config', 'gyms')])).filter(Boolean);
+      const moved = (await Promise.all([old.get('config', 'gyms')])).filter(Boolean);
       const tx = d.transaction('kv', 'readwrite');
       await Promise.all([...moved.map((r) => tx.store.put(r)), tx.store.put({ key: 'migrated', at: new Date().toISOString() }), tx.done]);
       const ot = old.transaction('config', 'readwrite');
       await Promise.all([ot.store.delete('sync'), ot.store.delete('gyms'), ot.done]);
     }
+    // The GitHub backup's settings (removed 2026-10-29) held its access token: gone from the phone on the first launch without it.
+    await d.delete('kv', 'sync');
     return d;
   })().catch((e) => { sharedp = null; throw e; }));
 }
 
-/** `retired`: backup folders of deleted profiles; their files stay in the repo, so no new profile may reuse them. */
+/** `retired`: the folder names (slugs) of deleted profiles, from the GitHub backup's days. */
 export async function getPeople(): Promise<{ people: Person[]; active: string; retired: string[] }> {
   const x: { people: Person[]; active: string; retired?: string[] } | undefined = await (await shared()).get('kv', 'people');
   return { people: x?.people ?? [{ id: MAIN, name: 'Me', slug: 'me' }], active: x?.active ?? MAIN, retired: x?.retired ?? [] };
@@ -406,10 +409,14 @@ export async function deletePhoto(id: string): Promise<void> {
   await Promise.all([tx.objectStore('photos').delete(id), tx.objectStore('photoBlobs').delete(`${id}:full`), tx.objectStore('photoBlobs').delete(`${id}:thumb`), tx.done]);
 }
 
-/** The backup settings: one repo and token for every profile on this phone. */
-export const getSyncConfig = async (): Promise<SyncConfig | undefined> => (await shared()).get('kv', 'sync');
-export const putSyncConfig = async (c: SyncConfig): Promise<void> => { await (await shared()).put('kv', c); };
-export const deleteSyncConfig = async (): Promise<void> => { await (await shared()).delete('kv', 'sync'); };
+/** The last backup file saved of this profile, and the nudge put off (domain/backup BackupMark). Absent until the first. */
+export async function getBackupMark(): Promise<BackupMark | undefined> {
+  const x: (BackupMark & { key: string }) | undefined = await (await db()).get('config', 'backup');
+  if (!x) return undefined;
+  const { key: _key, ...mark } = x;
+  return mark;
+}
+export const putBackupMark = async (m: BackupMark): Promise<void> => { await (await db()).put('config', { ...m, key: 'backup' }); };
 /** The account this phone is signed in to, and which person on the phone it belongs to. */
 export interface CloudLink { key: 'cloud'; uid: string; email: string; person: string }
 export const getCloudLink = async (): Promise<CloudLink | undefined> => (await shared()).get('kv', 'cloud');
@@ -592,7 +599,7 @@ export const putGyms = async (v: { gyms: Gym[]; active?: string }): Promise<void
 // Everything that belongs to one person. A profile's screens use these through boundDb, never the bare functions above.
 const PER_PROFILE = {
   getAllSets, putSet, addSet, deleteSet, deleteSetWithTombstone, deleteSetsWithTombstones, restoreSet, restoreSets, renameLift, putMany, getAllSettings, putSettings, deleteSettings, getTags, putTags, getStatus, putStatus, getAchStart, startAchievements, getBuddyPrefs, putBuddyPrefs, getBuddyLead, putBuddyLead, getBuddyStart, startBuddies, getSpends, addSpend, getTogether, addTogether, finishTogetherSync, clearTogether, getProfile, putProfile, getProgram, putProgram, getDayPlans, putDayPlan, deleteDayPlan,
-  getBody, putBody, putBodyMany, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getTombstones, getTombstoneTimes, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
+  getBody, putBody, putBodyMany, getCycle, putCycleDay, putCycleTracking, clearCycle, finishCycleSync, getPhotoMetas, getPhotoBlob, putPhoto, deletePhoto, getBackupMark, putBackupMark, getTombstones, getTombstoneTimes, addTombstone, getAliases, putAliases, getCloudSeen, putCloudSeen,
   getReplaced, putReplaced, deleteReplaced, pruneReplaced, getSyncSnapshot, applySynced, applySyncedMeta,
 };
 export type ProfileDb = typeof PER_PROFILE;

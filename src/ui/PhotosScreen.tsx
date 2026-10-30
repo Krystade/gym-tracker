@@ -6,7 +6,9 @@ import { trend } from '../domain/body';
 import { fmtDate, fmtDay } from '../domain/format';
 import type { PhotosStore } from '../state/usePhotos';
 import type { BodyStore } from '../state/useBody';
+import type { BackupStore } from '../state/useBackup';
 import { Input } from './Field';
+import { BackupNudge } from './BackupCard';
 
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
 const alt = (m: { pose: Pose; date: string }) => `${cap(m.pose)}, ${m.date}`;
@@ -43,7 +45,7 @@ function encode(img: HTMLImageElement, max: number): Promise<{ blob: Blob; width
   return new Promise((ok, fail) => cv.toBlob((b) => (b ? ok({ blob: b, width, height }) : fail(new Error('Could not encode the photo'))), 'image/jpeg', 0.85));
 }
 
-export function PhotosScreen({ photos, body, today, backLabel = '‹ Back', onBack }: { photos: PhotosStore; body: BodyStore; today: string; backLabel?: string; onBack: () => void }) {
+export function PhotosScreen({ photos, backup, body, today, backLabel = '‹ Back', onBack }: { photos: PhotosStore; backup: BackupStore; body: BodyStore; today: string; backLabel?: string; onBack: () => void }) {
   const db = useDb();
   const [pose, setPose] = useState<Pose>('front');
   const [date, setDate] = useState(today);
@@ -103,8 +105,9 @@ export function PhotosScreen({ photos, body, today, backLabel = '‹ Back', onBa
     <>
       <button className="back" onClick={onBack}>{backLabel}</button>
       <h1>Progress photos</h1>
+      <BackupNudge backup={backup} />
       <section className="card">
-        <p className="muted small">Kept only on this phone — never uploaded, exported or synced. Same spot, light and time of day each time.</p>
+        <p className="muted small">Kept only on this phone, never uploaded or synced; the backup file under More › Backup is their one copy. Same spot, light and time of day each time.</p>
         <div className="chips" role="group" aria-label="Pose">
           {POSES.map((p) => <button key={p} type="button" className="chip" aria-pressed={pose === p} onClick={() => setPose(p)}>{cap(p)}</button>)}
         </div>

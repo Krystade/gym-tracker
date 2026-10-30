@@ -13,7 +13,6 @@ test('two people on one phone: separate logs, one-tap switch, typed sets survive
   await expect(bar(page)).toHaveCount(0);
   await goto(page, 'People');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
-  await expect(page.getByText('Backed up to profiles/sam/')).toBeVisible();
   await page.getByRole('button', { name: 'Add Sam' }).click();
   await expect(bar(page).getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
 
@@ -70,11 +69,13 @@ test('two people on one phone: separate logs, one-tap switch, typed sets survive
   await goto(page, 'History');
   await expect(page.getByText('Zercher Curl').first()).toBeVisible(); // Me's set is untouched
 
-  // A new person can't take over the deleted one's backup folder.
+  // The name is free again: a new Sam starts empty.
   await goto(page, 'People');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Sam');
-  await expect(page.getByText(/still holds an old backup/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Add Sam' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Add Sam' }).click();
+  await expect(bar(page).getByRole('button', { name: /Sam/ })).toHaveAttribute('aria-pressed', 'true');
+  await goto(page, 'History');
+  await expect(page.getByText('Zercher Curl')).toHaveCount(0);
 });
 
 test('five people and a long name: chips sit side by side, none squashed, and the last one is scrolled into view', async ({ page }) => {
