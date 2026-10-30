@@ -1,22 +1,61 @@
+import { INCOME } from './points';
 import { POOL, type Banner, type Rarity } from './roster';
 
-// Pulls, tickets and choosing (plan Â§16.5, Â§16.7 with Â§15.4's odds, pity and refunds; owner 2026-10-28: either banner can
-// take a ticket, nothing costs money, everything earnable in about 6 months at 3 sessions a week).
+// Pulls, tickets and choosing (plan §16.5, §16.7 with §15.4's odds, pity and refunds; owner 2026-10-28: either banner can
+// take a ticket, nothing costs money; owner 2026-10-29: everything owned in about 6 months at his own pace).
 // - What is stored is only the spends, each with its roll: a sync never re-rolls one (rule 6). Everything else (what you own,
 //   pity, the points spent) is worked out from them, in the order they were made.
 // - A pull never lands on something you own while its rarity still has something you're missing; once a rarity is complete,
 //   landing on it refunds part of the price instead.
 // - Pity, per banner: a rare or better by the 10th pull, an epic or better by the 40th. A ticket is a pull: it counts too.
+// - Prices are worked out from the roster (how many of each rarity) and TARGET, never written in: re-sorting rarities or
+//   adding buddies keeps the 6 months with no retuning (economy.test simulates it).
 
 export const ODDS = [0.60, 0.27, 0.09, 0.03, 0.01] as const;
 export const PITY_RARE = 10, PITY_EPIC = 40;
-/** Points for a random pull. Tuned so a 3Ã—/week lifter owns everything in about 26 weeks (economy.test). */
-export const PULL: Record<Banner, number> = { buddy: 13, acc: 8 };
-/** Points to choose one directly, common â†’ legendary: saving up to pick costs about 2â€“3Ã— what gambling does. */
-export const CHOOSE: Record<Banner, readonly number[]> = { buddy: [30, 50, 95, 170, 280], acc: [20, 30, 55, 100, 180] };
-/** Share of the pull's price back when its rarity is already complete, common â†’ legendary. */
+/** Share of the pull's price back when its rarity is already complete, common → legendary. */
 export const REFUND = [0.2, 0.3, 0.4, 0.5, 0.6] as const;
 export const STARTERS = 3;
+
+/** The pace prices are set for: the owner's own, from his log (2026-10-29: 1.23 sessions a week over 26 weeks, about 10
+ *  working sets each), owning everything in about 26 weeks. A goal week 85% of weeks and about 15 achievement points a week. */
+export const TARGET = { weeks: 26, sessionsPerWeek: 1.2, setsPerSession: 10, goalWeekShare: 0.85, achievementPointsPerWeek: 15 } as const;
+/** Points a week at TARGET's pace (the income domain/buddies/points pays; no cardio). */
+export const targetIncome = (): number =>
+  TARGET.sessionsPerWeek * (TARGET.setsPerSession * INCOME.set + INCOME.session) + TARGET.goalWeekShare * INCOME.goalWeek + TARGET.achievementPointsPerWeek;
+
+/** Relative prices, scaled to TARGET: a pull, then choosing common → legendary (saving up to pick costs about 2–3× what
+ *  gambling does). */
+const SHAPE: Record<Banner, { pull: number; choose: readonly number[] }> = {
+  buddy: { pull: 13, choose: [30, 50, 95, 170, 280] },
+  acc: { pull: 8, choose: [20, 30, 55, 100, 180] },
+};
+
+/** What a pull is worth by the odds: what it can land that's missing at its choosing price, a complete rarity its refund. */
+export const pullWorth = (left: readonly number[], pull: number, choose: readonly number[]): number =>
+  ODDS.reduce((a, q, r) => a + q * (left[r] > 0 ? choose[r] : pull * REFUND[r]), 0);
+
+/** Points to own `left` (how many missing of each rarity) on average, without luck or pity, for a player who pulls while a
+ *  pull is worth its price and then chooses the rest. */
+export function costToOwn(left: readonly number[], pull: number, choose: readonly number[]): number {
+  const l = [...left];
+  let cost = 0;
+  for (let i = 0; i < 100_000 && l.some((n) => n > 1e-9) && pullWorth(l, pull, choose) >= pull; i++) {
+    cost += pull;
+    ODDS.forEach((q, r) => { const got = Math.min(l[r], q); l[r] -= got; cost -= (q - got) * pull * REFUND[r]; });
+  }
+  return cost + l.reduce((a, n, r) => a + n * choose[r], 0);
+}
+
+const counts = (b: Banner) => { const c = [0, 0, 0, 0, 0]; for (const x of POOL[b]) c[x.rarity]++; if (b === 'buddy') c[0] = Math.max(0, c[0] - 1); return c; };
+/** How much SHAPE is scaled by: TARGET's points over TARGET's weeks buy everything but the starter. */
+export const PRICE_SCALE = (targetIncome() * TARGET.weeks) /
+  (['buddy', 'acc'] as const).reduce((a, b) => a + costToOwn(counts(b), SHAPE[b].pull, SHAPE[b].choose), 0);
+const price = (x: number) => Math.max(1, Math.round(x * PRICE_SCALE));
+/** Points for a random pull. */
+export const PULL: Record<Banner, number> = { buddy: price(SHAPE.buddy.pull), acc: price(SHAPE.acc.pull) };
+/** Points to choose one directly, common → legendary. */
+export const CHOOSE: Record<Banner, readonly number[]> = { buddy: SHAPE.buddy.choose.map(price), acc: SHAPE.acc.choose.map(price) };
 
 export type SpendKind = 'pull' | 'ticket' | 'choose' | 'starter';
 export interface Spend {
