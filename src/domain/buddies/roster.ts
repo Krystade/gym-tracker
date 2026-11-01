@@ -4,7 +4,8 @@ import { BUDDY_ROWS, ITEM_ROWS } from './rosterData';
 // picks (tiny-sprites/picks.json, generated into rosterData): the Tiny Creatures and Tiny Dungeon characters he kept are
 // buddies, and the kept Tiny Dungeon and Tiny Town items (weapons, tools, the beehive…) are held accessories, beside auras,
 // plinths and backdrops drawn in CSS. No count is fixed anywhere: everything reads the lengths here.
-// Ids are stable: an owned buddy is kept by id, so a new set only adds rows (or swaps art behind the same ids).
+// Ids are stable: an owned buddy is kept by id, so a new set only adds rows (or swaps art behind the same ids). One taken out
+// goes in RETIRED, never reused.
 
 export const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary'] as const;
 export type Rarity = 0 | 1 | 2 | 3 | 4;
@@ -22,6 +23,10 @@ export interface AccDef {
   id: string; rarity: Rarity; slot: Slot;
   /** A held item's sprite (`public/buddies/<id>.png`); the CSS ones have none. */ sprite?: true;
 }
+
+/** Buddies taken out of the roster (owner's ranking 2026-10-31: c117). A spend that landed one is as if never made: its points
+ *  or ticket come back and a starter can be picked again (domain/buddies/gacha ledgerOf). What's kept for it stays, unused. */
+export const RETIRED: ReadonlySet<string> = new Set(['c117']);
 
 export const BUDDIES: readonly BuddyDef[] = BUDDY_ROWS.map(([id, r, t, ...more]) => ({ id, rarity: r as Rarity, trait: t as Stat, poses: [id, ...more] }));
 

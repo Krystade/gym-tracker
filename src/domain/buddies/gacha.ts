@@ -1,6 +1,6 @@
 import { INCOME } from './points';
 import { pointsAt } from './rewards';
-import { POOL, type Banner, type Rarity } from './roster';
+import { POOL, RETIRED, type Banner, type Rarity } from './roster';
 
 // Pulls, tickets and choosing (plan §16.5, §16.7 with §15.4's odds, pity and refunds; owner 2026-10-28: either banner can
 // take a ticket, nothing costs money; owner 2026-10-29: everything owned in about 6 months at his own pace).
@@ -101,21 +101,25 @@ export interface Ledger {
 
 const RARE = new Set([0, 1, 2, 3, 4]);
 const ITEM = new Map(Object.values(POOL).flat().map((x) => [x.id, x]));
-/** A synced spend, read as untrusted: anything malformed is dropped whole. */
+/** A synced spend, read as untrusted: anything malformed is dropped whole. A `got` that's no item is read as none, but a retired
+ *  buddy's id is kept as it was (ledgerOf leaves its spend out), so a sync never writes it away. */
 export function parseSpend(x: unknown): Spend | null {
   const s = x as Partial<Spend> | null;
   if (!s || typeof s !== 'object' || typeof s.id !== 'string' || !s.id || typeof s.at !== 'number' || !Number.isFinite(s.at)) return null;
   if (typeof s.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s.day)) return null;
   if (!['pull', 'ticket', 'choose', 'starter'].includes(s.kind as string) || (s.banner !== 'buddy' && s.banner !== 'acc')) return null;
   if (typeof s.cost !== 'number' || !(s.cost >= 0) || typeof s.refund !== 'number' || !(s.refund >= 0) || !RARE.has(s.rarity as number)) return null;
-  const got = typeof s.got === 'string' && ITEM.has(s.got) ? s.got : null;
+  const got = typeof s.got === 'string' && (ITEM.has(s.got) || RETIRED.has(s.got)) ? s.got : null;
   return { id: s.id, at: s.at, day: s.day, kind: s.kind!, banner: s.banner, cost: s.cost, ...(typeof s.seed === 'number' && { seed: s.seed }), got, rarity: s.rarity as Rarity, refund: s.refund };
 }
 
-/** What the spends add up to, made in order (each id once). Never re-rolls: a spend's stored `got` is what it got. */
+/** What the spends add up to, made in order (each id once). Never re-rolls: a spend's stored `got` is what it got. One that
+ *  landed a buddy since retired (roster RETIRED) is left out, as if never made: its points or ticket come back, and a starter
+ *  can be picked again. */
 export function ledgerOf(spends: readonly Spend[]): Ledger {
   const seen = new Set<string>();
-  const xs = [...spends].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id)).filter((s) => !seen.has(s.id) && !!seen.add(s.id));
+  const xs = [...spends].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
+    .filter((s) => !seen.has(s.id) && !!seen.add(s.id) && !(s.got && RETIRED.has(s.got)));
   const l: Ledger = { spends: xs, owned: new Map(), spent: 0, refunds: 0, ticketsUsed: 0, pity: { buddy: { rare: 0, epic: 0 }, acc: { rare: 0, epic: 0 } }, starter: false };
   for (const s of xs) {
     if (s.kind === 'starter') { if (l.starter || s.banner !== 'buddy') continue; l.starter = true; }

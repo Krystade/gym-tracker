@@ -82,7 +82,6 @@ export const HEAD: Readonly<Record<string, readonly [number, number]>> = {
   c111: [7, 0],
   c114: [8, 0],
   c115: [8, 4],
-  c117: [8.5, 4],
   c118: [8.5, 0],
   c119: [8, 4],
   c120: [8, 1],

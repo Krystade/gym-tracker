@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { canSpend, CHOOSE, choose, ledgerOf, ODDS, parseSpend, PITY_EPIC, PITY_RARE, pityIn, pull, PULL, REFUND, rng, rollRarity, starter, starterOffer, walletOf, type Spend } from './gacha';
-import { POOL, type Banner } from './roster';
+import { POOL, RETIRED, type Banner } from './roster';
 
 const D = '2026-11-01';
 /** Pulls in a row on one banner, each from the ledger so far, as the app would make them. */
@@ -95,6 +95,19 @@ describe('the ledger', () => {
     const l = ledgerOf([starter(offer[0], 1, D, 's1'), starter(offer[1], 2, D, 's2')]);
     expect([...l.owned.keys()]).toEqual([offer[0]]);
     expect(canSpend({ points: 0, tickets: 0 }, l, { kind: 'starter', banner: 'buddy', got: offer[2] })).toBe(false);
+  });
+  it('a spend that landed a buddy since retired is as if never made: points and ticket back, the starter free again', () => {
+    const gone = [...RETIRED][0], kept = POOL.buddy[0].id;
+    expect(POOL.buddy.some((p) => p.id === gone)).toBe(false);
+    const was = [starter(gone, 1, D, 's1'), { ...pull(ledgerOf([]), 'buddy', 'pull', 1, 2, D, 'p'), got: gone, refund: 0 },
+      { ...pull(ledgerOf([]), 'buddy', 'ticket', 2, 3, D, 't'), got: gone, refund: 0 }, choose('buddy', kept, 4, D, 'c')];
+    const read = was.map((s) => parseSpend(JSON.parse(JSON.stringify(s)))!);
+    expect(read.map((s) => s.got)).toEqual([gone, gone, gone, kept]); // kept as stored: a sync never writes it away
+    const l = ledgerOf(read);
+    expect([...l.owned.keys()]).toEqual([kept]);
+    expect([l.spent, l.ticketsUsed, l.starter]).toEqual([CHOOSE.buddy[POOL.buddy[0].rarity], 0, false]);
+    expect(canSpend({ points: 0, tickets: 0 }, l, { kind: 'starter', banner: 'buddy', got: starterOffer(1)[0] })).toBe(true);
+    expect([...ledgerOf([...read, starter(starterOffer(1)[0], 5, D, 's2')]).owned.keys()]).toEqual([kept, starterOffer(1)[0]]);
   });
   it('can spend: a pull needs its price, a ticket a ticket, a choice its price and not owned', () => {
     const l = ledgerOf([choose('acc', POOL.acc[0].id, 1, D)]);
