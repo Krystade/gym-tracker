@@ -9,7 +9,7 @@ import type { SetEntry } from '../domain/types';
 import { useAchievements } from '../state/useAchievements';
 import type { BuddiesStore } from '../state/useBuddies';
 import { useProfileId } from '../state/profileDb';
-import { BuddySprite } from './buddies/BuddySprite';
+import { BOX, BuddySprite } from './buddies/BuddySprite';
 import { PullSheet, type Mode } from './buddies/PullSheet';
 import { AccIcon, accName, SLOT_NAME, WardrobeSheet, wornClass } from './buddies/Worn';
 import { Icon } from './icons';
@@ -94,7 +94,7 @@ export function BuddiesScreen({ buddies, entries, today, profile }: { buddies: B
             <li key={def.id}>
               <button className={`bu-tile r${def.rarity}`} onClick={() => go({ at: 'card', id: def.id, from: 'home' })}
                 aria-label={`${nameOf(buddies, def.id)}, Lv ${statsFor(def.id).lv}${def.id === lead.id ? ', lead' : ''}`}>
-                <BuddySprite poses={def.poses} scale={3} />
+                <BuddySprite def={def} scale={3} box={BOX.wide} />
                 <b>{nameOf(buddies, def.id)}</b>
                 <span>{def.id === lead.id ? 'Lead · ' : ''}Lv {statsFor(def.id).lv}</span>
               </button>
@@ -159,7 +159,7 @@ function BuddyCard({ buddies, def, stats, today, title, onSlot }: {
       <div className={`bu-hero ${wornClass(worn.backdrop)}${worn.held ? ' has-held' : ''}`}>
         <span className="bu-tag">Lv {n(stats.lv)}</span>
         {isLead && <span className="bu-tag lead">Lead</span>}
-        <BuddySprite poses={def.poses} scale={8} className={`bu-hero-sprite ${wornClass(worn.aura)}`} held={worn.held} />
+        <BuddySprite def={def} scale={8} box={worn.held ? BOX.heroHeld : BOX.hero} className={`bu-hero-sprite ${wornClass(worn.aura)}`} held={worn.held} />
         <i className={worn.plinth ? `bu-plinth ${wornClass(worn.plinth)}` : 'bu-floor'} aria-hidden="true" />
       </div>
       {naming == null ? (
@@ -228,7 +228,7 @@ function FirstPick({ buddies }: { buddies: BuddiesStore }) {
       <div className="bu-offer" role="group" aria-label="Your first buddy">
         {offer.map((b) => (
           <button key={b.id} className={`bu-tile r${b.rarity}`} aria-pressed={sel === b.id} onClick={() => setSel(b.id)}>
-            <BuddySprite poses={b.poses} scale={5} />
+            <BuddySprite def={b} scale={5} box={BOX.wide} />
             <b>{defaultName(b.id)}</b>
             <span>{STAT[b.trait]} grows faster</span>
           </button>
@@ -258,8 +258,8 @@ function Collection({ buddies, onBack, onOpen }: { buddies: BuddiesStore; onBack
               {all.map((b) => (
                 <li key={b.id}>
                   {mine.has(b.id)
-                    ? <button className={`bu-tile r${r}`} onClick={() => onOpen(b.id)} aria-label={nameOf(buddies, b.id)}><BuddySprite poses={b.poses} scale={3} /><b>{nameOf(buddies, b.id)}</b></button>
-                    : <div className={`bu-tile r${r} unmet`} role="img" aria-label={`Not met yet, ${RARITY[r as Rarity].toLowerCase()}`}><BuddySprite poses={b.poses.slice(0, 1)} scale={3} shadow /><b aria-hidden="true">?</b></div>}
+                    ? <button className={`bu-tile r${r}`} onClick={() => onOpen(b.id)} aria-label={nameOf(buddies, b.id)}><BuddySprite def={b} scale={3} box={BOX.tile} /><b>{nameOf(buddies, b.id)}</b></button>
+                    : <div className={`bu-tile r${r} unmet`} role="img" aria-label={`Not met yet, ${RARITY[r as Rarity].toLowerCase()}`}><BuddySprite def={b} scale={3} box={BOX.tile} still shadow /><b aria-hidden="true">?</b></div>}
                 </li>
               ))}
             </ul>
@@ -269,7 +269,10 @@ function Collection({ buddies, onBack, onOpen }: { buddies: BuddiesStore; onBack
       <section className="card" aria-labelledby="bu-credits-h">
         <h2 id="bu-credits-h">Credits</h2>
         <ul className="credits small">
-          {CREDIT_ROWS.map((c) => <li key={c.what}>{c.what}: <a href={c.url} target="_blank" rel="noreferrer">{c.by}</a> · CC0</li>)}
+          {CREDIT_ROWS.map((c) => (
+            <li key={c.what}>{c.what}: <a href={c.url} target="_blank" rel="noreferrer">{c.by}</a> · {c.licenceUrl
+              ? <a href={c.licenceUrl} target="_blank" rel="noreferrer">{c.licence}</a> : c.licence}</li>
+          ))}
         </ul>
       </section>
     </>

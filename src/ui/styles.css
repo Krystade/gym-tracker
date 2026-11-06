@@ -552,6 +552,11 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 .today-head > .day-switch { grid-column: 1 / -1; grid-row: 1 / span 2; }
 /* The lead buddy, on the arrows' row at the right: 48px (3× its 16px), 4px into the title's top margin, never over its words. */
 .today-buddy { grid-column: 2; grid-row: 1; align-self: start; position: relative; z-index: 1; width: 48px; height: 48px; min-height: 48px; padding: 0; margin-bottom: -4px; background: none; border-radius: var(--r-md); }
+/* An older character may be bigger (owner 2026-11-06: a bit of oversize is the joke; BuddySprite BOX.today): it grows from the
+   slot's bottom right, left over the arrows' empty row and up to the status backdrop, and one taller than that hangs from there
+   into the title's right end, which the date never reaches. */
+.today-buddy .bu-sprite { position: absolute; right: 0; bottom: 0; }
+.today-buddy .bu-sprite.tall { bottom: auto; top: -12px; }
 /* "at Garage ›" under the day: quiet, a full-width 44px tap target pulled up into the head's gap. */
 .gym-line { width: 100%; justify-content: flex-start; margin: -12px 0 8px; padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--fs-sub); font-weight: 400; gap: 4px; }
 .gym-line > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1295,6 +1300,9 @@ h1 + .card > h2#notify-h { position: absolute; width: 1px; height: 1px; padding:
 .bu-sprite img[hidden] { display: none; }
 /* Not met yet: the shape alone, an opaque grey. */
 .bu-sprite.shadow img { filter: brightness(0) invert(0.27); }
+/* An older character: its strip slides behind a window its pixels' size, one frame showing (ui/buddies/BuddySprite). */
+.bu-frame { position: absolute; inset: 0; overflow: hidden; }
+.bu-sprite .bu-frame img { position: absolute; max-width: none; }
 .r0 { --r: #9aa4b2; } .r1 { --r: #4cc38a; } .r2 { --r: #4c9bff; } .r3 { --r: #b07cff; } .r4 { --r: #ff8f3d; }
 .bu-rarity { color: var(--r); font-weight: 700; }
 .bu-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin: 4px 0 16px; }
@@ -1345,6 +1353,10 @@ h1 + .card > h2#notify-h { position: absolute; width: 1px; height: 1px; padding:
 .bu-roster h2, .bu-coll-group h2 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: var(--fs-lg); margin: 20px 0 10px; }
 .bu-roster ul, .bu-coll { list-style: none; margin: 0 0 16px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; }
 .bu-coll { grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); }
+/* A row's tiles are one height, their buddies stood on one floor over their names: the older characters are taller, shorter
+   or wider than the Tiny ones on purpose. */
+.bu-roster li, .bu-coll li { display: grid; }
+.bu-roster .bu-tile, .bu-coll .bu-tile { align-content: end; }
 .bu-row { width: 100%; justify-content: space-between; text-align: left; padding: 10px 16px; margin: 0 0 16px; background: var(--surface); border-radius: var(--r-group); }
 .bu-row > span { display: grid; gap: 2px; }
 .bu-row .muted { font-size: var(--fs-sub); font-weight: 400; }
@@ -1438,6 +1450,10 @@ h1 + .card > h2#notify-h { position: absolute; width: 1px; height: 1px; padding:
 .bu-reveal-art { flex: none; display: grid; place-items: center; width: 80px; height: 80px; animation: bu-pop 640ms cubic-bezier(0.2, 0.9, 0.25, 1.15) both; }
 .bu-reveal-text { display: grid; gap: 2px; justify-items: start; min-width: 0; animation: fade-in 260ms 240ms ease-out both; }
 .bu-reveal-text b { font-size: var(--fs-lg); overflow-wrap: anywhere; }
+/* An older character bigger than the art's square: in full, over the words. */
+.bu-reveal.big { flex-direction: column; align-items: stretch; }
+.bu-reveal.big .bu-reveal-art { width: auto; height: auto; min-height: 80px; padding: 4px 0; }
+.bu-reveal.big .bu-reveal-text { justify-items: center; text-align: center; }
 .bu-reveal-text .mini { margin-top: 4px; border-radius: var(--r-pill); }
 @keyframes bu-pop { 0% { opacity: 0; transform: scale(0.3) rotate(-14deg); } 60% { opacity: 1; transform: scale(1.12) rotate(3deg); } 100% { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .bu-reveal-art, .bu-reveal-text { animation: none; } }

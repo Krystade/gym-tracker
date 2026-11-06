@@ -1,15 +1,18 @@
 import { expect, test, type Page } from '@playwright/test';
 import { goto } from './nav';
-import { BUDDIES, defaultName } from '../src/domain/buddies/roster';
-import { HEAD } from '../src/domain/buddies/anchors';
+import { BUDDIES, BUDDY, defaultName } from '../src/domain/buddies/roster';
 
 // Gym Buddies stage 4 (plan §16.10): the Buddies tab's screens. The first pick of three commons; the lead's card with points,
 // tickets and stats worked out from what's logged after it joined; renaming and making another the lead; the Collection with
 // the credits (Characters' old place under More is gone); the lead on Today; and the head anchors' check grid.
 
 const lead = (page: Page) => page.getByRole('button', { name: /, your lead buddy: open Buddies$/ });
-/** Every sprite on the page drew: a missing or misnamed PNG has no natural width. */
-const sprites = (page: Page) => page.locator('main img').evaluateAll((xs) => (xs as HTMLImageElement[]).map((i) => (i.complete ? i.naturalWidth : -1)));
+/** Every sprite on the page, with its natural width (-1 while it loads): a missing or misnamed PNG has none. */
+const sprites = (page: Page) => page.locator('main img').evaluateAll((xs) => (xs as HTMLImageElement[]).map((i) => [i.getAttribute('src') ?? '', i.complete ? i.naturalWidth : -1] as const));
+/** A sprite's own width: a Tiny one's 16, an older character's strip all its frames. */
+const widthOf = (src: string) => { const b = BUDDY.get(src.match(/buddies\/([\w-]+)\.png$/)?.[1] ?? ''); return b?.art ? b.art.n * b.art.w : 16; };
+/** The sprites that didn't draw at their own width. */
+const wrong = (page: Page) => sprites(page).then((xs) => xs.filter(([src, w]) => w !== widthOf(src)).map(([src]) => src));
 
 test('the first buddy: three commons, one picked; it leads, earns from the set logged after, and shows on Today', async ({ page }) => {
   await page.goto('/');
@@ -36,7 +39,7 @@ test('the first buddy: three commons, one picked; it leads, earns from the set l
   const wallet = page.locator('.bu-wallet');
   await expect(wallet).toHaveText('0 points, 0 tickets');
   await expect(page.getByRole('heading', { name: /^Your buddies/ })).toContainText(`1 of ${BUDDIES.length}`);
-  expect(await sprites(page)).not.toContain(-1);
+  expect((await sprites(page)).map(([, w]) => w)).not.toContain(-1);
 
   // A set logged today: 1 point for the set and 5 for the session, and its card says what it came from.
   await goto(page, 'Today');
@@ -105,8 +108,9 @@ test('another buddy can lead; the Collection shows every buddy, unmet ones as sh
   await expect(page.getByRole('img', { name: /^Not met yet/ })).toHaveCount(BUDDIES.length - 2);
   await expect(page.getByRole('region', { name: 'Rare' }).getByRole('button', { name: defaultName(rare.id) })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Clint Bellanger' })).toHaveAttribute('href', /opengameart\.org/);
-  await expect(page.getByRole('link', { name: 'Kenney' })).toHaveAttribute('href', /kenney\.nl/);
-  await expect.poll(() => sprites(page).then((w) => w.filter((x) => x !== 16).length)).toBe(0);
+  await expect(page.getByRole('link', { name: 'Kenney' }).first()).toHaveAttribute('href', /kenney\.nl/);
+  await expect(page.getByRole('link', { name: 'CC BY 4.0' })).toHaveCount(3);
+  await expect.poll(() => wrong(page)).toEqual([]);
   await page.getByRole('region', { name: 'Rare' }).getByRole('button', { name: defaultName(rare.id) }).click();
   await expect(page.getByRole('heading', { name: defaultName(rare.id), level: 1 })).toBeVisible();
   await page.getByRole('button', { name: '‹ Collection' }).click();
@@ -120,8 +124,8 @@ test('another buddy can lead; the Collection shows every buddy, unmet ones as sh
 test('the head anchors’ check grid: every pose of every buddy, drawn, at 320 and 375 wide', async ({ page }) => {
   await page.goto('/?check=anchors');
   await expect(page.getByRole('heading', { name: 'Head anchors' })).toBeVisible();
-  await expect(page.locator('.anchor-grid li')).toHaveCount(Object.keys(HEAD).length);
-  await expect.poll(() => sprites(page).then((w) => w.filter((x) => x !== 16).length)).toBe(0);
+  await expect(page.locator('.anchor-grid li')).toHaveCount(BUDDIES.reduce((n, b) => n + (b.art ? b.art.n : b.poses.length), 0));
+  await expect.poll(() => wrong(page)).toEqual([]);
   for (const w of [320, 375]) {
     await page.setViewportSize({ width: w, height: 812 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);

@@ -5,7 +5,7 @@ import { defaultProfile } from '../profile';
 import type { Flag, SetEntry } from '../types';
 import { earned, INCOME } from './points';
 import { awards, POINTS, rewardOf, TICKETS, UNPAID } from './rewards';
-import { ACCESSORIES, BUDDIES, CREDITS, RARITIES, defaultName } from './roster';
+import { ACCESSORIES, BUDDIES, CREDIT_ROWS, CREDITS, RARITIES, defaultName } from './roster';
 import { asDay, COUNT_FLOOR, countsFrom, startDay } from './start';
 import { ledgerOf, walletOf } from './gacha';
 import { bestStat, lvOf, statLevel, statsOf, trainingOf, TRAIT_TENTHS, XP } from './stats';
@@ -170,9 +170,17 @@ describe('roster', () => {
     expect(BUDDIES.some((b) => b.poses.length > 1)).toBe(true);
     expect(CREDITS).toMatch(/Clint Bellanger/);
     expect(CREDITS).toMatch(/Kenney/);
-    // Every buddy has a name of its own until it's given one, and no two share it.
+    // Every buddy has a name of its own until it's given one, and no two share it: two syllables, but for the Dudes' titles.
     const names = BUDDIES.map((b) => defaultName(b.id));
     expect(new Set(names).size).toBe(BUDDIES.length);
-    for (const n of names) expect(n).toMatch(/^[A-Z][a-z]{2,6}$/);
+    for (const b of BUDDIES) expect(defaultName(b.id), b.id).toMatch(b.art ? /^([A-Z][a-z]{2,6}|Mrs?\. Dude)$/ : /^[A-Z][a-z]{2,6}$/);
+  });
+  it('the older characters are in the pulls, and each pack is credited with its own licence, CC BY linked to its terms', () => {
+    const old = BUDDIES.filter((b) => b.art);
+    expect(old.length).toBeGreaterThan(0);
+    for (const b of old) expect([b.id, b.poses]).toEqual([b.id, [b.id]]);
+    expect(CREDIT_ROWS.filter((c) => c.licence !== 'CC0').map((c) => c.by)).toEqual(['ChaosWitchNikol', 'ChaosWitchNikol', 'Arks (@ArksDigital)', 'Lukas Lundin', 'toadgirl']);
+    for (const c of CREDIT_ROWS) if (c.licence === 'CC BY 4.0') expect(c.licenceUrl).toBe('https://creativecommons.org/licenses/by/4.0/');
+    for (const c of CREDIT_ROWS) expect(CREDITS).toContain(`${c.what} by ${c.by} (${c.licence})`);
   });
 });

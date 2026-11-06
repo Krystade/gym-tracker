@@ -157,6 +157,33 @@ export const HEAD: Readonly<Record<string, readonly [number, number]>> = {
   d124: [7.5, 0],
   d125: [7.5, 0],
 };
+/** Each older character's (roster Art): the box its pixels fill over every frame, [x, y, w, h], and each frame's head anchor,
+ *  both in a frame's own pixels. */
+export const FRAMES: Readonly<Record<string, { box: readonly [number, number, number, number]; head: readonly (readonly [number, number])[] }>> = {
+  ckbrown: { box: [0, 0, 15, 19], head: [[7.5, 0], [7.5, 0], [7.5, 1], [5.5, 0]] },
+  ckwhite: { box: [0, 0, 15, 19], head: [[7.5, 0], [7.5, 0], [7.5, 1], [5.5, 0]] },
+  ckblack: { box: [0, 0, 15, 19], head: [[7.5, 0], [7.5, 0], [7.5, 1], [5.5, 0]] },
+  ckgold: { box: [0, 0, 15, 19], head: [[7.5, 0], [7.5, 0], [7.5, 1], [5.5, 0]] },
+  ckred: { box: [0, 0, 15, 19], head: [[7.5, 0], [7.5, 0], [7.5, 1], [5.5, 0]] },
+  ckpig: { box: [0, 0, 11, 17], head: [[5.5, 0], [5.5, 0], [5.5, 1], [5.5, 0]] },
+  cksheep: { box: [0, 0, 14, 17], head: [[7, 0], [7, 0], [7, 1], [6.5, 0]] },
+  ckfrog: { box: [0, 0, 10, 17], head: [[5, 0], [5.5, 0], [5, 1], [5, 0]] },
+  ckbirb: { box: [0, 0, 14, 16], head: [[6.5, 0], [7, 0], [6.5, 1], [6, 0]] },
+  dinodoux: { box: [0, 0, 15, 17], head: [[7.5, 0], [7.5, 0], [7.5, 1], [7.5, 0]] },
+  dinomort: { box: [0, 0, 15, 17], head: [[7.5, 0], [7.5, 0], [7.5, 1], [7.5, 0]] },
+  dinotard: { box: [0, 0, 15, 17], head: [[7.5, 0], [7.5, 0], [7.5, 1], [7.5, 0]] },
+  dinovita: { box: [0, 0, 15, 17], head: [[7.5, 0], [8, 0], [7.5, 1], [7.5, 0]] },
+  froglet: { box: [2, 6, 13, 10], head: [[9, 7], [9, 7], [9, 7], [9, 6], [9, 6], [9, 6], [9, 6], [9, 7]] },
+  sedan_blue: { box: [0, 0, 29, 13], head: [[12.5, 0]] },
+  tractor: { box: [0, 0, 24, 18], head: [[8, 0]] },
+  ambulance: { box: [0, 0, 38, 21], head: [[15.5, 0]] },
+  truck: { box: [0, 0, 59, 24], head: [[25.5, 0]] },
+  bus_school: { box: [0, 0, 46, 21], head: [[20, 0]] },
+  firetruck: { box: [0, 0, 44, 21], head: [[20, 0]] },
+  hotdog: { box: [0, 0, 40, 29], head: [[14.5, 0]] },
+  dudemr: { box: [13, 40, 60, 62], head: [[44, 40], [44, 41], [44, 45], [44, 50], [44, 51], [44, 45], [44, 42], [44, 40], [44, 40], [44, 44], [44, 51], [44, 51], [44, 45], [44, 42]] },
+  dudemrs: { box: [13, 27, 60, 75], head: [[42, 27], [42, 28], [42, 32], [42, 37], [42, 38], [42, 32], [42, 29], [42, 27], [42, 28], [42, 32], [42, 37], [42, 38], [42, 32], [42, 29]] },
+};
 /** Each held item's base: where it rests on a head anchor, [x, y] in its own sprite pixels (y its bottom edge). */
 export const HELD: Readonly<Record<string, readonly [number, number]>> = {
   d075: [7.5, 15],

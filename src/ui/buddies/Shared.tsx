@@ -6,7 +6,7 @@ import { statsOf, TRAIT_TENTHS, trainingOf } from '../../domain/buddies/stats';
 import type { Profile } from '../../domain/profile';
 import type { SetEntry } from '../../domain/types';
 import type { BuddiesStore } from '../../state/useBuddies';
-import { BuddySprite } from './BuddySprite';
+import { BOX, BuddySprite } from './BuddySprite';
 import { accName, SLOT_NAME, wornClass } from './Worn';
 
 // Friends' buddies (Gym Buddies plan §16.8, stage 6), all from the `bud` of their Compare summary (domain/buddies/share), which
@@ -24,7 +24,7 @@ export function BudChip({ bud }: { bud: SharedBud }) {
   const { buddy, def } = leadOf(bud);
   return (
     <span className="bud-chip" role="img" aria-label={`Lead buddy ${defaultName(def.id)}, Lv ${n(buddy.l)}`}>
-      <BuddySprite poses={def.poses.slice(0, 1)} scale={2} />
+      <BuddySprite def={def} scale={2} box={BOX.chip} still />
       <span aria-hidden="true">Lv {n(buddy.l)}</span>
     </span>
   );
@@ -59,7 +59,7 @@ export function FriendBuddies({ name, bud, mine }: { name: string; bud: SharedBu
             return (
               <li key={b.i}>
                 <button className={`bu-tile r${def.rarity}`} onClick={() => setOpen(b.i)} aria-label={`${defaultName(b.i)}, Lv ${b.l}${b.i === bud.lead ? ', lead' : ''}`}>
-                  <BuddySprite poses={def.poses.slice(0, 1)} scale={3} held={b.e[0]} />
+                  <BuddySprite def={def} scale={3} box={BOX.wide} still held={b.e[0]} />
                   <b>{defaultName(b.i)}</b>
                   <span>{b.i === bud.lead ? 'Lead · ' : ''}Lv {n(b.l)}</span>
                 </button>
@@ -91,7 +91,7 @@ function CardSheet({ name, b, lead, onClose }: { name: string; b: SharedBuddy; l
           <div className={`bu-hero fb-hero ${wornClass(backdrop ?? undefined)}${held ? ' has-held' : ''}`}>
             <span className="bu-tag">Lv {n(b.l)}</span>
             {lead && <span className="bu-tag lead">Lead</span>}
-            <BuddySprite poses={def.poses} scale={7} className={`bu-hero-sprite ${wornClass(aura ?? undefined)}`} held={held} />
+            <BuddySprite def={def} scale={7} box={held ? BOX.friendHeld : BOX.friend} className={`bu-hero-sprite ${wornClass(aura ?? undefined)}`} held={held} />
             <i className={plinth ? `bu-plinth ${wornClass(plinth)}` : 'bu-floor'} aria-hidden="true" />
           </div>
           <div className="bu-name fb-name">
@@ -118,7 +118,7 @@ function SideBySide({ name, theirs, mine }: { name: string; theirs: { buddy: Sha
   const w = (v: number) => ({ '--w': `${(v / max) * 100}%` } as CSSProperties);
   const side = (who: string, nm: string, def: BuddyDef, b: SharedBuddy, cls: string) => (
     <div className={`sbs-who ${cls}`}>
-      <BuddySprite poses={def.poses.slice(0, 1)} scale={3} held={b.e[0]} />
+      <BuddySprite def={def} scale={3} box={BOX.wide} still held={b.e[0]} />
       <span className="sbs-name"><span className="sbs-whose">{who}</span><b>{nm}</b><span>Lv {n(b.l)} · best at {STAT[bestShared(b.s, def.trait)]}</span></span>
     </div>
   );

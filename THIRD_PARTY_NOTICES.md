@@ -65,3 +65,21 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Buddy art
+
+The buddies and held items (`public/buddies/`) are pixel art from these packs. Of the older characters only each one's idle
+frames (a vehicle: its one image) are used, renamed to the buddy's id; the app draws them scaled up, pixels kept square. The
+Buddies screen's Credits list the same.
+
+- Tiny Creatures by Clint Bellanger, https://opengameart.org/content/tiny-creatures (CC0 1.0)
+- Tiny Dungeon and Tiny Town by Kenney, https://kenney.nl/assets/tiny-dungeon (CC0 1.0)
+- Pixel Vehicle Pack by Kenney, https://kenney.nl/assets/pixel-vehicle-pack (CC0 1.0): Sudo, Turo, Wiwi, Tubo, Susy, Fenro, Domo
+- Goat Characters by ChaosWitchNikol, https://chaoswitchnikol.itch.io/goat-characters, licensed under CC BY 4.0
+  (https://creativecommons.org/licenses/by/4.0/): Moko, Lumi, Nuro, Gado, Roro
+- Animal Characters by ChaosWitchNikol, https://chaoswitchnikol.itch.io/animal-characters, licensed under CC BY 4.0
+  (https://creativecommons.org/licenses/by/4.0/): Boba, Lufu, Kiri, Tupip
+- Dino Characters by Arks (@ArksDigital), https://arks.itch.io/dino-characters, licensed under CC BY 4.0
+  (https://creativecommons.org/licenses/by/4.0/): Dodo, Moro, Tado, Wity
+- Froglet by Lukas Lundin, https://phewcumber.itch.io/froglet: free to use, not to be resold on its own. Ropip
+- Mr. & Mrs. Dude by toadgirl, https://toadgirl.itch.io/mr-and-mrs-dude: free to use for anything. Mr. Dude, Mrs. Dude

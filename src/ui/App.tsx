@@ -323,7 +323,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
             onOpenNews={(f) => nav.openThread(f)} store={store} settings={settings} programs={programs} body={body} gyms={gyms} profile={profile.profile} date={logDay ?? day} today={day}
             carried={day !== date && !logDay} recap={nav.recapAt || undefined} onSplit={() => setCarryOff(date)}
             onDay={(d) => { setLogDay(d === day ? null : d); window.scrollTo(0, 0); }} onOpen={open} onOpenProgram={top(() => setProgramOpen(true))} onOpenGym={top(() => setGymOpen(true))}
-            lead={buddies.lead && { poses: buddies.lead.poses, name: nameOf(buddies, buddies.lead.id) }} onOpenBuddies={top(() => setTab('buddies'))}
+            lead={buddies.lead && { def: buddies.lead, name: nameOf(buddies, buddies.lead.id) }} onOpenBuddies={top(() => setTab('buddies'))}
             onOpenDay={(d) => { setHistoryAt(d); toDays(); }} photos={photos.metas} onOpenPhotos={top(() => { setShootFirst(true); setPhotosOpen(true); })} />
           : tab === 'log' ? <LogScreen view={logView} onView={setLogView} store={store} onOpen={open} focus={historyAt} onFocused={() => setHistoryAt(null)} onAddTo={(d) => { setLogDay(d === day ? null : d); setTab('today'); window.scrollTo(0, 0); }} />
           : tab === 'buddies' ? <BuddiesScreen buddies={buddies} entries={store.entries} today={date} profile={rawProfile.profile} />

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { canSpend, choose, CHOOSE, ODDS, pityIn, pull, PULL, REFUND, type Ledger, type Spend, type Wallet } from '../../domain/buddies/gacha';
 import { ACCESSORY, BUDDY, POOL, RARITIES, type Banner, type Rarity } from '../../domain/buddies/roster';
-import { BuddySprite } from './BuddySprite';
+import { BOX, BuddySprite, drawnSize } from './BuddySprite';
 import { AccIcon, accName, SLOT_NAME } from './Worn';
 
 // Pulls, tickets and choosing (Gym Buddies plan §16.10 stage 5, odds and prices from domain/buddies/gacha): one sheet in three
@@ -95,7 +95,7 @@ export function PullSheet({ mode: first, banner: firstBanner, ledger, wallet, to
                       {xs.map((x) => (
                         <li key={x.id}>
                           <button className={`bu-tile r${r}`} aria-pressed={picked === x.id} onClick={() => { setPicked(x.id); setShown(null); }}>
-                            {banner === 'buddy' ? <BuddySprite poses={BUDDY.get(x.id)!.poses.slice(0, 1)} scale={3} /> : <AccIcon acc={ACCESSORY.get(x.id)!} />}
+                            {banner === 'buddy' ? <BuddySprite def={BUDDY.get(x.id)!} scale={3} box={BOX.tile} still /> : <AccIcon acc={ACCESSORY.get(x.id)!} />}
                             <b>{nameOfItem(x.id, names)}</b>
                           </button>
                         </li>
@@ -120,11 +120,13 @@ export function PullSheet({ mode: first, banner: firstBanner, ledger, wallet, to
 /** What a spend landed on, revealed (≤ 1 s, transform and opacity only), or the refund when its rarity was complete. */
 function Reveal({ s, names, onOpen }: { s: Spend; names: (id: string) => string; onOpen: () => void }) {
   const acc = s.got ? ACCESSORY.get(s.got) : undefined, bud = s.got ? BUDDY.get(s.got) : undefined;
+  // An older character too big for the art's square shows in full above the words (owner 2026-11-06: in all its glory).
+  const big = !!bud && drawnSize(bud, 5, BOX.reveal).some((x) => x > 80);
   return (
-    <div className={`bu-reveal r${s.rarity}`} role="status" key={s.id}>
+    <div className={`bu-reveal r${s.rarity}${big ? ' big' : ''}`} role="status" key={s.id}>
       {s.got ? (
         <>
-          <span className="bu-reveal-art">{bud ? <BuddySprite poses={bud.poses} scale={5} /> : acc && <AccIcon acc={acc} scale={5} />}</span>
+          <span className="bu-reveal-art">{bud ? <BuddySprite def={bud} scale={5} box={BOX.reveal} /> : acc && <AccIcon acc={acc} scale={5} />}</span>
           <span className="bu-reveal-text">
             <span className="bu-rarity">{RARITY[s.rarity]}{acc ? ` ${SLOT_NAME[acc.slot].toLowerCase()}` : ''}</span>
             <b>{bud ? names(s.got) : accName(s.got)}</b>

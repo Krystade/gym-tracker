@@ -40,7 +40,8 @@ import { SuggestedToday } from './SuggestedToday';
 import { ProgramUpdateCard, useProgramUpdate } from './ProgramUpdate';
 import type { Program } from '../domain/program';
 import { Icon } from './icons';
-import { BuddySprite } from './buddies/BuddySprite';
+import { BOX, BuddySprite, drawnSize } from './buddies/BuddySprite';
+import type { BuddyDef } from '../domain/buddies/roster';
 import type { SetEntry } from '../domain/types';
 import { switchFor, type RestPart } from '../domain/timing';
 import { lastSupersets, restsOf, supersets, switchesOf, timedWorking, type Superset } from '../domain/superset';
@@ -85,7 +86,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   store: SetsStore; settings: SettingsStore; programs: ProgramStore; body: BodyStore; gyms: GymsStore; profile: Profile; date: string; today: string;
   carried?: boolean; onSplit?: () => void; onDay: (d: string) => void; onOpen: (name: string) => void; onOpenProgram: () => void; onOpenGym?: () => void;
   /** The lead buddy (Gym Buddies §16.4), beside the day; a tap opens Buddies. None before the first is picked. */
-  lead?: { poses: readonly string[]; name: string } | null; onOpenBuddies?: () => void;
+  lead?: { def: BuddyDef; name: string } | null; onOpenBuddies?: () => void;
   /** Progress photos' dates, for the photo-day line (domain/photos photoDayDue); a tap opens Photos. */
   photos?: readonly PhotoMeta[]; onOpenPhotos?: () => void;
   /** A friend's newest unread ping or message: one line, and a tap opens their thread to reply. */
@@ -411,7 +412,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
           <h1>{fmtDay(date, today)}</h1>
           <button className="mini" aria-label="Next day" disabled={date >= today} onClick={() => onDay(addDays(date, 1))}><Icon name="chev-right" size={28} sw={2} /></button>
         </div>
-        {lead && onOpenBuddies && <button className="today-buddy" aria-label={`${lead.name}, your lead buddy: open Buddies`} onClick={onOpenBuddies}><BuddySprite poses={lead.poses} scale={3} /></button>}
+        {lead && onOpenBuddies && <button className="today-buddy" aria-label={`${lead.name}, your lead buddy: open Buddies`} onClick={onOpenBuddies}><BuddySprite def={lead.def} scale={3} box={BOX.today} className={drawnSize(lead.def, 3, BOX.today)[1] > 60 ? 'tall' : undefined} /></button>}
       </div>
       {/* Which gym only matters once there's a choice of them. */}
       {gyms.gyms.length > 1 && gyms.active && <button className="gym-line" onClick={onOpenGym}><span>at <b className="pname">{gyms.active.name}</b></span><Icon name="chev-right" size={16} sw={2} /></button>}
