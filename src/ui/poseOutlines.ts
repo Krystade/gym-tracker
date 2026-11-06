@@ -3,7 +3,7 @@ import { UPPER_BOX, type Framing, type Pose, type Variant } from '../domain/phot
 // The outline shown over the camera for each shot (domain/photos SHOTS), in the 3:4 frame the still is cut to: viewBox
 // 0 0 75 100, head at 8 %, feet at 96 %, so standing where it fits is the same framing every time. Drawn by hand as points
 // along one side and smoothed (Catmull-Rom); front and back share a silhouette, mirrored about the middle. Upper body is the
-// same paths seen through its head-to-hips square (domain/photos UPPER_BOX), so he stands closer to fill it.
+// same paths seen through its head-to-waist window (domain/photos UPPER_BOX), so he stands closer to fill it.
 
 /** Each framing's window onto the outlines. */
 export const VIEWBOX: Record<Framing, string> = { full: '0 0 75 100', upper: UPPER_BOX.join(' ') };

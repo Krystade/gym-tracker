@@ -301,16 +301,16 @@ test('Auto: each pose comes up by itself after the seconds picked, a ring counti
   await expect(d.getByRole('group', { name: 'Seconds a pose' }).getByRole('button', { name: '2 s' })).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('Upper body: a square frame with the outline cut head to hips, square stills saved under their own ids, and the choice kept', async ({ page }) => {
+test('Upper body: a 53:45 frame with the outline cut head to waist, stills of that shape saved under their own ids, and the choice kept', async ({ page }) => {
   await page.getByRole('button', { name: 'Record the 6 poses' }).click();
   const d = dialog(page);
   const framing = d.getByRole('group', { name: 'Framing' });
   await expect(framing.getByRole('button', { name: 'Full body' })).toHaveAttribute('aria-pressed', 'true');
   await expect(d.locator('.cap-outline')).toHaveAttribute('viewBox', '0 0 75 100');
   await framing.getByRole('button', { name: 'Upper body' }).click();
-  await expect(d.locator('.cap-outline')).toHaveAttribute('viewBox', '9 3 57 57');
+  await expect(d.locator('.cap-outline')).toHaveAttribute('viewBox', '11 4 53 45');
   const box = (await d.locator('.cap-frame').boundingBox())!;
-  expect(box.width).toBeCloseTo(box.height, 0);
+  expect(box.width / box.height).toBeCloseTo(53 / 45, 2);
   expect(box.width).toBeGreaterThan(360); // the whole width of the 13 mini
   await expect(d.getByRole('button', { name: 'Record' })).toBeEnabled();
   await d.getByRole('button', { name: 'Manual' }).click();
@@ -326,7 +326,7 @@ test('Upper body: a square frame with the outline cut head to hips, square still
   await expect(d.getByRole('heading', { name: 'Review' })).toBeVisible();
   await expect(d.locator('.cap-tile img')).toHaveCount(6);
   const tile = (await d.locator('.cap-tile img').first().boundingBox())!;
-  expect(tile.width).toBeCloseTo(tile.height, 0);
+  expect(tile.width / tile.height).toBeCloseTo(53 / 45, 1);
   await shoot(page, '39b-capture-upper-review');
   await d.getByRole('button', { name: 'Save 6 photos' }).click();
   await expect(d).toHaveCount(0);
@@ -338,7 +338,7 @@ test('Upper body: a square frame with the outline cut head to hips, square still
     return metas.map((m) => ({ id: m.id, framing: m.framing, aspect: m.width / m.height }));
   });
   expect(stored.map((m) => m.id).sort()).toEqual(['back:flexed', 'back:relaxed', 'front:flexed', 'front:relaxed', 'side:flexed', 'side:relaxed'].map((x) => `${today}:${x}:upper`));
-  for (const m of stored) { expect(m.framing).toBe('upper'); expect(m.aspect).toBeCloseTo(1, 2); }
+  for (const m of stored) { expect(m.framing).toBe('upper'); expect(m.aspect).toBeCloseTo(53 / 45, 2); }
   await expect(page.getByRole('region', { name: 'Timeline' }).getByRole('img', { name: `Front flexed, upper body, ${today}` })).toBeVisible();
 
   // Next time: Upper body still, with its ghosts; Full body has no photos yet, so its outline.

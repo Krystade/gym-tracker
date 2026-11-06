@@ -16,14 +16,14 @@ import './capture.css';
 // through the routine with each shot's outline over the camera, a tap on Next pose marking roughly where each shot is; then a
 // scrubber per shot, starting there, to pick the frame to keep; then a review grid with re-pick and retake, and Save. Only the
 // stills are kept: the recording is a blob in memory, let go on Save, Cancel or leaving, never written anywhere. No countdown,
-// no voice. The frame is 3:4 (upper body's is square, below) and the still is cut to it (domain/photos coverCrop), so what was
+// no voice. The frame is 3:4 (upper body's is 53:45, below) and the still is cut to it (domain/photos coverCrop), so what was
 // framed is what's kept.
 // Once a shot has a photo, its latest is laid over the camera at 30 % in place of the outline (the ghost: the same framing every
 // time), and the camera's brightness is checked against it: more than 25 % off, the frame says darker or brighter than last time.
 // Auto (owner 2026-10-30, the default): the next pose comes up by itself after 2, 4 or 6 s, a ring counting it down, Next still
 // there to go early; Manual: only Next. The phone keeps the last choice.
-// Upper body (owner 2026-11-06), for a mirror he can't step back from: the same poses head to hips, in a square frame and a
-// square still, with upper body's own ghosts. Picked in the header before recording, then fixed for the session, so a day's
+// Upper body (owner 2026-11-06), for a mirror he can't step back from: the same poses head to waist, in a wide 53:45 frame and
+// still, with upper body's own ghosts. Picked in the header before recording, then fixed for the session, so a day's
 // set is all one framing; the profile keeps the last choice.
 
 const MAX_SECONDS = 180; // a recording stops itself here: it sits in memory until Save

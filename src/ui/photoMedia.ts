@@ -2,7 +2,7 @@ import { coverCrop, FRAME_SECONDS } from '../domain/photos';
 
 // Save as image and the progress video (plan S5): drawn on the phone from the stored stills, handed to the share sheet and
 // never stored. Each photo is drawn as the screens show it, the middle at its framing's aspect (domain/photos ASPECT: 3:4, or
-// upper body's square), and the image or video is that shape.
+// upper body's 53:45), and the image or video is that shape.
 
 const FONT = '-apple-system, BlinkMacSystemFont, system-ui, sans-serif';
 /** A stored photo, decoded for drawing; closed once drawn, so the video holds two at most (the one shown and the next). */
@@ -64,11 +64,11 @@ function drawFrame(g: CanvasRenderingContext2D, img: ImageBitmap | null, f: Fram
 
 /**
  * The progress video: each date's photo held FRAME_SECONDS (the last three times as long), recorded from a canvas as `type`
- * (domain/photos videoType), 1080 wide at `aspect`. The next photo is read while one shows; the canvas is drawn again each
+ * (domain/photos videoType), 1080 wide at `aspect` (its height even, as video encoders want). The next photo is read while one shows; the canvas is drawn again each
  * 33 ms, as a recorder only takes a frame when the canvas changes. `onFrame`: how far it's got, for the screen.
  */
 export async function recordVideo(frames: readonly Frame[], load: (id: string) => Promise<Blob | null>, type: string, aspect: number, onFrame?: (i: number) => void): Promise<Blob> {
-  const VH = Math.round(VW / aspect), [cv, g] = canvas(VW, VH);
+  const VH = 2 * Math.round(VW / aspect / 2), [cv, g] = canvas(VW, VH);
   const rec = new MediaRecorder(cv.captureStream(30), { mimeType: type, videoBitsPerSecond: 8_000_000 });
   const chunks: Blob[] = [];
   rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };

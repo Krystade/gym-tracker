@@ -709,8 +709,8 @@ details.builder[open] > summary { margin-bottom: 8px; }
 .wipe-tag.after { right: 8px; text-align: right; }
 .wipe-crop { position: absolute; left: 0; right: 0; top: 0; background: rgb(0 0 0 / 0.72); border-bottom: 2px dashed #fff; pointer-events: none; }
 .wipe-apart { text-align: center; margin: 8px 0 0; }
-/* Upper body photos (domain/photos FRAMINGS) are square, and shown so wherever they're shown. */
-.wipe.upper, .pv.upper video, .pv.upper img, .tl-row.upper .tl-thumb img { aspect-ratio: 1; }
+/* Upper body photos (domain/photos ASPECT) are 53:45, head to waist, and shown so wherever they're shown. */
+.wipe.upper, .pv.upper video, .pv.upper img, .tl-row.upper .tl-thumb img { aspect-ratio: 53 / 45; }
 .photo-cmp .form-actions { margin-top: 4px; }
 .pv { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .pv p { margin: 8px 0 0; }

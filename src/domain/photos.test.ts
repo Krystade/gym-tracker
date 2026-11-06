@@ -36,9 +36,9 @@ describe('upper body', () => {
     expect(framedName({ pose: 'side', variant: 'flexed' }, 'upper')).toBe('Side flexed, upper body');
     expect(framedName({ pose: 'side', variant: 'flexed' }, 'full')).toBe('Side flexed');
   });
-  it('is a square, head to hips; the chin line is the full frame’s, in the square', () => {
-    expect(ASPECT).toEqual({ full: 3 / 4, upper: 1 });
-    expect(UPPER_BOX[2]).toBe(UPPER_BOX[3]);
+  it('is head to waist at about 53:45; the chin line is the full frame’s, in that window', () => {
+    expect(UPPER_BOX).toEqual([11, 4, 53, 45]);
+    expect(ASPECT).toEqual({ full: 3 / 4, upper: 53 / 45 });
     expect(UPPER_BOX[1] + CHIN.upper * UPPER_BOX[3]).toBeCloseTo(CHIN.full * 100, 5);
   });
   it('the ghost, compare and the video take only photos of the framing asked for', () => {

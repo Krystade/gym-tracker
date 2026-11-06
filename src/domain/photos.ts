@@ -6,7 +6,7 @@ export type Pose = (typeof POSES)[number];
 export const VARIANTS = ['relaxed', 'flexed'] as const;
 export type Variant = (typeof VARIANTS)[number];
 /**
- * Upper body (owner 2026-11-06): the same poses framed head to hips in a square, for a bathroom mirror he can't step back from.
+ * Upper body (owner 2026-11-06): the same poses framed head to waist, for a bathroom mirror he can't step back from.
  * Each photo keeps its framing; photos from before have none and are full. Only photos of one framing are set side by side.
  */
 export const FRAMINGS = ['full', 'upper'] as const;
@@ -14,10 +14,13 @@ export type Framing = (typeof FRAMINGS)[number];
 export interface PhotoMeta { id: string; date: string; pose: Pose; variant: Variant; framing?: Framing; width: number; height: number; addedAt: string }
 export const framingOf = (m: Pick<PhotoMeta, 'framing'>): Framing => m.framing ?? 'full';
 export const FRAMING_NAME: Record<Framing, string> = { full: 'Full body', upper: 'Upper body' };
-/** Each framing's frame, width / height: the still is cut to it and every screen shows it so. */
-export const ASPECT: Record<Framing, number> = { full: 3 / 4, upper: 1 };
-/** Upper body's square in the full frame's outline units (ui/poseOutlines, 75 × 100): x, y, width, height. Head to hips. */
-export const UPPER_BOX = [9, 3, 57, 57] as const;
+/**
+ * Upper body's frame in the full frame's outline units (ui/poseOutlines, 75 × 100): x, y, width, height. Head to waist, and wide
+ * enough for the double-biceps fists (owner 2026-11-06: zoomed in from head to hips).
+ */
+export const UPPER_BOX = [11, 4, 53, 45] as const;
+/** Each framing's frame, width / height: the still is cut to it and every screen shows it so. Upper body's is about 53:45. */
+export const ASPECT: Record<Framing, number> = { full: 3 / 4, upper: UPPER_BOX[2] / UPPER_BOX[3] };
 /** One photo of the routine: a pose, relaxed or flexed. */
 export interface Shot { pose: Pose; variant: Variant }
 
@@ -141,7 +144,7 @@ export function videoType(supported: (type: string) => boolean): string | null {
 
 /**
  * Save as image's crop line, as a share of the photo's height: just under the chin of the capture outline (head 8–19 %, so y 20
- * of its 100), and the same line in upper body's square.
+ * of its 100), and the same line in upper body's frame.
  */
 export const CHIN: Record<Framing, number> = { full: 0.2, upper: (20 - UPPER_BOX[1]) / UPPER_BOX[3] };
 

@@ -137,24 +137,24 @@ test('photo day: a line on Today once the last photos are 2 weeks old, Not now p
   await expect(page.getByRole('group', { name: 'Photo day' })).toContainText('37 days since your last photos');
 });
 
-/** Upper body photos as the capture screen keeps them (square, `date:pose:variant:upper`), put straight into the database: a
- *  capture only ever saves today's. A figure from the head to the hips, filling the square. */
+/** Upper body photos as the capture screen keeps them (53:45, `date:pose:variant:upper`), put straight into the database: a
+ *  capture only ever saves today's. A figure from the head to the waist, filling the frame. */
 async function seedUpper(page: Page, shots: [string, string][]) {
   await page.evaluate(async (xs) => {
     const db = await new Promise<IDBDatabase>((ok, no) => { const r = indexedDB.open('gym-tracker'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
     for (const [date, colour] of xs) {
       const jpeg = async (n: number) => {
-        const cv = document.createElement('canvas'); cv.width = n; cv.height = n;
-        const g = cv.getContext('2d')!, k = n / 600;
-        g.fillStyle = colour; g.fillRect(0, 0, n, n);
-        g.fillStyle = '#d8d2c8'; g.beginPath(); g.arc(300 * k, 110 * k, 70 * k, 0, 7); g.fill(); // chin near 30 %
-        g.fillRect(150 * k, 190 * k, 300 * k, 410 * k);
+        const cv = document.createElement('canvas'); cv.width = n; cv.height = Math.round((n * 45) / 53);
+        const g = cv.getContext('2d')!, k = n / 530;
+        g.fillStyle = colour; g.fillRect(0, 0, cv.width, cv.height);
+        g.fillStyle = '#d8d2c8'; g.beginPath(); g.arc(265 * k, 100 * k, 60 * k, 0, 7); g.fill(); // chin near 36 %
+        g.fillRect(140 * k, 170 * k, 250 * k, 280 * k);
         const b = await new Promise<Blob>((ok) => cv.toBlob((x) => ok(x!), 'image/jpeg', 0.9));
         return { type: 'image/jpeg', data: await b.arrayBuffer() };
       };
       const id = `${date}:front:relaxed:upper`, [full, thumb] = [await jpeg(600), await jpeg(320)];
       const tx = db.transaction(['photos', 'photoBlobs'], 'readwrite');
-      tx.objectStore('photos').put({ id, date, pose: 'front', variant: 'relaxed', framing: 'upper', width: 600, height: 600, addedAt: `${date}T08:00:00.000Z` });
+      tx.objectStore('photos').put({ id, date, pose: 'front', variant: 'relaxed', framing: 'upper', width: 530, height: 450, addedAt: `${date}T08:00:00.000Z` });
       tx.objectStore('photoBlobs').put(full, `${id}:full`); tx.objectStore('photoBlobs').put(thumb, `${id}:thumb`);
       await new Promise((ok) => { tx.oncomplete = ok; });
     }
@@ -189,13 +189,13 @@ test('upper body: compare, Save as image, the video and the timeline take upper 
   await expect(cmp.getByRole('img', { name: 'Front, 2026-08-01' })).toHaveCount(0);
   await expect(cmp).toContainText('7 weeks apart · no PRs between');
   const wipe = (await cmp.locator('.wipe').boundingBox())!;
-  expect(wipe.width).toBeCloseTo(wipe.height, 0);
+  expect(wipe.width / wipe.height).toBeCloseTo(53 / 45, 2);
   await cmp.getByLabel('Crop below the chin').check();
-  expect(await cmp.locator('.wipe-crop').evaluate((e) => (e as HTMLElement).style.height)).toMatch(/^29\.8/);
+  expect(await cmp.locator('.wipe-crop').evaluate((e) => (e as HTMLElement).style.height)).toMatch(/^35\.5/);
   await cmp.scrollIntoViewIfNeeded();
   await page.screenshot({ path: 'screenshots/53-photo-compare-upper.png' });
 
-  // Save as image: two squares, cut below the chin, over the dates (720 × 505 each, 172 under).
+  // Save as image: two at 53:45, cut below the chin, over the dates (720 × 394 each, 172 under).
   await page.waitForTimeout(500);
   await cmp.getByRole('button', { name: 'Save as image' }).click();
   await expect.poll(() => shared(page)).toEqual([expect.objectContaining({ name: 'progress-front-upper-2026-09-05-2026-10-24.jpg' })]);
@@ -203,7 +203,7 @@ test('upper body: compare, Save as image, the video and the timeline take upper 
     const img = await createImageBitmap((window as unknown as { sharedFiles: File[] }).sharedFiles[k]);
     return [img.width, img.height];
   }, i);
-  expect(await size(0)).toEqual([1448, 505 + 172]);
+  expect(await size(0)).toEqual([1448, 394 + 172]);
   await cmp.getByRole('button', { name: 'Progress video' }).click();
   const pv = cmp.getByRole('group', { name: 'Progress video' });
   await expect(pv).toBeVisible({ timeout: 20_000 });
@@ -211,19 +211,19 @@ test('upper body: compare, Save as image, the video and the timeline take upper 
     await pv.getByRole('button', { name: 'Save frames' }).click();
     await expect.poll(async () => (await shared(page)).length).toBe(3);
     expect((await shared(page)).at(-1)!.name).toBe('progress-front-upper-2026-09-05-2026-10-24-02.jpg');
-    expect(await size(2)).toEqual([720, 720]);
+    expect(await size(2)).toEqual([720, 611]);
   } else {
     await pv.getByRole('button', { name: 'Save video' }).click();
     await expect.poll(async () => (await shared(page)).at(-1)?.name).toMatch(/^progress-front-upper-2026-09-05-2026-10-24\.(mp4|webm)$/);
   }
 
-  // The timeline: one framing at a time, upper body square.
+  // The timeline: one framing at a time, upper body at its 53:45.
   const tf = tl.getByRole('group', { name: 'Timeline framing' });
   await tf.getByRole('button', { name: 'Upper body' }).click();
   await expect(tl.getByRole('img')).toHaveCount(2);
   await expect(tl.getByRole('img', { name: 'Front, upper body, 2026-10-24' })).toBeVisible();
   const thumb = (await tl.locator('.tl-thumb img').first().boundingBox())!;
-  expect(thumb.width).toBeCloseTo(thumb.height, 0);
+  expect(thumb.width / thumb.height).toBeCloseTo(53 / 45, 1);
   await tf.getByRole('button', { name: 'Full body' }).click();
   await expect(tl.getByRole('img', { name: 'Front, 2026-10-24' })).toBeVisible();
   await expect(tl.getByRole('img', { name: /upper body/ })).toHaveCount(0);
