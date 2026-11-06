@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useDb } from '../state/profileDb';
-import { comparePair, photoDate, photoId, PHOTO_EVERY, POSES, shotName, timeline, VARIANTS, weightNear, type PhotoEvery, type PhotoMeta, type Shot } from '../domain/photos';
+import { comparePair, framedName, FRAMING_NAME, FRAMINGS, framingOf, framingsIn, photoDate, photoId, PHOTO_EVERY, POSES, shotDates, shotName, timeline, VARIANTS, weightNear, type Framing, type PhotoEvery, type PhotoMeta, type Shot } from '../domain/photos';
 import { localDate } from '../domain/ids';
 import { trend } from '../domain/body';
 import { fmtDate, fmtDay, plural } from '../domain/format';
@@ -13,14 +13,14 @@ import { decode, encode } from './photoImage';
 import { PhotoCapture } from './PhotoCapture';
 import { Img, PhotoCompare } from './PhotoCompare';
 import { activeProfileDb } from '../db/db';
-import { photoEvery, setPhotoEvery } from '../state/photoDay';
+import { photoEvery, photoFraming, setPhotoEvery } from '../state/photoDay';
 import type { SetEntry } from '../domain/types';
 
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
-const alt = (m: Shot & { date: string }) => `${shotName(m)}, ${m.date}`;
+const alt = (m: Pick<PhotoMeta, 'date' | 'pose' | 'variant' | 'framing'>) => `${framedName(m, framingOf(m))}, ${m.date}`;
 
-/** Front, Side, Back, and Relaxed or Flexed: which photo, as two rows of chips. */
-function ShotChips({ label, shot, onPick }: { label: string; shot: Shot; onPick: (s: Shot) => void }) {
+/** Front, Side, Back, and Relaxed or Flexed: which photo, as two rows of chips; `children` under them (FramingChips). */
+function ShotChips({ label, shot, onPick, children }: { label: string; shot: Shot; onPick: (s: Shot) => void; children?: ReactNode }) {
   return <div className="shot-chips">
     <div className="chips" role="group" aria-label={label}>
       {POSES.map((p) => <button key={p} type="button" className="chip" aria-pressed={shot.pose === p} onClick={() => onPick({ ...shot, pose: p })}>{cap(p)}</button>)}
@@ -28,6 +28,14 @@ function ShotChips({ label, shot, onPick }: { label: string; shot: Shot; onPick:
     <div className="chips" role="group" aria-label={`${label}: relaxed or flexed`}>
       {VARIANTS.map((v) => <button key={v} type="button" className="chip" aria-pressed={shot.variant === v} onClick={() => onPick({ ...shot, variant: v })}>{cap(v)}</button>)}
     </div>
+    {children}
+  </div>;
+}
+
+/** Full body or Upper body: which framing's photos a section shows. Only offered where there are photos in both. */
+function FramingChips({ label, value, onPick }: { label: string; value: Framing; onPick: (f: Framing) => void }) {
+  return <div className="chips" role="group" aria-label={label}>
+    {FRAMINGS.map((f) => <button key={f} type="button" className="chip" aria-pressed={value === f} onClick={() => onPick(f)}>{FRAMING_NAME[f]}</button>)}
   </div>;
 }
 
@@ -52,12 +60,18 @@ export function PhotosScreen({ photos, backup, body, entries, today, shootFirst 
   const [open, setOpen] = useState<PhotoMeta | null>(null);
   const [cmp, setCmp] = useState<Shot>({ pose: 'front', variant: 'relaxed' });
   const [pick, setPick] = useState<[string, string] | null>(null);
+  // Compare and the timeline each show one framing: the one last recorded, till he picks; the other where it's all there is.
+  const [cmpView, setCmpView] = useState(() => photoFraming(owner));
+  const [tlView, setTlView] = useState(() => photoFraming(owner));
+  const framings = framingsIn(photos.metas), both = framings.length > 1;
+  const shown = (f: Framing): Framing => (framings.includes(f) ? f : framings[0] ?? 'full');
+  const [cmpF, tlF] = [shown(cmpView), shown(tlView)];
   const [shareFile, setShareFile] = useState<File | null>(null);
   useEffect(() => {
     setShareFile(null);
     if (!open) return;
     let live = true;
-    const name = `progress-${open.date}-${open.pose}${open.variant === 'flexed' ? '-flexed' : ''}.jpg`;
+    const name = `progress-${open.date}-${open.pose}${open.variant === 'flexed' ? '-flexed' : ''}${framingOf(open) === 'upper' ? '-upper' : ''}.jpg`;
     void db.getPhotoBlob(open.id, 'full').then((b) => { if (live && b) setShareFile(new File([b], name, { type: 'image/jpeg' })); });
     return () => { live = false; };
   }, [open, photos.version]);
@@ -73,20 +87,20 @@ export function PhotosScreen({ photos, backup, body, entries, today, shootFirst 
     try {
       const img = await decode(file);
       const [full, thumb] = [await encode(img, 1600), await encode(img, 320)];
-      const ok = await photos.add({ id, date: when, pose, variant, width: full.width, height: full.height, addedAt: new Date().toISOString() }, full.blob, thumb.blob);
+      const ok = await photos.add({ id, date: when, pose, variant, framing: 'full', width: full.width, height: full.height, addedAt: new Date().toISOString() }, full.blob, thumb.blob);
       if (ok) setMsg(`Saved ${name} photo for ${fmtDay(when, today)}.`);
     } catch (e) { setMsg(`Could not read that image: ${String(e)}`); }
     finally { setBusy(false); }
   }
 
-  const dates = [...new Set(photos.metas.filter((m) => m.pose === cmp.pose && m.variant === cmp.variant).map((m) => m.date))].sort();
-  const pair = pick && dates.includes(pick[0]) && dates.includes(pick[1]) ? pick : comparePair(photos.metas, cmp.pose, cmp.variant);
+  const dates = shotDates(photos.metas, cmp, cmpF);
+  const pair = pick && dates.includes(pick[0]) && dates.includes(pick[1]) ? pick : comparePair(photos.metas, cmp.pose, cmp.variant, cmpF);
 
   if (open) return (
     <>
       <button onClick={() => setOpen(null)}>‹ Photos</button>
       <h1>{shotName(open)} · {fmtDate(open.date)}</h1>
-      <p className="muted">{weight(open.date) ? `Trend weight ${weight(open.date)}` : 'No weigh-in within 3 days'}</p>
+      <p className="muted">{framingOf(open) === 'upper' && 'Upper body · '}{weight(open.date) ? `Trend weight ${weight(open.date)}` : 'No weigh-in within 3 days'}</p>
       <div className="photo-full"><Img id={open.id} kind="full" version={photos.version} label={alt(open)} /></div>
       <div className="form-actions">
         <button disabled={!shareFile} onClick={() => {
@@ -94,7 +108,7 @@ export function PhotosScreen({ photos, backup, body, entries, today, shootFirst 
           if (!shareFile || !navigator.canShare?.({ files: [shareFile] })) { setMsg('Sharing isn’t available here — long-press the photo to save it.'); return; }
           navigator.share({ files: [shareFile] }).catch((e: Error) => { if (e.name !== 'AbortError') setMsg(`Couldn’t open the share sheet (${e.name}) — long-press the photo to save it.`); });
         }}>Save to Photos</button>
-        <button className="danger" onClick={async () => { if (confirm(`Delete the ${shotName(open).toLowerCase()} photo for ${open.date}? This can’t be undone.`) && (await photos.remove(open.id))) setOpen(null); }}>Delete photo</button>
+        <button className="danger" onClick={async () => { if (confirm(`Delete the ${shotName(open).toLowerCase()}${framingOf(open) === 'upper' ? ' upper body' : ''} photo for ${open.date}? This can’t be undone.`) && (await photos.remove(open.id))) setOpen(null); }}>Delete photo</button>
       </div>
       {msg && <p className="muted small" role="status">{msg}</p>}
     </>
@@ -133,8 +147,10 @@ export function PhotosScreen({ photos, backup, body, entries, today, shootFirst 
 
       <section className="card" aria-labelledby="cmp-h">
         <h2 id="cmp-h">Compare</h2>
-        <ShotChips label="Compare pose" shot={cmp} onPick={(s) => { setCmp(s); setPick(null); }} />
-        {!pair ? <p className="muted">Two dates with a {shotName(cmp).toLowerCase()} photo are needed to compare.</p> : (<>
+        <ShotChips label="Compare pose" shot={cmp} onPick={(s) => { setCmp(s); setPick(null); }}>
+          {both && <FramingChips label="Compare framing" value={cmpF} onPick={(f) => { setCmpView(f); setPick(null); }} />}
+        </ShotChips>
+        {!pair ? <p className="muted">Two dates with a {shotName(cmp).toLowerCase()}{cmpF === 'upper' ? ' upper body' : ''} photo are needed to compare.</p> : (<>
           <div className="compare-pick">
             {[0, 1].map((k) => (
               <select key={k} aria-label={k === 0 ? 'Before' : 'After'} value={pair[k]} onChange={(e) => setPick(k === 0 ? [e.target.value, pair[1]] : [pair[0], e.target.value])}>
@@ -142,17 +158,18 @@ export function PhotosScreen({ photos, backup, body, entries, today, shootFirst 
               </select>
             ))}
           </div>
-          <PhotoCompare photos={photos} shot={cmp} pair={pair} weight={weight} entries={entries} today={today} />
+          <PhotoCompare photos={photos} shot={cmp} framing={cmpF} pair={pair} weight={weight} entries={entries} today={today} />
         </>)}
       </section>
 
       <section className="card" aria-labelledby="tl-h">
         <h2 id="tl-h">Timeline</h2>
         {photos.metas.length === 0 && <p className="muted">No photos yet.</p>}
-        {timeline(photos.metas).map((g) => (
+        {both && <FramingChips label="Timeline framing" value={tlF} onPick={setTlView} />}
+        {timeline(photos.metas.filter((m) => framingOf(m) === tlF)).map((g) => (
           <div className="tl-day" key={g.date}>
             <p><b>{fmtDate(g.date)}</b>{weight(g.date) && <span className="muted small"> · {weight(g.date)}</span>}</p>
-            <div className="tl-row">
+            <div className={`tl-row${tlF === 'upper' ? ' upper' : ''}`}>
               {g.photos.map((m) => (
                 <button key={m.id} className="tl-thumb" aria-label={alt(m)} onClick={() => { setMsg(null); setOpen(m); }}>
                   <Img id={m.id} kind="thumb" version={photos.version} label={alt(m)} />

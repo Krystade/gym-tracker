@@ -67,7 +67,9 @@ test('a friend’s buddies: their lead on Crew, their roster and points, a buddy
   const rows = sbs.getByRole('list').getByRole('listitem');
   await expect(rows).toHaveCount(4);
   await expect(rows.nth(0)).toHaveAccessibleName(`Power: yours 0, @${fr.name}’s 16`);
-  await expect(sbs).not.toContainText(/win|ahead|lead[s ]|beat|vs/i);
+  // Only what the app says itself: a random handle can hold "vs" or "win", and so can a buddy's name (Winu).
+  const said = [`@${fr.name}`, fr.name, me.name, mine, defaultName(lead.id)].reduce((t, n) => t.replaceAll(n, ' '), (await sbs.textContent())!);
+  expect(said).not.toMatch(/win|ahead|lead[s ]|beat|vs/i);
   const found: string[] = [];
   await check(page, info, found, 'friend-side-by-side', [], '.sbs');
   await page.evaluate(() => { document.querySelector('.sbs')!.scrollIntoView({ block: 'start' }); scrollBy(0, -60); });

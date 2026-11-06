@@ -3,7 +3,7 @@ import { useDb } from '../state/profileDb';
 import { activeProfileDb } from '../db/db';
 import { getPref, setPref } from '../state/prefs';
 import { saveFile } from '../state/useBackup';
-import { apartLine, CHIN, FRAME_SECONDS, photoId, shotDates, shotName, videoType, type Shot } from '../domain/photos';
+import { apartLine, ASPECT, CHIN, FRAME_SECONDS, framedName, photoId, shotDates, videoType, type Framing, type Shot } from '../domain/photos';
 import { prsBetween } from '../domain/feed';
 import { fmtDay } from '../domain/format';
 import type { SetEntry } from '../domain/types';
@@ -12,6 +12,7 @@ import { composite, flipFrames, recordVideo, type Frame } from './photoMedia';
 
 // Compare on Photos (plan S5): before and after under one divider dragged across them, Save as image (side by side, optionally
 // cut below the chin), and the progress video of every date between. All of it drawn on the phone; nothing made here is stored.
+// Like with like: every photo here is of one framing, full or upper body (domain/photos FRAMINGS), and shown in its shape.
 
 /** An object URL for a stored image, revoked when the view goes away or the photo changes. */
 function useBlobUrl(id: string | null, kind: 'full' | 'thumb', version: number): string | null {
@@ -33,7 +34,7 @@ export function Img({ id, kind, version, label }: { id: string | null; kind: 'fu
 
 /** A date as the saved image and the video say it, with its year: they leave the app. */
 const longDay = (iso: string) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); };
-const slug = (s: Shot) => `${s.pose}${s.variant === 'flexed' ? '-flexed' : ''}`;
+const slug = (s: Shot, f: Framing) => `${s.pose}${s.variant === 'flexed' ? '-flexed' : ''}${f === 'upper' ? '-upper' : ''}`;
 /** Save as image cut below the chin, remembered per phone and profile: it's a choice about who sees his face. */
 const CROP = 'photos:crop';
 
@@ -41,19 +42,19 @@ const CROP = 'photos:crop';
  * Before and after, `pair` (two dates of `shot`), under a divider: before on the left of it, after on the right. Dragging (or
  * a tap) anywhere on the photo moves it; a slider under it does the same for VoiceOver and the keyboard.
  */
-function Wipe({ shot, pair, weight, version, today, crop }: { shot: Shot; pair: [string, string]; weight: (d: string) => string | null; version: number; today: string; crop: boolean }) {
+function Wipe({ shot, framing, pair, weight, version, today, crop }: { shot: Shot; framing: Framing; pair: [string, string]; weight: (d: string) => string | null; version: number; today: string; crop: boolean }) {
   const [at, setAt] = useState(50);
   const move = (el: HTMLElement, x: number) => { const r = el.getBoundingClientRect(); setAt(Math.round(Math.max(0, Math.min(1, (x - r.left) / r.width)) * 100)); };
   const tag = (d: string) => <><b>{fmtDay(d, today)}</b>{weight(d) ?? 'no weigh-in'}</>;
   return (
     <>
-      <div className="wipe" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); move(e.currentTarget, e.clientX); }}
+      <div className={`wipe${framing === 'upper' ? ' upper' : ''}`} onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); move(e.currentTarget, e.clientX); }}
         onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) move(e.currentTarget, e.clientX); }}>
-        <Img id={photoId(pair[0], shot.pose, shot.variant)} kind="full" version={version} label={`${shotName(shot)}, ${pair[0]}`} />
+        <Img id={photoId(pair[0], shot.pose, shot.variant, framing)} kind="full" version={version} label={`${framedName(shot, framing)}, ${pair[0]}`} />
         <div className="wipe-after" style={{ clipPath: `inset(0 0 0 ${at}%)` }}>
-          <Img id={photoId(pair[1], shot.pose, shot.variant)} kind="full" version={version} label={`${shotName(shot)}, ${pair[1]}`} />
+          <Img id={photoId(pair[1], shot.pose, shot.variant, framing)} kind="full" version={version} label={`${framedName(shot, framing)}, ${pair[1]}`} />
         </div>
-        {crop && <span className="wipe-crop" style={{ height: `${CHIN * 100}%` }} aria-hidden="true" />}
+        {crop && <span className="wipe-crop" style={{ height: `${CHIN[framing] * 100}%` }} aria-hidden="true" />}
         <span className="wipe-bar" style={{ left: `${at}%` }} aria-hidden="true"><i /></span>
         <span className="wipe-tag before">{tag(pair[0])}</span>
         <span className="wipe-tag after">{tag(pair[1])}</span>
@@ -69,7 +70,7 @@ type Video = { at: number; of: number } | { file: File; url: string } | { flip: 
  * The progress video of `dates` (oldest first): recorded on the phone where it can (MP4 on iOS), else a flipbook of the same
  * frames. Kept in memory until Done or leaving Compare; Save hands it to the share sheet from a tap of its own.
  */
-function ProgressVideo({ shot, dates, weight }: { shot: Shot; dates: string[]; weight: (d: string) => string | null }) {
+function ProgressVideo({ shot, framing, dates, weight }: { shot: Shot; framing: Framing; dates: string[]; weight: (d: string) => string | null }) {
   const db = useDb();
   const [video, setVideo] = useState<Video | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -90,19 +91,19 @@ function ProgressVideo({ shot, dates, weight }: { shot: Shot; dates: string[]; w
 
   async function make() {
     setMsg(null); setPage(0);
-    const frames: Frame[] = dates.map((d) => ({ id: photoId(d, shot.pose, shot.variant), date: longDay(d), weight: weight(d) }));
+    const frames: Frame[] = dates.map((d) => ({ id: photoId(d, shot.pose, shot.variant, framing), date: longDay(d), weight: weight(d) }));
     const load = (id: string) => db.getPhotoBlob(id, 'full').then((b) => b ?? null);
-    const name = `progress-${slug(shot)}-${dates[0]}-${dates.at(-1)}`;
+    const name = `progress-${slug(shot, framing)}-${dates[0]}-${dates.at(-1)}`;
     const type = typeof MediaRecorder !== 'undefined' && 'captureStream' in HTMLCanvasElement.prototype ? videoType((t) => MediaRecorder.isTypeSupported(t)) : null;
     setVideo({ at: 0, of: frames.length });
     try {
       if (type) {
-        const blob = await recordVideo(frames, load, type, (i) => { if (live.current) setVideo({ at: i + 1, of: frames.length }); });
+        const blob = await recordVideo(frames, load, type, ASPECT[framing], (i) => { if (live.current) setVideo({ at: i + 1, of: frames.length }); });
         if (!blob.size) throw new Error('The recording came out empty');
         const file = new File([blob], `${name}.${blob.type.includes('mp4') ? 'mp4' : 'webm'}`, { type: blob.type });
         if (live.current) setVideo({ file, url: URL.createObjectURL(file) });
       } else {
-        const blobs = await flipFrames(frames, load);
+        const blobs = await flipFrames(frames, load, ASPECT[framing]);
         if (live.current) setVideo({ flip: blobs.map((b) => URL.createObjectURL(b)), files: blobs.map((b, i) => new File([b], `${name}-${String(i + 1).padStart(2, '0')}.jpg`, { type: 'image/jpeg' })) });
       }
     } catch (e) { if (live.current) setVideo({ error: `Couldn’t make the video: ${String(e)}` }); }
@@ -128,7 +129,7 @@ function ProgressVideo({ shot, dates, weight }: { shot: Shot; dates: string[]; w
   );
   if ('at' in video) return <div className="pv"><p className="muted small" role="status">Making the video… {video.at} of {video.of}</p></div>;
   return (
-    <div className="pv" role="group" aria-label="Progress video">
+    <div className={`pv${framing === 'upper' ? ' upper' : ''}`} role="group" aria-label="Progress video">
       {'url' in video ? <video src={video.url} controls playsInline muted aria-label="Progress video preview" />
         : <img src={video.flip[page]} alt={`Progress video, frame ${page + 1} of ${video.flip.length}`} />}
       {'flip' in video && <p className="muted small">This phone can’t record video, so here it is as a flipbook.</p>}
@@ -142,10 +143,10 @@ function ProgressVideo({ shot, dates, weight }: { shot: Shot; dates: string[]; w
 }
 
 /**
- * Before and after of `shot` at `pair`, with how far apart and the PRs between; Save as image (made ahead, so the share sheet
- * opens straight from the tap) and the progress video of every date from before to after.
+ * Before and after of `shot` in `framing` at `pair`, with how far apart and the PRs between; Save as image (made ahead, so the
+ * share sheet opens straight from the tap) and the progress video of every date from before to after.
  */
-export function PhotoCompare({ photos, shot, pair, weight, entries, today }: { photos: PhotosStore; shot: Shot; pair: [string, string]; weight: (d: string) => string | null; entries: SetEntry[]; today: string }) {
+export function PhotoCompare({ photos, shot, framing, pair, weight, entries, today }: { photos: PhotosStore; shot: Shot; framing: Framing; pair: [string, string]; weight: (d: string) => string | null; entries: SetEntry[]; today: string }) {
   const db = useDb();
   const [owner] = useState(activeProfileDb);
   const [crop, setCropNow] = useState(() => getPref<boolean>(owner, CROP) === true);
@@ -159,18 +160,18 @@ export function PhotoCompare({ photos, shot, pair, weight, entries, today }: { p
   useEffect(() => {
     setFile(null); setMsg(null);
     let live = true;
-    const blob = (d: string) => db.getPhotoBlob(photoId(d, shot.pose, shot.variant), 'full').then((b) => b ?? null);
+    const blob = (d: string) => db.getPhotoBlob(photoId(d, shot.pose, shot.variant, framing), 'full').then((b) => b ?? null);
     void Promise.all([blob(pair[0]), blob(pair[1])])
-      .then(([a, b]) => composite([{ blob: a, date: longDay(pair[0]), weight: w0 }, { blob: b, date: longDay(pair[1]), weight: w1 }], apart, crop ? CHIN : 0))
-      .then((b) => { if (live) setFile(new File([b], `progress-${slug(shot)}-${pair[0]}-${pair[1]}.jpg`, { type: 'image/jpeg' })); })
+      .then(([a, b]) => composite([{ blob: a, date: longDay(pair[0]), weight: w0 }, { blob: b, date: longDay(pair[1]), weight: w1 }], apart, crop ? CHIN[framing] : 0, ASPECT[framing]))
+      .then((b) => { if (live) setFile(new File([b], `progress-${slug(shot, framing)}-${pair[0]}-${pair[1]}.jpg`, { type: 'image/jpeg' })); })
       .catch((e) => { if (live) setMsg(`Couldn’t make the image: ${String(e)}`); });
     return () => { live = false; };
-  }, [shot.pose, shot.variant, pair[0], pair[1], crop, photos.version, apart, w0, w1]);
-  const dates = shotDates(photos.metas, shot, lo, hi);
+  }, [shot.pose, shot.variant, framing, pair[0], pair[1], crop, photos.version, apart, w0, w1]);
+  const dates = shotDates(photos.metas, shot, framing, lo, hi);
 
   return (
     <div className="photo-cmp">
-      <Wipe shot={shot} pair={pair} weight={weight} version={photos.version} today={today} crop={crop} />
+      <Wipe shot={shot} framing={framing} pair={pair} weight={weight} version={photos.version} today={today} crop={crop} />
       <p className="muted small wipe-apart">{apart}</p>
       <label className="check"><input type="checkbox" checked={crop} onChange={(e) => setCrop(e.target.checked)} />Crop below the chin</label>
       <div className="form-actions">
@@ -181,7 +182,7 @@ export function PhotoCompare({ photos, shot, pair, weight, entries, today }: { p
         }}>Save as image</button>
       </div>
       {msg && <p className="muted small" role="status">{msg}</p>}
-      <ProgressVideo key={`${slug(shot)}:${pair.join(':')}`} shot={shot} dates={dates} weight={weight} />
+      <ProgressVideo key={`${slug(shot, framing)}:${pair.join(':')}`} shot={shot} framing={framing} dates={dates} weight={weight} />
     </div>
   );
 }

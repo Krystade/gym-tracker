@@ -5,7 +5,19 @@ export type Pose = (typeof POSES)[number];
 /** Each pose relaxed and flexed (owner 2026-10-29: double biceps front and back, side chest). Photos from before are relaxed. */
 export const VARIANTS = ['relaxed', 'flexed'] as const;
 export type Variant = (typeof VARIANTS)[number];
-export interface PhotoMeta { id: string; date: string; pose: Pose; variant: Variant; width: number; height: number; addedAt: string }
+/**
+ * Upper body (owner 2026-11-06): the same poses framed head to hips in a square, for a bathroom mirror he can't step back from.
+ * Each photo keeps its framing; photos from before have none and are full. Only photos of one framing are set side by side.
+ */
+export const FRAMINGS = ['full', 'upper'] as const;
+export type Framing = (typeof FRAMINGS)[number];
+export interface PhotoMeta { id: string; date: string; pose: Pose; variant: Variant; framing?: Framing; width: number; height: number; addedAt: string }
+export const framingOf = (m: Pick<PhotoMeta, 'framing'>): Framing => m.framing ?? 'full';
+export const FRAMING_NAME: Record<Framing, string> = { full: 'Full body', upper: 'Upper body' };
+/** Each framing's frame, width / height: the still is cut to it and every screen shows it so. */
+export const ASPECT: Record<Framing, number> = { full: 3 / 4, upper: 1 };
+/** Upper body's square in the full frame's outline units (ui/poseOutlines, 75 × 100): x, y, width, height. Head to hips. */
+export const UPPER_BOX = [9, 3, 57, 57] as const;
 /** One photo of the routine: a pose, relaxed or flexed. */
 export interface Shot { pose: Pose; variant: Variant }
 
@@ -14,9 +26,15 @@ export const SHOTS: readonly Shot[] = POSES.flatMap((pose) => VARIANTS.map((vari
 export const shotIndex = (s: Shot): number => POSES.indexOf(s.pose) * VARIANTS.length + VARIANTS.indexOf(s.variant);
 /** "Front", "Front flexed": relaxed is the plain pose, as every photo was before variants. */
 export const shotName = (s: Shot): string => `${s.pose[0].toUpperCase()}${s.pose.slice(1)}${s.variant === 'flexed' ? ' flexed' : ''}`;
+/** A photo's name where its framing matters (alt text): upper body said, full body named as it always was. */
+export const framedName = (s: Shot, f: Framing): string => `${shotName(s)}${f === 'upper' ? ', upper body' : ''}`;
 
-/** One photo per pose and variant per date: a retake replaces it. */
-export const photoId = (date: string, pose: Pose, variant: Variant): string => `${date}:${pose}:${variant}`;
+/**
+ * One photo per pose, variant and framing per date: a retake replaces it. A full photo's id is as it was before framings, so
+ * nothing moved; an upper body one has `:upper` on the end, so both can be kept of the same pose on one day.
+ */
+export const photoId = (date: string, pose: Pose, variant: Variant, framing: Framing = 'full'): string =>
+  `${date}:${pose}:${variant}${framing === 'upper' ? ':upper' : ''}`;
 /** A photo from before variants (id `date:pose`, no variant): relaxed, under its id now. Used by db v10 and an older backup file. */
 export function relaxedIfOld<M extends Omit<PhotoMeta, 'variant'> & { variant?: Variant }>(m: M): M & { variant: Variant } {
   return m.variant ? (m as M & { variant: Variant }) : { ...m, id: photoId(m.date, m.pose, 'relaxed'), variant: 'relaxed' };
@@ -51,10 +69,13 @@ export const seeds = (marks: readonly number[], end: number, settled = false): n
     return Math.min(end, settled ? to - Math.min(0.4, (to - at) * 0.2) : (at + to) / 2);
   });
 
-/** A shot's latest photo: laid over the camera at 30 % (the ghost), so each session is framed like the last. None: the outline. */
-export function lastOf(metas: readonly PhotoMeta[], s: Shot): PhotoMeta | null {
+/**
+ * A shot's latest photo in `framing`: laid over the camera at 30 % (the ghost), so each session is framed like the last. None:
+ * the outline.
+ */
+export function lastOf(metas: readonly PhotoMeta[], s: Shot, framing: Framing): PhotoMeta | null {
   let best: PhotoMeta | null = null;
-  for (const m of metas) if (m.pose === s.pose && m.variant === s.variant && (!best || m.date > best.date)) best = m;
+  for (const m of metas) if (m.pose === s.pose && m.variant === s.variant && framingOf(m) === framing && (!best || m.date > best.date)) best = m;
   return best;
 }
 
@@ -80,10 +101,12 @@ export function timeline(metas: PhotoMeta[]): { date: string; photos: PhotoMeta[
     .map(([date, photos]) => ({ date, photos: photos.sort((a, b) => shotIndex(a) - shotIndex(b)) }));
 }
 
-export function comparePair(metas: PhotoMeta[], pose: Pose, variant: Variant): [string, string] | null {
-  const dates = [...new Set(metas.filter((x) => x.pose === pose && x.variant === variant).map((x) => x.date))].sort();
+export function comparePair(metas: PhotoMeta[], pose: Pose, variant: Variant, framing: Framing): [string, string] | null {
+  const dates = shotDates(metas, { pose, variant }, framing);
   return dates.length >= 2 ? [dates[0], dates.at(-1)!] : null;
 }
+/** The framings there are photos in, full first: Photos offers Full body or Upper body only where there are both. */
+export const framingsIn = (metas: readonly PhotoMeta[]): Framing[] => FRAMINGS.filter((f) => metas.some((m) => framingOf(m) === f));
 
 const days = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 864e5;
 
@@ -103,9 +126,10 @@ export function photoDate(source: 'camera' | 'library', field: string, today: st
   return field > today ? null : field;
 }
 
-/** The dates with a photo of shot `s` from `from` to `to`, oldest first: the progress video's frames, one each. */
-export function shotDates(metas: readonly PhotoMeta[], s: Shot, from = '', to = '9999-12-31'): string[] {
-  return [...new Set(metas.filter((m) => m.pose === s.pose && m.variant === s.variant && m.date >= from && m.date <= to).map((m) => m.date))].sort();
+/** The dates with a photo of shot `s` in `framing` from `from` to `to`, oldest first: the progress video's frames, one each. */
+export function shotDates(metas: readonly PhotoMeta[], s: Shot, framing: Framing, from = '', to = '9999-12-31'): string[] {
+  return [...new Set(metas.filter((m) => m.pose === s.pose && m.variant === s.variant && framingOf(m) === framing && m.date >= from && m.date <= to)
+    .map((m) => m.date))].sort();
 }
 
 /** The progress video (plan S5): a timelapse of one shot's stills, each date held this long, built on the phone and never stored. */
@@ -115,8 +139,11 @@ export function videoType(supported: (type: string) => boolean): string | null {
   return ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find((t) => { try { return supported(t); } catch { return false; } }) ?? null;
 }
 
-/** Save as image's crop line, as a share of the photo's height: just under the chin of the capture outline (head 8–19 %). */
-export const CHIN = 0.2;
+/**
+ * Save as image's crop line, as a share of the photo's height: just under the chin of the capture outline (head 8–19 %, so y 20
+ * of its 100), and the same line in upper body's square.
+ */
+export const CHIN: Record<Framing, number> = { full: 0.2, upper: (20 - UPPER_BOX[1]) / UPPER_BOX[3] };
 
 /** Under a before and after: how far apart they are and the PRs set between, as "12 weeks apart · 3 PRs between". */
 export function apartLine(from: string, to: string, prs: number): string {

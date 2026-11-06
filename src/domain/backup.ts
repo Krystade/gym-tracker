@@ -3,7 +3,7 @@ import { isFlag, type SetEntry } from './types';
 import { editStamp, lifeStamp, metaHash, type MetaItems } from './cloud';
 import { isBuddyKey, mergeBuddyMeta } from './buddies/kept';
 import { importOverlap } from './duplicates';
-import { photoId, POSES, relaxedIfOld, VARIANTS, type PhotoMeta } from './photos';
+import { FRAMINGS, photoId, POSES, relaxedIfOld, VARIANTS, type PhotoMeta } from './photos';
 import type { Taken } from './replaced';
 
 // The backup file (owner 2026-10-29, in place of the private GitHub backup): one profile's sets, deletes, body days, Gym
@@ -70,15 +70,20 @@ function readBody(x: unknown): BodyDay | null {
   }
   return d;
 }
-/** A photo; one from a file made before variants (no variant, id `date:pose`) is relaxed, as db v10 made it on the phone. */
+/**
+ * A photo; one from a file made before variants (no variant, id `date:pose`) is relaxed, as db v10 made it on the phone, and
+ * one from before framings (none) is full body, as it is on the phone. Its id must be its date, pose, variant and framing.
+ */
 function readPhoto(x: unknown): BackupPhoto | null {
   if (!obj(x) || !obj(x.meta) || !str(x.type) || !str(x.full) || !str(x.thumb)) return null;
   const m = x.meta;
   if (!str(m.date) || !DAY.test(m.date) || !(POSES as readonly unknown[]).includes(m.pose) || !num(m.width) || !num(m.height) || !str(m.addedAt)) return null;
-  const pose = m.pose as PhotoMeta['pose'];
-  const old = m.variant === undefined && m.id === `${m.date}:${pose}`;
-  if (!old && !((VARIANTS as readonly unknown[]).includes(m.variant) && m.id === photoId(m.date, pose, m.variant as PhotoMeta['variant']))) return null;
-  const meta = relaxedIfOld({ id: m.id as string, date: m.date, pose, ...(old ? {} : { variant: m.variant as PhotoMeta['variant'] }), width: m.width, height: m.height, addedAt: m.addedAt });
+  if (m.framing !== undefined && !(FRAMINGS as readonly unknown[]).includes(m.framing)) return null;
+  const pose = m.pose as PhotoMeta['pose'], framing = m.framing as PhotoMeta['framing'];
+  const old = m.variant === undefined && framing === undefined && m.id === `${m.date}:${pose}`;
+  if (!old && !((VARIANTS as readonly unknown[]).includes(m.variant) && m.id === photoId(m.date, pose, m.variant as PhotoMeta['variant'], framing))) return null;
+  const meta = relaxedIfOld({ id: m.id as string, date: m.date, pose, ...(old ? {} : { variant: m.variant as PhotoMeta['variant'] }), ...(framing && { framing }),
+    width: m.width, height: m.height, addedAt: m.addedAt });
   return { meta, type: x.type, full: x.full, thumb: x.thumb };
 }
 

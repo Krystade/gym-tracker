@@ -12,7 +12,7 @@ import { fitTargets, setYield, weeklyBudget } from './targets';
 import type { SetEntry } from './types';
 import { addedLoad, bodyShare } from './learn/bodyweight';
 import { rate, rateBand, trend, type BodyDay } from './body';
-import { POSES, SHOTS, type PhotoMeta } from './photos';
+import { framingOf, POSES, SHOTS, type PhotoMeta } from './photos';
 import { effective, togetherSteps, TOGETHER_IDS, type Seen, type TogetherCtx } from './together';
 
 // Achievements (.superpowers/redesign/achievements/plan.md): facts about a log, never stored as earned. Like records
@@ -98,9 +98,9 @@ export const DEFS: readonly Def[] = [
   // Your body (owner 2026-10-29: these, no goal weight): the habit of weighing in and taking photos, never losing or gaining fast.
   { id: 'weigh-ins', group: 'body', title: 'Weigh-ins', unit: 'days', how: 'Days with a weigh-in', levels: L(['starter', 1], ['bronze', 10], ['silver', 50], ['gold', 150], ['platinum', 365]), needs: 'body' },
   { id: 'steady-weeks', group: 'body', title: 'Steady weeks', unit: 'weeks', how: 'Weeks with 3 weigh-ins or more in which your trend never read Fast cut or Fast gain. Steady, not fast', levels: L(['bronze', 2], ['silver', 8], ['gold', 26], ['platinum', 52]), needs: 'body' },
-  { id: 'photo-days', group: 'body', title: 'Photo days', unit: 'days', how: 'Days with a front, side and back photo', levels: L(['starter', 1], ['bronze', 4], ['silver', 12], ['gold', 26], ['platinum', 52]), needs: 'body' },
+  { id: 'photo-days', group: 'body', title: 'Photo days', unit: 'days', how: 'Days with a front, side and back photo, all full body or all upper body', levels: L(['starter', 1], ['bronze', 4], ['silver', 12], ['gold', 26], ['platinum', 52]), needs: 'body' },
   { id: 'photo-season', group: 'body', title: 'Photo season', unit: 'weeks', how: 'Weeks from your first photo day to your latest', levels: L(['bronze', 4], ['silver', 12], ['gold', 26], ['platinum', 52]), needs: 'body' },
-  { id: 'flexed-relaxed', group: 'body', title: 'Flexed and relaxed', unit: 'times', how: 'A day with all six poses, relaxed and flexed', levels: L(['bronze', 1]), repeat: true, needs: 'body' },
+  { id: 'flexed-relaxed', group: 'body', title: 'Flexed and relaxed', unit: 'times', how: 'A day with all six poses, relaxed and flexed, in one framing', levels: L(['bronze', 1]), repeat: true, needs: 'body' },
 ];
 export const DEF: ReadonlyMap<string, Def> = new Map(DEFS.map((d) => [d.id, d]));
 /** The families that never count a pain- or light-flagged set (owner, 2026-10-21: kept). */
@@ -126,8 +126,8 @@ export interface Context {
   /** Your weigh-ins and photos: Your body's families. None wherever a count or a summary leaves the phone (the recap, Compare). */
   body?: BodyCtx;
 }
-/** What Your body reads: each day's weight, and each photo's date, pose and variant (never the image). */
-export interface BodyCtx { days: readonly BodyDay[]; photos: readonly Pick<PhotoMeta, 'date' | 'pose' | 'variant'>[] }
+/** What Your body reads: each day's weight, and each photo's date, pose, variant and framing (never the image). */
+export interface BodyCtx { days: readonly BodyDay[]; photos: readonly Pick<PhotoMeta, 'date' | 'pose' | 'variant' | 'framing'>[] }
 
 // ---- What counts ----
 
@@ -483,12 +483,19 @@ function steadyWeeks(b: BodyCtx, since: string, today: string): Steps {
   return cumulative(out);
 }
 
-/** Days from `since` on with every pose (either variant): a full set. `all`: every pose relaxed and flexed, the whole routine. */
+/**
+ * Days from `since` on with every pose (either variant): a full set. `all`: every pose relaxed and flexed, the whole routine.
+ * Either framing counts (domain/photos FRAMINGS), but one set is all one: a full body front and upper body side and back aren't.
+ */
 function photoDays(b: BodyCtx, since: string, today: string, all = false): string[] {
   const by = new Map<string, Set<string>>();
-  for (const p of b.photos) if (p.date >= since && p.date <= today) (by.get(p.date) ?? by.set(p.date, new Set()).get(p.date)!).add(`${p.pose}:${p.variant}`);
-  return [...by].filter(([, got]) => (all ? SHOTS.every((s) => got.has(`${s.pose}:${s.variant}`)) : POSES.every((p) => got.has(`${p}:relaxed`) || got.has(`${p}:flexed`))))
-    .map(([d]) => d).sort();
+  for (const p of b.photos) {
+    if (p.date < since || p.date > today) continue;
+    const k = `${p.date}|${framingOf(p)}`;
+    (by.get(k) ?? by.set(k, new Set()).get(k)!).add(`${p.pose}:${p.variant}`);
+  }
+  const done = [...by].filter(([, got]) => (all ? SHOTS.every((s) => got.has(`${s.pose}:${s.variant}`)) : POSES.every((p) => got.has(`${p}:relaxed`) || got.has(`${p}:flexed`))));
+  return [...new Set(done.map(([k]) => k.split('|')[0]))].sort();
 }
 
 /** Whole weeks from the first photo day to each later one. */

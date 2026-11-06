@@ -300,3 +300,54 @@ test('Auto: each pose comes up by itself after the seconds picked, a ring counti
   await page.getByRole('button', { name: 'Record the 6 poses' }).click();
   await expect(d.getByRole('group', { name: 'Seconds a pose' }).getByRole('button', { name: '2 s' })).toHaveAttribute('aria-pressed', 'true');
 });
+
+test('Upper body: a square frame with the outline cut head to hips, square stills saved under their own ids, and the choice kept', async ({ page }) => {
+  await page.getByRole('button', { name: 'Record the 6 poses' }).click();
+  const d = dialog(page);
+  const framing = d.getByRole('group', { name: 'Framing' });
+  await expect(framing.getByRole('button', { name: 'Full body' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(d.locator('.cap-outline')).toHaveAttribute('viewBox', '0 0 75 100');
+  await framing.getByRole('button', { name: 'Upper body' }).click();
+  await expect(d.locator('.cap-outline')).toHaveAttribute('viewBox', '9 3 57 57');
+  const box = (await d.locator('.cap-frame').boundingBox())!;
+  expect(box.width).toBeCloseTo(box.height, 0);
+  expect(box.width).toBeGreaterThan(360); // the whole width of the 13 mini
+  await expect(d.getByRole('button', { name: 'Record' })).toBeEnabled();
+  await d.getByRole('button', { name: 'Manual' }).click();
+  await shoot(page, '39-capture-upper');
+
+  // Fixed once recording: the title is back, and stays through picking and the review.
+  await d.getByRole('button', { name: 'Record' }).click();
+  await expect(framing).toHaveCount(0);
+  for (let k = 1; k < 6; k++) { await page.waitForTimeout(200); await d.getByRole('button', { name: 'Next pose' }).click(); }
+  await page.waitForTimeout(200);
+  await d.getByRole('button', { name: 'Done' }).click();
+  for (let k = 1; k <= 6; k++) { await expect(useFrame(page)).toBeEnabled(); await useFrame(page).click(); }
+  await expect(d.getByRole('heading', { name: 'Review' })).toBeVisible();
+  await expect(d.locator('.cap-tile img')).toHaveCount(6);
+  const tile = (await d.locator('.cap-tile img').first().boundingBox())!;
+  expect(tile.width).toBeCloseTo(tile.height, 0);
+  await shoot(page, '39b-capture-upper-review');
+  await d.getByRole('button', { name: 'Save 6 photos' }).click();
+  await expect(d).toHaveCount(0);
+
+  const today = await page.evaluate(() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`; });
+  const stored = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((ok, no) => { const r = indexedDB.open('gym-tracker'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+    const metas = await new Promise<{ id: string; framing?: string; width: number; height: number }[]>((ok) => { const r = db.transaction('photos').objectStore('photos').getAll(); r.onsuccess = () => ok(r.result); });
+    return metas.map((m) => ({ id: m.id, framing: m.framing, aspect: m.width / m.height }));
+  });
+  expect(stored.map((m) => m.id).sort()).toEqual(['back:flexed', 'back:relaxed', 'front:flexed', 'front:relaxed', 'side:flexed', 'side:relaxed'].map((x) => `${today}:${x}:upper`));
+  for (const m of stored) { expect(m.framing).toBe('upper'); expect(m.aspect).toBeCloseTo(1, 2); }
+  await expect(page.getByRole('region', { name: 'Timeline' }).getByRole('img', { name: `Front flexed, upper body, ${today}` })).toBeVisible();
+
+  // Next time: Upper body still, with its ghosts; Full body has no photos yet, so its outline.
+  await page.getByRole('button', { name: 'Record the 6 poses' }).click();
+  await expect(framing.getByRole('button', { name: 'Upper body' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(d.locator('.cap-ghost')).toBeVisible();
+  await framing.getByRole('button', { name: 'Full body' }).click();
+  await expect(d.locator('.cap-ghost')).toHaveCount(0);
+  await expect(d.locator('.cap-outline')).toHaveAttribute('viewBox', '0 0 75 100');
+  await d.getByRole('button', { name: 'Cancel' }).click();
+  await expect(d).toHaveCount(0);
+});

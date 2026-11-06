@@ -1,24 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AUTO_DEFAULT, AUTO_DELAYS, coverCrop, lastOf, lightVs, meanLuma, photoId, POSES, seeds, shotIndex, shotName, SHOTS, VARIANTS, type AutoDelay, type Shot } from '../domain/photos';
+import { ASPECT, AUTO_DEFAULT, AUTO_DELAYS, coverCrop, FRAMING_NAME, FRAMINGS, lastOf, lightVs, meanLuma, photoId, POSES, seeds, shotIndex, shotName, SHOTS, VARIANTS, type AutoDelay, type Framing, type Shot } from '../domain/photos';
 import { localDate } from '../domain/ids';
 import { plural } from '../domain/format';
+import { activeProfileDb } from '../db/db';
 import { getPref, setPref } from '../state/prefs';
+import { photoFraming, setPhotoFraming } from '../state/photoDay';
 import { useDb } from '../state/profileDb';
 import type { PhotosStore } from '../state/usePhotos';
 import { encode } from './photoImage';
-import { HINTS, OUTLINES } from './poseOutlines';
+import { HINTS, OUTLINES, VIEWBOX } from './poseOutlines';
 import './capture.css';
 
 // Guided capture (owner 2026-10-29, in place of a countdown and an auto-still): one video recorded on the phone while he walks
 // through the routine with each shot's outline over the camera, a tap on Next pose marking roughly where each shot is; then a
 // scrubber per shot, starting there, to pick the frame to keep; then a review grid with re-pick and retake, and Save. Only the
 // stills are kept: the recording is a blob in memory, let go on Save, Cancel or leaving, never written anywhere. No countdown,
-// no voice. The frame is 3:4 and the still is cut to it (domain/photos coverCrop), so what was framed is what's kept.
+// no voice. The frame is 3:4 (upper body's is square, below) and the still is cut to it (domain/photos coverCrop), so what was
+// framed is what's kept.
 // Once a shot has a photo, its latest is laid over the camera at 30 % in place of the outline (the ghost: the same framing every
 // time), and the camera's brightness is checked against it: more than 25 % off, the frame says darker or brighter than last time.
 // Auto (owner 2026-10-30, the default): the next pose comes up by itself after 2, 4 or 6 s, a ring counting it down, Next still
 // there to go early; Manual: only Next. The phone keeps the last choice.
+// Upper body (owner 2026-11-06), for a mirror he can't step back from: the same poses head to hips, in a square frame and a
+// square still, with upper body's own ghosts. Picked in the header before recording, then fixed for the session, so a day's
+// set is all one framing; the profile keeps the last choice.
 
 const MAX_SECONDS = 180; // a recording stops itself here: it sits in memory until Save
 const FRAME = 1 / 30; // the ‹ › step: a frame at 30 fps
@@ -55,11 +61,11 @@ interface Ghost { url: string; date: string; luma: number }
 
 /** The light check's sample: small enough to read ten times a second, large enough for a mean. */
 const SAMPLE = [32, 24] as const;
-function lumaOf(src: CanvasImageSource, w: number, h: number): number {
+function lumaOf(src: CanvasImageSource, w: number, h: number, aspect: number): number {
   const cv = document.createElement('canvas');
   [cv.width, cv.height] = SAMPLE;
   const g = cv.getContext('2d', { willReadFrequently: true })!;
-  const c = coverCrop(w, h, 3 / 4); // what the frame shows
+  const c = coverCrop(w, h, aspect); // what the frame shows
   g.drawImage(src, c.x, c.y, c.width, c.height, 0, 0, SAMPLE[0], SAMPLE[1]);
   return meanLuma(g.getImageData(0, 0, SAMPLE[0], SAMPLE[1]).data);
 }
@@ -73,18 +79,18 @@ function cameraError(e: unknown): string {
 }
 const time = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
 
-function Outline({ shot }: { shot: Shot }) {
+function Outline({ shot, framing }: { shot: Shot; framing: Framing }) {
   const ds = OUTLINES[shot.pose][shot.variant];
   return (
-    <svg className="cap-outline" viewBox="0 0 75 100" preserveAspectRatio="none" aria-hidden="true">
+    <svg className="cap-outline" viewBox={VIEWBOX[framing]} preserveAspectRatio="none" aria-hidden="true">
       {ds.map((d, k) => <path key={`h${k}`} className="halo" d={d} />)}
       {ds.map((d, k) => <path key={k} d={d} />)}
     </svg>
   );
 }
 
-/** One shot's scrubber over a recording: starts at `start`, ‹ › a frame each way; Use this frame cuts the still. */
-function Scrub({ take, start, onKeep }: { take: Take; start: number; onKeep: (p: Omit<Picked, 'take' | 'url'>) => void }) {
+/** One shot's scrubber over a recording: starts at `start`, ‹ › a frame each way; Use this frame cuts the still at `aspect`. */
+function Scrub({ take, start, aspect, onKeep }: { take: Take; start: number; aspect: number; onKeep: (p: Omit<Picked, 'take' | 'url'>) => void }) {
   const v = useRef<HTMLVideoElement>(null);
   const [t, setT] = useState(start);
   const [end, setEnd] = useState(take.length);
@@ -130,7 +136,7 @@ function Scrub({ take, start, onKeep }: { take: Take; start: number; onKeep: (p:
     if (!el || busy || !el.videoWidth) return;
     setBusy(true);
     try {
-      const c = coverCrop(el.videoWidth, el.videoHeight, 3 / 4);
+      const c = coverCrop(el.videoWidth, el.videoHeight, aspect);
       const cv = document.createElement('canvas');
       cv.width = c.width; cv.height = c.height;
       cv.getContext('2d')!.drawImage(el, c.x, c.y, c.width, c.height, 0, 0, c.width, c.height);
@@ -177,6 +183,10 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
   const clock = useRef({ t0: 0, marks: [] as number[], end: 0, queue: [] as number[], auto: 0 });
   const [pace, setPaceState] = useState(paceOf);
   const setPace = (p: Pace) => { setPaceState(p); setPref(...PREF, p); };
+  const [owner] = useState(activeProfileDb);
+  const [framing, setFramingNow] = useState(() => photoFraming(owner));
+  const setFraming = (f: Framing) => { setFramingNow(f); setPhotoFraming(owner, f); };
+  const aspect = ASPECT[framing];
   const takes = useRef<Take[]>([]);
   const urls = useRef<string[]>([]); // every object URL made here, revoked on the way out
   const gen = useRef(0); // the camera start that counts: a later one, or leaving, makes an earlier one stop its stream
@@ -297,21 +307,23 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
       urls.current = []; takes.current = [];
     };
   }, []);
-  // Each shot's ghost, read once as the screen opens: its latest photo, full size (a thumb is too soft over the whole frame).
+  // Each shot's ghost in the framing, read as the screen opens and again on a switch: its latest photo, full size (a thumb is too
+  // soft over the whole frame).
   useEffect(() => {
     let on = true;
+    setGhosts({});
     void Promise.all(SHOTS.map(async (s, i) => {
-      const m = lastOf(photos.metas, s);
+      const m = lastOf(photos.metas, s, framing);
       const b = m && await db.getPhotoBlob(m.id, 'full').catch(() => undefined);
       if (!m || !b || !on) return null;
       let luma = 0;
-      try { const img = await createImageBitmap(b); luma = lumaOf(img, img.width, img.height); img.close(); } catch { /* no light check for this one */ }
+      try { const img = await createImageBitmap(b); luma = lumaOf(img, img.width, img.height, ASPECT[framing]); img.close(); } catch { /* no light check for this one */ }
       const url = URL.createObjectURL(b);
       urls.current.push(url);
       return [i, { url, date: m.date, luma }] as const;
     })).then((xs) => { if (on) setGhosts(Object.fromEntries(xs.filter((x) => x != null))); });
     return () => { on = false; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [framing]); // eslint-disable-line react-hooks/exhaustive-deps
   // The same-light check: the camera's brightness, averaged over the last second, against the ghost's.
   useEffect(() => {
     setLight(null);
@@ -320,12 +332,12 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
     const id = setInterval(() => {
       const el = live.current;
       if (!el || !el.videoWidth || el.readyState < 2) return;
-      try { xs.push(lumaOf(el, el.videoWidth, el.videoHeight)); } catch { return; }
+      try { xs.push(lumaOf(el, el.videoWidth, el.videoHeight, aspect)); } catch { return; }
       if (xs.length > 4) xs.shift();
       if (xs.length >= 2) setLight(lightVs(xs.reduce((a, x) => a + x, 0) / xs.length, ghost.luma));
     }, 250);
     return () => clearInterval(id);
-  }, [phase, ghost, camRev]);
+  }, [phase, ghost, camRev, aspect]);
   useEffect(() => {
     if (phase !== 'rec') return;
     // Auto: the pose on screen has had its seconds, so the next comes up (after the last, the recording stops).
@@ -355,14 +367,14 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
   const keptShots = Object.keys(picked).map(Number).sort((a, b) => a - b);
   async function save() {
     const today = localDate(new Date());
-    const id = (i: number) => photoId(today, SHOTS[i].pose, SHOTS[i].variant);
+    const id = (i: number) => photoId(today, SHOTS[i].pose, SHOTS[i].variant, framing);
     const replacing = keptShots.filter((i) => photos.metas.some((m) => m.id === id(i)));
     if (replacing.length && !confirm(`Replace today’s ${replacing.map((i) => shotName(SHOTS[i])).join(', ')} ${replacing.length === 1 ? 'photo' : 'photos'}?`)) return;
     setSaving(true);
     let n = 0;
     for (const i of keptShots) {
       const p = picked[i], s = SHOTS[i];
-      if (!(await photos.add({ id: id(i), date: today, pose: s.pose, variant: s.variant, width: p.width, height: p.height, addedAt: new Date().toISOString() }, p.full, p.thumb))) break;
+      if (!(await photos.add({ id: id(i), date: today, pose: s.pose, variant: s.variant, framing, width: p.width, height: p.height, addedAt: new Date().toISOString() }, p.full, p.thumb))) break;
       n++;
     }
     setSaving(false);
@@ -377,11 +389,17 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
   const title = phase === 'pick' ? `Pick ${pickAt + 1} of ${toPick.length}` : phase === 'review' ? 'Review' : queue.length > 1 ? 'Record poses' : `Retake ${shotName(shot)}`;
   const picking = phase === 'pick' ? toPick[pickAt] : null;
   const last = step >= queue.length - 1;
+  // Full body or Upper body: in the title's place until anything is kept (an iOS segmented title), fixed from then on.
+  const choosing = (phase === 'starting' || phase === 'live') && !keptShots.length;
   return createPortal(
-    <section className="cap" role="dialog" aria-modal="true" aria-label={title}>
+    <section className={`cap${framing === 'upper' ? ' upper' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
       <header className="cap-head">
         <button type="button" className="back" onClick={cancel}>Cancel</button>
-        <h2>{title}</h2>
+        {choosing
+          ? <div className="cap-seg cap-framing" role="group" aria-label="Framing">
+            {FRAMINGS.map((f) => <button key={f} type="button" aria-pressed={framing === f} onClick={() => setFraming(f)}>{FRAMING_NAME[f]}</button>)}
+          </div>
+          : <h2>{title}</h2>}
       </header>
 
       {(phase === 'starting' || phase === 'live' || phase === 'rec') && <>
@@ -389,7 +407,7 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
           <div className="cap-frame">
             {phase !== 'starting' && <video key={camRev} ref={attach} className={facing === 'user' ? 'mirror' : undefined} muted playsInline autoPlay />}
             {/* Mirrored with the preview: the photo was kept unmirrored, as the preview is before it's flipped. */}
-            {ghost ? <img className={`cap-ghost${facing === 'user' ? ' mirror' : ''}`} src={ghost.url} alt="" /> : <Outline shot={shot} />}
+            {ghost ? <img className={`cap-ghost${facing === 'user' ? ' mirror' : ''}`} src={ghost.url} alt="" /> : <Outline shot={shot} framing={framing} />}
             {ghost && phase !== 'starting' && <span className="cap-tag">Last time · {new Date(`${ghost.date}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
             {phase === 'rec' && clock.current.auto > 0 && <Countdown left={clock.current.auto - (elapsed - clock.current.marks[clock.current.marks.length - 1])} of={clock.current.auto} />}
             {light && <span className="cap-light" role="status">{light === 'darker' ? 'Darker' : 'Brighter'} than last time</span>}
@@ -439,7 +457,7 @@ export function PhotoCapture({ photos, onClose }: { photos: PhotosStore; onClose
           <p><b>{shotName(SHOTS[picking])}</b></p>
           <p className="muted small">Slide to the frame to keep.</p>
         </div>
-        <Scrub key={`${picking}:${seed[picking].take}`} take={takes.current[seed[picking].take]} start={seed[picking].at} onKeep={(p) => kept(picking, p)} />
+        <Scrub key={`${picking}:${seed[picking].take}`} take={takes.current[seed[picking].take]} start={seed[picking].at} aspect={aspect} onKeep={(p) => kept(picking, p)} />
       </>}
 
       {phase === 'review' && <>

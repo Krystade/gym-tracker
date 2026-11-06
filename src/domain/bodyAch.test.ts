@@ -15,7 +15,7 @@ const ctx = (body?: BodyCtx, over: Partial<Context> = {}): Context =>
 const steps = (b: BodyCtx, over: Partial<Context> = {}) => familySteps([], ctx(b, over));
 /** A weigh-in each of `n` days from `from`, `lb(i)` on the i-th. */
 const weighs = (from: number, n: number, lb: (i: number) => number): BodyDay[] => Array.from({ length: n }, (_, i) => ({ date: day(from + i), weight: lb(i) }));
-type Ph = Pick<PhotoMeta, 'date' | 'pose' | 'variant'>;
+type Ph = Pick<PhotoMeta, 'date' | 'pose' | 'variant' | 'framing'>;
 const relaxed = (d: string): Ph[] => (['front', 'side', 'back'] as const).map((pose) => ({ date: d, pose, variant: 'relaxed' }));
 const all6 = (d: string): Ph[] => SHOTS.map((s) => ({ date: d, ...s }));
 
@@ -52,6 +52,15 @@ describe('photo days, season, flexed and relaxed', () => {
       { date: day(14), pose: 'front', variant: 'flexed' }, { date: day(14), pose: 'side', variant: 'flexed' }, { date: day(14), pose: 'back', variant: 'flexed' }];
     expect(steps({ days: [], photos })['photo-days'].map((x) => x.date)).toEqual([day(0), day(14)]);
     expect(steps({ days: [], photos })['flexed-relaxed']).toEqual([]);
+  });
+  it('upper body makes a photo day as full body does, but a set is all one framing; both on one day is one day', () => {
+    const upper = (ps: Ph[]): Ph[] => ps.map((p) => ({ ...p, framing: 'upper' }));
+    const mixed: Ph[] = [{ date: day(7), pose: 'front', variant: 'relaxed' }, ...upper(relaxed(day(7)).slice(1))]; // full front, upper side and back
+    const photos = [...upper(relaxed(day(0))), ...mixed, ...relaxed(day(14)), ...upper(relaxed(day(14)))];
+    expect(steps({ days: [], photos })['photo-days']).toEqual([{ date: day(0), value: 1 }, { date: day(14), value: 2 }]);
+    // All six: in one framing, not three of each.
+    const halves = all6(day(21)).map((p) => (p.variant === 'flexed' ? { ...p, framing: 'upper' as const } : p));
+    expect(steps({ days: [], photos: [...halves, ...upper(all6(day(28)))] })['flexed-relaxed']).toEqual([{ date: day(28), value: 1 }]);
   });
   it('season: whole weeks from the first photo day; 4 weeks is bronze', () => {
     const photos = [...relaxed(day(0)), ...relaxed(day(13)), ...relaxed(day(28))];

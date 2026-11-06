@@ -1,8 +1,12 @@
-import type { Pose, Variant } from '../domain/photos';
+import { UPPER_BOX, type Framing, type Pose, type Variant } from '../domain/photos';
 
 // The outline shown over the camera for each shot (domain/photos SHOTS), in the 3:4 frame the still is cut to: viewBox
 // 0 0 75 100, head at 8 %, feet at 96 %, so standing where it fits is the same framing every time. Drawn by hand as points
-// along one side and smoothed (Catmull-Rom); front and back share a silhouette, mirrored about the middle.
+// along one side and smoothed (Catmull-Rom); front and back share a silhouette, mirrored about the middle. Upper body is the
+// same paths seen through its head-to-hips square (domain/photos UPPER_BOX), so he stands closer to fill it.
+
+/** Each framing's window onto the outlines. */
+export const VIEWBOX: Record<Framing, string> = { full: '0 0 75 100', upper: UPPER_BOX.join(' ') };
 
 type Pt = readonly [number, number];
 const MID = 37.5;
@@ -32,24 +36,28 @@ const RELAXED: Pt[] = [[39.6, 18.9], [39.8, 21.4], [44.6, 23.2], [48.8, 24.6], [
 const FLEXED: Pt[] = [[39.6, 18.9], [39.8, 21.2], [44, 22.5], [48, 23.3], [52, 21.9], [54.8, 19.8], [56.6, 19.4], [56.6, 15], [56.9, 11.2], [56.4, 8.6], [58.5, 6.5],
   [61.2, 7], [62.2, 9.6], [61.4, 12.2], [62.3, 16], [62.8, 20.2], [62.2, 24.2], [58, 26.3], [53.5, 27.1], [49.6, 28.7], [46.9, 30.6], [46.6, 33.6], [43.6, 41.5], ...LEG];
 
-// Side on, facing right: the body from the nape round the back, the feet and up the front; the near arm drawn over it.
-const SIDE_BODY = (chest: number): Pt[] => [[35.8, 18.6], [33.7, 23.8], [32.9, 30], [33.4, 37], [34.4, 43], [32.8, 50], [33.4, 54.6], [34.4, 62], [35.4, 70], [35.1, 76],
-  [36.3, 84], [37.1, 91.5], [36.4, 95.3], [37.8, 96], [45, 96], [44.6, 94.5], [40.7, 91.3], [40.5, 84], [40.9, 76], [41.7, 70], [43.5, 61], [43.3, 53], [42.7, 48],
-  [43.1, 42], [42.6, 36.4], [chest, 30.6], [chest - 0.6, 26.2], [40.6, 22.6], [40.4, 19.2]];
-const SIDE_ARM: Pt[] = [[37, 24], [41.2, 26.2], [40.9, 33], [40.6, 40], [41.4, 47], [41.4, 51.6], [41.8, 56], [40.6, 57.4], [39.2, 55.6], [39.2, 51.4], [38.4, 46], [37.6, 40.4],
-  [36.6, 33], [36, 27]];
-// Side chest: the near arm bent, the forearm across the front, the fist out in front of the belly.
-const SIDE_CHEST_ARM: Pt[] = [[37.4, 23.8], [41.8, 25.8], [41.2, 31], [40.6, 34.4], [43.6, 33.7], [46, 33.6], [48.2, 33.1], [49.5, 35.6], [48.1, 38.6], [44, 39.4],
-  [40.4, 40.4], [37.2, 40.9], [35.6, 38.6], [35.3, 32], [36, 26.4]];
+// Side on, facing right: the body from the nape round the back (shoulder blade, the small of the back, the glutes, hamstring, calf),
+// the feet, and up the front (shin, knee, quad, hip, belly, chest, throat); the near arm drawn over it.
+const SIDE_BODY = (chest: number): Pt[] => [[36, 18.8], [33.6, 22.8], [32.3, 28], [32.7, 34], [34.1, 40.5], [33.5, 46.5], [31.7, 51.5], [31.8, 56], [33.3, 59.5],
+  [33.7, 64.5], [34.5, 70], [33.8, 76], [34.6, 82.5], [36, 90], [35.5, 94.5], [36.2, 96], [45.6, 96], [45.2, 94.6], [40.6, 92.2], [39.9, 86], [40.3, 79.5],
+  [41.4, 72], [42.7, 64], [43, 56.5], [41.8, 50.5], [42.7, 45.5], [42.9, 40], [chest - 1.2, 35.8], [chest, 31], [chest - 1, 26.4], [40.8, 22.8], [40.2, 19.4]];
+const SIDE_ARM: Pt[] = [[35.8, 23.6], [40.6, 24.4], [41.6, 28.6], [41, 34.6], [40.6, 41], [41.6, 46.8], [41.6, 52], [42.2, 56.4], [40.7, 58.2], [39, 56.2],
+  [38.6, 51.6], [37.6, 46.2], [36.6, 41], [35.5, 35], [35.1, 29], [35.4, 25.4]];
+// Side chest: the near upper arm down the side, the elbow bent square, the forearm straight out in front and the fist at the front.
+const SIDE_CHEST_ARM: Pt[] = [[36.2, 23.4], [41.6, 24.2], [43.2, 28], [42.8, 32.6], [44.8, 34.4], [48.4, 34.2], [51.2, 33.8], [53.4, 35.2], [53.4, 38.6],
+  [51.2, 40.2], [47.6, 40.4], [43.6, 41.2], [38.8, 42.4], [35.4, 40.8], [34.6, 35], [34.7, 29], [35.3, 25.4]];
+// The back: the same silhouette as the front, plus the spine and the shoulder blades so it reads as a back.
+const SPINE = smooth([[MID, 21], [MID, 30], [MID + 0.2, 38], [MID, 46]], false);
+const blade = (s: number) => smooth([[MID + s * 2.6, 25.4], [MID + s * 6.6, 25.8], [MID + s * 7.2, 30], [MID + s * 3.6, 34.6]], false);
 
 const front = { relaxed: [head(MID), both(RELAXED)], flexed: [head(MID), both(FLEXED)] };
 export const OUTLINES: Record<Pose, Record<Variant, string[]>> = {
   front,
   side: {
-    relaxed: [head(38.8, 13.5, 4.2), smooth(SIDE_BODY(44.2), true), smooth(SIDE_ARM, true)],
-    flexed: [head(38.8, 13.5, 4.2), smooth(SIDE_BODY(45.4), true), smooth(SIDE_CHEST_ARM, true)],
+    relaxed: [head(38.8, 13.5, 4.2), smooth(SIDE_BODY(43.9), true), smooth(SIDE_ARM, true)],
+    flexed: [head(38.8, 13.5, 4.2), smooth(SIDE_BODY(46.4), true), smooth(SIDE_CHEST_ARM, true)],
   },
-  back: front,
+  back: { relaxed: [...front.relaxed, SPINE, blade(1), blade(-1)], flexed: [...front.flexed, SPINE, blade(1), blade(-1)] },
 };
 
 /** What to do for each shot, under its name while recording. */

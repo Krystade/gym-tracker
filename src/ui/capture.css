@@ -1,5 +1,5 @@
 /* Guided capture (ui/PhotoCapture): over everything, the tab bar included, black like a camera. The frame is 3:4, as large as
-   the screen leaves room for (container units), with the outline drawn over it in the same 3:4. */
+   the screen leaves room for (container units), with the outline drawn over it in the same 3:4; upper body's is square. */
 html.cap-open { overflow: hidden; overscroll-behavior: none; }
 .cap {
   position: fixed; inset: 0; z-index: 9; display: flex; flex-direction: column;
@@ -8,8 +8,12 @@ html.cap-open { overflow: hidden; overscroll-behavior: none; }
 .cap-head { flex: none; position: relative; display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; }
 .cap-head h2 { margin: 0; font-size: var(--fs-body); line-height: 22px; font-weight: 600; }
 .cap-head .back { position: absolute; left: 16px; top: 0; margin: 0; }
+/* Full body or Upper body, in the title's place before recording: clear of Cancel on both sides at 375 px. */
+.cap-framing { width: min(200px, calc(100% - 164px)); }
+.cap-head .cap-framing button { font-size: var(--fs-sm); } /* an iOS segmented control's size: "Upper body" with room either side */
 .cap-stage { flex: 1 1 auto; min-height: 0; container-type: size; display: grid; place-items: center; }
 .cap-frame { position: relative; width: min(100cqw, 75cqh); aspect-ratio: 3 / 4; overflow: hidden; background: var(--surface); }
+.cap.upper .cap-frame { width: min(100cqw, 100cqh); aspect-ratio: 1; }
 .cap-frame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 /* The front camera as a mirror while posing; the still is cut from the unmirrored frame, as the Camera app saves it. */
 .cap-frame video.mirror { transform: scaleX(-1); }
@@ -64,6 +68,7 @@ html.cap-open { overflow: hidden; overscroll-behavior: none; }
 .cap-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
 .cap-tile { display: grid; gap: 4px; justify-items: center; min-height: 0; padding: 4px; background: none; font-weight: 500; color: var(--text-2); }
 .cap-tile img, .cap-missing { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: var(--r-sm); background: var(--surface); }
+.cap.upper .cap-tile img, .cap.upper .cap-missing { aspect-ratio: 1; }
 .cap-missing { display: grid; place-items: center; box-shadow: inset 0 0 0 1.5px var(--line-strong); color: var(--text-3); font-size: var(--fs-sm); }
 .cap-tile[aria-pressed='true'] { color: var(--text); }
 .cap-tile[aria-pressed='true'] img, .cap-tile[aria-pressed='true'] .cap-missing { box-shadow: 0 0 0 2px var(--accent); }

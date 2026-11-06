@@ -693,7 +693,7 @@ details.builder[open] > summary { margin-bottom: 8px; }
 .compare figure { margin: 0; display: grid; gap: 6px; }
 .compare select { min-height: 44px; width: 100%; }
 .compare figcaption { text-align: center; }
-.compare-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.compare-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
 .compare-pick select { min-height: 44px; width: 100%; }
 /* Wipe compare (plan S5): after laid over before and cut at the divider; drag or tap anywhere on it. pan-y keeps the page
    scrolling under a vertical swipe. The crop below the chin is shown as a dark band where Save as image cuts. */
@@ -709,6 +709,8 @@ details.builder[open] > summary { margin-bottom: 8px; }
 .wipe-tag.after { right: 8px; text-align: right; }
 .wipe-crop { position: absolute; left: 0; right: 0; top: 0; background: rgb(0 0 0 / 0.72); border-bottom: 2px dashed #fff; pointer-events: none; }
 .wipe-apart { text-align: center; margin: 8px 0 0; }
+/* Upper body photos (domain/photos FRAMINGS) are square, and shown so wherever they're shown. */
+.wipe.upper, .pv.upper video, .pv.upper img, .tl-row.upper .tl-thumb img { aspect-ratio: 1; }
 .photo-cmp .form-actions { margin-top: 4px; }
 .pv { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .pv p { margin: 8px 0 0; }

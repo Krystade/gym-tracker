@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { apartLine, comparePair, coverCrop, fitSize, lastOf, lightVs, meanLuma, photoDayDue, photoId, relaxedIfOld, seeds, shotDates, shotName, SHOTS, timeline, videoType, weightNear, type PhotoMeta, type Pose, type Variant } from './photos';
+import { apartLine, ASPECT, CHIN, comparePair, coverCrop, fitSize, framedName, framingOf, framingsIn, lastOf, lightVs, meanLuma, photoDayDue, photoId, relaxedIfOld, seeds, shotDates, shotName, SHOTS, timeline, UPPER_BOX, videoType, weightNear, type Framing, type PhotoMeta, type Pose, type Variant } from './photos';
 
-const m = (date: string, pose: Pose, variant: Variant = 'relaxed'): PhotoMeta => ({ id: photoId(date, pose, variant), date, pose, variant, width: 900, height: 1600, addedAt: `${date}T08:00:00Z` });
+const m = (date: string, pose: Pose, variant: Variant = 'relaxed', framing?: Framing): PhotoMeta =>
+  ({ id: photoId(date, pose, variant, framing), date, pose, variant, ...(framing && { framing }), width: 900, height: 1600, addedAt: `${date}T08:00:00Z` });
+const up = (date: string, pose: Pose, variant: Variant = 'relaxed') => m(date, pose, variant, 'upper');
 
 describe('fitSize', () => {
   it('fits the long edge, keeps aspect, never upscales', () => {
@@ -24,6 +26,40 @@ describe('the routine', () => {
   });
 });
 
+describe('upper body', () => {
+  it('a full photo keeps the id it had before framings; an upper body one of the same shot and day sits beside it', () => {
+    expect(photoId('2026-11-06', 'front', 'flexed')).toBe('2026-11-06:front:flexed');
+    expect(photoId('2026-11-06', 'front', 'flexed', 'full')).toBe('2026-11-06:front:flexed');
+    expect(photoId('2026-11-06', 'front', 'flexed', 'upper')).toBe('2026-11-06:front:flexed:upper');
+    expect(framingOf(m('2026-09-01', 'side'))).toBe('full'); // from before framings: none stored
+    expect(framingOf(up('2026-09-01', 'side'))).toBe('upper');
+    expect(framedName({ pose: 'side', variant: 'flexed' }, 'upper')).toBe('Side flexed, upper body');
+    expect(framedName({ pose: 'side', variant: 'flexed' }, 'full')).toBe('Side flexed');
+  });
+  it('is a square, head to hips; the chin line is the full frame’s, in the square', () => {
+    expect(ASPECT).toEqual({ full: 3 / 4, upper: 1 });
+    expect(UPPER_BOX[2]).toBe(UPPER_BOX[3]);
+    expect(UPPER_BOX[1] + CHIN.upper * UPPER_BOX[3]).toBeCloseTo(CHIN.full * 100, 5);
+  });
+  it('the ghost, compare and the video take only photos of the framing asked for', () => {
+    const ms = [m('2026-10-01', 'front'), up('2026-10-05', 'front'), m('2026-10-15', 'front'), up('2026-10-20', 'front'), up('2026-10-20', 'side')];
+    expect(lastOf(ms, { pose: 'front', variant: 'relaxed' }, 'full')?.date).toBe('2026-10-15');
+    expect(lastOf(ms, { pose: 'front', variant: 'relaxed' }, 'upper')?.date).toBe('2026-10-20');
+    expect(lastOf(ms, { pose: 'side', variant: 'relaxed' }, 'full')).toBeNull();
+    expect(comparePair(ms, 'front', 'relaxed', 'full')).toEqual(['2026-10-01', '2026-10-15']);
+    expect(comparePair(ms, 'front', 'relaxed', 'upper')).toEqual(['2026-10-05', '2026-10-20']);
+    expect(comparePair(ms, 'side', 'relaxed', 'upper')).toBeNull();
+    expect(shotDates(ms, { pose: 'front', variant: 'relaxed' }, 'upper')).toEqual(['2026-10-05', '2026-10-20']);
+    expect(shotDates([...ms, m('2026-10-20', 'front')], { pose: 'front', variant: 'relaxed' }, 'full', '2026-10-02')).toEqual(['2026-10-15', '2026-10-20']);
+  });
+  it('offers Full body or Upper body only where there are photos of both', () => {
+    expect(framingsIn([])).toEqual([]);
+    expect(framingsIn([m('2026-10-01', 'front')])).toEqual(['full']);
+    expect(framingsIn([up('2026-10-01', 'front')])).toEqual(['upper']);
+    expect(framingsIn([up('2026-10-01', 'front'), m('2026-10-01', 'front')])).toEqual(['full', 'upper']);
+  });
+});
+
 describe('timeline', () => {
   it('groups by date, newest first, in the routine’s order', () => {
     const t = timeline([m('2026-09-01', 'back'), m('2026-09-20', 'front'), m('2026-09-01', 'front', 'flexed'), m('2026-09-01', 'side'), m('2026-09-01', 'front')]);
@@ -35,11 +71,11 @@ describe('timeline', () => {
 describe('comparePair', () => {
   it('picks the earliest and latest dates with that pose and variant', () => {
     const xs = [m('2026-08-01', 'front'), m('2026-09-01', 'front'), m('2026-09-20', 'front'), m('2026-09-25', 'side'), m('2026-09-25', 'front', 'flexed')];
-    expect(comparePair(xs, 'front', 'relaxed')).toEqual(['2026-08-01', '2026-09-20']);
-    expect(comparePair(xs, 'front', 'flexed')).toBeNull();
-    expect(comparePair([...xs, m('2026-10-02', 'front', 'flexed')], 'front', 'flexed')).toEqual(['2026-09-25', '2026-10-02']);
-    expect(comparePair(xs, 'side', 'relaxed')).toBeNull();
-    expect(comparePair(xs, 'back', 'relaxed')).toBeNull();
+    expect(comparePair(xs, 'front', 'relaxed', 'full')).toEqual(['2026-08-01', '2026-09-20']);
+    expect(comparePair(xs, 'front', 'flexed', 'full')).toBeNull();
+    expect(comparePair([...xs, m('2026-10-02', 'front', 'flexed')], 'front', 'flexed', 'full')).toEqual(['2026-09-25', '2026-10-02']);
+    expect(comparePair(xs, 'side', 'relaxed', 'full')).toBeNull();
+    expect(comparePair(xs, 'back', 'relaxed', 'full')).toBeNull();
   });
 });
 
@@ -88,9 +124,9 @@ describe('photoDate', () => {
 describe('the ghost and the same-light check', () => {
   it('the ghost is the shot’s latest photo, that pose and variant only', () => {
     const ms = [m('2026-10-01', 'front'), m('2026-10-15', 'front'), m('2026-10-20', 'front', 'flexed'), m('2026-10-22', 'side')];
-    expect(lastOf(ms, { pose: 'front', variant: 'relaxed' })?.date).toBe('2026-10-15');
-    expect(lastOf(ms, { pose: 'front', variant: 'flexed' })?.date).toBe('2026-10-20');
-    expect(lastOf(ms, { pose: 'back', variant: 'relaxed' })).toBeNull();
+    expect(lastOf(ms, { pose: 'front', variant: 'relaxed' }, 'full')?.date).toBe('2026-10-15');
+    expect(lastOf(ms, { pose: 'front', variant: 'flexed' }, 'full')?.date).toBe('2026-10-20');
+    expect(lastOf(ms, { pose: 'back', variant: 'relaxed' }, 'full')).toBeNull();
   });
   it('brightness is the mean luma; more than 25 % off last time is said', () => {
     expect(meanLuma([255, 255, 255, 255, 0, 0, 0, 255])).toBeCloseTo(127.5, 5);
@@ -106,8 +142,8 @@ describe('the ghost and the same-light check', () => {
 describe('the progress video and the before and after', () => {
   it('takes one shot’s dates, oldest first, within the range', () => {
     const ms = [m('2026-09-20', 'front'), m('2026-08-01', 'front'), m('2026-08-01', 'front', 'flexed'), m('2026-09-01', 'side'), m('2026-10-05', 'front')];
-    expect(shotDates(ms, { pose: 'front', variant: 'relaxed' })).toEqual(['2026-08-01', '2026-09-20', '2026-10-05']);
-    expect(shotDates(ms, { pose: 'front', variant: 'relaxed' }, '2026-08-02', '2026-09-30')).toEqual(['2026-09-20']);
+    expect(shotDates(ms, { pose: 'front', variant: 'relaxed' }, 'full')).toEqual(['2026-08-01', '2026-09-20', '2026-10-05']);
+    expect(shotDates(ms, { pose: 'front', variant: 'relaxed' }, 'full', '2026-08-02', '2026-09-30')).toEqual(['2026-09-20']);
   });
   it('records MP4 where it can, WebM else, and nothing (the flipbook) with no recorder', () => {
     expect(videoType((t) => t.startsWith('video/mp4'))).toBe('video/mp4;codecs=avc1');

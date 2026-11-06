@@ -110,6 +110,22 @@ describe('the backup file', () => {
     expect(Buffer.from(await (await db.getPhotoBlob('2026-10-01:front:relaxed', 'full'))!.arrayBuffer()).toString('base64')).toBe(b64(1));
   });
 
+  it('an upper body photo comes back with its framing, beside the full one of that shot and day; a framing that doesn’t fit is skipped', async () => {
+    const mine = boundDb('main'), empty = boundDb('p2');
+    const full = photo('2026-11-06', 'front'), upper: PhotoMeta = { ...full, id: '2026-11-06:front:relaxed:upper', framing: 'upper', width: 4 };
+    await mine.putPhoto(full, new Blob([bytes(1)], { type: 'image/jpeg' }), new Blob([bytes(2)], { type: 'image/jpeg' }));
+    await mine.putPhoto(upper, new Blob([bytes(5)], { type: 'image/jpeg' }), new Blob([bytes(6)], { type: 'image/jpeg' }));
+    const { backup, skipped } = await fileOf(mine);
+    expect(skipped).toBe(0);
+    expect(await restoreBackup(empty, backup, 0, NOW)).toMatchObject({ photos: 2, skipped: 0 });
+    expect(await contents(empty)).toEqual(await contents(mine));
+    expect((await empty.getPhotoMetas()).sort((a, b) => a.id.localeCompare(b.id))).toEqual([full, upper]); // the full one still has none
+    const [f, u] = [full.id, upper.id].map((id) => backup.photos.find((x) => x.meta.id === id)!);
+    const odd = [{ ...f, meta: { ...full, framing: 'wide' } }, { ...u, meta: { ...upper, framing: undefined } }, { ...f, meta: { ...full, framing: 'upper' } }];
+    const r = parseBackup(JSON.stringify({ ...backup, photos: [f, u, ...odd] }));
+    expect('backup' in r && [r.backup.photos.map((x) => x.meta.id), r.skipped]).toEqual([[full.id, upper.id], 3]);
+  });
+
   it('nudges at 3 photos added since the last backup (or ever, with none), and again 3 after Not now', () => {
     const metas = [20, 21, 22, 23].map((d) => photo(`2026-10-${d}`, 'front'));
     expect(backupDue(metas.slice(0, 2), null)).toBe(false);
