@@ -14,6 +14,7 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box }
+[hidden] { display: none !important }
 /* As the app (src/ui/styles.css): holding a button, chip, frame or the stage selects, greys and calls out nothing, and there's
    no double-tap zoom (two quick taps are two taps). The stage's own touch-action: none still wins. The numbers and the marks
    box stay selectable, to copy. */
@@ -46,6 +47,7 @@ h1 { font: 700 34px/41px var(--display); margin: 0; letter-spacing: -.01em }
 .bar .grow { flex: 1; min-width: 0 }
 .name { font-weight: 700; font-size: 18px }
 button.b, select { font: inherit; font-weight: 600; border: 0; background: var(--fill); color: var(--ink); border-radius: 10px; padding: 8px 14px; cursor: pointer; min-height: 44px }
+select { font-size: 16px }
 button.b:disabled { opacity: .45; cursor: default }
 button.b.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700 }
 button.b[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink) }
@@ -55,11 +57,12 @@ button.b.sq { width: 44px; padding: 0 }
 .chip { font: 600 15px var(--body); border: 0; background: var(--fill); color: var(--ink); border-radius: 999px; padding: 6px 14px; cursor: pointer; min-height: 44px }
 .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink) }
 .stage { background: var(--stage); border-radius: 12px; display: grid; place-items: center; padding: 10px; touch-action: none; user-select: none; position: relative }
-.stage canvas { display: block; max-width: 100%; image-rendering: pixelated; cursor: crosshair }
+/* The stage is the item's own: a finger or two there moves, sizes and tilts it (pointer events), never the page. */
+.stage canvas { display: block; max-width: 100%; image-rendering: pixelated; cursor: move; touch-action: none }
 .state { position: absolute; left: 10px; top: 10px; font: 700 11px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; padding: 5px 7px; border-radius: 4px; color: #0b0e14 }
 .state.mine { background: var(--mine) } .state.guess { background: var(--guess) }
 .ctl { display: grid; gap: 12px; background: var(--panel); border: 0; border-radius: 12px; padding: 16px }
-.field { display: grid; grid-template-columns: 40px minmax(0, 1fr) 76px; gap: 10px; align-items: center; font-size: 13px; color: var(--muted) }
+.field { display: grid; grid-template-columns: 48px minmax(0, 1fr) 76px; gap: 10px; align-items: center; font-size: 13px; color: var(--muted) }
 .field input[type=range] { width: 100%; accent-color: var(--accent); height: 32px }
 .field input[type=number] { font: 16px var(--mono); font-variant-numeric: tabular-nums; width: 100%; min-height: 44px; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg); color: var(--ink) }
 .nudge { display: grid; grid-template-columns: repeat(3, 44px); gap: 4px; justify-content: start }
@@ -92,8 +95,11 @@ button.b.sq { width: 44px; padding: 0 }
     <div class="chips" id="anims" aria-label="Animation"></div>
     <div class="stage" id="stage"><span class="state" id="state"></span><canvas id="cv" aria-label="Drag to place the item"></canvas></div>
     <div class="ctl">
-      <div class="field"><label for="size">Size</label><input type="range" id="size" min="2" max="80" step="0.1"><input type="number" id="sizeN" min="1" max="200" step="0.1" inputmode="decimal" aria-label="Size in pixels"></div>
-      <div class="field"><label for="tilt">Tilt</label><input type="range" id="tilt" min="-60" max="60" step="0.5"><input type="number" id="tiltN" min="-180" max="180" step="0.5" inputmode="decimal" aria-label="Tilt in degrees"></div>
+      <div class="bar" id="heldBar"><label for="heldItem" class="small muted">Shown with</label><select id="heldItem"></select><span class="small muted">placed for every held item</span></div>
+      <div class="field"><label for="size">Size</label><input type="range" id="size" min="0.05" max="4" step="0.01"><input type="number" id="sizeN" min="0.01" max="100" step="0.01" inputmode="decimal" aria-label="Size, character pixels to each of the item’s own"></div>
+      <div class="field"><label for="wid">Width</label><input type="range" id="wid" min="0.5" max="80" step="0.1"><input type="number" id="widN" min="0.5" max="1000" step="0.1" inputmode="decimal" aria-label="Width in pixels"></div>
+      <div class="field"><label for="hei">Height</label><input type="range" id="hei" min="0.5" max="80" step="0.1"><input type="number" id="heiN" min="0.5" max="1000" step="0.1" inputmode="decimal" aria-label="Height in pixels"></div>
+      <div class="field"><label for="tilt">Tilt</label><input type="range" id="tilt" min="-180" max="180" step="0.5"><input type="number" id="tiltN" step="0.5" inputmode="decimal" aria-label="Tilt in degrees"></div>
       <div class="bar"><button class="b" id="flip" aria-pressed="false">Mirror</button><span class="small muted">Move one pixel:</span>
         <div class="nudge">
           <span></span><button class="b sq" data-d="0,-1" aria-label="Up">↑</button><span></span>
@@ -121,7 +127,7 @@ button.b.sq { width: 44px; padding: 0 }
       <textarea id="bk" rows="4" style="width:100%;font:16px var(--mono);background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px" aria-label="Marks as text"></textarea>
       <div class="bar"><button class="b primary" id="copy">Copy my marks</button><button class="b" id="load">Load</button><span class="small muted" id="bkmsg" role="status"></span></div>
     </details>
-    <p class="help">Pick a body slot, then drag its item into place in the first frame (the beanie onto the head, the shorts onto the hips, the dumbbell into the front hand) and set its size and tilt with the sliders or by typing a number. The tool then guesses the other frames by following that spot through the animation. Step through them: press <b>Looks right</b> when a guess is fine, or drag it to fix it. Your fixes become the starting point for the frames after them. A green dot marks frames you've set, an amber ring marks guesses. Your work saves as you go.</p>
+    <p class="help">Pick a body slot, then put its item in place in the first frame (the axe on the head, the beanie over it, the shorts on the hips, the dumbbell in the front hand). Drag from anywhere on the stage: the item moves as far as your finger does, so it stays in sight. With two fingers, pinch to size it and twist to tilt it, all the way round. Stretch it with Width and Height, flip it with Mirror, or type a number. The tool then guesses the other frames by following that spot through the animation. Step through them: press <b>Looks right</b> when a guess is fine, or drag it to fix it. Your fixes become the starting point for the frames after them. A green dot marks frames you've set, an amber ring marks guesses. Your work saves as you go. Held is the slot the app draws: what you place there shows on your buddies on this phone straight away, and on everyone’s once you send your marks.</p>
   </main>
 </div>
 
@@ -130,29 +136,63 @@ const DATA = {"chars":[{"id":"ckbirb","name":"Birb","group":"Little critters","w
 const CH = DATA.chars;
 const ORDER = DATA.order;
 
+// ---------- The app's own ----------
+// So the Held slot shows just what the app draws: its held items (name, and the base each rests on, in its own pixels) and its
+// older characters' frames (the box their pixels fill, and each frame's head anchor). Copied from src/domain/buddies/anchors.ts
+// and src/ui/buddies/Worn.tsx; src/domain/buddies/wear.test.ts checks the copy.
+const APP = {"held":{"d075":["Iron helm",7.5,15],"d102":["Wooden shield",8,13],"d103":["Round shield",8,13],"d104":["Dagger",8,15],"d105":["Short sword",8,16],"d106":["Cleaver",8,16],"d107":["Broadsword",8,16],"d108":["Bronze sword",8,16],"d118":["Hammer",8,16],"d119":["Battle axe",8,16],"d120":["Axe",8,16],"d130":["Amethyst staff",8,16],"d131":["Crystal staff",7.5,16],"d132":["Spear",8,16],"t094":["Hay bale",8,14],"t095":["Beehive",8,16],"t106":["Bomb",5.5,16],"t107":["Log",8,14]},"frames":{"ckbrown":{"box":[0,0,15,19],"head":[[7.5,0],[7.5,0],[7.5,1],[5.5,0]]},"ckwhite":{"box":[0,0,15,19],"head":[[7.5,0],[7.5,0],[7.5,1],[5.5,0]]},"ckblack":{"box":[0,0,15,19],"head":[[7.5,0],[7.5,0],[7.5,1],[5.5,0]]},"ckgold":{"box":[0,0,15,19],"head":[[7.5,0],[7.5,0],[7.5,1],[5.5,0]]},"ckred":{"box":[0,0,15,19],"head":[[7.5,0],[7.5,0],[7.5,1],[5.5,0]]},"ckpig":{"box":[0,0,11,17],"head":[[5.5,0],[5.5,0],[5.5,1],[5.5,0]]},"cksheep":{"box":[0,0,14,17],"head":[[7,0],[7,0],[7,1],[6.5,0]]},"ckfrog":{"box":[0,0,10,17],"head":[[5,0],[5.5,0],[5,1],[5,0]]},"ckbirb":{"box":[0,0,14,16],"head":[[6.5,0],[7,0],[6.5,1],[6,0]]},"dinodoux":{"box":[0,0,15,17],"head":[[7.5,0],[7.5,0],[7.5,1],[7.5,0]]},"dinomort":{"box":[0,0,15,17],"head":[[7.5,0],[7.5,0],[7.5,1],[7.5,0]]},"dinotard":{"box":[0,0,15,17],"head":[[7.5,0],[7.5,0],[7.5,1],[7.5,0]]},"dinovita":{"box":[0,0,15,17],"head":[[7.5,0],[8,0],[7.5,1],[7.5,0]]},"froglet":{"box":[2,6,13,10],"head":[[9,7],[9,7],[9,7],[9,6],[9,6],[9,6],[9,6],[9,7]]},"sedan_blue":{"box":[0,0,29,13],"head":[[12.5,0]]},"tractor":{"box":[0,0,24,18],"head":[[8,0]]},"ambulance":{"box":[0,0,38,21],"head":[[15.5,0]]},"truck":{"box":[0,0,59,24],"head":[[25.5,0]]},"bus_school":{"box":[0,0,46,21],"head":[[20,0]]},"firetruck":{"box":[0,0,44,21],"head":[[20,0]]},"hotdog":{"box":[0,0,40,29],"head":[[14.5,0]]},"dudemr":{"box":[13,40,60,62],"head":[[44,40],[44,41],[44,45],[44,50],[44,51],[44,45],[44,42],[44,40],[44,40],[44,44],[44,51],[44,51],[44,45],[44,42]]},"dudemrs":{"box":[13,27,60,75],"head":[[42,27],[42,28],[42,32],[42,37],[42,38],[42,32],[42,29],[42,27],[42,28],[42,32],[42,37],[42,38],[42,32],[42,29]]}}};
+/** How far the app sinks a held item into an older character's one-pixel outline (ui/buddies/BuddySprite SINK_OLD). */
+const SINK = 1;
+
 // ---------- Items ----------
-// One stand-in item per body slot, from the accessory catalog. Head items anchor at the bottom of the brim; the rest at their centre.
+// The app's own held items for Held, and one stand-in item per other body slot, from the accessory catalog. Held items sit on
+// their base (where they rest on the head), head items on the bottom of the brim, the rest on their centre. Each stand-in is a
+// little lopsided (a tag, a logo, a stripe, a toe) so Mirror shows.
 const PAL = { k: '#1b1d24', w: '#f4f1ea', g: '#9aa3b2', s: '#5b6475', r: '#e5484d', R: '#a8262c', y: '#f5c518', G: '#3fa34d', b: '#3b82f6', c: '#5fd3e6' };
 const SLOTS = {
-  head: ['Head', 'Beanie', ['....ww....', '...wwww...', '..rrrrrr..', '.rrrrrrrr.', 'rrrrrrrrrr', 'RwRwRwRwRw', 'wRwRwRwRwR']],
+  held: ['Held', 'Held item', null],
+  head: ['Head', 'Beanie', ['....ww....', '...wwww...', '..rrrrrr..', '.rrrrrryr.', 'rrrrrryyrr', 'RwRwRwRwRw', 'wRwRwRwRwR']],
   face: ['Face', 'Sunglasses', ['kkkk..kkkk', 'kkkkkkkkkk', 'kckk..kckk', '.kk....kk.']],
-  torso: ['Torso', 'Tank top', ['G.....G', 'GG...GG', 'GGGGGGG', 'GGwwwGG', 'GGGwGGG', 'GGGwGGG', 'GGGGGGG']],
-  legs: ['Legs', 'Gym shorts', ['bbbbbbbb', 'bbbbbbbb', 'bbb..bbb', 'bbb..bbb', 'www..www']],
+  torso: ['Torso', 'Tank top', ['G.....G', 'GG...GG', 'GGGGGGG', 'GGwwwGG', 'GyGwGGG', 'GGGwGGG', 'GGGGGGG']],
+  legs: ['Legs', 'Gym shorts', ['bbbbbbbb', 'bbbbbbbb', 'bbb..bbb', 'bbb..byb', 'www..www']],
   feet: ['Feet', 'Sneakers', ['..rrr...', '.rrwrr..', 'rrrrrrrr', 'wwwwwwww']],
   hands: ['Hands', 'Dumbbell', ['kk.....kk', 'kkgggggkk', 'kk.....kk']],
 };
-const itemImg = Object.fromEntries(Object.entries(SLOTS).map(([k, [, , px]]) => {
+const itemImg = Object.fromEntries(Object.entries(SLOTS).filter(([, [, , px]]) => px).map(([k, [, , px]]) => {
   const c = document.createElement('canvas'); c.width = Math.max(...px.map((r) => r.length)); c.height = px.length; const x = c.getContext('2d');
   px.forEach((row, y) => [...row].forEach((ch, i) => { if (PAL[ch]) { x.fillStyle = PAL[ch]; x.fillRect(i, y, 1, 1); } }));
   return [k, c];
 }));
-let slot = 'head';
-/** A placement, in character pixels: x = item centre, y = brim bottom (head) or item centre (other slots), w = item width, r = tilt in degrees, f = mirrored. */
+// The held items' own sprites, from the app (../buddies/<id>.png). Held waits for the one showing (`done`), as the frames wait
+// for their strips, so nothing is placed unseen; one that won't load stays blank.
+const heldImg = {};
+function heldSprite(id) {
+  if (!heldImg[id]) {
+    const c = document.createElement('canvas'); c.width = c.height = 16; heldImg[id] = c;
+    const i = new Image(), loaded = () => { c.done = true; render(); };
+    i.onload = () => { c.getContext('2d').drawImage(i, 0, 0); loaded(); }; i.onerror = loaded; i.src = '../buddies/' + id + '.png';
+  }
+  return heldImg[id];
+}
+let slot = 'held', held = 'd120';
+try { const h = localStorage.getItem('acc-held'); if (APP.held[h]) held = h; } catch { /* the axe: one-sided, so Mirror shows */ }
+/** The item showing: its picture, and the point of it (its own pixels) that sits on the placement. */
+function item() {
+  if (slot === 'held') return { im: heldSprite(held), at: APP.held[held].slice(1) };
+  const im = itemImg[slot]; return { im, at: [im.width / 2, slot === 'head' ? im.height : im.height / 2] };
+}
+const itemName = (s) => (s === 'held' ? APP.held[held][0] : SLOTS[s][1]);
+/** A placement, in character pixels: (x, y) = where the item's point sits, w × h = its size, r = tilt in degrees (a full turn,
+ *  -180 to 180), f = mirrored. A mark from before width and height came apart has no h: it keeps the item's own shape. */
+const hOf = (p) => p.h ?? p.w * item().im.height / item().im.width;
+/** How big it is: the character pixels each of its own pixels covers (the two ways averaged, when it's stretched). */
+const sizeOf = (p) => Math.sqrt((p.w / item().im.width) * (hOf(p) / item().im.height));
+const turn = (r) => { const t = ((r % 360) + 360) % 360; return t > 180 ? t - 360 : t; };
 function drawHat(ctx, p, s, ox, oy) {
-  const im = itemImg[slot], W = p.w * s, H = p.w * (im.height / im.width) * s;
+  const { im, at } = item(), W = p.w * s, H = hOf(p) * s;
   ctx.save(); ctx.imageSmoothingEnabled = false;
   ctx.translate(ox + p.x * s, oy + p.y * s); ctx.rotate(p.r * Math.PI / 180); if (p.f) ctx.scale(-1, 1);
-  ctx.drawImage(im, -W / 2, slot === 'head' ? -H : -H / 2, W, H); ctx.restore();
+  ctx.drawImage(im, -at[0] * W / im.width, -at[1] * H / im.height, W, H); ctx.restore();
 }
 
 // ---------- Frames as pixels ----------
@@ -169,7 +209,7 @@ function strip(src) {
   }
   return strips.get(src);
 }
-const ready = (c) => Object.values(c.anims).every((a) => strip(a.src).data);
+const ready = (c) => Object.values(c.anims).every((a) => strip(a.src).data) && (slot !== 'held' || !!heldSprite(held).done);
 function px(c, a, f, x, y) {
   const d = strip(c.anims[a].src).data;
   if (x < 0 || y < 0 || x >= c.w || y >= c.h) return [0, 0, 0, 0];
@@ -178,20 +218,34 @@ function px(c, a, f, x, y) {
 }
 
 // ---------- Guessing ----------
-/** Where the hat starts before anyone has placed it: on top of the shape, half its width. */
+/** The strips a slot is placed on: Held, only the one the app shows (its idle, or a still picture's one), where the app has it. */
+const animsOf = (c) => { const all = Object.keys(c.anims); return slot === 'held' && APP.frames[c.id] ? [all.includes('idle') ? 'idle' : all[0]] : all; };
+/** Held on the app's strip: its guesses are the app's, from its head anchors (wear.ts wearOn), not followed by eye. */
+const follows = (c, a) => slot === 'held' && !!APP.frames[c.id] && animsOf(c)[0] === a;
+/** Where the app draws a held item nobody has placed, on frame f: its base on the head anchor, sunk into the outline, the size
+ *  it is on the buddy's card (the hero: Tiny scale 8 in 280 × 144 css px on a 3× screen, the item at half that). */
+function appGuess(c, f) {
+  const { box: [, , bw, bh], head } = APP.frames[c.id], dpr = 3;
+  const s = bw * 8 <= 280 && bh * 8 <= 144 ? 8 : Math.max(1, Math.floor(Math.min(280 / bw, 144 / bh) * dpr + 1e-9)) / dpr;
+  const w = Math.round((16 * 4 / s) * 100) / 100;
+  return { x: head[f][0], y: head[f][1] + SINK, w, h: w, r: 0, f: false };
+}
+/** Where the item starts before anyone has placed it: on top of the shape, half its width. */
 function firstGuess(c, a) {
   let t = c.h, l = c.w, r = -1;
   for (let y = 0; y < c.h && t === c.h; y++) for (let x = 0; x < c.w; x++) if (px(c, a, 0, x, y)[3] > 40) { t = y; break; }
   for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) if (px(c, a, 0, x, y)[3] > 40) { l = Math.min(l, x); r = Math.max(r, x); }
-  if (r < 0) return { x: c.w / 2, y: c.h / 2, w: c.w / 2, r: 0, f: false };
+  const { im } = item(), shape = im.height / im.width;
+  if (r < 0) return { x: c.w / 2, y: c.h / 2, w: c.w / 2, h: c.w / 2 * shape, r: 0, f: false };
   let b = t; for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) if (px(c, a, 0, x, y)[3] > 40) b = y;
   const bw = r - l + 1, bh = b - t + 1, cx = Math.round((l + r + 1) / 2);
-  const g = { head: [cx, t + bw * 0.12, 0.5], face: [cx, t + bh * 0.25, 0.45], torso: [cx, t + bh * 0.55, 0.5], legs: [cx, t + bh * 0.78, 0.5], feet: [cx, b, 0.55], hands: [Math.round(l + bw * 0.75), t + bh * 0.6, 0.35] }[slot];
-  return { x: g[0], y: Math.round(g[1]), w: Math.max(4, Math.round(bw * g[2])), r: 0, f: false };
+  const g = { held: [cx, t + SINK, 0.5], head: [cx, t + bw * 0.12, 0.5], face: [cx, t + bh * 0.25, 0.45], torso: [cx, t + bh * 0.55, 0.5], legs: [cx, t + bh * 0.78, 0.5], feet: [cx, b, 0.55], hands: [Math.round(l + bw * 0.75), t + bh * 0.6, 0.35] }[slot];
+  const w = Math.max(4, Math.round(bw * g[2]));
+  return { x: g[0], y: Math.round(g[1]), w, h: w * shape, r: 0, f: false };
 }
-/** Follow the patch just under the hat from one frame to another and move the hat by the same amount. */
+/** Follow the patch just under the item from one frame to another and move the item by the same amount. */
 function track(c, from, to) {
-  const p = from.p, half = Math.max(3, Math.round(p.w * 0.45)), cx = Math.round(p.x), cy = Math.round(slot === 'head' ? p.y + p.w * 0.25 : p.y);
+  const p = from.p, half = Math.max(3, Math.round(p.w * 0.45)), cx = Math.round(p.x), cy = Math.round(slot === 'head' || slot === 'held' ? p.y + p.w * 0.25 : p.y);
   const step = half > 10 ? 2 : 1, reach = Math.max(4, Math.round(Math.max(c.w, c.h) * 0.35));
   const ref = [];
   for (let y = -half; y <= half; y += step) for (let x = -half; x <= half; x += step) ref.push([x, y, px(c, from.a, from.f, cx + x, cy + y)]);
@@ -213,13 +267,21 @@ const guessCache = new Map();
 /** Every frame's placement: yours where you set one, otherwise followed from the nearest frame you set. */
 function resolve(c, a) {
   const key = slot + '/' + c.id + '/' + a; if (guessCache.has(key)) return guessCache.get(key);
-  const mine = marks(c)[a] ?? {}, n = c.anims[a].n, out = [];
+  const mine = marks(c)[a] ?? {}, n = c.anims[a].n, out = [], set = Object.keys(mine).map(Number);
+  const near = (f) => { const before = set.filter((k) => k < f), after = set.filter((k) => k > f); return before.length ? Math.max(...before) : after.length ? Math.min(...after) : null; };
+  if (follows(c, a)) {
+    // As the app moves a placed item between frames: with the head anchor.
+    const hd = APP.frames[c.id].head;
+    for (let f = 0; f < n; f++) {
+      const k = mine[f] ? f : near(f);
+      out.push({ p: k === null ? appGuess(c, f) : { ...mine[k], x: mine[k].x + hd[f][0] - hd[k][0], y: mine[k].y + hd[f][1] - hd[k][1] }, mine: !!mine[f] });
+    }
+    guessCache.set(key, out); return out;
+  }
   const any = Object.entries(marks(c)).flatMap(([an, fs]) => Object.entries(fs).map(([f, p]) => ({ a: an, f: +f, p })));
   for (let f = 0; f < n; f++) {
     if (mine[f]) { out.push({ p: mine[f], mine: true }); continue; }
-    const set = Object.keys(mine).map(Number);
-    const before = set.filter((k) => k < f), after = set.filter((k) => k > f);
-    const k = before.length ? Math.max(...before) : after.length ? Math.min(...after) : null;
+    const k = near(f);
     let from = k !== null ? { a, f: k, p: mine[k] } : any[0];
     out.push({ p: from ? track(c, from, { a, f }) : (f === 0 ? firstGuess(c, a) : track(c, { a, f: 0, p: firstGuess(c, a) }, { a, f })), mine: false });
   }
@@ -230,13 +292,13 @@ function resolve(c, a) {
 let M = {}; // slot -> charId -> { anim -> { frame -> placement } }
 const marks = (c) => ((M[slot] ??= {})[c.id] ??= {});
 // Head marks saved by the first version of this tool; the store's copy wins once it loads.
-const SEED = {"ckbirb":{"idle":{"0":{"f":false,"r":0,"w":7,"x":5.5,"y":1},"1":{"f":false,"r":0,"w":7,"x":5.5,"y":2},"2":{"f":false,"r":0,"w":7,"x":5.5,"y":2},"3":{"f":false,"r":0,"w":7,"x":5.5,"y":2}},"run":{"0":{"f":false,"r":0,"w":7,"x":5.5,"y":1},"1":{"f":false,"r":0,"w":7,"x":5.5,"y":2},"2":{"f":false,"r":0,"w":7,"x":5.5,"y":1},"3":{"f":false,"r":0,"w":7,"x":5.5,"y":1},"4":{"f":false,"r":0,"w":7,"x":5.5,"y":2},"5":{"f":false,"r":0,"w":7,"x":5.5,"y":1}}},"ckpig":{"idle":{"1":{"f":false,"r":0,"w":6,"x":6,"y":1},"3":{"f":false,"r":0,"w":6,"x":6,"y":1}}},"cksheep":{"idle":{"0":{"f":false,"r":0,"w":7,"x":7,"y":2},"1":{"f":false,"r":0,"w":7,"x":7,"y":2},"2":{"f":false,"r":0,"w":7,"x":7,"y":3},"3":{"f":false,"r":0,"w":7,"x":7,"y":3}},"run":{"0":{"f":false,"r":0,"w":7,"x":7,"y":2},"1":{"f":false,"r":0,"w":7,"x":7,"y":3},"2":{"f":false,"r":0,"w":7,"x":7,"y":2},"3":{"f":false,"r":0,"w":7,"x":7,"y":2},"4":{"f":false,"r":0,"w":7,"x":7,"y":3},"5":{"f":false,"r":0,"w":7,"x":7,"y":2}}},"dinodoux":{"idle":{"0":{"f":false,"r":0,"w":8,"x":6,"y":1},"1":{"f":false,"r":0,"w":8,"x":6,"y":1},"2":{"f":false,"r":0,"w":8,"x":6,"y":2},"3":{"f":false,"r":0,"w":8,"x":6,"y":1}},"run":{"0":{"f":false,"r":0,"w":8,"x":6,"y":1},"1":{"f":false,"r":0,"w":8,"x":6,"y":2},"2":{"f":false,"r":0,"w":8,"x":6,"y":1},"3":{"f":false,"r":0,"w":8,"x":6,"y":1},"4":{"f":false,"r":0,"w":8,"x":6,"y":2},"5":{"f":false,"r":0,"w":8,"x":6,"y":1}}},"dudemr":{"idle":{"0":{"f":false,"r":0,"w":24,"x":43.5,"y":46.5},"10":{"f":false,"r":0,"w":24,"x":43.5,"y":57.5},"11":{"f":false,"r":0,"w":24,"x":43.5,"y":57.5}}}};
 const docId = (s, id) => s === 'head' ? id : s + '.' + id;
 let db = null, dirty = new Set(), timer = 0;
 const saveEl = document.getElementById('save');
 function changed(c) {
   guessCache.clear(); dirty.add(slot + '|' + c.id);
   saveEl.textContent = 'Saving…'; clearTimeout(timer); timer = setTimeout(flush, 700);
+  // The app reads this copy too (ui/buddies/BuddySprite): what's held shows there on this phone at once.
   try { localStorage.setItem('acc-marks', JSON.stringify(M)); } catch { /* a convenience only */ }
 }
 let writing = false;
@@ -250,51 +312,74 @@ async function flush() {
   } catch (e) { saveEl.textContent = e?.code === 'quota_exceeded' ? 'Storage is full; your last change is kept in this browser only' : 'Couldn’t save; it will retry on your next change'; }
   writing = false;
 }
+const SEED = {"ckbirb":{"idle":{"0":{"f":false,"r":0,"w":7,"x":5.5,"y":1},"1":{"f":false,"r":0,"w":7,"x":5.5,"y":2},"2":{"f":false,"r":0,"w":7,"x":5.5,"y":2},"3":{"f":false,"r":0,"w":7,"x":5.5,"y":2}},"run":{"0":{"f":false,"r":0,"w":7,"x":5.5,"y":1},"1":{"f":false,"r":0,"w":7,"x":5.5,"y":2},"2":{"f":false,"r":0,"w":7,"x":5.5,"y":1},"3":{"f":false,"r":0,"w":7,"x":5.5,"y":1},"4":{"f":false,"r":0,"w":7,"x":5.5,"y":2},"5":{"f":false,"r":0,"w":7,"x":5.5,"y":1}}},"ckpig":{"idle":{"1":{"f":false,"r":0,"w":6,"x":6,"y":1},"3":{"f":false,"r":0,"w":6,"x":6,"y":1}}},"cksheep":{"idle":{"0":{"f":false,"r":0,"w":7,"x":7,"y":2},"1":{"f":false,"r":0,"w":7,"x":7,"y":2},"2":{"f":false,"r":0,"w":7,"x":7,"y":3},"3":{"f":false,"r":0,"w":7,"x":7,"y":3}},"run":{"0":{"f":false,"r":0,"w":7,"x":7,"y":2},"1":{"f":false,"r":0,"w":7,"x":7,"y":3},"2":{"f":false,"r":0,"w":7,"x":7,"y":2},"3":{"f":false,"r":0,"w":7,"x":7,"y":2},"4":{"f":false,"r":0,"w":7,"x":7,"y":3},"5":{"f":false,"r":0,"w":7,"x":7,"y":2}}},"dinodoux":{"idle":{"0":{"f":false,"r":0,"w":8,"x":6,"y":1},"1":{"f":false,"r":0,"w":8,"x":6,"y":1},"2":{"f":false,"r":0,"w":8,"x":6,"y":2},"3":{"f":false,"r":0,"w":8,"x":6,"y":1}},"run":{"0":{"f":false,"r":0,"w":8,"x":6,"y":1},"1":{"f":false,"r":0,"w":8,"x":6,"y":2},"2":{"f":false,"r":0,"w":8,"x":6,"y":1},"3":{"f":false,"r":0,"w":8,"x":6,"y":1},"4":{"f":false,"r":0,"w":8,"x":6,"y":2},"5":{"f":false,"r":0,"w":8,"x":6,"y":1}}},"dudemr":{"idle":{"0":{"f":false,"r":0,"w":24,"x":43.5,"y":46.5},"10":{"f":false,"r":0,"w":24,"x":43.5,"y":57.5},"11":{"f":false,"r":0,"w":24,"x":43.5,"y":57.5}}}};
 M = { head: JSON.parse(JSON.stringify(SEED)) };
 try { const l = JSON.parse(localStorage.getItem('acc-marks') || 'null'); if (l) M = l; } catch { /* keep the seed */ }
 
 // ---------- State ----------
 let cur = 0, anim = null, frame = 0, playing = false, onion = true;
 const c0 = () => CH[cur];
-const done = (c) => { const n = Object.values(c.anims).reduce((s, a) => s + a.n, 0); const m = Object.values(marks(c)).reduce((s, fs) => s + Object.keys(fs).length, 0); return [m, n]; };
-function pick(i) { cur = (i + CH.length) % CH.length; anim = Object.keys(c0().anims)[0]; frame = 0; playing = false; render(); }
+const done = (c) => { const as = animsOf(c); return [as.reduce((s, a) => s + Object.keys(marks(c)[a] ?? {}).length, 0), as.reduce((s, a) => s + c.anims[a].n, 0)]; };
+function pick(i) { cur = (i + CH.length) % CH.length; anim = animsOf(c0())[0]; frame = 0; playing = false; render(); }
 
 // ---------- Drawing ----------
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
-let geo = { s: 1, ox: 0, oy: 0 };
+let geo = { s: 1, ox: 0, oy: 0, pad: 0 };
+/** Room round a character, in its own pixels, so an item above its head or below its feet stays in view. */
+const padOf = (c) => Math.max(10, Math.ceil(Math.max(c.w, c.h) * 0.3));
 function drawFrame(x, c, a, f, s, ox, oy, alpha = 1) {
   const e = strip(c.anims[a].src); if (!e.data) return;
   x.globalAlpha = alpha; x.imageSmoothingEnabled = false;
   x.drawImage(e.img, f * c.w, 0, c.w, c.h, ox, oy, c.w * s, c.h * s); x.globalAlpha = 1;
 }
+// From :root, where the tokens are: WebKit on a phone can hand back a stale body style (empty tokens, so a black stage) once the
+// held items' list is filled in.
+const token = (k) => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+/** The empty stage: its fill, and at a big enough scale a pixel grid. */
+function paint(c) {
+  const { s, ox, oy, pad } = geo;
+  ctx.fillStyle = token('--stage'); ctx.fillRect(0, 0, cv.width, cv.height);
+  if (s >= 6) { ctx.fillStyle = token('--stage-grid'); for (let x = -pad; x <= c.w + pad; x++) ctx.fillRect(ox + x * s, 0, 1, cv.height); for (let y = -pad; y <= c.h + pad; y++) ctx.fillRect(0, oy + y * s, cv.width, 1); }
+}
+// Size, width, height and tilt: each a slider and a number box, read from a placement and written into one.
+const FIELDS = {
+  size: [sizeOf, (p, v) => { const k = Math.max(0.01, v) / sizeOf(p); return { ...p, w: p.w * k, h: hOf(p) * k }; }],
+  wid: [(p) => p.w, (p, v) => ({ ...p, h: hOf(p), w: Math.max(0.5, v) })],
+  hei: [hOf, (p, v) => ({ ...p, h: Math.max(0.5, v) })],
+  tilt: [(p) => turn(p.r), (p, v) => ({ ...p, r: turn(v) })],
+};
+function showNums(p) {
+  for (const [id, [get]] of Object.entries(FIELDS)) { const v = get(p), n = document.getElementById(id + 'N'); document.getElementById(id).value = v; if (document.activeElement !== n) n.value = +(+v).toFixed(2); }
+}
 function render() {
-  const c = c0(); anim ??= Object.keys(c.anims)[0];
+  const c = c0(); if (!animsOf(c).includes(anim)) anim = animsOf(c)[0];
   document.getElementById('cname').textContent = c.name;
   const [m, n] = done(c);
   document.getElementById('cmeta').textContent = `${c.group} · ${m} of ${n} frames set`;
   const all = CH.reduce((s, k) => { const [a, b] = done(k); return [s[0] + a, s[1] + b]; }, [0, 0]);
   document.getElementById('overall').textContent = `${CH.filter((k) => { const [a, b] = done(k); return a === b; }).length} of ${CH.length} characters done · ${all[0]} of ${all[1]} frames · ${SLOTS[slot][0].toLowerCase()} slot`;
-  document.getElementById('slots').replaceChildren(...Object.entries(SLOTS).map(([k, [name, item]]) => {
+  document.getElementById('slots').replaceChildren(...Object.entries(SLOTS).map(([k, [name]]) => {
     const b = document.createElement('button'); b.className = 'chip'; b.ariaPressed = String(k === slot);
     const n = Object.values(M[k] ?? {}).reduce((s, as) => s + Object.values(as).reduce((u, fs) => u + Object.keys(fs).length, 0), 0);
-    b.textContent = `${name} (${item})${n ? ' · ' + n : ''}`;
+    b.textContent = `${name} (${itemName(k)})${n ? ' · ' + n : ''}`;
     b.onclick = () => { slot = k; frame = 0; guessCache.clear(); render(); }; return b;
   }));
+  document.getElementById('heldBar').hidden = slot !== 'held';
   // Animation chips
-  const ab = document.getElementById('anims'); ab.replaceChildren(...Object.keys(c.anims).map((a) => {
+  const ab = document.getElementById('anims'); ab.replaceChildren(...animsOf(c).map((a) => {
     const b = document.createElement('button'); b.className = 'chip'; b.ariaPressed = String(a === anim);
     const set = Object.keys(marks(c)[a] ?? {}).length;
     b.textContent = `${a[0].toUpperCase() + a.slice(1)} ${set}/${c.anims[a].n}`;
     b.onclick = () => { anim = a; frame = 0; render(); }; return b;
   }));
-  // Stage: the frame at a whole-number scale with headroom above for the hat.
-  const box = Math.min(document.getElementById('stage').clientWidth - 20, 420);
-  const s = Math.max(2, Math.floor(box / Math.max(c.w * 1.6, c.h * 1.45)));
-  const head = Math.ceil(c.h * 0.45);
-  cv.width = c.w * s + 2 * s * Math.ceil(c.w * 0.3); cv.height = (c.h + head) * s;
-  geo = { s, ox: (cv.width - c.w * s) / 2, oy: head * s };
-  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--stage').trim(); ctx.fillRect(0, 0, cv.width, cv.height);
-  if (s >= 6) { ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--stage-grid').trim(); for (let x = 0; x <= c.w; x++) ctx.fillRect(geo.ox + x * s, 0, 1, cv.height); for (let y = -head; y <= c.h; y++) ctx.fillRect(0, geo.oy + y * s, cv.width, 1); }
+  // Stage: the frame at a whole-number scale, in the middle, with room all round for an item above its head or below its feet.
+  const pad = padOf(c), box = Math.min(document.getElementById('stage').clientWidth - 20, 420);
+  const s = Math.max(2, Math.floor(box / (Math.max(c.w, c.h) + 2 * pad)));
+  cv.width = (c.w + 2 * pad) * s; cv.height = (c.h + 2 * pad) * s;
+  geo = { s, ox: pad * s, oy: pad * s, pad };
+  // Where the frame sits, for e2e/placer.spec: canvas px a character pixel, and its top left in canvas px.
+  cv.dataset.s = s; cv.dataset.o = pad * s;
+  paint(c);
   if (!ready(c)) { document.getElementById('fno').textContent = 'Loading…'; return; }
   const R = resolve(c, anim), n2 = c.anims[anim].n; frame = Math.min(frame, n2 - 1);
   if (onion && frame > 0 && !playing) { drawFrame(ctx, c, anim, frame - 1, s, geo.ox, geo.oy, 0.25); ctx.globalAlpha = 0.3; drawHat(ctx, R[frame - 1].p, s, geo.ox, geo.oy); ctx.globalAlpha = 1; }
@@ -302,19 +387,20 @@ function render() {
   drawHat(ctx, R[frame].p, s, geo.ox, geo.oy);
   const st = document.getElementById('state'); st.textContent = R[frame].mine ? 'Set by you' : 'Guess'; st.className = 'state ' + (R[frame].mine ? 'mine' : 'guess');
   document.getElementById('fno').textContent = `Frame ${frame + 1} of ${n2}`;
-  const p = R[frame].p;
-  for (const [id, v] of [['size', p.w], ['tilt', p.r]]) { const n = document.getElementById(id + 'N'); document.getElementById(id).value = v; if (document.activeElement !== n) n.value = +(+v).toFixed(2); }
+  const p = R[frame].p, { im } = item(), most = Math.max(16, Math.ceil(Math.max(c.w, c.h) * 1.5));
+  document.getElementById('wid').max = document.getElementById('hei').max = most; document.getElementById('size').max = Math.max(1, Math.ceil(most / Math.max(im.width, im.height)));
+  showNums(p);
   document.getElementById('flip').ariaPressed = String(!!p.f);
   document.getElementById('reset').disabled = !R[frame].mine;
   document.getElementById('okAll').disabled = R.every((r) => r.mine);
   document.getElementById('play').ariaPressed = String(playing); document.getElementById('play').textContent = playing ? 'Stop' : 'Play';
   document.getElementById('onion').ariaPressed = String(onion);
-  // Frame strip
-  const ts = Math.max(1, Math.floor(56 / Math.max(c.w, c.h * 1.45)));
+  // Frame strip: half the stage's room round each.
+  const tp = Math.ceil(pad / 2), ts = Math.max(1, Math.floor(60 / (Math.max(c.w, c.h) + 2 * tp)));
   document.getElementById('strip').replaceChildren(...R.map((r, f) => {
     const b = document.createElement('button'); b.className = 'fr'; b.ariaCurrent = String(f === frame); b.ariaLabel = `Frame ${f + 1}, ${r.mine ? 'set by you' : 'guess'}`;
-    const t = document.createElement('canvas'), hd = Math.ceil(c.h * 0.45); t.width = c.w * ts; t.height = (c.h + hd) * ts;
-    const x = t.getContext('2d'); drawFrame(x, c, anim, f, ts, 0, hd * ts); drawHat(x, r.p, ts, 0, hd * ts);
+    const t = document.createElement('canvas'); t.width = (c.w + 2 * tp) * ts; t.height = (c.h + 2 * tp) * ts;
+    const x = t.getContext('2d'); drawFrame(x, c, anim, f, ts, tp * ts, tp * ts); drawHat(x, r.p, ts, tp * ts, tp * ts);
     const d = document.createElement('span'); d.className = 'dot' + (r.mine ? ' mine' : '');
     const l = document.createElement('span'); l.textContent = f + 1;
     b.append(t, l, d); b.onclick = () => { frame = f; playing = false; render(); }; return b;
@@ -336,40 +422,76 @@ function renderList() {
 }
 
 // ---------- Editing ----------
+const half = (v) => Math.round(v * 2) / 2, cent = (v) => Math.round(v * 100) / 100;
 function setMark(p) {
   const c = c0(); const fs = (marks(c)[anim] ??= {});
-  fs[frame] = { x: Math.round(p.x * 2) / 2, y: Math.round(p.y * 2) / 2, w: p.w, r: p.r, f: !!p.f };
+  fs[frame] = { x: half(p.x), y: half(p.y), w: cent(p.w), h: cent(hOf(p)), r: Math.round(turn(p.r) * 10) / 10, f: !!p.f };
   changed(c); render();
 }
 const curP = () => resolve(c0(), anim)[frame].p;
-let drag = null;
-function at(e) { const r = cv.getBoundingClientRect(), k = cv.width / r.width; return [((e.clientX - r.left) * k - geo.ox) / geo.s, ((e.clientY - r.top) * k - geo.oy) / geo.s]; }
-cv.addEventListener('pointerdown', (e) => {
-  if (!ready(c0())) return; playing = false; cv.setPointerCapture(e.pointerId);
-  const [x, y] = at(e), p = curP();
-  // Grab the hat where you touched it so it doesn't jump; touching elsewhere moves the brim there.
-  const onHat = Math.abs(x - p.x) < p.w * 0.6 && y < p.y + 2 && y > p.y - p.w * 0.8;
-  drag = { dx: onHat ? p.x - x : 0, dy: onHat ? p.y - y : 0, p: { ...p } };
-  drag.p.x = x + drag.dx; drag.p.y = y + drag.dy; live(drag.p);
-});
-cv.addEventListener('pointermove', (e) => { if (!drag) return; const [x, y] = at(e); drag.p.x = x + drag.dx; drag.p.y = y + drag.dy; live(drag.p); });
-const end = () => { if (drag) { const p = drag.p; drag = null; setMark(p); } };
-cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
-/** Redraw while dragging without saving yet. */
+/** Redraw while dragging or sliding, without saving yet. */
 function live(p) {
-  const c = c0(); ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--stage').trim(); ctx.fillRect(0, 0, cv.width, cv.height);
+  const c = c0(); paint(c);
   if (onion && frame > 0) drawFrame(ctx, c, anim, frame - 1, geo.s, geo.ox, geo.oy, 0.25);
-  drawFrame(ctx, c, anim, frame, geo.s, geo.ox, geo.oy); drawHat(ctx, { ...p, x: Math.round(p.x * 2) / 2, y: Math.round(p.y * 2) / 2 }, geo.s, geo.ox, geo.oy);
+  drawFrame(ctx, c, anim, frame, geo.s, geo.ox, geo.oy); drawHat(ctx, { ...p, x: half(p.x), y: half(p.y) }, geo.s, geo.ox, geo.oy);
+  showNums(p);
 }
-// Size and tilt: the slider and the number box drive each other; dragging previews, letting go (or Enter) saves.
-for (const [id, key] of [['size', 'w'], ['tilt', 'r']]) {
+// One finger (or the mouse) moves the item as far as it moves, from wherever it went down: the item never jumps under the
+// finger, so it stays in sight beside it. Two fingers: spread or pinch to size it (its shape kept), twist to tilt it (round and
+// round, past a half turn), move both to move it. Saved when the last finger lifts, if anything changed.
+const fingers = new Map(); // pointer id -> where it is, in character pixels
+let drag = null; // p0: the placement when this many fingers went down, p: as it is now, at, d, t: where they went down, how far apart, at what angle
+function at(e) { const r = cv.getBoundingClientRect(), k = cv.width / r.width; return [((e.clientX - r.left) * k - geo.ox) / geo.s, ((e.clientY - r.top) * k - geo.oy) / geo.s]; }
+const two = () => [...fingers.values()].slice(0, 2);
+const midOf = (q) => (q.length > 1 ? [(q[0][0] + q[1][0]) / 2, (q[0][1] + q[1][1]) / 2] : q[0]);
+const apart = (q) => (q.length > 1 ? Math.hypot(q[1][0] - q[0][0], q[1][1] - q[0][1]) : 0);
+const angle = (q) => (q.length > 1 ? Math.atan2(q[1][1] - q[0][1], q[1][0] - q[0][0]) * 180 / Math.PI : 0);
+const same = (p) => [half(p.x), half(p.y), cent(p.w), cent(hOf(p)), Math.round(turn(p.r) * 10)].join();
+/** A finger went down or lifted: carry on from where the item is, with the fingers as they are now. */
+function regrip() {
+  const q = two(), p = drag?.p ?? { ...curP() }, now = { ...p, h: hOf(p) };
+  drag = { from: drag?.from ?? same(p), p0: now, p: now, at: midOf(q), d: apart(q), t: angle(q), turned: 0 };
+}
+cv.addEventListener('pointerdown', (e) => {
+  if (!ready(c0()) || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  playing = false;
+  // Done typing: a number being typed is kept (its change), the keyboard leaves the stage, and the boxes show the gesture.
+  if (document.activeElement?.matches('input, select')) document.activeElement.blur();
+  try { cv.setPointerCapture(e.pointerId); } catch { /* a pointer the browser isn't tracking */ }
+  fingers.set(e.pointerId, at(e)); regrip();
+});
+cv.addEventListener('pointermove', (e) => {
+  if (!drag || !fingers.has(e.pointerId)) return;
+  fingers.set(e.pointerId, at(e));
+  const q = two(), m = midOf(q), g = drag, p = { ...g.p0, x: g.p0.x + m[0] - g.at[0], y: g.p0.y + m[1] - g.at[1] };
+  if (q.length > 1) {
+    // The twist adds up move by move, so it carries on past a half turn instead of flipping back.
+    const t = angle(q); g.turned += turn(t - g.t); g.t = t;
+    const k = g.d > 0 ? apart(q) / g.d : 1;
+    p.w = Math.max(0.5, g.p0.w * k); p.h = Math.max(0.5, g.p0.h * k); p.r = g.p0.r + g.turned;
+  }
+  g.p = p; live(p);
+});
+const lift = (e) => {
+  if (!fingers.delete(e.pointerId) || !drag) return;
+  if (fingers.size) { regrip(); return; }
+  const { p, from } = drag; drag = null;
+  if (same(p) !== from) setMark(p); else render();
+};
+cv.addEventListener('pointerup', lift); cv.addEventListener('pointercancel', lift);
+// Safari's own pinch (its gesture events) would zoom the page under two fingers on the stage: not there.
+for (const t of ['gesturestart', 'gesturechange']) document.getElementById('stage').addEventListener(t, (e) => e.preventDefault(), { passive: false });
+// The sliders and the number boxes drive each other; dragging previews, letting go (or Enter) saves.
+for (const [id, [, put]] of Object.entries(FIELDS)) {
   const sl = document.getElementById(id), nb = document.getElementById(id + 'N');
-  const val = (v) => key === 'w' ? Math.max(1, v) : v;
-  sl.oninput = () => { nb.value = sl.value; live({ ...curP(), [key]: +sl.value }); };
-  sl.onchange = () => setMark({ ...curP(), [key]: +sl.value });
-  nb.oninput = () => { const v = parseFloat(nb.value); if (Number.isFinite(v)) live({ ...curP(), [key]: val(v) }); };
-  nb.onchange = () => { const v = parseFloat(nb.value); if (Number.isFinite(v)) setMark({ ...curP(), [key]: val(v) }); else render(); };
+  sl.oninput = () => live(put(curP(), +sl.value));
+  sl.onchange = () => setMark(put(curP(), +sl.value));
+  nb.oninput = () => { const v = parseFloat(nb.value); if (Number.isFinite(v)) live(put(curP(), v)); };
+  nb.onchange = () => { const v = parseFloat(nb.value); if (Number.isFinite(v)) setMark(put(curP(), v)); else render(); };
 }
+document.getElementById('heldItem').replaceChildren(...Object.entries(APP.held).map(([id, [name]]) => new Option(name, id)));
+document.getElementById('heldItem').value = held;
+document.getElementById('heldItem').onchange = (e) => { held = e.target.value; try { localStorage.setItem('acc-held', held); } catch { /* this visit */ } render(); };
 document.getElementById('flip').onclick = () => setMark({ ...curP(), f: !curP().f });
 document.querySelectorAll('[data-d]').forEach((b) => b.onclick = () => { const [dx, dy] = b.dataset.d.split(',').map(Number); const p = curP(); setMark({ ...p, x: p.x + dx, y: p.y + dy }); });
 const step = (d) => { const n = c0().anims[anim].n; frame = (frame + d + n) % n; playing = false; render(); };
@@ -380,13 +502,13 @@ document.getElementById('ok').onclick = () => {
   const c = c0(), n = c.anims[anim].n, R = resolve(c, anim);
   const next = R.findIndex((r, f) => f > frame && !r.mine);
   if (next >= 0) frame = next;
-  else { const as = Object.keys(c.anims), ai = as.findIndex((a) => resolve(c, a).some((r) => !r.mine)); if (ai >= 0) { anim = as[ai]; frame = resolve(c, anim).findIndex((r) => !r.mine); } else frame = Math.min(frame + 1, n - 1); }
+  else { const as = animsOf(c), ai = as.findIndex((a) => resolve(c, a).some((r) => !r.mine)); if (ai >= 0) { anim = as[ai]; frame = resolve(c, anim).findIndex((r) => !r.mine); } else frame = Math.min(frame + 1, n - 1); }
   render();
 };
 document.getElementById('reset').onclick = () => { const fs = marks(c0())[anim]; if (fs) { delete fs[frame]; changed(c0()); render(); } };
 document.getElementById('okAll').onclick = () => {
   const c = c0(), fs = (marks(c)[anim] ??= {});
-  resolve(c, anim).forEach((r, f) => { if (!r.mine) fs[f] = { ...r.p }; }); changed(c); render();
+  resolve(c, anim).forEach((r, f) => { if (!r.mine) fs[f] = { ...r.p, h: hOf(r.p) }; }); changed(c); render();
 };
 document.getElementById('prevC').onclick = () => pick(cur - 1);
 document.getElementById('nextC').onclick = () => pick(cur + 1);

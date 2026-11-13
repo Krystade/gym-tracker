@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { headOf } from '../../domain/buddies/anchorFix';
 import { FRAMES, HELD } from '../../domain/buddies/anchors';
 import type { BuddyDef } from '../../domain/buddies/roster';
+import { heldStyle, WEAR, wearFromMarks, wearOn, type Wear, type WearMap } from '../../domain/buddies/wear';
 
 // A buddy's sprite (public/buddies/<pose>.png, 16 × 16) at a whole-number scale, drawn pixelated. A buddy of several poses
 // cycles through them (owner: a group cycles); under reduced motion it holds its first. Every pose is in the page from the
@@ -10,7 +11,9 @@ import type { BuddyDef } from '../../domain/buddies/roster';
 // An older character (roster Art) is a strip of frames at its own size and pixel density (owner 2026-11-06: the big trucks
 // and the fine-pixelled Dudes are the joke), stepped frame by frame; only its pixels' box shows. It's drawn at the Tiny scale
 // asked for where that fits the room it's given (`box`), else as large as fits with each of its pixels a whole number of
-// device pixels, so it stays crisp. A held item on one is the size it would be on a Tiny buddy there, on its frame's anchor.
+// device pixels, so it stays crisp. A held item on one is the size it would be on a Tiny buddy there, on its frame's anchor,
+// unless it was placed by hand (domain/buddies/wear): then where, how big, how stretched, tilted and mirrored it was placed,
+// growing with the character.
 
 export const SPRITE = 16;
 export const POSE_MS = 650;
@@ -32,6 +35,19 @@ export const BOX = {
   /** A friend's card, in its sheet. */ friend: [280, 156], friendHeld: [280, 128],
   /** A pull's reveal: in full, as big as the sheet allows. */ reveal: [300, 240],
 } as const satisfies Record<string, readonly [number, number]>;
+
+/** The accessory placer's own copy of its marks (same site, so the same storage): what's placed there shows here at once, over
+ *  WEAR, on this phone only. Read when the app loads and again when it's shown after the placer. */
+const MARKS = 'acc-marks';
+let placed: WearMap = WEAR;
+function readPlaced() {
+  try { const raw = localStorage.getItem(MARKS); placed = raw ? { ...WEAR, ...wearFromMarks(JSON.parse(raw)) } : WEAR; } catch { placed = WEAR; }
+}
+if (typeof window !== 'undefined') {
+  readPlaced();
+  window.addEventListener('pageshow', readPlaced);
+  window.addEventListener('storage', (e) => { if (e.key === MARKS) readPlaced(); });
+}
 
 const devicePixels = () => Math.max(1, Math.round(globalThis.devicePixelRatio || 1));
 /** The scale (css px an art pixel) for art of w × h: `want` when it fits `box`, else the largest that fits in whole device pixels. */
@@ -66,22 +82,24 @@ export function BuddySprite({ def, scale, box, still, shadow, className, held }:
   }, [n, ms, still]);
   const on = stepping(n, still) ? at % n : 0, cls = `bu-sprite${shadow ? ' shadow' : ''}${className ? ` ${className}` : ''}`;
   const item = held && HELD[held] ? held : null, k = heldScale(scale);
-  /** The held item, its base on (ax, ay): the anchor in css px from the sprite's top left. */
-  const heldAt = (ax: number, ay: number) => {
+  /** The held item, its base on (ax, ay): the anchor in css px from the sprite's top left. Placed by hand (`wear`, with `s` css
+   *  px a frame pixel): its own width, height, tilt and mirror. */
+  const heldAt = (ax: number, ay: number, wear?: Wear | null, s = 1) => {
     if (!item) return null;
-    const [bx, by] = HELD[item];
-    return <img className="bu-held" src={spriteUrl(item)} width={SPRITE * k} height={SPRITE * k} alt="" draggable={false} data-held={item}
-      style={{ width: SPRITE * k, height: SPRITE * k, left: Math.round(ax - bx * k), top: Math.round(ay - by * k) }} />;
+    const st = wear ? heldStyle(HELD[item], [ax, ay], (wear.w * s) / SPRITE, (wear.h * s) / SPRITE, wear.r, wear.f) : heldStyle(HELD[item], [ax, ay], k);
+    return <img className="bu-held" src={spriteUrl(item)} width={Math.round(st.width)} height={Math.round(st.height)} alt="" draggable={false} data-held={item}
+      data-placed={wear ? '' : undefined} style={st} />;
   };
   if (art) {
     const [x0, y0, w, h] = FRAMES[def.id].box, s = fitScale(scale, w, h, box), [ax, ay] = headOf(def.id, on);
+    const wear = item ? wearOn(placed[def.id], on, (f) => headOf(def.id, f)) : null;
     return (
       <span className={`${cls} old`} style={{ width: w * s, height: h * s }} aria-hidden="true" data-art={def.id}>
         <span className="bu-frame">
           <img src={spriteUrl(def.id)} width={Math.round(art.n * art.w * s)} height={Math.round(art.h * s)} alt="" draggable={false}
             style={{ width: art.n * art.w * s, height: art.h * s, left: -(on * art.w + x0) * s, top: -y0 * s }} />
         </span>
-        {heldAt((ax - x0) * s, (ay - y0 + SINK_OLD) * s)}
+        {wear ? heldAt((wear.x - x0) * s, (wear.y - y0) * s, wear, s) : heldAt((ax - x0) * s, (ay - y0 + SINK_OLD) * s)}
       </span>
     );
   }
