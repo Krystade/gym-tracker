@@ -6,6 +6,7 @@ import { statsOf, TRAIT_TENTHS, trainingOf } from '../../domain/buddies/stats';
 import type { Profile } from '../../domain/profile';
 import type { SetEntry } from '../../domain/types';
 import type { BuddiesStore } from '../../state/useBuddies';
+import { useSheet } from '../useSheet';
 import { BOX, BuddySprite } from './BuddySprite';
 import { accName, SLOT_NAME, wornClass } from './Worn';
 
@@ -79,10 +80,11 @@ function CardSheet({ name, b, lead, onClose }: { name: string; b: SharedBuddy; l
   const def = BUDDY.get(b.i)!;
   const [held, aura, plinth, backdrop] = b.e;
   const title = defaultName(b.i);
+  const box = useSheet<HTMLElement>(onClose);
   return (
     <>
       <div className="sheet-backdrop" aria-hidden="true" onClick={onClose} />
-      <section className="sheet bu-sheet" role="dialog" aria-modal="true" aria-label={`@${name}’s ${title}`}>
+      <section ref={box} className="sheet bu-sheet" role="dialog" aria-modal="true" aria-label={`@${name}’s ${title}`}>
         <div className="sheet-head">
           <h2>@{name}’s buddy</h2>
           <button className="mini" onClick={onClose}>Done</button>

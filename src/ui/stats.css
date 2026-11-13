@@ -79,11 +79,9 @@
 .st-confetti { position: absolute; left: 40px; top: 40px; width: 0; height: 0; pointer-events: none; }
 .st-confetti i { position: absolute; width: 7px; height: 11px; border-radius: 2px; background: var(--c); opacity: 0; }
 
-/* The sheet: on the visible viewport, its body the only thing that scrolls, the page under it still. */
-html.sheet-lock { overflow: hidden; overscroll-behavior: none; }
-.st-backdrop { touch-action: none; }
-.st-sheet { translate: 0 calc(var(--drag, 0px) - var(--vv-bottom, 0px) - var(--kb, 0px)); padding-top: 0; gap: 0; transition: translate 200ms var(--out); }
-.st-sheet.dragging { transition: none; }
+/* The sheet: on the visible viewport, its body the only thing that scrolls, the page under it still (html.sheet-lock and the
+   swipe down: styles.css and ui/useSheet, as every sheet). */
+.st-sheet { padding-top: 0; gap: 0; }
 .st-sheet::before { display: none; }
 .st-sheet:focus { outline: none; }
 .st-sh-head { flex: none; touch-action: none; padding: 6px 0 8px; }

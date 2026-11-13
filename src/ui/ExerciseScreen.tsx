@@ -39,6 +39,7 @@ import { carryOver, flatFor, rotation } from '../domain/rotation';
 import { applyRotation, FlatNote, inProgram, RotationSuggestion } from './RotationSuggestion';
 import { activeProfileDb } from '../db/db';
 import { lightOn, tappedLight } from '../state/lightWeek';
+import { useArmed } from './useArmed';
 import type { BodyDay } from '../domain/body';
 
 /** A cardio machine: distance (or floors) per session over time, and each session's numbers with its pace. */
@@ -151,7 +152,8 @@ function RenameLift({ name, store, settings, gyms, programs, onRenamed }: {
   name: string; store: SetsStore; settings: SettingsStore; gyms: GymsStore; programs: ProgramStore; onRenamed: (to: string) => void;
 }) {
   const [to, setTo] = useState('');
-  const [armed, setArmed] = useState(false);
+  const { armed: arming, arm, tap, settling } = useArmed<'go'>();
+  const armed = arming === 'go';
   const [busy, setBusy] = useState(false);
   const typed = normalizeName(to);
   const logged = exerciseNames(store.entries);
@@ -175,10 +177,10 @@ function RenameLift({ name, store, settings, gyms, programs, onRenamed }: {
     <section className="lift-set" role="group" aria-label="Rename or merge">
       <h3>Rename or merge</h3>
       <p className="muted small">Type a new name, or the name of a lift you already log to merge this one into it. Its sets, plan and settings move over.</p>
-      <Input aria-label="New name" list="rename-names" value={to} onChange={(e) => { setTo(e.target.value); setArmed(false); }} placeholder={name} />
+      <Input aria-label="New name" list="rename-names" value={to} onChange={(e) => { setTo(e.target.value); arm(null); }} placeholder={name} />
       <datalist id="rename-names">{logged.filter((n) => n !== name).map((n) => <option key={n} value={n} />)}</datalist>
       {armed && valid && <p className="small" role="status">{plural(moving, 'set')} {moving === 1 ? 'moves' : 'move'} to {target}.</p>}
-      <button className="wide" disabled={!valid || busy} onClick={() => (armed ? void go() : setArmed(true))}>
+      <button className="wide" disabled={!valid || busy} aria-disabled={settling('go')} onClick={() => tap('go', () => void go())}>
         {armed ? `Tap again to ${into ? 'merge' : 'rename'}` : into ? `Merge into ${into}` : 'Rename'}
       </button>
     </section>

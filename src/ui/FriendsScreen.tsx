@@ -60,8 +60,8 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
   const invite = () => { setSeg('friends'); setAdding(true); };
   return (
     <div className="friends-page"
-      // The sheet is portalled but its touches still bubble here through React: a drag in it is no pull.
-      onTouchStart={(e) => { start.current = uid && !adding && window.scrollY <= 0 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }}
+      // A sheet is portalled but its touches still bubble here through React: a drag in one (its swipe down) is no pull.
+      onTouchStart={(e) => { start.current = uid && !document.documentElement.classList.contains('sheet-lock') && window.scrollY <= 0 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }}
       onTouchMove={(e) => {
         const s = start.current;
         if (!s) return;

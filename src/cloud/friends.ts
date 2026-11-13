@@ -386,17 +386,25 @@ export async function clearSentGym({ F, db }: Cloud, me: string, id: string): Pr
 // ---- Pings and messages (users/{to}/inbox), with the sender's counter (users/{me}/sendRate/{to}). ----
 
 const HOUR = 3600_000;
-const PER_HOUR = 30;
+const PER_HOUR = 300;
 interface RateDoc { at: { toMillis(): number }; win: { toMillis(): number }; n: number }
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const COULDNT = 'Couldn’t send.';
 
 /**
- * One ping or message: the inbox document and your counter in one write, as firestore.rules require (2 s apart, 30 an
- * hour to one friend). The hour is judged by this phone's clock; near its edge the server may judge otherwise, so a
- * refusal reads the counter again and tries the other way once. Someone who blocked or removed you: "Couldn't send".
+ * One ping or message: the inbox document and your counter in one write, as firestore.rules require (300 an hour to one
+ * friend, and no wait between: a ping tapped over and over sends each one; your day's 300 social writes is what stops a run).
+ * The hour is judged by this phone's clock; near its edge the server may judge otherwise, so a refusal reads the counter again
+ * and tries the other way once. Someone who blocked or removed you: "Couldn't send". Sends to one friend go one after another
+ * (each reads the counters the last one wrote), however fast they're asked for.
  */
-async function sendInbox(c: Cloud, me: string, to: string, data: { kind: 'p'; e: PresetKey } | { kind: 'm'; t: string }): Promise<string> {
+const sending = new Map<string, Promise<unknown>>();
+function sendInbox(c: Cloud, me: string, to: string, data: { kind: 'p'; e: PresetKey } | { kind: 'm'; t: string }): Promise<string> {
+  const next = (sending.get(to) ?? Promise.resolve()).catch(() => {}).then(() => sendOne(c, me, to, data));
+  sending.set(to, next);
+  void next.catch(() => {}).finally(() => { if (sending.get(to) === next) sending.delete(to); });
+  return next;
+}
+async function sendOne(c: Cloud, me: string, to: string, data: { kind: 'p'; e: PresetKey } | { kind: 'm'; t: string }): Promise<string> {
   const { F, db } = c;
   const rateRef = F.doc(db, `users/${me}/sendRate/${to}`);
   const attempt = async (flip: boolean, off: number) => {
@@ -407,11 +415,9 @@ async function sendInbox(c: Cloud, me: string, to: string, data: { kind: 'p'; e:
     if (r) {
       const newHour = Date.now() - r.win.toMillis() >= HOUR;
       if (newHour === flip) {
-        if (r.n >= PER_HOUR) { limitHit('send', to); throw fail('That’s 30 this hour. Try again later.'); }
+        if (r.n >= PER_HOUR) { limitHit('send', to); throw Object.assign(fail(`That’s ${PER_HOUR} this hour. Try again later.`), { short: 'That’s plenty for this hour. Try again later.' }); }
         next = { at: now, win: r.win, n: r.n + 1 };
       }
-      const wait = r.at.toMillis() + 2100 - Date.now();
-      if (wait > 0 && wait <= 2100) await sleep(wait);
     }
     const ref = F.doc(F.collection(db, `users/${to}/inbox`));
     const counters = await socialNext(c, me, Date.now(), false, off);

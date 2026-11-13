@@ -595,18 +595,19 @@ describe('pings and messages (inbox), with the sender’s counter (sendRate)', (
     await assertFails(setDoc(doc(as('bob'), 'users/alice/inbox/x1'), { from: 'bob', at: serverTimestamp(), ...ping() }));
     await assertSucceeds(send('bob', 'alice', ping()));
   });
-  it('2 s between sends, 30 an hour, and a new hour starts again at 1', async () => {
+  it('no wait between sends, 300 an hour, and a new hour starts again at 1', async () => {
     await assertSucceeds(send('bob', 'alice', ping()));
     const first = (await getDoc(doc(as('bob'), 'users/bob/sendRate/alice'))).data() as Rate;
-    await assertFails(send('bob', 'alice', ping(), { win: first.win, n: 2 })); // inside 2 s
-    await seedRate({ at: ago(5000), win: ago(600_000), n: 29 });
+    await assertSucceeds(send('bob', 'alice', ping(), { win: first.win, n: 2 })); // straight after: a ping tapped again
+    await assertSucceeds(send('bob', 'alice', ping('eyes'), { win: first.win, n: 3 }));
+    await seedRate({ at: ago(5000), win: ago(600_000), n: 299 });
     const win = ((await getDoc(doc(as('bob'), 'users/bob/sendRate/alice'))).data() as Rate).win;
-    await assertFails(send('bob', 'alice', ping(), { win, n: 29 })); // the count must move
-    await assertSucceeds(send('bob', 'alice', ping(), { win, n: 30 }));
-    await seedRate({ at: ago(5000), win, n: 30 });
-    await assertFails(send('bob', 'alice', ping(), { win, n: 31 })); // the 31st
+    await assertFails(send('bob', 'alice', ping(), { win, n: 299 })); // the count must move
+    await assertSucceeds(send('bob', 'alice', ping(), { win, n: 300 }));
+    await seedRate({ at: ago(5000), win, n: 300 });
+    await assertFails(send('bob', 'alice', ping(), { win, n: 301 })); // the 301st
     await assertFails(send('bob', 'alice', ping())); // and no starting over inside the hour
-    await seedRate({ at: ago(5000), win: ago(3_601_000), n: 30 });
+    await seedRate({ at: ago(5000), win: ago(3_601_000), n: 300 });
     await assertSucceeds(send('bob', 'alice', ping())); // a new hour: n = 1, win = now
   });
   it('the counter is yours alone, and goes only once its hour is over', async () => {

@@ -1,4 +1,5 @@
 import { ACCESSORIES, ACCESSORY, type AccDef, type Slot } from '../../domain/buddies/roster';
+import { useSheet } from '../useSheet';
 import { spriteUrl, SPRITE } from './BuddySprite';
 
 // The wardrobe (Gym Buddies plan §16.10 stage 5): what a buddy wears, one per slot, from the accessories you own (shared: any
@@ -34,10 +35,11 @@ export function WardrobeSheet({ slot, wearing, owned, name, onPick, onClose, onG
 }) {
   const all = ACCESSORIES.filter((a) => a.slot === slot);
   const mine = all.filter((a) => owned.has(a.id));
+  const box = useSheet<HTMLElement>(onClose);
   return (
     <>
       <div className="sheet-backdrop" aria-hidden="true" onClick={onClose} />
-      <section className="sheet bu-sheet" role="dialog" aria-modal="true" aria-label={`${name}’s ${SLOT_NAME[slot].toLowerCase()}`}>
+      <section ref={box} className="sheet bu-sheet" role="dialog" aria-modal="true" aria-label={`${name}’s ${SLOT_NAME[slot].toLowerCase()}`}>
         <div className="sheet-head">
           <h2>{SLOT_NAME[slot]} <span className="muted small">{mine.length} of {all.length}</span></h2>
           <button className="mini" onClick={onClose}>Done</button>

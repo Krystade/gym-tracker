@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { addFriend, goto } from './nav';
+import { drag, mid } from './finger';
 import { DOCS } from './emu';
 
 // Pings and messages between two synthetic accounts on the local Auth and Firestore emulators, on the iPhone 13 mini's
@@ -109,7 +110,7 @@ test('a ping from a Crew row and a message from the friend view land in the othe
   await expect(field).toHaveValue('x'.repeat(140));
   await expect(sheet).toContainText('140/140');
   await field.fill(LONG);
-  await expect(sheet.getByRole('button', { name: 'Send', exact: true })).toBeEnabled(); // the 2 s after a send are over
+  await expect(sheet.getByRole('button', { name: 'Send', exact: true })).toBeEnabled(); // no wait after a send
   await sheet.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(sheet.getByRole('status')).toHaveText('Sent');
   await expect(field).toHaveValue('');
@@ -244,7 +245,7 @@ const uidOf = (page: Page) => page.evaluate(async () => {
   db.close();
   return link.uid;
 });
-/** `n` long messages from `from` in `to`'s inbox, written as an admin (the rules' 2 s gap would make this a minute). */
+/** `n` long messages from `from` in `to`'s inbox, written as an admin (quicker than through the app, one by one). */
 async function seedThread(page: Page, from: string, to: string, n: number) {
   for (let i = 0; i < n; i++) {
     const res = await page.request.post(`${EMU}/users/${to}/inbox`, {
@@ -346,4 +347,72 @@ test('a thread read coming back mid-keystroke keeps what was typed', async ({ br
   await field.fill('Bench at 6?');
   await expect(field).toHaveValue('Bench at 6?');
   await expect(sheet.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+});
+
+// ---- Touch (owner's 13 mini, 2026-11-12): a ping tapped over and over, the page behind, a swipe down ----
+
+test('a ping tapped again and again sends every tap, one message each', async ({ browser }) => {
+  const [a, b] = await Promise.all([person(browser), person(browser)]);
+  await befriend(b, a, b.name);
+  await crew(a.page).getByTestId(`crew-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
+  const sheet = sheetOf(a.page, b.name);
+  const eyes = sheet.getByRole('button', { name: 'Send 👀 Did you lift?' });
+  await expect(eyes).toBeEnabled();
+  // Real taps where the button is, one straight after another as a thumb makes them: nothing waits for it to be ready again.
+  const at = await mid(eyes);
+  const N = 8, t0 = Date.now();
+  for (let i = 0; i < N; i++) await a.page.touchscreen.tap(at.x, at.y);
+  expect(Date.now() - t0, 'the taps were quick').toBeLessThan(2000);
+  await expect(sheet.locator('.bubble.mine .bubble-text')).toHaveText(Array<string>(N).fill('👀'), { timeout: 30_000 });
+  await expect(sheet.getByRole('status')).toHaveText(`Sent 👀 ×${N}`);
+  // And B has every one.
+  await crew(b.page).getByTestId(`crew-${a.name}`).getByRole('button', { name: new RegExp(`^Message @${a.name}`) }).click();
+  await expect(sheetOf(b.page, a.name).locator('.bubble.theirs .bubble-text')).toHaveText(Array<string>(N).fill('👀'));
+});
+
+test('an open thread holds the page behind it still, and a swipe down closes it (from its head, or its list at the top)', async ({ browser }) => {
+  const [a, b] = await Promise.all([person(browser), person(browser)]);
+  await befriend(b, a, b.name);
+  await seedThread(a.page, await uidOf(b.page), await uidOf(a.page), 10);
+  // A page long enough to scroll, scrolled part way down.
+  await a.page.evaluate(() => { document.body.style.paddingBottom = '1600px'; });
+  const open = crew(a.page).getByTestId(`crew-${b.name}`).getByRole('button', { name: new RegExp(`^Message @${b.name}`) });
+  await open.evaluate((el) => { el.scrollIntoView({ block: 'center' }); window.scrollBy(0, 200); });
+  await open.click();
+  const sheet = sheetOf(a.page, b.name);
+  const list = sheet.getByRole('list', { name: 'Messages' });
+  await expect(list.locator('.bubble.theirs')).toHaveCount(10);
+  const y0 = await a.page.evaluate(() => scrollY);
+  expect(y0).toBeGreaterThan(100);
+  await a.page.screenshot({ path: `${SHOTS}/thread-touch.png` });
+
+  // The root can't scroll, and a drag nothing in the sheet can scroll is refused (iOS would have scrolled the page with it):
+  // on the head, on the pings, on the dim above it.
+  expect(await a.page.evaluate(() => getComputedStyle(document.documentElement).overflowY)).toBe('hidden');
+  const head = sheet.locator('.sheet-head');
+  const h = await mid(head);
+  expect(await drag(head, { x: 60, y: h.y }, 0, -120)).toEqual(Array(6).fill(true));
+  const pings = sheet.getByRole('group', { name: 'Quick pings' });
+  expect(await drag(pings, await mid(pings), 0, -120)).toEqual(Array(6).fill(true));
+  expect(await drag(a.page.locator('.sheet-backdrop'), { x: 180, y: 10 }, 0, 200)).toEqual(Array(6).fill(true));
+  // The list scrolled to its newest: a drag down it scrolls it back up (not refused), and the sheet stays.
+  expect(await list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(await drag(list, await mid(list), 0, 160)).toEqual(Array(6).fill(false));
+  await expect(sheet).toBeVisible();
+  // At its top, a drag down the list is the sheet's: it closes.
+  await list.evaluate((el) => { el.scrollTop = 0; });
+  expect(await drag(list, await mid(list), 0, 160)).toEqual(Array(6).fill(true));
+  await expect(sheet).toHaveCount(0);
+  expect(await a.page.evaluate(() => scrollY), 'the page is where it was').toBe(y0);
+  expect(await a.page.evaluate(() => getComputedStyle(document.documentElement).overflowY)).not.toBe('hidden');
+
+  // Again from the head: a short drag springs back, a long one closes.
+  await open.click();
+  await expect(list.locator('.bubble.theirs')).toHaveCount(10);
+  await drag(head, { x: 60, y: h.y }, 0, 20, 4);
+  await expect(sheet).toBeVisible();
+  await expect(sheet).not.toHaveAttribute('data-drag', /./);
+  await drag(head, { x: 60, y: h.y }, 4, 140);
+  await expect(sheet).toHaveCount(0);
+  expect(await a.page.evaluate(() => scrollY)).toBe(y0);
 });

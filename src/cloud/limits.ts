@@ -95,7 +95,10 @@ export async function socialNext(c: Cloud, uid: string, now: number, flip = fals
   const next = rateNext(r, now, flip);
   if (next.n > SOCIAL_PER_DAY) {
     limitHit('social');
-    throw fail(`That’s ${SOCIAL_PER_DAY} today (💪s, messages, requests, invites and gyms together). More ${until(r!.win + 86_400_000)}.`);
+    const more = until(r!.win + 86_400_000);
+    // `short`: the line a run of pings ends on (ui/ThreadSheet), where the 300's parts would be too much.
+    throw Object.assign(fail(`That’s ${SOCIAL_PER_DAY} today (💪s, messages, requests, invites and gyms together). More ${more}.`),
+      { short: `That’s your ${SOCIAL_PER_DAY} for today. More ${more}.` });
   }
   return (b) => {
     const ts = F.serverTimestamp();

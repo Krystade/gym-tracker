@@ -395,16 +395,17 @@ service cloud.firestore {
         allow delete: if me(uid);
         allow update: if false;
       }
-      // Your own send counter to one friend: 2 s between sends, 30 an hour (a new hour starts the count again). Only
-      // removable once its hour is over, or with the account itself (its profile goes in the same write).
+      // Your own send counter to one friend: 300 an hour (a new hour starts the count again), each after the last but with no
+      // wait between (owner, 2026-11-12: a ping tapped over and over sends each one; socialRate's 300 a day is the cap that
+      // bites first). Only removable once its hour is over, or with the account itself (its profile goes in the same write).
       match /sendRate/{to} {
         allow read: if me(uid);
         allow create: if me(uid) && request.resource.data.keys().hasOnly(['at', 'win', 'n'])
           && request.resource.data.at == request.time && request.resource.data.win == request.time && request.resource.data.n == 1;
         allow update: if me(uid) && request.resource.data.keys().hasOnly(['at', 'win', 'n'])
-          && request.resource.data.at == request.time && request.time > resource.data.at + duration.value(2, 's')
+          && request.resource.data.at == request.time && request.time > resource.data.at
           && ((request.resource.data.win == resource.data.win && request.resource.data.n == resource.data.n + 1
-                && request.resource.data.n <= 30 && request.time < resource.data.win + duration.value(1, 'h'))
+                && request.resource.data.n <= 300 && request.time < resource.data.win + duration.value(1, 'h'))
             || (request.resource.data.win == request.time && request.resource.data.n == 1
                 && request.time >= resource.data.win + duration.value(1, 'h')));
         allow delete: if me(uid) && (request.time >= resource.data.win + duration.value(1, 'h')

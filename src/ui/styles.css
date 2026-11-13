@@ -38,14 +38,23 @@
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 /* clip, not hidden: hidden on html+body makes body the scroll container, which breaks window scroll and sticky headers. */
 body { overflow-x: clip; }
-body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
-/* A long-press on a label, button or chart shouldn't select it and raise iOS's Copy / Look Up bar. On body, not .app,
-   so portalled sheets inherit it. Fields and what people wrote to each other (messages, board posts) stay selectable;
-   fields get an explicit `text`, since WebKit can refuse focus or the caret in an input that inherits `none`. */
-body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+body { overscroll-behavior-y: none; }
+/* A long-press on a label, button, card, sprite or chart shouldn't select it, grey it or raise iOS's Copy / Look Up bar or
+   image preview. Set on every element, not left to inherit from body (owner's 13 mini, 2026-11-12: holding still selected and
+   highlighted), so portalled sheets, SVG and images get it too; pictures can't be lifted out to drag either. Fields and what
+   people wrote to each other (messages, board posts) stay selectable, a ping's lone emoji not; fields get an explicit `text`,
+   since WebKit can refuse focus or the caret in an input that inherits `none`.
+   And no double-tap zoom anywhere (`manipulation`: pan and pinch only), so two quick taps are two taps: a ping tapped again
+   and again sends each one. Not inherited, so on every element too; a stricter touch-action further down still wins. */
+*, *::before, *::after {
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+img, svg, canvas, video { -webkit-user-drag: none; }
 input, textarea, [contenteditable]:not([contenteditable=false]), .bubble-text, .bd-text, .rv-text {
   -webkit-user-select: text; user-select: text; -webkit-touch-callout: default;
 }
+.bubble.ping .bubble-text { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 /* The large title: one per screen. */
 h1 { font-size: var(--fs-title); line-height: 41px; font-weight: 700; letter-spacing: -0.01em; margin: 4px 0 16px; }
 p { margin: 6px 0; }
@@ -1044,7 +1053,10 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 .friend-list .link { font-weight: 500; }
 
 /* A friend's thread: a sheet from the bottom over everything (the tab bar included), never a centred modal. */
-.sheet-backdrop { position: fixed; inset: 0; z-index: 7; background: rgb(0 0 0 / 0.6); }
+.sheet-backdrop { position: fixed; inset: 0; z-index: 7; background: rgb(0 0 0 / 0.6); touch-action: none; }
+/* While one's open the page under it is still (ui/useSheet: the root's overflow and overscroll, the only ones that reach the
+   viewport, and a guard on touches nothing in the sheet can scroll). */
+html.sheet-lock { overflow: hidden; overscroll-behavior: none; }
 .sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; max-width: 640px; margin: 0 auto;
   max-height: calc(100dvh - var(--sat) - 24px); display: flex; flex-direction: column; gap: 8px;
@@ -1101,8 +1113,9 @@ fieldset.plain:disabled select, fieldset.plain:disabled input { opacity: 1; }
 /* The sheet stays on the screen you see: its foot on the bottom edge and its top below the status bar, both moved by the gap
    iOS 26 can leave between the two viewports (src/ui/viewportPin.ts), as the tab bar is. 100% is the viewport it's fixed to. */
 /* With a keyboard up its foot is on the keyboard (--kb) and its top below the screen's (--kb-top), so a field in it shows. */
+/* --drag: how far a swipe down has it (ui/useSheet); let go short of closing, it springs back. */
 .sheet {
-  translate: 0 calc(-1 * (var(--vv-bottom, 0px) + var(--kb, 0px)));
+  translate: 0 calc(var(--drag, 0px) - var(--vv-bottom, 0px) - var(--kb, 0px));
   max-height: calc(100% - var(--sat) - 24px - var(--vv-top, 0px) - var(--vv-bottom, 0px) - var(--kb, 0px) - var(--kb-top, 0px));
 }
 /* The message box grows a line at a time from one to five (ThreadSheet sets its height), then scrolls. Send stays at its foot,
@@ -1249,6 +1262,8 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 @keyframes sheet-up { from { transform: translateY(100%); } }
 @keyframes fade-in { from { opacity: 0; } }
 .sheet { animation: sheet-up 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.sheet[data-drag='settle'] { transition: translate 200ms var(--out); }
+.sheet[data-drag='on'] { transition: none; }
 .sheet-backdrop { animation: fade-in 240ms ease-out both; }
 /* The thread's More menu and an opened Details drop in. */
 @keyframes drop-in { from { opacity: 0; transform: translateY(-6px); } }
@@ -1261,6 +1276,7 @@ details.day { scroll-margin-top: calc(var(--sat) + 12px); }
 .fades { overflow: hidden; animation: sent-out 2.5s ease-in forwards; }
 @media (prefers-reduced-motion: reduce) {
   .sheet, .sheet-backdrop, .sheet-menu { animation: none; }
+  .sheet[data-drag='settle'] { transition: none; }
   .fades { animation: sent-out 0s 2s forwards; } /* gone after the same 2 s, without the fade */
   .chip.more .chev, .fold-chev,
   details.month > summary::after, details.day > summary::after,

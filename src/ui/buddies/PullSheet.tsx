@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { canSpend, choose, CHOOSE, ODDS, pityIn, pull, PULL, REFUND, type Ledger, type Spend, type Wallet } from '../../domain/buddies/gacha';
 import { ACCESSORY, BUDDY, POOL, RARITIES, type Banner, type Rarity } from '../../domain/buddies/roster';
 import { BOX, BuddySprite, drawnSize } from './BuddySprite';
+import { useSheet } from '../useSheet';
 import { AccIcon, accName, SLOT_NAME } from './Worn';
 
 // Pulls, tickets and choosing (Gym Buddies plan §16.10 stage 5, odds and prices from domain/buddies/gacha): one sheet in three
@@ -32,6 +33,7 @@ export function PullSheet({ mode: first, banner: firstBanner, ledger, wallet, to
   const [picked, setPicked] = useState<string | null>(null);
   const [shown, setShown] = useState<Spend | null>(null);
   const [busy, setBusy] = useState(false);
+  const box = useSheet<HTMLElement>(onClose);
   const pity = pityIn(ledger, banner);
   const left = (r: number) => POOL[banner].filter((x) => x.rarity === r && !ledger.owned.has(x.id)).length;
 
@@ -48,7 +50,7 @@ export function PullSheet({ mode: first, banner: firstBanner, ledger, wallet, to
   return (
     <>
       <div className="sheet-backdrop" aria-hidden="true" onClick={onClose} />
-      <section className="sheet bu-sheet" role="dialog" aria-modal="true" aria-label={TITLE[mode]}>
+      <section ref={box} className="sheet bu-sheet" role="dialog" aria-modal="true" aria-label={TITLE[mode]}>
         <div className="sheet-head">
           <h2>{TITLE[mode]}</h2>
           <span className="bu-sheet-wallet small"><i className="bu-coin" aria-hidden="true" />{wallet.points.toLocaleString('en-US')}<span className="sr-only"> points,</span> <i className="bu-ticket" aria-hidden="true" />{wallet.tickets}<span className="sr-only"> tickets</span></span>

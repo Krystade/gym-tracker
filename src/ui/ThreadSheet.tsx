@@ -8,18 +8,21 @@ import { useMinute } from '../state/clock';
 import type { GymsStore } from '../state/useGyms';
 import { Icon, initials } from './icons';
 import { FriendName, FriendTagEditor, useFriendLabel } from './FriendName';
+import { useArmed } from './useArmed';
+import { useSheet } from './useSheet';
 
 /** The friend a thread is with: from a row (name known) or a notification (uid alone). */
 export interface ThreadWith { uid: string; name?: string }
 
-const GAP_MS = 2000; // the rules want 2 s between sends to one friend
 const COUNT_FROM = 100; // the count shows only once a message nears the limit
 
 /**
  * Pings and messages with one friend, in a sheet from the bottom (never a centred modal: the board stays visible above
  * it). Top to bottom: who, mute and more; the last 20 items; the six pings above the field, so the keyboard can't hide
  * them; a 140-character field. Shows at once what the phone kept of the thread (state/friendCache); read again on opening,
- * when a push arrives or the app comes back, and after a send.
+ * when a push arrives or the app comes back, and after a run of sends. A ping tapped again and again sends every tap (owner,
+ * 2026-11-12: 👀 over and over): nothing waits or locks between them; they go one after another, as fast as they're taken,
+ * and only your day's 300 (socialRate) stops them, with a line saying so.
  */
 export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }: {
   me: string; friend: ThreadWith; gyms: GymsStore; onClose: () => void; onViewLog: (f: { uid: string; name: string }) => void; onChanged: () => void;
@@ -44,10 +47,14 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   // every screen at once, synchronously) wrote the old value over the keystroke before React's own listener saw it.
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  /** `fades`: a send's "Sent", which the new bubble already shows; it goes after 2 s (still read out, then gone from view). */
-  const [msg, setMsg] = useState<{ ok: boolean; text: string; fades?: boolean } | null>(null);
+  /**
+   * `fades`: a send's "Sent", which the new bubble already shows; it goes after 2 s (still read out, then gone from view).
+   * `n` remounts it for each, so a run of sends shows every one ("Sent 👀 ×5") and each fades from its own start.
+   */
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; fades?: boolean; n?: number } | null>(null);
   const [menu, setMenu] = useState(false);
-  const [armed, setArmed] = useState<'remove' | 'block' | null>(null);
+  const { armed, arm, tap, settling } = useArmed<'remove' | 'block'>();
+  const box = useSheet<HTMLElement>(onClose);
   const list = useRef<HTMLOListElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   // The box grows a line at a time to fit what's typed, up to its CSS max-height; past that it scrolls.
@@ -93,18 +100,39 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
 
   const label = useFriendLabel(me);
   const who = name ? label(friend.uid, name, dn) : 'them';
-  /** One send at a time, and the buttons rest for the rules' 2 s after it. */
-  const send = async (f: () => Promise<unknown>, done: string) => {
-    setBusy(true); setMsg(null);
-    const t0 = Date.now();
-    try { await f(); setMsg({ ok: true, text: done, fades: true }); await load(); }
-    catch (e) { setMsg({ ok: false, text: (e as { plain?: boolean }).plain ? (e as Error).message : 'Couldn’t send.' }); }
-    finally { setTimeout(() => setBusy(false), Math.max(0, GAP_MS - (Date.now() - t0))); }
+  // Every tap queues its send behind the last (the counters are read and written in turn); the thread is read again once
+  // the queue is empty, not after each. A refusal ends the run: what's still queued is dropped, and the line says why.
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const run = useRef({ waiting: 0, stop: false, last: '', same: 0, n: 0 });
+  const send = (f: () => Promise<unknown>, done: string) => {
+    const r = run.current;
+    r.waiting++;
+    queue.current = queue.current.then(async () => {
+      try {
+        if (r.stop) return;
+        await f();
+        r.same = r.last === done ? r.same + 1 : 1;
+        r.last = done;
+        setMsg({ ok: true, text: r.same > 1 ? `${done} ×${r.same}` : done, fades: true, n: ++r.n });
+      } catch (e) {
+        r.stop = true;
+        const x = e as { plain?: boolean; short?: string; message?: string };
+        setMsg({ ok: false, text: x.short ?? (x.plain ? x.message! : 'Couldn’t send.'), n: ++r.n });
+      } finally {
+        if (!--r.waiting) { run.current = { waiting: 0, stop: false, last: '', same: 0, n: r.n }; void load(); }
+      }
+    });
   };
   const ping = (k: PresetKey) => void send(async () => sendPing(await loadCloud(), me, friend.uid, k), `Sent ${PRESETS[k].emoji}`);
+  // The box empties as it's sent, so a second tap on Send can't send the words twice; refused, they come back if it's still empty.
+  const put = (t: string) => { setText(t); if (field.current) field.current.value = t; };
   const submit = () => {
     const t = text;
-    if (messageOk(t)) void send(async () => { await sendMessage(await loadCloud(), me, friend.uid, t); setText(''); if (field.current) field.current.value = ''; }, 'Sent');
+    if (!messageOk(t)) return;
+    put('');
+    send(async () => {
+      try { await sendMessage(await loadCloud(), me, friend.uid, t); } catch (e) { if (!field.current?.value) put(t); throw e; }
+    }, 'Sent');
   };
   const act = async (f: () => Promise<void>, after: () => void) => {
     setBusy(true); setMsg(null);
@@ -121,29 +149,27 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   return (
     <>
       <div className="sheet-backdrop" aria-hidden="true" onClick={onClose} />
-      <section className="sheet thread-sheet" role="dialog" aria-modal="true" aria-label={`Messages with ${who}`}>
+      <section ref={box} className="sheet thread-sheet" role="dialog" aria-modal="true" aria-label={`Messages with ${who}`}>
         <header className="sheet-head">
           <span className="avatar" aria-hidden="true">{initials(dn || name || '?')}</span>
           <h2>{name ? <FriendName me={me} friend={{ uid: friend.uid, name, dn }} /> : who}</h2>
           {state?.friend && (
             <button className="mini icon" aria-pressed={state.muted} aria-label={state.muted ? `Unmute ${who}` : `Mute ${who}`} disabled={busy} onClick={mute}><Icon name={state.muted ? 'bell-off' : 'bell'} /></button>
           )}
-          <button className="mini icon" aria-label="More" aria-expanded={menu} onClick={() => { setMenu(!menu); setArmed(null); }}><Icon name="more" /></button>
+          <button className="mini icon" aria-label="More" aria-expanded={menu} onClick={() => { setMenu(!menu); arm(null); }}><Icon name="more" /></button>
           <button className="mini icon" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
         </header>
         {menu && (
           <div className="sheet-menu" role="group" aria-label={`${who} options`}>
             {state?.friend && <button className="mini" onClick={() => onViewLog({ uid: friend.uid, name })}>View log</button>}
             {state?.friend && (
-              <button className="mini" disabled={busy} onClick={() => (armed === 'remove'
-                ? void act(async () => removeFriend(await loadCloud(), me, friend.uid), () => { setState({ friend: false, muted: false }); setMenu(false); setMsg({ ok: true, text: `Removed ${who}. Neither of you can see the other’s log now.` }); })
-                : setArmed('remove'))}>{armed === 'remove' ? 'Tap again to remove' : 'Remove'}</button>
+              <button className="mini" disabled={busy} aria-disabled={settling('remove')} onClick={() => tap('remove',
+                () => void act(async () => removeFriend(await loadCloud(), me, friend.uid), () => { setState({ friend: false, muted: false }); setMenu(false); setMsg({ ok: true, text: `Removed ${who}. Neither of you can see the other’s log now.` }); }))}>{armed === 'remove' ? 'Tap again to remove' : 'Remove'}</button>
             )}
-            <button className="mini danger" disabled={busy} onClick={() => (armed === 'block'
-              ? void act(async () => blockFriend(await loadCloud(), me, friend.uid), () => {
+            <button className="mini danger" disabled={busy} aria-disabled={settling('block')} onClick={() => tap('block',
+              () => void act(async () => blockFriend(await loadCloud(), me, friend.uid), () => {
                 setState({ friend: false, muted: false }); setEmpty(true); setMenu(false);
-                void patchFriendCache(me, (x) => { const { [friend.uid]: _gone, ...threads } = x.threads; return { ...x, threads }; }); setMsg({ ok: true, text: `Blocked ${who}. They can’t ask to be friends or message you. Unblock under Friends.` }); })
-              : setArmed('block'))}>{armed === 'block' ? 'Tap again to block' : 'Block'}</button>
+                void patchFriendCache(me, (x) => { const { [friend.uid]: _gone, ...threads } = x.threads; return { ...x, threads }; }); setMsg({ ok: true, text: `Blocked ${who}. They can’t ask to be friends or message you. Unblock under Friends.` }); }))}>{armed === 'block' ? 'Tap again to block' : 'Block'}</button>
           </div>
         )}
         {menu && state?.friend && name && <FriendTagEditor me={me} friend={{ uid: friend.uid, name }} />}
@@ -173,7 +199,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
         {can ? (<>
           <div className="presets" role="group" aria-label="Quick pings">
             {PRESET_KEYS.map((k) => (
-              <button key={k} className="preset" disabled={busy || !state} aria-label={`Send ${PRESETS[k].emoji} ${PRESETS[k].copy}`} title={PRESETS[k].copy} onClick={() => ping(k)}>{PRESETS[k].emoji}</button>
+              <button key={k} className="preset" disabled={!state} aria-label={`Send ${PRESETS[k].emoji} ${PRESETS[k].copy}`} title={PRESETS[k].copy} onClick={() => ping(k)}>{PRESETS[k].emoji}</button>
             ))}
           </div>
           {/* Enter is a new line (a message can have several); Send sends, and so does Cmd or Ctrl+Enter on a keyboard. */}
@@ -182,11 +208,11 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
               onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} />
             <span className="compose-side">
               <span className={`small ${n >= MAX_MESSAGE ? 'warn' : 'muted'}`} aria-live="polite">{n > COUNT_FROM ? `${n}/${MAX_MESSAGE}` : ''}</span>
-              <button type="submit" className="mini primary send" aria-label="Send" disabled={busy || !state || !messageOk(text)}><Icon name="send" size={22} sw={2.25} /></button>
+              <button type="submit" className="mini primary send" aria-label="Send" disabled={!state || !messageOk(text)}><Icon name="send" size={22} sw={2.25} /></button>
             </span>
           </form>
         </>) : state && <p className="muted small">You’re not friends with {who} now, so you can’t message them.</p>}
-        {msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? `ok small${msg.fades ? ' fades' : ''}` : 'warn small'}>{msg.text}</p>}
+        {msg && <p key={msg.n} role={msg.ok ? 'status' : 'alert'} className={msg.ok ? `ok small${msg.fades ? ' fades' : ''}` : 'warn small'}>{msg.text}</p>}
       </section>
     </>
   );

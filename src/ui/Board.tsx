@@ -7,6 +7,8 @@ import {
 } from '../cloud/board';
 import { blockFriend, sendRequest } from '../cloud/friends';
 import { switchesNow } from '../cloud/limits';
+import { useArmed } from './useArmed';
+import { useSheet } from './useSheet';
 import {
   AGE_FLOOR, CONTENT_RULES, HIDDEN_MAX, MAX_POST, MIN_SHOWN, MUTED_MAX, REASONS, RULES_FOOTER, cleanPost, gateSteps, leadOf,
   personalWarning, postAgo, postError, postsFrom, rowsOf, shownCount, toggleIn, type Filters, type Post, type Reason,
@@ -278,6 +280,7 @@ function Compose({ me, user, name, onClose, onPosted }: { me: string; user: stri
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
+  const box = useSheet<HTMLElement>(onClose);
   useEffect(() => {
     field.current?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -296,7 +299,7 @@ function Compose({ me, user, name, onClose, onPosted }: { me: string; user: stri
   };
   return createPortal(<>
     <div className="sheet-backdrop" aria-hidden="true" onClick={onClose} />
-    <section className="sheet bd-compose" role="dialog" aria-modal="true" aria-label="New post">
+    <section ref={box} className="sheet bd-compose" role="dialog" aria-modal="true" aria-label="New post">
       <header className="bd-compose-head">
         <button type="button" className="bd-link" onClick={onClose}>Cancel</button>
         <h2>New post</h2>
@@ -320,7 +323,7 @@ function PostSheet({ me, p, lead, mine, friend, myName, onClose, onHide, onMute,
   me: string; p: Post; lead?: string; mine?: Mine; friend: boolean; myName: string | null; onClose: () => void; onHide: () => void;
   onMute: (on: boolean) => void; onReport: () => void; onDone: (text?: string) => void; onError: (text: string) => void;
 }) {
-  const [armed, setArmed] = useState<'block' | 'delete' | 'remove' | 'ban' | null>(null);
+  const { armed, tap, settling } = useArmed<'block' | 'delete' | 'remove' | 'ban'>();
   const [busy, setBusy] = useState(false);
   const own = p.uid === me, owner = isOwner(me);
   const muted = !!mine?.muted.includes(p.uid);
@@ -339,27 +342,27 @@ function PostSheet({ me, p, lead, mine, friend, myName, onClose, onHide, onMute,
           return r === 'accepted' ? `You and @${p.user} are friends now.` : `Request sent to @${p.user}.`;
         })}>Send a friend request</button></li>}
         {!own && <li><button type="button" className="danger" onClick={onReport}>Report post…</button></li>}
-        {!own && <li><button type="button" className="danger" disabled={busy} onClick={() => armed === 'block' ? void run(async () => {
+        {!own && <li><button type="button" className="danger" disabled={busy} aria-disabled={settling('block')} onClick={() => tap('block', () => void run(async () => {
           const c = await loadCloud();
           await blockFriend(c, me, p.uid);
           await refreshLists(c, me).catch(() => {});
           return `@${p.user} is blocked.`;
-        }) : setArmed('block')}>{armed === 'block' ? `Tap again to block @${p.user}` : `Block @${p.user}`}</button></li>}
-        {own && <li><button type="button" className="danger" disabled={busy} onClick={() => armed === 'delete' ? void run(async () => {
+        }))}>{armed === 'block' ? `Tap again to block @${p.user}` : `Block @${p.user}`}</button></li>}
+        {own && <li><button type="button" className="danger" disabled={busy} aria-disabled={settling('delete')} onClick={() => tap('delete', () => void run(async () => {
           await deletePost(await loadCloud(), p.id);
           await noteGone(me, p.id);
           return 'Post deleted.';
-        }) : setArmed('delete')}>{armed === 'delete' ? 'Tap again to delete it' : 'Delete post'}</button></li>}
-        {owner && !own && <li><button type="button" className="danger" disabled={busy} onClick={() => armed === 'remove' ? void run(async () => {
+        }))}>{armed === 'delete' ? 'Tap again to delete it' : 'Delete post'}</button></li>}
+        {owner && !own && <li><button type="button" className="danger" disabled={busy} aria-disabled={settling('remove')} onClick={() => tap('remove', () => void run(async () => {
           await removePost(await loadCloud(), p);
           await noteGone(me, p.id);
           return `Removed. @${p.user} is told on their next visit.`;
-        }) : setArmed('remove')}>{armed === 'remove' ? 'Tap again to remove it' : 'Remove post (owner)'}</button></li>}
-        {owner && !own && <li><button type="button" className="danger" disabled={busy} onClick={() => armed === 'ban' ? void run(async () => {
+        }))}>{armed === 'remove' ? 'Tap again to remove it' : 'Remove post (owner)'}</button></li>}
+        {owner && !own && <li><button type="button" className="danger" disabled={busy} aria-disabled={settling('ban')} onClick={() => tap('ban', () => void run(async () => {
           const n = await banUser(await loadCloud(), p.uid);
           await patchBoard(me, (b) => ({ ...b, posts: b.posts.filter((x) => x.uid !== p.uid) }));
           return `@${p.user} is banned; ${n === 1 ? 'their post is' : `${n} posts are`} gone.`;
-        }) : setArmed('ban')}>{armed === 'ban' ? `Tap again to ban @${p.user}` : `Ban @${p.user} (owner)`}</button></li>}
+        }))}>{armed === 'ban' ? `Tap again to ban @${p.user}` : `Ban @${p.user} (owner)`}</button></li>}
       </ul>
       {owner && !own && <VerifyToggle me={me} uid={p.uid} name={p.user} />}
       {!own && <p className="muted small">Blocking hides all their posts and stops their requests and messages. They aren’t told.</p>}
