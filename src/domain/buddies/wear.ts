@@ -1,76 +1,49 @@
-import { BUDDY } from './roster';
+import { headOf } from './anchorFix';
+import { FRAMES, LOOK } from './anchors';
+import { guess, learnFrom, turn, type Body, type Look, type Marks, type Wear, type World } from './guess';
+import { BUDDIES, packOf } from './roster';
 
-// A held item placed by hand on an older character (owner 2026-11-12): in the accessory placer (public/tools/accessory-placer.html,
-// its Held slot) he drags it, sizes it, stretches its width and height apart, tilts it a full turn and mirrors it, frame by frame
-// of the strip the app shows (the placer's idle strip, or a still picture's one frame: the same files, pixel for pixel). Its
-// marks reach the app two ways: on the phone that made them at once (the placer saves them in this site's storage, which
+// A held item placed by hand (owner 2026-11-12): in the accessory placer (public/tools/accessory-placer.html) he drags it, sizes
+// it, stretches its width and height apart, tilts it a full turn and mirrors it, frame by frame of the strip the app shows (an
+// older character's idle strip or still picture, a Tiny buddy's poses: the same files, pixel for pixel), on any buddy. Its marks
+// reach the app two ways: on the phone that made them at once (the placer saves them in this site's storage, which
 // ui/buddies/BuddySprite reads), and for everyone once its Copy is pasted into WEAR here (wearFromMarks). Read as untrusted.
+// A frame nobody placed takes a guess learned from the frames that were (domain/buddies/guess, which the placer shares), else
+// the head anchor as it always has.
+
+export { parseWear, turn, wearOn, type Wear } from './guess';
+export type WearMap = Marks;
 
 /** A held item's sprite: 16 × 16 (Tiny Dungeon and Tiny Town). */
 export const ITEM = 16;
-
-/**
- * One frame's placement, in that frame's own pixels: the item's base (anchors HELD) at (x, y), its sprite drawn w × h, turned r
- * degrees clockwise about the base, and mirrored left to right about it when f (mirrored first, then turned, as the placer draws).
- */
-export interface Wear { x: number; y: number; w: number; h: number; r: number; f: boolean }
-export type WearMap = Readonly<Record<string, Readonly<Record<number, Wear>>>>;
+/** How far a held item sits into the head: the Tiny sprites' outline is two pixels thick (the older characters', one). */
+export const SINK = 2, SINK_OLD = 1;
 
 /** Placed by hand for everyone: the owner's Held marks, from the placer's Copy through wearFromMarks. None sent yet. */
 export const WEAR: WearMap = {};
 
-/** A tilt as one turn: (-180, 180]. */
-export const turn = (r: number): number => { const t = (((r % 360) + 360) % 360); return t > 180 ? t - 360 : t; };
-
-const num = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
-
-/** One mark, or null when it doesn't read. One from before width and height came apart has a width only: its height is the same
- *  (the sprite is square), so it keeps its shape. */
-export function parseWear(x: unknown): Wear | null {
-  const p = x as Partial<Wear> | null;
-  if (!p || typeof p !== 'object' || !num(p.x, -1000, 1000) || !num(p.y, -1000, 1000) || !num(p.w, 0.01, 1000)) return null;
-  const h = p.h === undefined ? p.w : p.h;
-  if (!num(h, 0.01, 1000) || (p.r !== undefined && !num(p.r, -1e6, 1e6))) return null;
-  return { x: p.x, y: p.y, w: p.w, h, r: turn(p.r ?? 0), f: p.f === true };
+const lookOf = ([bx, by, bw, bh, neck, ...top]: readonly number[], head: readonly [number, number]): Look => ({ head, box: [bx, by, bw, bh], neck, top });
+/** An older character's held item unplaced on its card (the hero: Tiny scale 8 where that fits 280 × 144 css px, else as large
+ *  as fits on a 3× screen; the item at half the Tiny scale), in the character's own pixels. */
+function cardSize(id: string): number {
+  const [, , bw, bh] = FRAMES[id].box;
+  const s = bw * 8 <= 280 && bh * 8 <= 144 ? 8 : Math.max(1, Math.floor(Math.min(280 / bw, 144 / bh) * 3 + 1e-9)) / 3;
+  return Math.round(((ITEM * 4) / s) * 100) / 100;
 }
+/** Every buddy as the guesses see it (domain/buddies/guess): a Tiny buddy's poses, an older character's frames. */
+export const WORLD: World = Object.fromEntries(BUDDIES.map((b): [string, Body] => [b.id, b.art
+  ? { pack: packOf(b.id), strip: b.art.n > 1 ? 'idle' : 'still', sink: SINK_OLD, size: cardSize(b.id), looks: LOOK[b.id].map((l, f) => lookOf(l, headOf(b.id, f))) }
+  : { pack: packOf(b.id), strip: 'poses', sink: SINK, size: ITEM / 2, looks: b.poses.map((p) => lookOf(LOOK[p][0], headOf(p))) }]));
 
 /**
- * The placer's marks (its Copy, or its saved copy in this browser: slot → character → strip → frame → mark) as what each older
- * character wears a frame: its Held slot's, on the strip the app shows. A character the roster doesn't draw from a strip, a
- * frame past its strip's end and a mark that doesn't read are left out.
+ * The placer's marks (its Copy, or its saved copy in this browser: slot → buddy → strip → frame → mark) as what each buddy wears
+ * a frame: its Held slot's, on the strip the app shows. A buddy not in the roster, a frame past its strip's end and a mark that
+ * doesn't read are left out.
  */
-export function wearFromMarks(x: unknown): Record<string, Record<number, Wear>> {
-  const out: Record<string, Record<number, Wear>> = {};
-  const held = (x as { held?: unknown } | null)?.held;
-  if (!held || typeof held !== 'object') return out;
-  for (const [id, anims] of Object.entries(held as Record<string, unknown>)) {
-    const n = BUDDY.get(id)?.art?.n, a = anims as { idle?: unknown; still?: unknown } | null;
-    const frames = a && typeof a === 'object' ? (a.idle ?? a.still) : null;
-    if (!n || !frames || typeof frames !== 'object') continue;
-    const mine: Record<number, Wear> = {};
-    for (const [k, v] of Object.entries(frames as Record<string, unknown>)) {
-      const f = Number(k), w = parseWear(v);
-      if (Number.isInteger(f) && f >= 0 && f < n && w) mine[f] = w;
-    }
-    if (Object.keys(mine).length) out[id] = mine;
-  }
-  return out;
-}
+export const wearFromMarks = (x: unknown): Record<string, Record<number, Wear>> => learnFrom(x, WORLD);
 
-/**
- * What the item wears on frame `f`: that frame's mark, else the nearest one marked before it (else after), moved as the head
- * anchor moves between the two frames (the placer guesses its unmarked Held frames the same way). None marked: null, and the
- * item sits on the anchor as it always has.
- */
-export function wearOn(marks: Readonly<Record<number, Wear>> | undefined, f: number, head: (f: number) => readonly [number, number]): Wear | null {
-  if (!marks) return null;
-  if (marks[f]) return marks[f];
-  const set = Object.keys(marks).map(Number), before = set.filter((k) => k < f), after = set.filter((k) => k > f);
-  const k = before.length ? Math.max(...before) : after.length ? Math.min(...after) : null;
-  if (k === null) return null;
-  const [ax, ay] = head(f), [bx, by] = head(k);
-  return { ...marks[k], x: marks[k].x + ax - bx, y: marks[k].y + ay - by };
-}
+/** What buddy `id` wears on frame (or pose) `f` given `marks`: its mark, else a learned guess, else null (the head anchor). */
+export const wearFor = (marks: WearMap, id: string, f: number): Wear | null => guess(marks, WORLD, id, f)?.wear ?? null;
 
 export interface HeldStyle { left: number; top: number; width: number; height: number; transformOrigin?: string; transform?: string }
 /**

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { headOf } from '../../domain/buddies/anchorFix';
 import { FRAMES, HELD } from '../../domain/buddies/anchors';
 import type { BuddyDef } from '../../domain/buddies/roster';
-import { heldStyle, WEAR, wearFromMarks, wearOn, type Wear, type WearMap } from '../../domain/buddies/wear';
+import { heldStyle, SINK, SINK_OLD, WEAR, wearFor, wearFromMarks, type Wear, type WearMap } from '../../domain/buddies/wear';
 
 // A buddy's sprite (public/buddies/<pose>.png, 16 × 16) at a whole-number scale, drawn pixelated. A buddy of several poses
 // cycles through them (owner: a group cycles); under reduced motion it holds its first. Every pose is in the page from the
@@ -13,14 +13,14 @@ import { heldStyle, WEAR, wearFromMarks, wearOn, type Wear, type WearMap } from 
 // asked for where that fits the room it's given (`box`), else as large as fits with each of its pixels a whole number of
 // device pixels, so it stays crisp. A held item on one is the size it would be on a Tiny buddy there, on its frame's anchor,
 // unless it was placed by hand (domain/buddies/wear): then where, how big, how stretched, tilted and mirrored it was placed,
-// growing with the character.
+// growing with the character. So on a Tiny buddy, pose by pose. A frame not placed takes the guess learned from the ones that
+// were (domain/buddies/guess), else the anchor.
 
 export const SPRITE = 16;
 export const POSE_MS = 650;
 export const spriteUrl = (pose: string) => `${import.meta.env.BASE_URL}buddies/${pose}.png`;
 
-/** How far a held item sits into the head: the sprites' outline is two pixels thick (the older characters', one). */
-export const SINK = 2, SINK_OLD = 1;
+export { SINK, SINK_OLD };
 /** A held item's scale for a buddy drawn at `scale`: half, never below 1. */
 export const heldScale = (scale: number) => Math.max(1, Math.floor(scale / 2));
 
@@ -40,8 +40,16 @@ export const BOX = {
  *  WEAR, on this phone only. Read when the app loads and again when it's shown after the placer. */
 const MARKS = 'acc-marks';
 let placed: WearMap = WEAR;
+/** Each buddy's frame's placement, placed or guessed (null: none), worked out once for the marks there are. */
+const worn = new Map<string, Wear | null>();
 function readPlaced() {
   try { const raw = localStorage.getItem(MARKS); placed = raw ? { ...WEAR, ...wearFromMarks(JSON.parse(raw)) } : WEAR; } catch { placed = WEAR; }
+  worn.clear();
+}
+function wearAt(id: string, f: number): Wear | null {
+  const k = `${id} ${f}`;
+  if (!worn.has(k)) worn.set(k, wearFor(placed, id, f));
+  return worn.get(k)!;
 }
 if (typeof window !== 'undefined') {
   readPlaced();
@@ -92,7 +100,7 @@ export function BuddySprite({ def, scale, box, still, shadow, className, held }:
   };
   if (art) {
     const [x0, y0, w, h] = FRAMES[def.id].box, s = fitScale(scale, w, h, box), [ax, ay] = headOf(def.id, on);
-    const wear = item ? wearOn(placed[def.id], on, (f) => headOf(def.id, f)) : null;
+    const wear = item ? wearAt(def.id, on) : null;
     return (
       <span className={`${cls} old`} style={{ width: w * s, height: h * s }} aria-hidden="true" data-art={def.id}>
         <span className="bu-frame">
@@ -103,11 +111,11 @@ export function BuddySprite({ def, scale, box, still, shadow, className, held }:
       </span>
     );
   }
-  const px = SPRITE * scale, [ax, ay] = headOf(poses[on]);
+  const px = SPRITE * scale, [ax, ay] = headOf(poses[on]), wear = item ? wearAt(def.id, on) : null;
   return (
     <span className={cls} style={{ width: px, height: px }} aria-hidden="true">
       {poses.map((p, i) => <img key={p} src={spriteUrl(p)} width={px} height={px} alt="" draggable={false} hidden={i !== on} />)}
-      {heldAt(ax * scale, (ay + SINK) * scale)}
+      {wear ? heldAt(wear.x * scale, wear.y * scale, wear, scale) : heldAt(ax * scale, (ay + SINK) * scale)}
     </span>
   );
 }

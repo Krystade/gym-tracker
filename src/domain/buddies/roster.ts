@@ -81,6 +81,17 @@ export const CREDIT_ROWS: readonly { what: string; by: string; url: string; lice
   { what: 'Mr. & Mrs. Dude', by: 'toadgirl', url: 'https://toadgirl.itch.io/mr-and-mrs-dude', licence: 'free to use for anything' },
 ];
 
+const OLD_PACK: readonly [RegExp, string][] = [
+  [/^ck(brown|white|black|gold|red)$/, 'Goat Characters'], [/^ck/, 'Animal Characters'], [/^dino/, 'Dino Characters'],
+  [/^froglet$/, 'Froglet'], [/^dude/, 'Mr. & Mrs. Dude'], [/./, 'Pixel Vehicle Pack'],
+];
+/** A buddy's pack, as its credit names it (CREDIT_ROWS what): the accessory placer's filter, and what a held item's guess learns
+ *  from last (domain/buddies/guess). */
+export function packOf(id: string): string {
+  if (!BUDDY.get(id)?.art) return id[0] === 'd' ? 'Tiny Dungeon and Tiny Town' : 'Tiny Creatures';
+  return OLD_PACK.find(([re]) => re.test(id))![1];
+}
+
 // A buddy's name until it's given its own (kept prefs' `name`): an older character's from OLD, else two syllables picked by its
 // number, so no two are the same (creatures 1–180 and dungeon 181–312, of 18 × 18 = 324; OLD's are of the ones left) and a
 // buddy's name never changes when the roster grows.

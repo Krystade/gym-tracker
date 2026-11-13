@@ -1,10 +1,11 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { FRAMES } from '../src/domain/buddies/anchors';
+import { wearFor, wearFromMarks } from '../src/domain/buddies/wear';
 
 // The accessory placer (public/tools/accessory-placer.html) by touch, on the phone's engine with a touchscreen: a drag moves the
 // item as far as the finger goes from wherever it went down (never jumping under it), Mirror flips it and keeps it, a two-finger
 // twist tilts it on past a half turn and a spread sizes it, its shape kept. The touches are pointer events made by hand, as
-// Playwright's touchscreen only taps.
+// Playwright's touchscreen only taps. And its guesses: learned from one buddy's mark, the very numbers the app draws.
 
 type Pt = [number, number];
 /** Touch pointers on the canvas: each finger's path in css px from its top left, all down, moved a step at a time, all up. */
@@ -20,12 +21,20 @@ const fingers = (cv: Locator, paths: Pt[][]) => cv.evaluate((el, paths) => {
 /** Birb's first idle frame in the Held slot, as saved. */
 const held = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('acc-marks') ?? '{}').held?.ckbirb?.idle?.[0]);
 const picture = (cv: Locator) => cv.evaluate((el: HTMLCanvasElement) => el.toDataURL());
+/** Open a buddy from the list, found by its name. */
+async function open(page: Page, name: string) {
+  await page.getByRole('button', { name: 'Buddies', exact: true }).tap();
+  await page.getByRole('searchbox', { name: /Find a buddy/ }).fill(name);
+  await page.locator('#names').getByRole('button', { name: new RegExp(`^${name}`) }).tap();
+  await expect(page.locator('#cname')).toHaveText(name);
+}
 
 test('the placer by touch: a drag keeps its offset, Mirror flips and keeps, a twist tilts past a half turn', async ({ page }) => {
   await page.goto('tools/accessory-placer.html');
-  await expect(page.getByRole('button', { name: /^Held \(Axe\)/ })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#cname')).toHaveText('Birb');
+  await expect(page.locator('#heldItem')).toHaveValue('d120');
+  await open(page, 'Tupip'); // the Birb
   await expect(page.locator('#fno')).toHaveText('Frame 1 of 4');
+  await expect(page.locator('#state')).toHaveText('Head anchor');
   const cv = page.locator('#cv');
   // Canvas px a character pixel, where the frame's top left is, and css px a canvas px: a character pixel to css px from the canvas.
   const g = await cv.evaluate((el: HTMLCanvasElement) => ({ s: Number(el.dataset.s), o: Number(el.dataset.o), k: el.getBoundingClientRect().width / el.width }));
@@ -81,4 +90,39 @@ test('the placer by touch: a drag keeps its offset, Mirror flips and keeps, a tw
   await wide.fill('5');
   await wide.press('Enter');
   await expect.poll(() => held(page)).toMatchObject({ w: 5, h: placed.h * 2 });
+});
+
+test('guesses: one goat’s mark teaches the others, Accept keeps the app’s own numbers, and a Tiny buddy goes pose by pose', async ({ page }) => {
+  await page.goto('tools/accessory-placer.html');
+  const seed = { held: { ckbrown: { idle: { 0: { x: 7.5, y: 2, w: 9, h: 7, r: 20, f: true } } } }, head: { ckbrown: { idle: { 0: { x: 1, y: 1, w: 3 } } } } };
+  await page.evaluate((m) => localStorage.setItem('acc-marks', JSON.stringify(m)), seed);
+  await page.reload();
+  // The white goat, never placed: a guess from Moko (the brown one), in the guess colour.
+  await open(page, 'Lumi');
+  await expect(page.locator('#state')).toHaveText('Guess');
+  await expect(page.locator('#why')).toContainText('learned from Moko');
+  expect(await page.locator('#state').evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(250, 147, 78)');
+  // Accept: saved as the app would draw it, to the hundredth; the next frame then follows it, moved with the head.
+  await page.getByRole('button', { name: 'Accept ›' }).tap();
+  const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('acc-marks') ?? '{}'));
+  let m = await saved();
+  expect(m.held.ckwhite.idle[0]).toEqual(wearFor(wearFromMarks(seed), 'ckwhite', 0));
+  await expect(page.locator('#fno')).toHaveText('Frame 2 of 4');
+  await expect(page.locator('#why')).toContainText('its other frames');
+  // Accept all for this buddy: every frame, each as the app guesses it from what's set.
+  const before = wearFromMarks(m);
+  await page.getByRole('button', { name: 'Accept all for this buddy' }).tap();
+  m = await saved();
+  for (const f of [1, 2, 3]) expect(m.held.ckwhite.idle[f], `frame ${f}`).toEqual(wearFor(before, 'ckwhite', f));
+  await expect(page.locator('#cmeta')).toContainText('4 of 4 set');
+  // The old stand-in slot's mark is kept, untouched.
+  expect(m.head).toEqual(seed.head);
+  // Nothing like a truck is placed, and none of its pack: the head anchor.
+  await open(page, 'Tubo');
+  await expect(page.locator('#state')).toHaveText('Head anchor');
+  // A Tiny buddy of four poses: placed pose by pose, saved under its poses.
+  await open(page, 'Bosy');
+  await expect(page.locator('#fno')).toHaveText('Pose 1 of 4');
+  await page.getByRole('button', { name: 'Right' }).tap();
+  await expect.poll(() => saved().then((x) => Object.keys(x.held.d090?.poses ?? {}))).toEqual(['0']);
 });
