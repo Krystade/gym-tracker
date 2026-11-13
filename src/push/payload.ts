@@ -199,6 +199,9 @@ export const pingText = (key: unknown) => (isPreset(key) ? PRESETS[key].emoji : 
 /** A message's most characters, as firestore.rules counts them: UTF-16 units, a JS string's length (💪 is two). */
 export const MAX_MESSAGE = 140;
 export const pingNote = (name: string, key: unknown) => ({ title: name, body: pingText(key) });
+/** A sticker, wherever words stand for it (a push, a friend's row, Today): its image never leaves the thread. */
+export const STICKER_TEXT = 'sent a sticker';
+export const stickerNote = (name: string) => ({ title: name, body: STICKER_TEXT });
 /**
  * A message on the lock screen: line breaks and other control characters become spaces (JSON would spell each in six
  * bytes), and never more than 140 UTF-16 units, cut between emoji. So the payload stays under 1 KB whatever was stored.

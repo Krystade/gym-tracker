@@ -1073,6 +1073,8 @@ html.sheet-lock { overflow: hidden; overscroll-behavior: none; }
 .mini.icon[aria-pressed='true'] { color: var(--accent-text); }
 .sheet-menu { display: flex; flex-wrap: wrap; gap: 8px; }
 .sheet-menu .mini { border-radius: var(--r-pill); }
+/* A full thread gives way, never what’s under it: a "Sent" line (which hides its overflow to fold away) was squeezed and cut. */
+.thread-sheet > :not(.thread) { flex-shrink: 0; }
 .thread { list-style: none; margin: 0; padding: 4px 0; flex: 1 1 auto; min-height: 96px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 6px; }
 /* Theirs on the fill, mine an opaque accent fill with accent-ink words: never the accent mixed into the dark. */
 .bubble { max-width: 82%; padding: 8px 14px; border-radius: var(--r-bubble); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; overflow-wrap: anywhere; font-size: var(--fs-body); line-height: 22px; }
@@ -1132,6 +1134,29 @@ html.sheet-lock { overflow: hidden; overscroll-behavior: none; }
 .bubble.ping { align-items: center; padding: 0 4px; background: none; }
 .bubble.ping .bubble-text { font-size: 36px; line-height: 1.15; }
 .bubble.ping time { color: var(--text-3); }
+/* A sticker is its image alone, 120px on its long side, on nothing (its own transparency shows the sheet), as iOS shows them.
+   A long press does nothing: no select, no callout, no drag. */
+.bubble.sticker { align-items: flex-end; padding: 0; background: none; border-radius: 0; }
+.bubble.sticker time { color: var(--text-3); }
+.sticker-img, .recent-sticker img, .compose-sticker img {
+  display: block; object-fit: contain; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-user-drag: none;
+}
+.sticker-img { width: 120px; height: 120px; }
+/* The last 12 sent, in one row that scrolls sideways: each a 52px target, the sticker inside at 44. */
+.recent-stickers { display: flex; gap: 2px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; flex: none; margin: 0 -4px; padding: 0 4px; }
+.recent-stickers::-webkit-scrollbar { display: none; }
+.recent-sticker { flex: none; width: 52px; height: 52px; min-height: 52px; padding: 4px; border-radius: 12px; background: none; }
+.recent-sticker img { width: 44px; height: 44px; }
+/* In the box: the sticker button at its start, and a sticker waiting for Send with its remove. */
+.compose .add-sticker { width: 44px; height: 44px; border-radius: 50%; }
+.compose-sticker { position: relative; flex: none; align-self: center; width: 56px; height: 56px; margin: 2px 0; }
+.compose-sticker img { width: 56px; height: 56px; }
+.compose-sticker .remove {
+  position: absolute; top: -6px; right: -10px; width: 24px; height: 24px; min-height: 24px; min-width: 24px; padding: 0; border-radius: 50%;
+  background: var(--fill-2); color: var(--text); box-shadow: 0 0 0 2px var(--bg);
+}
+/* Its 24px circle is a 44px target. */
+.compose-sticker .remove::after { content: ''; position: absolute; inset: -10px; }
 /* Friends reads again on a pull down at the top; the note under the heading says so (empty, it takes no room). The Refresh a
    screen reader or keyboard reaches shows only while it has focus, over the heading's row so nothing moves when it shows. */
 .friends-page { position: relative; }

@@ -76,6 +76,13 @@ describe('POST /notify: pings and messages', () => {
     expect(net.sent[0].body.length - 103).toBeLessThan(1024);
   });
 
+  it('a sticker rings as "sent a sticker", never its image', async () => {
+    const { a, send, note, net } = await friends();
+    await send(a, { kind: 's', sticker: `data:image/png;base64,${'A'.repeat(80_000)}` });
+    expect(await note()).toMatchObject({ title: 'alice', body: 'sent a sticker', data: { kind: 'message', route: `friend.${a}` } });
+    expect(net.sent[0].body.length - 103).toBeLessThan(1024);
+  });
+
   it('refused: someone else\'s document, one over a minute old, one that isn\'t there, and an ex-friend\'s', async () => {
     const { world, a, b, c, net, send } = await friends();
     world.put(`users/${b}/inbox/fromc`, { from: c, kind: 'p', e: 'fire' });

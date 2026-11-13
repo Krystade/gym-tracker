@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cloudError, loadCloud } from '../cloud/firebase';
-import { blockFriend, clearSentGym, friendState, markRead, removeFriend, sendMessage, sendPing, setMuted } from '../cloud/friends';
+import { blockFriend, clearSentGym, friendState, markRead, removeFriend, sendMessage, sendPing, sendSticker, setMuted } from '../cloud/friends';
 import { MAX_MESSAGE, messageOk, PRESET_KEYS, PRESETS, shortAgo, type PresetKey } from '../domain/messages';
 import { patchFriendCache, peekFriendCache, readLocally, refreshThread, useFriendCache } from '../state/friendCache';
 import { copyGym } from '../domain/share';
@@ -10,6 +10,9 @@ import { Icon, initials } from './icons';
 import { FriendName, FriendTagEditor, useFriendLabel } from './FriendName';
 import { useArmed } from './useArmed';
 import { useSheet } from './useSheet';
+import { makeSticker, pastedImage } from './stickerImage';
+import { withRecent } from '../domain/sticker';
+import { getRecentStickers, putRecentStickers } from '../db/db';
 
 /** The friend a thread is with: from a row (name known) or a notification (uid alone). */
 export interface ThreadWith { uid: string; name?: string }
@@ -23,6 +26,9 @@ const COUNT_FROM = 100; // the count shows only once a message nears the limit
  * when a push arrives or the app comes back, and after a run of sends. A ping tapped again and again sends every tap (owner,
  * 2026-11-12: 👀 over and over): nothing waits or locks between them; they go one after another, as fast as they're taken,
  * and only your day's 300 (socialRate) stops them, with a line saying so.
+ *
+ * Stickers (owner, 2026-11-12: "like iOS stickers in Messages"): one pasted into the box, or picked with the sticker button,
+ * waits in the box until Send (nothing goes by mistake); the row of the last 12 sent from this profile sends at a tap, as a ping does.
  */
 export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }: {
   me: string; friend: ThreadWith; gyms: GymsStore; onClose: () => void; onViewLog: (f: { uid: string; name: string }) => void; onChanged: () => void;
@@ -53,6 +59,16 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
    */
   const [msg, setMsg] = useState<{ ok: boolean; text: string; fades?: boolean; n?: number } | null>(null);
   const [menu, setMenu] = useState(false);
+  /** The sticker in the box, waiting for Send. */
+  const [pending, setPending] = useState<string | null>(null);
+  /**
+   * The recent row as shown: as kept when the sheet opened, with any new one sent from the box put first. One resent from the row
+   * goes first only in what's kept (`keptRecent`), so the row never moves under a finger tapping it again and again.
+   */
+  const [recent, setRecent] = useState<string[]>([]);
+  const keptRecent = useRef<string[]>([]);
+  useEffect(() => { void getRecentStickers().then((l) => { keptRecent.current = l; setRecent(l); }).catch(() => {}); }, []);
+  const picker = useRef<HTMLInputElement>(null);
   const { armed, arm, tap, settling } = useArmed<'remove' | 'block'>();
   const box = useSheet<HTMLElement>(onClose);
   const list = useRef<HTMLOListElement>(null);
@@ -124,10 +140,24 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
     });
   };
   const ping = (k: PresetKey) => void send(async () => sendPing(await loadCloud(), me, friend.uid, k), `Sent ${PRESETS[k].emoji}`);
+  const remember = (st: string, show: boolean) => {
+    keptRecent.current = withRecent(keptRecent.current, st);
+    if (show) setRecent((r) => withRecent(r, st));
+    void putRecentStickers(keptRecent.current).catch(() => {});
+  };
+  const sticker = (st: string, fromBox = false) => send(async () => {
+    try { await sendSticker(await loadCloud(), me, friend.uid, st); } catch (e) { if (fromBox) setPending((p) => p ?? st); throw e; }
+    remember(st, fromBox);
+  }, 'Sent sticker');
+  /** An image pasted or picked: made into a sticker, it waits in the box; one that can't be says why. */
+  const take = async (f: File) => {
+    try { setPending(await makeSticker(f)); } catch (e) { setMsg({ ok: false, text: (e as { plain?: boolean }).plain ? (e as Error).message : 'Couldn’t read that image.', n: Date.now() }); }
+  };
   // The box empties as it's sent, so a second tap on Send can't send the words twice; refused, they come back if it's still empty.
   const put = (t: string) => { setText(t); if (field.current) field.current.value = t; };
   const submit = () => {
     const t = text;
+    if (pending) { setPending(null); sticker(pending, true); }
     if (!messageOk(t)) return;
     put('');
     send(async () => {
@@ -179,7 +209,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
             : items.map((i) => {
               const g = i.kind === 'gym' ? gymRow(i.id) : undefined;
               return (
-                <li key={i.id} className={`bubble ${i.mine ? 'mine' : 'theirs'}${i.kind === 'p' ? ' ping' : ''}`}>
+                <li key={i.id} className={`bubble ${i.mine ? 'mine' : 'theirs'}${i.kind === 'p' ? ' ping' : i.sticker ? ' sticker' : ''}`}>
                   {g ? (<>
                     <span>Sent you a gym: <b>{g.gym.name}</b></span>
                     <span className="bubble-actions">
@@ -190,13 +220,23 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
                       }, () => { setMsg({ ok: true, text: `Added ${g.gym.name} to your gyms.` }); void load(); })}>Add</button>
                       <button className="mini" disabled={busy} onClick={() => void act(async () => clearSentGym(await loadCloud(), me, g.id), () => void load())}>Dismiss</button>
                     </span>
-                  </>) : <span className="bubble-text">{i.text}</span>}
+                  </>) : i.sticker ? <img className="sticker-img" src={i.sticker} alt="Sticker" draggable={false} onContextMenu={(e) => e.preventDefault()} />
+                    : <span className="bubble-text">{i.text}</span>}
                   <time className="muted" dateTime={new Date(i.at).toISOString()}>{shortAgo(i.at, Date.now())}</time>
                 </li>
               );
             })}
         </ol>
         {can ? (<>
+          {recent.length > 0 && (
+            <div className="recent-stickers" role="group" aria-label="Recent stickers">
+              {recent.map((st, k) => (
+                <button key={st.slice(-24) + k} className="recent-sticker" disabled={!state} aria-label={`Send sticker ${k + 1}`} onClick={() => sticker(st)} onContextMenu={(e) => e.preventDefault()}>
+                  <img src={st} alt="" draggable={false} />
+                </button>
+              ))}
+            </div>
+          )}
           <div className="presets" role="group" aria-label="Quick pings">
             {PRESET_KEYS.map((k) => (
               <button key={k} className="preset" disabled={!state} aria-label={`Send ${PRESETS[k].emoji} ${PRESETS[k].copy}`} title={PRESETS[k].copy} onClick={() => ping(k)}>{PRESETS[k].emoji}</button>
@@ -204,11 +244,19 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
           </div>
           {/* Enter is a new line (a message can have several); Send sends, and so does Cmd or Ctrl+Enter on a keyboard. */}
           <form className="compose" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+            <button type="button" className="mini icon add-sticker" aria-label="Add a sticker" disabled={!state} onClick={() => picker.current?.click()}><Icon name="sticker" /></button>
+            <input ref={picker} type="file" accept="image/*" hidden aria-hidden="true" tabIndex={-1} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void take(f); }} />
+            {pending && (
+              <span className="compose-sticker">
+                <img src={pending} alt="Sticker to send" draggable={false} />
+                <button type="button" className="remove" aria-label="Remove the sticker" onClick={() => setPending(null)}><Icon name="close" size={14} sw={2.5} /></button>
+              </span>
+            )}
             <textarea ref={field} aria-label={`Message ${who}`} maxLength={MAX_MESSAGE} rows={1} enterKeyHint="enter" placeholder="Message" autoComplete="off"
-              onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} />
+              onChange={(e) => setText(e.target.value)} onPaste={(e) => { const f = pastedImage(e.clipboardData); if (f) { e.preventDefault(); void take(f); } }} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} />
             <span className="compose-side">
               <span className={`small ${n >= MAX_MESSAGE ? 'warn' : 'muted'}`} aria-live="polite">{n > COUNT_FROM ? `${n}/${MAX_MESSAGE}` : ''}</span>
-              <button type="submit" className="mini primary send" aria-label="Send" disabled={!state || !messageOk(text)}><Icon name="send" size={22} sw={2.25} /></button>
+              <button type="submit" className="mini primary send" aria-label="Send" disabled={!state || (!messageOk(text) && !pending)}><Icon name="send" size={22} sw={2.25} /></button>
             </span>
           </form>
         </>) : state && <p className="muted small">You’re not friends with {who} now, so you can’t message them.</p>}

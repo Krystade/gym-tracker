@@ -380,15 +380,20 @@ service cloud.firestore {
         allow read, delete: if me(uid);
         allow get: if signedIn() && resource.data.from == request.auth.uid;
       }
-      // Pings and messages a friend sent you. They write it as themselves, while they're your friend, with the server's
-      // time, a known ping or 1 to 140 characters, and their own send counter moved in the same write (sendRate, below).
+      // Pings, messages and stickers a friend sent you. They write it as themselves, while they're your friend, with the server's
+      // time, a known ping, 1 to 140 characters, or a sticker (a WebP or PNG data URL in base64, 120,023 characters at most:
+      // 90,000 bytes of image, src/domain/sticker MAX_STICKER; Spark has no Storage, so it's in its own document), and their own
+      // send counter moved in the same write (sendRate, below), so a sticker counts as any message does.
       // You read and clear yours; a sender reads back only their own (the app asks with where from == them). Never edited.
       match /inbox/{id} {
         allow create: if friendOf(uid) && request.resource.data.from == request.auth.uid && request.resource.data.at == request.time
           && ((request.resource.data.kind == 'p' && request.resource.data.keys().hasOnly(['from', 'kind', 'e', 'at'])
                 && request.resource.data.e in ['strong', 'fire', 'clap', 'gym', 'eyes', 'salute'])
             || (request.resource.data.kind == 'm' && request.resource.data.keys().hasOnly(['from', 'kind', 't', 'at'])
-                && request.resource.data.t is string && request.resource.data.t.size() >= 1 && request.resource.data.t.size() <= 140))
+                && request.resource.data.t is string && request.resource.data.t.size() >= 1 && request.resource.data.t.size() <= 140)
+            || (request.resource.data.kind == 's' && request.resource.data.keys().hasOnly(['from', 'kind', 'sticker', 'at'])
+                && request.resource.data.sticker is string && request.resource.data.sticker.size() <= 120023
+                && request.resource.data.sticker.matches('data:image/(webp|png);base64,[A-Za-z0-9+/]+={0,2}')))
           && getAfter(/databases/$(db)/documents/users/$(request.auth.uid)/sendRate/$(uid)).data.at == request.time
           && !closed('messages') && counted();
         allow read: if me(uid) || (signedIn() && resource.data.from == request.auth.uid);

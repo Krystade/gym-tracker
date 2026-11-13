@@ -23,7 +23,8 @@ async function notched(page: Page) {
   const inset = (s: string) => s.replace(/env\(\s*safe-area-inset-(top|right|bottom|left)\s*(?:,[^)]*)?\)/g, (_, side: string) => `${side === 'top' ? TOP : side === 'bottom' ? BOTTOM : 0}px`);
   await page.route('**/*', async (route) => {
     const req = route.request();
-    if (!req.url().startsWith('http://127.0.0.1')) return route.abort();
+    // A blob: URL is the page's own image (a pasted sticker being read), never the network.
+    if (!req.url().startsWith('http://127.0.0.1') && !req.url().startsWith('blob:')) return route.abort();
     if (!['document', 'stylesheet'].includes(req.resourceType())) return route.continue();
     const res = await route.fetch();
     return route.fulfill({ response: res, body: inset(await res.text()) });
@@ -415,4 +416,115 @@ test('an open thread holds the page behind it still, and a swipe down closes it 
   await drag(head, { x: 60, y: h.y }, 4, 140);
   await expect(sheet).toHaveCount(0);
   expect(await a.page.evaluate(() => scrollY)).toBe(y0);
+});
+
+test('a sticker pasted into the box is trimmed, shrunk under the cap and sent; it shows big and unbubbled, and the recent row resends it at every tap', async ({ browser }, info) => {
+  const [a, b] = await Promise.all([person(browser), person(browser)]);
+  await befriend(b, a, b.name);
+  await crew(a.page).getByTestId(`crew-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
+  const sheet = sheetOf(a.page, b.name);
+  const field = sheet.getByRole('textbox', { name: `Message @${b.name}` });
+  await expect(sheet.getByRole('button', { name: 'Send 💪 Strong' })).toBeEnabled();
+  // As iOS pastes a sticker: a transparent PNG in the clipboard. 900×600 with a 300px disc in it, and nothing but clear round it.
+  await field.evaluate(async (el) => {
+    const c = document.createElement('canvas');
+    c.width = 900; c.height = 600;
+    const g = c.getContext('2d')!;
+    const grad = g.createRadialGradient(420, 280, 20, 450, 300, 150);
+    grad.addColorStop(0, '#ffd23f'); grad.addColorStop(1, '#ee4266');
+    g.fillStyle = grad; g.beginPath(); g.arc(450, 300, 150, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#1b1b1b'; g.font = 'bold 90px sans-serif'; g.textAlign = 'center'; g.fillText('PR', 450, 330);
+    const blob = await new Promise<Blob>((ok) => c.toBlob((x) => ok(x!), 'image/png'));
+    const dt = new DataTransfer();
+    dt.items.add(new File([blob], 'sticker.png', { type: 'image/png' }));
+    const ev = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'clipboardData', { value: dt });
+    el.dispatchEvent(ev);
+  });
+  // It waits in the box for Send.
+  await expect(sheet.getByRole('img', { name: 'Sticker to send' })).toBeVisible();
+  await expect(field).toHaveValue('');
+  await a.page.screenshot({ path: `${SHOTS}/sticker-waiting.png` });
+  await sheet.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(sheet.getByRole('status')).toHaveText('Sent sticker');
+  await expect(sheet.getByRole('img', { name: 'Sticker to send' })).toHaveCount(0);
+  const sent = sheet.locator('.bubble.mine.sticker img');
+  await expect(sent).toHaveCount(1);
+  // What went: WebP or PNG, under 60 KB of image, trimmed to the disc (300px, so 256 on its long side), clear at its corners.
+  const got = await sent.evaluate(async (img: HTMLImageElement) => {
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const g = c.getContext('2d')!;
+    g.drawImage(img, 0, 0);
+    const b64 = img.src.slice(img.src.indexOf(',') + 1);
+    return { head: img.src.slice(0, img.src.indexOf(',') + 1), len: img.src.length, bytes: b64.length * 0.75, w: img.naturalWidth, h: img.naturalHeight,
+      corner: g.getImageData(1, 1, 1, 1).data[3], middle: g.getImageData(c.width >> 1, c.height >> 1, 1, 1).data[3] };
+  });
+  expect(got.head).toMatch(/^data:image\/(webp|png);base64,$/);
+  expect(got.bytes).toBeLessThanOrEqual(60_000);
+  expect(got.len).toBeLessThanOrEqual(120_023);
+  expect(Math.max(got.w, got.h)).toBe(256);
+  expect(Math.abs(got.w - got.h)).toBeLessThanOrEqual(2); // the clear border went: a disc's box is square
+  expect(got.corner).toBe(0);
+  expect(got.middle).toBe(255);
+  // Shown at 120px, on nothing: no bubble fill behind it.
+  const box = (await sent.boundingBox())!;
+  expect(Math.round(box.width)).toBe(120);
+  expect(Math.round(box.height)).toBe(120);
+  expect(await sheet.locator('.bubble.mine.sticker').evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+  expect(await sent.evaluate((el) => getComputedStyle(el).webkitUserSelect)).toBe('none');
+
+  // The recent row has it; tapped again and again, every tap sends, and the row stays put under the finger.
+  const recent = sheet.getByRole('group', { name: 'Recent stickers' }).getByRole('button');
+  await expect(recent).toHaveCount(1);
+  const at = await mid(recent.first());
+  for (let i = 0; i < 3; i++) await a.page.touchscreen.tap(at.x, at.y);
+  await expect(sent).toHaveCount(4, { timeout: 30_000 });
+  await expect(sheet.getByRole('status')).toHaveText('Sent sticker ×3');
+  await expect(recent).toHaveCount(1);
+
+  // As on the iPhone, whose canvas can't write WebP (it gives PNG): a photo-like sticker, noisy to the edge, still meets the goal.
+  await field.evaluate(async (el) => {
+    const own = HTMLCanvasElement.prototype.toDataURL;
+    HTMLCanvasElement.prototype.toDataURL = function (this: HTMLCanvasElement, type?: string, q?: unknown) { return own.call(this, type === 'image/webp' ? 'image/png' : type, q); };
+    const c = document.createElement('canvas'), px = 700;
+    c.width = px; c.height = px;
+    const g = c.getContext('2d')!, d = g.createImageData(px, px);
+    for (let y = 0; y < px; y++) for (let x = 0; x < px; x++) {
+      const i = (y * px + x) * 4, r = Math.hypot(x - px / 2, y - px / 2) / 300, n = (Math.random() - 0.5) * 16;
+      if (r > 1) continue;
+      d.data[i] = 200 * (1 - r) + 40 + n + 30 * Math.sin(x / 7); d.data[i + 1] = 120 + 60 * Math.cos(y / 11) + n; d.data[i + 2] = 80 + 100 * r + n; d.data[i + 3] = 255;
+    }
+    g.putImageData(d, 0, 0);
+    const blob = await new Promise<Blob>((ok) => c.toBlob((x) => ok(x!), 'image/png'));
+    const dt = new DataTransfer();
+    dt.items.add(new File([blob], 'photo.png', { type: 'image/png' }));
+    const ev = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'clipboardData', { value: dt });
+    el.dispatchEvent(ev);
+  });
+  await sheet.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(sent).toHaveCount(5, { timeout: 30_000 });
+  const png = await sent.last().evaluate(async (img: HTMLImageElement) => {
+    await img.decode();
+    return { head: img.src.slice(0, img.src.indexOf(',') + 1), bytes: (img.src.length - img.src.indexOf(',') - 1) * 0.75, long: Math.max(img.naturalWidth, img.naturalHeight) };
+  });
+  info.annotations.push({ type: 'png sticker', description: JSON.stringify(png) });
+  expect(png.head).toBe('data:image/png;base64,');
+  expect(png.bytes).toBeLessThanOrEqual(60_000);
+  expect(png.long).toBeGreaterThanOrEqual(192);
+  await expect(recent).toHaveCount(2); // a new one from the box goes first in the row
+  expect(await noSideScroll(a.page)).toBe(true);
+  await a.page.screenshot({ path: `${SHOTS}/thread-stickers.png` });
+  await info.attach('thread-stickers', { path: `${SHOTS}/thread-stickers.png`, contentType: 'image/png' });
+
+  // B: Today says "sent a sticker" (never the image), and the thread shows them, theirs on the left.
+  await b.page.reload();
+  await expect(b.page.getByRole('button', { name: new RegExp(`^@${a.name} sent a sticker`) })).toBeVisible();
+  await goto(b.page, 'Friends');
+  await expect(crew(b.page).getByTestId(`crew-${a.name}`)).toContainText('sent a sticker');
+  await crew(b.page).getByTestId(`crew-${a.name}`).getByRole('button', { name: new RegExp(`^Message @${a.name}`) }).click();
+  await expect(sheetOf(b.page, a.name).locator('.bubble.theirs.sticker img')).toHaveCount(5);
+  await b.page.screenshot({ path: `${SHOTS}/thread-stickers-theirs.png` });
 });

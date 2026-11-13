@@ -217,6 +217,12 @@ export const putTags = async (t: TagPrefs): Promise<void> => { await (await db()
 /** Your Crew status phrase (domain/crew): '' once cleared, absent until first set. */
 export const getStatus = async (): Promise<string | undefined> => ((await (await db()).get('config', 'status')) as { text: string } | undefined)?.text;
 export const putStatus = async (text: string): Promise<void> => { await (await db()).put('config', { key: 'status', text }); };
+/** The stickers this profile sent last, newest first (domain/sticker withRecent): this phone's alone, never synced or backed up. */
+export const getRecentStickers = async (): Promise<string[]> => {
+  const x = (await (await db()).get('config', 'stickers')) as { list?: unknown } | undefined;
+  return Array.isArray(x?.list) ? x.list.filter((s): s is string => typeof s === 'string') : [];
+};
+export const putRecentStickers = async (list: string[]): Promise<void> => { await (await db()).put('config', { key: 'stickers', list }); };
 
 /**
  * The day this profile's achievements count from (domain/achievements `since`; owner 2026-10-21: everyone starts from 0): its

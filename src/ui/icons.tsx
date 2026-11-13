@@ -25,6 +25,8 @@ const P = {
   close: <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />,
   help: <><circle cx="12" cy="12" r="8.25" /><path d="M9.6 9.6a2.45 2.45 0 1 1 3.55 2.2c-.75.38-1.15.9-1.15 1.7v.3" /><circle cx="12" cy="16.6" r="1.05" fill="currentColor" stroke="none" /></>,
   message: <path d="M4.25 7A2.75 2.75 0 0 1 7 4.25h10A2.75 2.75 0 0 1 19.75 7v7A2.75 2.75 0 0 1 17 16.75h-6.25L6.5 20v-3.25A2.75 2.75 0 0 1 4.25 14z" />,
+  // A sticker: a rounded square with its corner peeled up, and a smile on it.
+  sticker: <><path d="M4.75 7.5A2.75 2.75 0 0 1 7.5 4.75h9a2.75 2.75 0 0 1 2.75 2.75v5.25l-6.5 6.5H7.5a2.75 2.75 0 0 1-2.75-2.75z" /><path d="M19.25 12.75h-3.75a2.75 2.75 0 0 0-2.75 2.75v3.75" /><path d="M9 12.25c1.6 1.5 4.4 1.5 6 0" /><circle cx="9.25" cy="9" r="1" fill="currentColor" stroke="none" /><circle cx="14.25" cy="9" r="1" fill="currentColor" stroke="none" /></>,
   send: <path d="M12 18.5V6.5M6.75 11.5 12 6.25l5.25 5.25" />,
   'person-plus': <><circle cx="10" cy="8.25" r="3.25" /><path d="M4 19.25c.55-3.4 2.9-5.25 6-5.25 1.4 0 2.65.38 3.65 1.1" /><path d="M18.25 13.25v6.5M15 16.5h6.5" /></>,
   check: <path d="M5.5 12.5l4.25 4.25L18.5 8" />,

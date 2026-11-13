@@ -2,6 +2,7 @@ import type { Gym } from '../domain/equipment';
 import { monthOf, type CloudMonth, type MetaItems } from '../domain/cloud';
 import { itemShort, latestOf, messageOk, thread, toClear, unreadOf, type InboxDoc, type PresetKey, type ThreadItem } from '../domain/messages';
 import { cleanStatus } from '../domain/crew';
+import { stickerOk } from '../domain/sticker';
 import { defaultProfile } from '../domain/profile';
 import { isPlaceKey } from '../domain/place';
 import { newToken, type Invite } from '../domain/invite';
@@ -398,13 +399,14 @@ const COULDNT = 'Couldn’t send.';
  * (each reads the counters the last one wrote), however fast they're asked for.
  */
 const sending = new Map<string, Promise<unknown>>();
-function sendInbox(c: Cloud, me: string, to: string, data: { kind: 'p'; e: PresetKey } | { kind: 'm'; t: string }): Promise<string> {
+type Sendable = { kind: 'p'; e: PresetKey } | { kind: 'm'; t: string } | { kind: 's'; sticker: string };
+function sendInbox(c: Cloud, me: string, to: string, data: Sendable): Promise<string> {
   const next = (sending.get(to) ?? Promise.resolve()).catch(() => {}).then(() => sendOne(c, me, to, data));
   sending.set(to, next);
   void next.catch(() => {}).finally(() => { if (sending.get(to) === next) sending.delete(to); });
   return next;
 }
-async function sendOne(c: Cloud, me: string, to: string, data: { kind: 'p'; e: PresetKey } | { kind: 'm'; t: string }): Promise<string> {
+async function sendOne(c: Cloud, me: string, to: string, data: Sendable): Promise<string> {
   const { F, db } = c;
   const rateRef = F.doc(db, `users/${me}/sendRate/${to}`);
   const attempt = async (flip: boolean, off: number) => {
@@ -438,12 +440,18 @@ export function sendMessage(c: Cloud, me: string, to: string, text: string) {
   if (!messageOk(t)) throw fail('Write 1 to 140 characters.');
   return sendInbox(c, me, to, { kind: 'm', t });
 }
+/** A sticker (domain/sticker): its own document, like any message, so a thread's documents stay small whatever else is in it. */
+export function sendSticker(c: Cloud, me: string, to: string, sticker: string) {
+  if (!stickerOk(sticker)) throw fail('That sticker is too big to send.');
+  return sendInbox(c, me, to, { kind: 's', sticker });
+}
 
 const inboxDoc = (d: { id: string; data(): Record<string, unknown> }): InboxDoc | null => {
   const x = d.data();
   const at = (x.at as { toMillis?(): number } | null)?.toMillis?.();
-  if (typeof x.from !== 'string' || (x.kind !== 'p' && x.kind !== 'm') || at == null) return null;
-  return { id: d.id, from: x.from, kind: x.kind, at, ...(typeof x.e === 'string' && { e: x.e }), ...(typeof x.t === 'string' && { t: x.t }) };
+  if (typeof x.from !== 'string' || (x.kind !== 'p' && x.kind !== 'm' && x.kind !== 's') || at == null) return null;
+  if (x.kind === 's' && !stickerOk(x.sticker)) return null;
+  return { id: d.id, from: x.from, kind: x.kind, at, ...(typeof x.e === 'string' && { e: x.e }), ...(typeof x.t === 'string' && { t: x.t }), ...(x.kind === 's' && { sticker: x.sticker as string }) };
 };
 const docs = (q: { docs: { id: string; data(): Record<string, unknown> }[] }) => q.docs.map(inboxDoc).filter((d): d is InboxDoc => !!d);
 

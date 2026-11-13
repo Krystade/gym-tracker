@@ -1,15 +1,15 @@
-import { isPreset, MAX_MESSAGE, PRESETS } from '../push/payload';
+import { isPreset, MAX_MESSAGE, PRESETS, STICKER_TEXT } from '../push/payload';
 
 // Pings and messages between friends, as the app shows them. Stored in users/{to}/inbox (firestore.rules); this file is
 // the arithmetic on what was read: the thread, what's unread, how long ago.
 
 export { MAX_MESSAGE, PRESET_KEYS, PRESETS, type PresetKey } from '../push/payload';
 
-/** One inbox document as read: a ping (`e`, a preset key) or a message (`t`). `at` is the server's time, in ms. */
-export interface InboxDoc { id: string; from: string; kind: 'p' | 'm'; e?: string; t?: string; at: number }
+/** One inbox document as read: a ping (`e`, a preset key), a message (`t`) or a sticker (`sticker`, its data URL: domain/sticker). `at` is the server's time, in ms. */
+export interface InboxDoc { id: string; from: string; kind: 'p' | 'm' | 's'; e?: string; t?: string; sticker?: string; at: number }
 
-/** One line in a thread: yours on the right, theirs on the left; a gym they sent shows with Add and Dismiss. */
-export interface ThreadItem { id: string; mine: boolean; at: number; kind: 'p' | 'm' | 'gym'; text: string }
+/** One line in a thread: yours on the right, theirs on the left; a gym they sent shows with Add and Dismiss; a sticker, its image (`sticker`). */
+export interface ThreadItem { id: string; mine: boolean; at: number; kind: 'p' | 'm' | 's' | 'gym'; text: string; sticker?: string }
 
 /** Older than this, the recipient's phone deletes it (Spark has no automatic expiry). */
 export const KEEP_MS = 30 * 864e5;
@@ -22,12 +22,14 @@ export const THREAD_MAX = 20;
  */
 export function itemText(d: Pick<InboxDoc, 'kind' | 'e' | 't'>): string {
   if (d.kind === 'm') return d.t ?? '';
+  if (d.kind === 's') return 'Sticker';
   return isPreset(d.e) ? PRESETS[d.e].emoji : 'Ping';
 }
 
-/** The short form for a row: a ping's emoji alone, a message cut to fit. */
+/** The short form for a row: a ping's emoji alone, "sent a sticker", a message cut to fit. */
 export function itemShort(d: Pick<InboxDoc, 'kind' | 'e' | 't'>, max = 24): string {
   if (d.kind === 'p') return isPreset(d.e) ? PRESETS[d.e].emoji : 'Ping';
+  if (d.kind === 's') return STICKER_TEXT;
   const t = (d.t ?? '').replace(/\s+/g, ' ').trim();
   return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
 }
@@ -35,8 +37,8 @@ export function itemShort(d: Pick<InboxDoc, 'kind' | 'e' | 't'>, max = 24): stri
 /** Both halves of a conversation and the gyms they sent, oldest first, the last `max` of them. */
 export function thread(mine: InboxDoc[], theirs: InboxDoc[], gyms: { id: string; sent: number; name: string }[], max = THREAD_MAX): ThreadItem[] {
   const items: ThreadItem[] = [
-    ...mine.map((d) => ({ id: d.id, mine: true, at: d.at, kind: d.kind, text: itemText(d) })),
-    ...theirs.map((d) => ({ id: d.id, mine: false, at: d.at, kind: d.kind, text: itemText(d) })),
+    ...mine.map((d) => ({ id: d.id, mine: true, at: d.at, kind: d.kind, text: itemText(d), ...(d.sticker && { sticker: d.sticker }) })),
+    ...theirs.map((d) => ({ id: d.id, mine: false, at: d.at, kind: d.kind, text: itemText(d), ...(d.sticker && { sticker: d.sticker }) })),
     ...gyms.map((g) => ({ id: g.id, mine: false, at: g.sent, kind: 'gym' as const, text: g.name })),
   ];
   return items.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id)).slice(-max);

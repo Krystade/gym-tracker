@@ -589,6 +589,27 @@ describe('pings and messages (inbox), with the sender’s counter (sendRate)', (
     await assertFails(send('bob', 'alice', msg('💪'.repeat(71))));
     await assertSucceeds(send('bob', 'alice', msg('💪'.repeat(70))));
   });
+  it('a sticker: a WebP or PNG data URL in base64, 120,023 characters at most, its four keys, counted like any message', async () => {
+    const sticker = (s: unknown) => ({ kind: 's', sticker: s });
+    const url = (mime: string, n: number) => `data:image/${mime};base64,${'A'.repeat(n - `data:image/${mime};base64,`.length)}`;
+    await clearRate();
+    await assertSucceeds(send('bob', 'alice', sticker(url('webp', 120_023)))); // the cap, to the character
+    await clearRate();
+    await assertSucceeds(send('bob', 'alice', sticker(url('png', 120_023))));
+    await clearRate();
+    await assertFails(send('bob', 'alice', sticker(url('webp', 120_024)))); // one over
+    await assertFails(send('bob', 'alice', sticker(url('jpeg', 2000)))); // only WebP and PNG
+    await assertFails(send('bob', 'alice', sticker(url('svg+xml', 2000))));
+    await assertFails(send('bob', 'alice', sticker('https://evil.example/a.png')));
+    await assertFails(send('bob', 'alice', sticker('data:image/png;base64,<script>')));
+    await assertFails(send('bob', 'alice', sticker(7)));
+    await assertFails(send('bob', 'alice', { kind: 's' }));
+    await assertFails(send('bob', 'alice', { ...sticker(url('png', 200)), t: 'hi' }));
+    await assertFails(send('bob', 'alice', { kind: 'm', sticker: url('png', 200) }));
+    // Never without the counters in the same write.
+    await assertFails(setDoc(doc(as('bob'), 'users/alice/inbox/s1'), { from: 'bob', at: serverTimestamp(), ...sticker(url('png', 200)) }));
+    await assertSucceeds(send('bob', 'alice', sticker(url('png', 200))));
+  });
   it('never as someone else, never with the phone’s clock, never without the counter in the same write', async () => {
     await assertFails(send('bob', 'alice', { ...ping(), from: 'carol' }));
     await assertFails(send('bob', 'alice', { ...ping(), at: Timestamp.now() }));

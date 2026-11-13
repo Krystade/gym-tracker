@@ -14,6 +14,13 @@ describe('messages', () => {
     expect(itemShort(m('1', 'a', 0, 'see you   at the\nsquat rack tonight then'))).toBe('see you at the squat ra…');
   });
 
+  it('a sticker shows as its image in the thread and as "sent a sticker" in a row', () => {
+    const st: InboxDoc = { id: 's1', from: 'jake', kind: 's', sticker: 'data:image/png;base64,AAAA', at: 5 };
+    expect(itemShort(st)).toBe('sent a sticker');
+    expect(thread([], [st], [])).toEqual([{ id: 's1', mine: false, at: 5, kind: 's', text: 'Sticker', sticker: 'data:image/png;base64,AAAA' }]);
+    expect(thread([p('p1', 'me', 1)], [], [])[0]).not.toHaveProperty('sticker');
+  });
+
   it('merges a thread oldest first, mine and theirs and their gyms, keeping the last 20', () => {
     const t = thread([p('m1', 'me', 10), m('m2', 'me', 30, 'hi')], [p('t1', 'jake', 20, 'clap')], [{ id: 'g1', sent: 25, name: 'Home' }]);
     expect(t.map((x) => [x.id, x.mine, x.kind, x.text])).toEqual([

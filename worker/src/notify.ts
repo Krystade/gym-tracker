@@ -1,4 +1,4 @@
-import { acceptedNote, gymNote, limitNote, messageNote, pingNote, reportNote, requestNote, type FriendKind, type ModKind, type Route } from '../../src/push/payload';
+import { acceptedNote, gymNote, limitNote, messageNote, pingNote, reportNote, requestNote, stickerNote, type FriendKind, type ModKind, type Route } from '../../src/push/payload';
 import { dayId, GLOBAL_PER_DAY, SOCIAL_PER_DAY, type LimitId } from '../../src/domain/limits';
 import { displayOf } from '../../src/domain/displayName';
 import { OWNERS } from '../../src/cloud/owner';
@@ -65,7 +65,7 @@ async function friendOf(env: Env4, token: string, to: string): Promise<void> {
  *   404 proves it and 403 disproves it. The sender's own list naming `to` must be new too; anyone can add anyone to
  *   their own list, which is why that alone proves nothing.
  * - gym: the gym in `to`'s inbox is from the sender (the sender may read only their own) and new, and they're still friends.
- * - inbox: likewise for a ping or message; its words are the stored ping's or the stored text, never the request's.
+ * - inbox: likewise for a ping, message or sticker; its words are the stored ping's or the stored text, never the request's.
  * - report (social S4): the sender's report on board post `id` exists (only its reporter, or an owner, may read it) and was
  *   made in the last minute. It rings the app's owners alone, whoever `to` names (`recipients`), and says nothing of who
  *   reported what. An owner's own reports ring nobody.
@@ -117,6 +117,8 @@ export async function check(env: Env4, token: string, me: string, c: Claim, now:
       const base = { from: me, ...name, key: `inbox:${c.id}`, route: `friend.${me}` as const, unread: true };
       if (d.fields.kind === 'p') return { ...base, kind: 'ping', note: pingNote(said, d.fields.e) };
       if (d.fields.kind === 'm' && typeof d.fields.t === 'string' && d.fields.t) return { ...base, kind: 'message', note: messageNote(said, d.fields.t) };
+      // A sticker rings as words alone ("sent a sticker"): its image stays in the document.
+      if (d.fields.kind === 's') return { ...base, kind: 'message', note: stickerNote(said) };
       throw new Refused('inbox');
     }
   }
