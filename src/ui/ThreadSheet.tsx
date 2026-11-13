@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { blockFriend, clearSentGym, friendState, markRead, removeFriend, sendMessage, sendPing, sendSticker, setMuted } from '../cloud/friends';
 import { MAX_MESSAGE, messageOk, PRESET_KEYS, PRESETS, shortAgo, type PresetKey } from '../domain/messages';
@@ -10,7 +10,8 @@ import { Icon, initials } from './icons';
 import { FriendName, FriendTagEditor, useFriendLabel } from './FriendName';
 import { useArmed } from './useArmed';
 import { useSheet } from './useSheet';
-import { makeSticker, pastedImage } from './stickerImage';
+import { makeSticker, stickerFromElement } from './stickerImage';
+import { MessageBox, readBox, writeBox } from './MessageBox';
 import { withRecent } from '../domain/sticker';
 import { getRecentStickers, putRecentStickers } from '../db/db';
 
@@ -29,6 +30,8 @@ const COUNT_FROM = 100; // the count shows only once a message nears the limit
  *
  * Stickers (owner, 2026-11-12: "like iOS stickers in Messages"): one pasted into the box, or picked with the sticker button,
  * waits in the box until Send (nothing goes by mistake); the row of the last 12 sent from this profile sends at a tap, as a ping does.
+ * The box is a contenteditable (ui/MessageBox) so iOS's emoji keyboard offers its Stickers, Memoji and Genmoji there too: one put
+ * in the box the same way becomes the sticker waiting for Send, and the words round it stay as they were.
  */
 export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }: {
   me: string; friend: ThreadWith; gyms: GymsStore; onClose: () => void; onViewLog: (f: { uid: string; name: string }) => void; onChanged: () => void;
@@ -48,7 +51,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   const kept = cache?.threads[friend.uid];
   const items = kept?.items ?? (empty ? [] : null);
   const sentGyms = kept?.gyms ?? [];
-  // What's typed lives in the field itself (uncontrolled) and `text` follows it. A controlled field is written back from state
+  // What's typed lives in the box itself (uncontrolled) and `text` follows it. A controlled field is written back from state
   // on every render, and a render landing inside an input event (a thread or news read coming back: the friend cache tells
   // every screen at once, synchronously) wrote the old value over the keystroke before React's own listener saw it.
   const [text, setText] = useState('');
@@ -72,16 +75,8 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   const { armed, arm, tap, settling } = useArmed<'remove' | 'block'>();
   const box = useSheet<HTMLElement>(onClose);
   const list = useRef<HTMLOListElement>(null);
-  const field = useRef<HTMLTextAreaElement>(null);
   // The box grows a line at a time to fit what's typed, up to its CSS max-height; past that it scrolls.
-  useLayoutEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    const border = el.offsetHeight - el.clientHeight, want = el.scrollHeight + border;
-    el.style.height = `${want}px`;
-    el.style.overflowY = want > parseFloat(getComputedStyle(el).maxHeight) ? 'auto' : 'hidden';
-  }, [text]);
+  const field = useRef<HTMLDivElement>(null);
   const changed = useRef(onChanged);
   changed.current = onChanged;
 
@@ -149,19 +144,19 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
     try { await sendSticker(await loadCloud(), me, friend.uid, st); } catch (e) { if (fromBox) setPending((p) => p ?? st); throw e; }
     remember(st, fromBox);
   }, 'Sent sticker');
-  /** An image pasted or picked: made into a sticker, it waits in the box; one that can't be says why. */
-  const take = async (f: File) => {
-    try { setPending(await makeSticker(f)); } catch (e) { setMsg({ ok: false, text: (e as { plain?: boolean }).plain ? (e as Error).message : 'Couldn’t read that image.', n: Date.now() }); }
+  /** An image pasted, picked or put in by the keyboard: made into a sticker, it waits in the box; one that can't be says why. */
+  const take = async (made: Promise<string>) => {
+    try { setPending(await made); } catch (e) { setMsg({ ok: false, text: (e as { plain?: boolean }).plain ? (e as Error).message : 'Couldn’t read that image.', n: Date.now() }); }
   };
   // The box empties as it's sent, so a second tap on Send can't send the words twice; refused, they come back if it's still empty.
-  const put = (t: string) => { setText(t); if (field.current) field.current.value = t; };
+  const put = (t: string) => { setText(t); writeBox(field.current, t); };
   const submit = () => {
     const t = text;
     if (pending) { setPending(null); sticker(pending, true); }
     if (!messageOk(t)) return;
     put('');
     send(async () => {
-      try { await sendMessage(await loadCloud(), me, friend.uid, t); } catch (e) { if (!field.current?.value) put(t); throw e; }
+      try { await sendMessage(await loadCloud(), me, friend.uid, t); } catch (e) { if (!readBox(field.current)) put(t); throw e; }
     }, 'Sent');
   };
   const act = async (f: () => Promise<void>, after: () => void) => {
@@ -245,15 +240,16 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
           {/* Enter is a new line (a message can have several); Send sends, and so does Cmd or Ctrl+Enter on a keyboard. */}
           <form className="compose" onSubmit={(e) => { e.preventDefault(); submit(); }}>
             <button type="button" className="mini icon add-sticker" aria-label="Add a sticker" disabled={!state} onClick={() => picker.current?.click()}><Icon name="sticker" /></button>
-            <input ref={picker} type="file" accept="image/*" hidden aria-hidden="true" tabIndex={-1} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void take(f); }} />
+            <input ref={picker} type="file" accept="image/*" hidden aria-hidden="true" tabIndex={-1} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void take(makeSticker(f)); }} />
             {pending && (
               <span className="compose-sticker">
                 <img src={pending} alt="Sticker to send" draggable={false} />
                 <button type="button" className="remove" aria-label="Remove the sticker" onClick={() => setPending(null)}><Icon name="close" size={14} sw={2.5} /></button>
               </span>
             )}
-            <textarea ref={field} aria-label={`Message ${who}`} maxLength={MAX_MESSAGE} rows={1} enterKeyHint="enter" placeholder="Message" autoComplete="off"
-              onChange={(e) => setText(e.target.value)} onPaste={(e) => { const f = pastedImage(e.clipboardData); if (f) { e.preventDefault(); void take(f); } }} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} />
+            <MessageBox ref={field} label={`Message ${who}`} placeholder="Message" max={MAX_MESSAGE} empty={!text} onText={setText}
+              onFile={(f) => void take(makeSticker(f))} onImage={(urls, el) => void take(stickerFromElement(urls, el))}
+              onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} />
             <span className="compose-side">
               <span className={`small ${n >= MAX_MESSAGE ? 'warn' : 'muted'}`} aria-live="polite">{n > COUNT_FROM ? `${n}/${MAX_MESSAGE}` : ''}</span>
               <button type="submit" className="mini primary send" aria-label="Send" disabled={!state || (!messageOk(text) && !pending)}><Icon name="send" size={22} sw={2.25} /></button>

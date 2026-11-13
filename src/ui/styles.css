@@ -51,7 +51,7 @@ body { overscroll-behavior-y: none; }
   touch-action: manipulation;
 }
 img, svg, canvas, video { -webkit-user-drag: none; }
-input, textarea, [contenteditable]:not([contenteditable=false]), .bubble-text, .bd-text, .rv-text {
+input, textarea, [contenteditable]:not([contenteditable=false]), [contenteditable]:not([contenteditable=false]) *, .bubble-text, .bd-text, .rv-text {
   -webkit-user-select: text; user-select: text; -webkit-touch-callout: default;
 }
 .bubble.ping .bubble-text { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
@@ -1120,13 +1120,17 @@ html.sheet-lock { overflow: hidden; overscroll-behavior: none; }
   translate: 0 calc(var(--drag, 0px) - var(--vv-bottom, 0px) - var(--kb, 0px));
   max-height: calc(100% - var(--sat) - 24px - var(--vv-top, 0px) - var(--vv-bottom, 0px) - var(--kb, 0px) - var(--kb-top, 0px));
 }
-/* The message box grows a line at a time from one to five (ThreadSheet sets its height), then scrolls. Send stays at its foot,
-   with the count above it once a message nears 140; a message keeps its line breaks in the thread. */
-.compose textarea {
-  flex: 1; display: block; resize: none; font-size: var(--fs-md); line-height: 22px; padding: 10px 8px 10px 14px; min-height: 44px;
-  max-height: calc(5 * 22px + 22px); overflow-y: hidden; border: 0; background: none;
+/* The message box (a contenteditable, so iOS's keyboard offers its stickers: ui/MessageBox) grows a line at a time from one
+   to five, then scrolls. Send stays at its foot, with the count above it once a message nears 140; a message keeps its line
+   breaks in the thread. Its placeholder sits over it, so the caret starts where the words will. */
+.compose [contenteditable] {
+  flex: 1; min-width: 0; position: relative; display: block; font-size: var(--fs-md); line-height: 22px; padding: 10px 8px 10px 14px;
+  min-height: 44px; max-height: calc(5 * 22px + 22px); overflow-y: auto; overscroll-behavior: contain; white-space: pre-wrap;
+  overflow-wrap: anywhere; color: var(--text); outline: 0; cursor: text;
 }
-.compose textarea:focus-visible { outline: 0; }
+.compose [contenteditable].empty::before {
+  content: attr(data-placeholder); position: absolute; left: 14px; top: 10px; color: var(--text-3); pointer-events: none;
+}
 .compose-side { display: flex; flex-direction: column; align-items: flex-end; flex: none; }
 .compose-side .small:not(:empty) { margin: 0 8px 2px 0; }
 .bubble-text { white-space: pre-wrap; }

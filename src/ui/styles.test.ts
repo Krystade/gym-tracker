@@ -18,7 +18,7 @@ const px = (v: string): number | undefined => {
 function fieldRules() {
   const out: { selector: string; size: string }[] = [];
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const field = m[1].split(',').map((s) => s.trim()).filter((s) => /(^|[\s>+~])(input|select|textarea)(?![\w-])(?!\[type=(checkbox|radio|range)\])/.test(s) && !/::?[\w-]+$/.test(s.replace(/:(focus|focus-visible|disabled|not\([^)]*\))/g, '')));
+    const field = m[1].split(',').map((s) => s.trim()).filter((s) => /(^|[\s>+~])(input|select|textarea|\[contenteditable\])(?![\w-])(?!\[type=(checkbox|radio|range)\])/.test(s) && !/::?[\w-]+$/.test(s.replace(/:(focus|focus-visible|disabled|not\([^)]*\))/g, '')));
     const size = /(?:^|;)\s*font-size:\s*([^;]+)/.exec(m[2])?.[1] ?? /(?:^|;)\s*font:\s*(?:\d+\s+)?(\d+px)/.exec(m[2])?.[1];
     if (field.length && size) out.push({ selector: field.join(', '), size });
   }
@@ -28,6 +28,7 @@ function fieldRules() {
 describe('fields in styles.css', () => {
   it('finds the field rules it checks (the base rule among them)', () => {
     expect(fieldRules().map((r) => r.selector)).toContain('input, select, textarea');
+    expect(fieldRules().map((r) => r.selector)).toContain('.compose [contenteditable]'); // the thread's message box
   });
   it('sets no field’s text under 16px', () => {
     expect(fieldRules().filter((r) => !(px(r.size) !== undefined && px(r.size)! >= 16)).map((r) => `${r.selector}: ${r.size}`)).toEqual([]);

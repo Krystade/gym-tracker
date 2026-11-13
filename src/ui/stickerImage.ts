@@ -6,23 +6,29 @@ import { fit, pick, posterize, QUALITIES, SIZES, trimBox } from '../domain/stick
 
 /** Read at no more than this on its long side before trimming: a 12-megapixel photo never sits whole in a canvas. */
 const WORK_PX = 1024;
+const UNREADABLE = 'Couldn’t read that image.';
 const plain = (message: string) => Object.assign(new Error(message), { plain: true });
 
-function decode(file: Blob): Promise<HTMLImageElement> {
-  const url = URL.createObjectURL(file);
+/** An image at `url` (a blob: or data: one: nothing goes to the network), decoded; Safari decodes HEIC as anything else. */
+function load(url: string): Promise<HTMLImageElement> {
   const img = new Image();
   return new Promise<HTMLImageElement>((ok, no) => {
     img.onload = () => ok(img);
-    img.onerror = () => no(plain('Couldn’t read that image.'));
+    img.onerror = () => no(plain(UNREADABLE));
     img.src = url;
-  }).finally(() => URL.revokeObjectURL(url));
+  });
+}
+
+function decode(file: Blob): Promise<HTMLImageElement> {
+  const url = URL.createObjectURL(file);
+  return load(url).finally(() => URL.revokeObjectURL(url));
 }
 
 const canvas = (w: number, h: number) => {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const g = c.getContext('2d', { willReadFrequently: true });
-  if (!g) throw plain('Couldn’t read that image.');
+  if (!g) throw plain(UNREADABLE);
   g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
   return { c, g };
 };
@@ -37,9 +43,35 @@ export function pastedImage(d: DataTransfer | null): File | null {
 
 /** The sticker's data URL, or an error with the reason (unreadable, nothing in it, too big however small it's drawn). */
 export async function makeSticker(file: Blob): Promise<string> {
-  const img = await decode(file);
+  return fromImage(await decode(file));
+}
+
+/**
+ * The sticker from an image the keyboard put in the message box (ui/boxNodes): each of its URLs in turn, best first (the
+ * PNG WebKit gives with a HEIC), then the element itself, as it was already drawn. All start loading at once, before the box
+ * lets go of the element, so a blob: URL WebKit drops with it is already read. An image read but refused (empty, too big)
+ * says so; none read, `Couldn’t read that image.`
+ */
+export function stickerFromElement(urls: readonly string[], el: HTMLImageElement | null): Promise<string> {
+  const loads = urls.map((u) => load(u).then((img) => ({ img }), () => null));
+  return (async () => {
+    let refused: unknown = null;
+    const tryOne = async (img: HTMLImageElement) => {
+      try { return await fromImage(img); } catch (e) { if ((e as Error).message !== UNREADABLE) refused ??= e; return null; }
+    };
+    for (const l of loads) {
+      const got = await l;
+      const s = got && await tryOne(got.img);
+      if (s) return s;
+    }
+    if (el?.complete && el.naturalWidth) { const s = await tryOne(el); if (s) return s; }
+    throw refused ?? plain(UNREADABLE);
+  })();
+}
+
+async function fromImage(img: HTMLImageElement): Promise<string> {
   const iw = img.naturalWidth, ih = img.naturalHeight;
-  if (!iw || !ih) throw plain('Couldn’t read that image.');
+  if (!iw || !ih) throw plain(UNREADABLE);
   const work = fit(iw, ih, WORK_PX);
   const a = canvas(work.w, work.h);
   a.g.drawImage(img, 0, 0, work.w, work.h);

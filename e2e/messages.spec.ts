@@ -68,6 +68,8 @@ async function befriend(from: { page: Page }, to: { page: Page; name: string }, 
 
 const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth);
 const fontPx = (l: ReturnType<Page['locator']>) => l.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+/** What the message box holds, as its lines show (it's a contenteditable: ui/MessageBox). */
+const boxValue = (l: ReturnType<Page['locator']>) => l.evaluate((el) => (el as HTMLElement).innerText);
 
 test('a ping from a Crew row and a message from the friend view land in the other’s thread, with the dot and the Today line', async ({ browser }, info) => {
   const [a, b] = await Promise.all([person(browser), person(browser)]);
@@ -108,13 +110,13 @@ test('a ping from a Crew row and a message from the friend view land in the othe
   // 140 characters at most, counted as it's typed; an empty one can't be sent.
   await expect(sheet.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
   await field.fill('x'.repeat(150));
-  await expect(field).toHaveValue('x'.repeat(140));
+  await expect.poll(() => boxValue(field)).toBe('x'.repeat(140));
   await expect(sheet).toContainText('140/140');
   await field.fill(LONG);
   await expect(sheet.getByRole('button', { name: 'Send', exact: true })).toBeEnabled(); // no wait after a send
   await sheet.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(sheet.getByRole('status')).toHaveText('Sent');
-  await expect(field).toHaveValue('');
+  await expect.poll(() => boxValue(field)).toBe('');
   await expect(sheet.getByRole('list', { name: 'Messages' }).locator('.bubble.mine .bubble-text')).toHaveText(['💪', LONG]);
   await a.page.screenshot({ path: `${SHOTS}/thread-sent.png` });
   await sheet.getByRole('button', { name: 'Close' }).click();
@@ -312,14 +314,14 @@ test('the message box wraps a long message onto lines it grows to fit; Enter is 
   await field.fill('Line one');
   await field.press('Enter');
   await field.pressSequentially('line two');
-  await expect(field).toHaveValue('Line one\nline two');
+  await expect.poll(() => boxValue(field)).toBe('Line one\nline two');
   await expect(sheet.locator('.bubble.mine')).toHaveCount(0);
   await sheet.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(sheet.getByRole('status')).toHaveText('Sent');
   const bubble = sheet.locator('.bubble.mine .bubble-text');
   await expect(bubble).toHaveCount(1);
   expect(await bubble.innerText()).toBe('Line one\nline two');
-  await expect(field).toHaveValue('');
+  await expect.poll(() => boxValue(field)).toBe('');
   expect((await field.boundingBox())!.height).toBeLessThanOrEqual(one + 1);
 });
 
@@ -346,7 +348,7 @@ test('a thread read coming back mid-keystroke keeps what was typed', async ({ br
   await expect.poll(() => a.page.evaluate(() => (window as unknown as Held).held.length)).toBeGreaterThanOrEqual(3);
   await a.page.waitForTimeout(300); // the replies' bodies are in, so letting go finishes the read within the event
   await field.fill('Bench at 6?');
-  await expect(field).toHaveValue('Bench at 6?');
+  await expect.poll(() => boxValue(field)).toBe('Bench at 6?');
   await expect(sheet.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
 });
 
@@ -443,7 +445,7 @@ test('a sticker pasted into the box is trimmed, shrunk under the cap and sent; i
   });
   // It waits in the box for Send.
   await expect(sheet.getByRole('img', { name: 'Sticker to send' })).toBeVisible();
-  await expect(field).toHaveValue('');
+  await expect.poll(() => boxValue(field)).toBe('');
   await a.page.screenshot({ path: `${SHOTS}/sticker-waiting.png` });
   await sheet.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(sheet.getByRole('status')).toHaveText('Sent sticker');
@@ -527,4 +529,108 @@ test('a sticker pasted into the box is trimmed, shrunk under the cap and sent; i
   await crew(b.page).getByTestId(`crew-${a.name}`).getByRole('button', { name: new RegExp(`^Message @${a.name}`) }).click();
   await expect(sheetOf(b.page, a.name).locator('.bubble.theirs.sticker img')).toHaveCount(5);
   await b.page.screenshot({ path: `${SHOTS}/thread-stickers-theirs.png` });
+});
+
+// ---- iOS's emoji keyboard (owner, 2026-11-12): its Stickers, Memoji and Genmoji go only into a rich-text field, which in
+// WebKit is a contenteditable; there it puts an <img>, or a <picture> (a HEIC source, a PNG <img> to fall back on). Headless
+// WebKit has no such keyboard: these put the nodes in as WebKit does, and the real keyboard is the phone's to check. ----
+
+/** A 200px transparent PNG with a disc of `colour` in it, as a data URL; run in the page. */
+const DISC = `(colour) => { const c = document.createElement('canvas'); c.width = c.height = 200; const g = c.getContext('2d');
+  g.fillStyle = colour; g.beginPath(); g.arc(100, 100, 70, 0, Math.PI * 2); g.fill(); return c.toDataURL('image/png'); }`;
+/** The middle pixel of the sticker waiting in the box, as [r, g, b]. */
+const middle = (l: ReturnType<Page['locator']>) => l.evaluate(async (img: HTMLImageElement) => {
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const g = c.getContext('2d')!;
+  g.drawImage(img, 0, 0);
+  return Array.from(g.getImageData(c.width >> 1, c.height >> 1, 1, 1).data.slice(0, 3));
+});
+const near = (got: number[], want: number[]) => got.every((v, i) => Math.abs(v - want[i]) <= 16);
+
+test('a sticker the keyboard puts in the box waits there for Send, the words round it stay, and typing and Send work as ever', async ({ browser }, info) => {
+  const [a, b] = await Promise.all([person(browser), person(browser)]);
+  await befriend(b, a, b.name);
+  await crew(a.page).getByTestId(`crew-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
+  const sheet = sheetOf(a.page, b.name);
+  const field = sheet.getByRole('textbox', { name: `Message @${b.name}` });
+  await expect(sheet.getByRole('button', { name: 'Send 💪 Strong' })).toBeEnabled();
+  // Rich text, so iOS offers its stickers (plaintext-only would hide them), and 16px (iOS zooms a smaller field).
+  expect(await field.evaluate((el) => (el as HTMLElement).contentEditable)).toBe('true');
+  expect(await fontPx(field)).toBeGreaterThanOrEqual(16);
+  await expect(field).toHaveAttribute('aria-placeholder', 'Message');
+  await field.click();
+  await field.pressSequentially('Nice');
+  await expect(sheet.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+
+  // A sticker from the keyboard: an <img> at the caret, then the input event. It's out of the box before the next frame.
+  const left = await field.evaluate(async (el, disc) => {
+    const img = document.createElement('img');
+    img.src = (0, eval)(disc)('#2a9d8f'); img.alt = 'Sticker';
+    getSelection()!.getRangeAt(0).insertNode(img);
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste' }));
+    await new Promise((ok) => requestAnimationFrame(ok));
+    return el.querySelectorAll('img, picture').length;
+  }, DISC);
+  expect(left, 'gone before it was drawn').toBe(0);
+  const waiting = sheet.getByRole('img', { name: 'Sticker to send' });
+  await expect(waiting).toBeVisible();
+  expect(near(await middle(waiting), [0x2a, 0x9d, 0x8f]), 'the teal one waits').toBe(true);
+  await expect.poll(() => boxValue(field)).toBe('Nice');
+
+  // A Genmoji or HEIC sticker: a <picture>, put in mid-word with no input event at all (only the observer sees it). Its HEIC
+  // source this WebKit can't draw; the PNG it falls back on becomes the sticker, in place of the one waiting.
+  const left2 = await field.evaluate(async (el, disc) => {
+    const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let t: Text | null = null;
+    while (walk.nextNode()) if ((walk.currentNode as Text).data.includes('Ni')) { t = walk.currentNode as Text; break; }
+    const pic = document.createElement('picture');
+    const src = document.createElement('source');
+    src.type = 'image/x-apple-adaptive-glyph'; src.srcset = 'data:image/heic;base64,AAAAGGZ0eXBoZWljAAAAAG1pZjE=';
+    const img = document.createElement('img');
+    img.src = (0, eval)(disc)('#e76f51'); img.alt = 'Genmoji of a flexed arm';
+    pic.append(src, img);
+    const r = document.createRange();
+    r.setStart(t!, t!.data.indexOf('Ni') + 2); r.collapse(true);
+    r.insertNode(pic);
+    await new Promise((ok) => requestAnimationFrame(ok));
+    return el.querySelectorAll('img, picture, source').length;
+  }, DISC);
+  expect(left2).toBe(0);
+  await expect.poll(async () => near(await middle(waiting), [0xe7, 0x6f, 0x51]), 'the orange one waits now').toBe(true);
+  await expect(waiting).toHaveCount(1);
+  await expect.poll(() => boxValue(field)).toBe('Nice');
+
+  // Words pasted with their formatting go in as words alone, at the caret.
+  await field.evaluate((el) => {
+    const sel = getSelection()!;
+    sel.selectAllChildren(el); sel.collapseToEnd();
+    const dt = new DataTransfer();
+    dt.setData('text/html', '<b style="color:red"> big</b> <i>lift</i>');
+    dt.setData('text/plain', ' big lift');
+    const ev = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'clipboardData', { value: dt });
+    el.dispatchEvent(ev);
+  });
+  await expect.poll(() => boxValue(field)).toBe('Nice big lift');
+  await expect(field.locator('b, i, [style]')).toHaveCount(0);
+  await a.page.screenshot({ path: `${SHOTS}/sticker-from-keyboard.png` });
+  await info.attach('sticker-from-keyboard', { path: `${SHOTS}/sticker-from-keyboard.png`, contentType: 'image/png' });
+
+  // Typing goes on where it was; Send sends the sticker, then the words, and empties the box.
+  await field.pressSequentially('!');
+  await sheet.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(sheet.getByRole('status')).toHaveText('Sent');
+  await expect(sheet.locator('.bubble.mine.sticker img')).toHaveCount(1);
+  expect(near(await middle(sheet.locator('.bubble.mine.sticker img')), [0xe7, 0x6f, 0x51])).toBe(true);
+  await expect(sheet.locator('.bubble.mine .bubble-text')).toHaveText(['Nice big lift!']);
+  await expect(waiting).toHaveCount(0);
+  await expect.poll(() => boxValue(field)).toBe('');
+  await expect(sheet.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+  // And again, with no sticker: a plain message.
+  await field.fill('Same time tomorrow?');
+  await sheet.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(sheet.locator('.bubble.mine .bubble-text')).toHaveText(['Nice big lift!', 'Same time tomorrow?']);
+  await expect.poll(() => boxValue(field)).toBe('');
 });
