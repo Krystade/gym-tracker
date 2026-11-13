@@ -28,6 +28,8 @@ const traitText = (b: BuddyDef) => `${STAT[b.trait]} ×${(TRAIT_TENTHS[b.rarity]
 
 /** A buddy's name: its own, else its roster name. */
 export const nameOf = (s: BuddiesStore, id: string) => s.kept?.prefs[id]?.name ?? defaultName(id);
+/** What a buddy holds, of what's owned (a worn id no spend landed on isn't shown): the card and Today's lead draw it. */
+export const heldOf = (s: BuddiesStore, id: string) => { const x = s.kept?.prefs[id]?.equip?.held; return x && s.ledger?.owned.has(x) ? x : undefined; };
 
 type View = { at: 'home' } | { at: 'card'; id: string; from: 'home' | 'collection' } | { at: 'collection' };
 type Sheet = { at: 'pull'; mode: Mode; banner: Banner } | { at: 'wear'; id: string; slot: Slot } | null;

@@ -132,3 +132,46 @@ test('the head anchors’ check grid: every pose of every buddy, drawn, at 320 a
     await page.screenshot({ path: `screenshots/buddy-anchors-${w}.png`, fullPage: true });
   }
 });
+
+test('the lead on Today holds what its card does (placed, guessed or on the anchor), covering no control, big ones too', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  const day = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
+  // Owned and worn as the app keeps them (db config): a choose spend each, the sword held, a lead picked.
+  const seed = (lead: string) => page.evaluate(async ({ lead, day }) => {
+    const db = await new Promise<IDBDatabase>((ok, no) => { const r = indexedDB.open('gym-tracker'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+    const at = Date.now(), got = ['c066', 'truck', 'dudemrs', 'd105'];
+    const spends = Object.fromEntries(got.map((g, i) => [`s${i}`, { id: `s${i}`, at: at - 1000 + i, day, kind: 'choose', banner: g === 'd105' ? 'acc' : 'buddy', cost: 0, got: g, rarity: 0, refund: 0 }]));
+    const tx = db.transaction('config', 'readwrite'), st = tx.objectStore('config');
+    st.put({ key: 'spends', map: spends });
+    st.put({ key: 'buddies', map: { [lead]: { equip: { held: 'd105' }, at } } });
+    st.put({ key: 'buddy-lead', id: lead, at });
+    st.put({ key: 'buddy-start', since: day });
+    await new Promise((ok) => { tx.oncomplete = ok; });
+    db.close();
+  }, { lead, day });
+  // The Tiny one placed by hand on its first pose (tilted, out front); the others learn nothing like them: guess or anchor.
+  await page.evaluate(() => localStorage.setItem('acc-marks', JSON.stringify({ held: { c066: { poses: { 0: { x: 13, y: 9, w: 8, h: 8, r: 30, f: false } } } } })));
+  for (const [k, id] of ['c066', 'truck', 'dudemrs', 'c066'].entries()) {
+    if (k === 3) await page.evaluate(() => localStorage.removeItem('acc-marks')); // and unplaced: on its head anchor
+    await seed(id);
+    await page.reload();
+    const lead = page.locator('.today-buddy'), held = lead.locator('img.bu-held[data-held="d105"]');
+    await expect(held, id).toBeVisible();
+    if (k === 0) await expect(held).toHaveAttribute('data-placed', '');
+    // On screen, below the status bar's backdrop.
+    const box = (await held.boundingBox())!;
+    expect(box.y, id).toBeGreaterThanOrEqual((await lead.boundingBox())!.y - 12.5); // no higher than the lead's own room
+    expect(box.x + box.width, id).toBeLessThanOrEqual(375);
+    // Nothing it holds lies over a control (the lead's own button aside).
+    const hit = await held.evaluate((el) => {
+      const h = el.getBoundingClientRect();
+      return [...document.querySelectorAll('button, a, input, select, textarea, [role=button], [role=tab]')].filter((c) => !c.closest('.today-buddy')).filter((c) => {
+        const r = c.getBoundingClientRect();
+        return r.width && r.height && r.left < h.right && h.left < r.right && r.top < h.bottom && h.top < r.bottom;
+      }).map((c) => c.outerHTML.slice(0, 80));
+    });
+    expect(hit, id).toEqual([]);
+    if (k === 0 || k === 2) await page.screenshot({ path: `test-results/today-held-${id}.png` });
+  }
+});

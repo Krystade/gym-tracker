@@ -565,7 +565,7 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
    slot's bottom right, left over the arrows' empty row and up to the status backdrop, and one taller than that hangs from there
    into the title's right end, which the date never reaches. */
 .today-buddy .bu-sprite { position: absolute; right: 0; bottom: 0; }
-.today-buddy .bu-sprite.tall { bottom: auto; top: -12px; }
+.today-buddy .bu-sprite.tall { bottom: auto; top: calc(-12px + var(--rise, 0px)); }
 /* "at Garage ›" under the day: quiet, a full-width 44px tap target pulled up into the head's gap. */
 .gym-line { width: 100%; justify-content: flex-start; margin: -12px 0 8px; padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--fs-sub); font-weight: 400; gap: 4px; }
 .gym-line > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

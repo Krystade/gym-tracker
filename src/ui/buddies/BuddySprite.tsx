@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { headOf } from '../../domain/buddies/anchorFix';
 import { FRAMES, HELD } from '../../domain/buddies/anchors';
 import type { BuddyDef } from '../../domain/buddies/roster';
-import { heldStyle, SINK, SINK_OLD, WEAR, wearFor, wearFromMarks, type Wear, type WearMap } from '../../domain/buddies/wear';
+import { heldStyle, SINK, SINK_OLD, WEAR, wearFor, wearFromMarks, type HeldStyle, type Wear, type WearMap } from '../../domain/buddies/wear';
 
 // A buddy's sprite (public/buddies/<pose>.png, 16 × 16) at a whole-number scale, drawn pixelated. A buddy of several poses
 // cycles through them (owner: a group cycles); under reduced motion it holds its first. Every pose is in the page from the
@@ -89,33 +89,59 @@ export function BuddySprite({ def, scale, box, still, shadow, className, held }:
     return () => clearInterval(t);
   }, [n, ms, still]);
   const on = stepping(n, still) ? at % n : 0, cls = `bu-sprite${shadow ? ' shadow' : ''}${className ? ` ${className}` : ''}`;
-  const item = held && HELD[held] ? held : null, k = heldScale(scale);
-  /** The held item, its base on (ax, ay): the anchor in css px from the sprite's top left. Placed by hand (`wear`, with `s` css
-   *  px a frame pixel): its own width, height, tilt and mirror. */
-  const heldAt = (ax: number, ay: number, wear?: Wear | null, s = 1) => {
-    if (!item) return null;
-    const st = wear ? heldStyle(HELD[item], [ax, ay], (wear.w * s) / SPRITE, (wear.h * s) / SPRITE, wear.r, wear.f) : heldStyle(HELD[item], [ax, ay], k);
-    return <img className="bu-held" src={spriteUrl(item)} width={Math.round(st.width)} height={Math.round(st.height)} alt="" draggable={false} data-held={item}
-      data-placed={wear ? '' : undefined} style={st} />;
-  };
+  const item = held && HELD[held] ? held : null, st = item ? heldPlace(def, scale, box, item, on) : null;
+  const heldImg = item && st && <img className="bu-held" src={spriteUrl(item)} width={Math.round(st.width)} height={Math.round(st.height)} alt="" draggable={false}
+    data-held={item} data-placed={st.placed ? '' : undefined} style={st.style} />;
   if (art) {
-    const [x0, y0, w, h] = FRAMES[def.id].box, s = fitScale(scale, w, h, box), [ax, ay] = headOf(def.id, on);
-    const wear = item ? wearAt(def.id, on) : null;
+    const [x0, y0, w, h] = FRAMES[def.id].box, s = fitScale(scale, w, h, box);
     return (
       <span className={`${cls} old`} style={{ width: w * s, height: h * s }} aria-hidden="true" data-art={def.id}>
         <span className="bu-frame">
           <img src={spriteUrl(def.id)} width={Math.round(art.n * art.w * s)} height={Math.round(art.h * s)} alt="" draggable={false}
             style={{ width: art.n * art.w * s, height: art.h * s, left: -(on * art.w + x0) * s, top: -y0 * s }} />
         </span>
-        {wear ? heldAt((wear.x - x0) * s, (wear.y - y0) * s, wear, s) : heldAt((ax - x0) * s, (ay - y0 + SINK_OLD) * s)}
+        {heldImg}
       </span>
     );
   }
-  const px = SPRITE * scale, [ax, ay] = headOf(poses[on]), wear = item ? wearAt(def.id, on) : null;
+  const px = SPRITE * scale;
   return (
     <span className={cls} style={{ width: px, height: px }} aria-hidden="true">
       {poses.map((p, i) => <img key={p} src={spriteUrl(p)} width={px} height={px} alt="" draggable={false} hidden={i !== on} />)}
-      {wear ? heldAt(wear.x * scale, wear.y * scale, wear, scale) : heldAt(ax * scale, (ay + SINK) * scale)}
+      {heldImg}
     </span>
   );
+}
+
+/**
+ * Where a held item goes on frame (or pose) `on` of a buddy drawn at `scale` in `box`, css px from the sprite's top left: placed
+ * by hand or guessed (domain/buddies/wear), its own width, height, tilt and mirror, growing with the character; else on the head
+ * anchor at half the Tiny scale.
+ */
+export function heldPlace(def: BuddyDef, scale: number, box: readonly [number, number] | undefined, item: string, on: number): { style: HeldStyle; width: number; height: number; placed: boolean } {
+  const wear = wearAt(def.id, on);
+  let st: HeldStyle;
+  if (def.art) {
+    const [x0, y0, w, h] = FRAMES[def.id].box, s = fitScale(scale, w, h, box), [ax, ay] = headOf(def.id, on);
+    st = wear ? heldStyle(HELD[item], [(wear.x - x0) * s, (wear.y - y0) * s], (wear.w * s) / SPRITE, (wear.h * s) / SPRITE, wear.r, wear.f)
+      : heldStyle(HELD[item], [(ax - x0) * s, (ay - y0 + SINK_OLD) * s], heldScale(scale));
+  } else {
+    const [ax, ay] = headOf(def.poses[on]);
+    st = wear ? heldStyle(HELD[item], [wear.x * scale, wear.y * scale], (wear.w * scale) / SPRITE, (wear.h * scale) / SPRITE, wear.r, wear.f)
+      : heldStyle(HELD[item], [ax * scale, (ay + SINK) * scale], heldScale(scale));
+  }
+  return { style: st, width: st.width, height: st.height, placed: !!wear };
+}
+/** How far above the sprite's top its held item reaches over all its frames or poses, tilt included (css px; 0 when it doesn't). */
+export function heldRise(def: BuddyDef, scale: number, box: readonly [number, number] | undefined, item: string | null | undefined): number {
+  if (!item || !HELD[item]) return 0;
+  let top = 0;
+  for (let on = 0; on < (def.art ? def.art.n : def.poses.length); on++) {
+    const { style: st } = heldPlace(def, scale, box, item, on);
+    const [ox, oy] = st.transformOrigin ? st.transformOrigin.split(' ').map(parseFloat) : [0, 0];
+    const r = /rotate((-?[d.]+)deg)/.exec(st.transform ?? '')?.[1], a = ((r ? Number(r) : 0) * Math.PI) / 180;
+    for (const [x, y] of [[0, 0], [st.width, 0], [0, st.height], [st.width, st.height]])
+      top = Math.min(top, st.top + oy + (x - ox) * Math.sin(a) + (y - oy) * Math.cos(a));
+  }
+  return Math.ceil(-top);
 }
