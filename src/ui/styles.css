@@ -1155,6 +1155,8 @@ html.sheet-lock { overflow: hidden; overscroll-behavior: none; }
 .compose .add-sticker { width: 44px; height: 44px; border-radius: 50%; }
 .compose-sticker { position: relative; flex: none; align-self: center; width: 56px; height: 56px; margin: 2px 0; }
 .compose-sticker img { width: 56px; height: 56px; }
+/* On its way: it stays in the box, faded, until the server has it. */
+.compose-sticker[aria-busy='true'] img { opacity: 0.45; transition: opacity 200ms; }
 .compose-sticker .remove {
   position: absolute; top: -6px; right: -10px; width: 24px; height: 24px; min-height: 24px; min-width: 24px; padding: 0; border-radius: 50%;
   background: var(--fill-2); color: var(--text); box-shadow: 0 0 0 2px var(--bg);

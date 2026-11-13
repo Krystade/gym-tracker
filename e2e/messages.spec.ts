@@ -634,3 +634,74 @@ test('a sticker the keyboard puts in the box waits there for Send, the words rou
   await expect(sheet.locator('.bubble.mine .bubble-text')).toHaveText(['Nice big lift!', 'Same time tomorrow?']);
   await expect.poll(() => boxValue(field)).toBe('');
 });
+
+// ---- A send the server never answers (owner, 2026-11-12: "I tried to send a sticker and it all looked good but never shows up
+// in the chat"; no write of it ever reached Firestore, and the box had let it go at the tap). ----
+
+test('a sticker and words that get no answer stay, and the line says so; Send then sends each once', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const [a, b] = await Promise.all([person(browser), person(browser)]);
+  await befriend(b, a, b.name);
+  await crew(a.page).getByTestId(`crew-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
+  const sheet = sheetOf(a.page, b.name);
+  const field = sheet.getByRole('textbox', { name: `Message @${b.name}` });
+  await expect(sheet.getByRole('button', { name: 'Send 💪 Strong' })).toBeEnabled();
+  // Every write held unanswered, as on the phone, until the line comes back; what was held is then dropped, never landing.
+  let back!: () => void;
+  const line = new Promise<void>((ok) => { back = ok; });
+  const commit = (u: URL) => u.pathname.endsWith(':commit');
+  await a.page.route(commit, async (route) => { await line; await route.abort(); });
+
+  await field.evaluate(async (el) => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 200;
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#2a9d8f'; g.beginPath(); g.arc(100, 100, 70, 0, Math.PI * 2); g.fill();
+    const blob = await new Promise<Blob>((ok) => c.toBlob((x) => ok(x!), 'image/png'));
+    const dt = new DataTransfer();
+    dt.items.add(new File([blob], 'sticker.png', { type: 'image/png' }));
+    const ev = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'clipboardData', { value: dt });
+    el.dispatchEvent(ev);
+  });
+  const waiting = sheet.getByRole('img', { name: 'Sticker to send' });
+  await expect(waiting).toBeVisible();
+  await field.click();
+  await field.pressSequentially('Got it?');
+  const send = sheet.getByRole('button', { name: 'Send', exact: true });
+  await send.click();
+
+  // On its way: the sticker stays in the box marked as sending (Send can't send it twice), and the line says it's going.
+  await expect(sheet.locator('.compose-sticker')).toHaveAttribute('aria-busy', 'true');
+  await expect(send).toBeDisabled();
+  await expect(sheet.getByRole('status')).toHaveText('Sending…');
+  await a.page.screenshot({ path: `${SHOTS}/sticker-sending.png` });
+  // No answer: the line says so, and the sticker and the words are both still there to send.
+  await expect(sheet.getByRole('alert')).toHaveText(/no answer/i, { timeout: 30_000 });
+  await expect(waiting).toBeVisible();
+  await expect(sheet.locator('.compose-sticker')).not.toHaveAttribute('aria-busy', 'true');
+  await expect.poll(() => boxValue(field)).toBe('Got it?');
+  await expect(sheet.locator('.bubble.mine')).toHaveCount(0);
+  await a.page.screenshot({ path: `${SHOTS}/sticker-no-answer.png` });
+
+  // Sent again and the sheet closed while it waits, then opened again: when it fails, both come back to the box, with why.
+  await send.click();
+  await expect(sheet.locator('.compose-sticker')).toHaveAttribute('aria-busy', 'true');
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await expect(sheet).toHaveCount(0);
+  await crew(a.page).getByTestId(`crew-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
+  await expect(sheet.getByRole('alert')).toHaveText(/no answer/i, { timeout: 30_000 });
+  await expect(waiting).toBeVisible();
+  await expect.poll(() => boxValue(field)).toBe('Got it?');
+
+  // The line is back: Send sends them, each once.
+  back();
+  await a.page.unroute(commit);
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(sheet.getByRole('status')).toHaveText('Sent');
+  await expect(waiting).toHaveCount(0);
+  await expect(sheet.locator('.bubble.mine.sticker img')).toHaveCount(1);
+  await expect(sheet.locator('.bubble.mine .bubble-text')).toHaveText(['Got it?']);
+  await expect.poll(() => boxValue(field)).toBe('');
+});

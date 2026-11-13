@@ -397,11 +397,22 @@ const COULDNT = 'Couldn’t send.';
  * The hour is judged by this phone's clock; near its edge the server may judge otherwise, so a refusal reads the counter again
  * and tries the other way once. Someone who blocked or removed you: "Couldn't send". Sends to one friend go one after another
  * (each reads the counters the last one wrote), however fast they're asked for.
+ *
+ * One the server doesn't answer in SEND_WAIT_MS fails with NO_ANSWER (owner, 2026-11-12: a sticker sent from the phone never
+ * reached Firestore, and with no answer its send waited for ever, silent, holding every later send to that friend behind it).
+ * Its write can't be called back, so it may still land late; the thread shows it if it does.
  */
+export const SEND_WAIT_MS = 20_000;
+const NO_ANSWER = 'Couldn’t send: no answer from the server. Check your connection and try again.';
+function inTime<T>(p: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, no) => { timer = setTimeout(() => no(fail(NO_ANSWER)), SEND_WAIT_MS); });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
 const sending = new Map<string, Promise<unknown>>();
 type Sendable = { kind: 'p'; e: PresetKey } | { kind: 'm'; t: string } | { kind: 's'; sticker: string };
 function sendInbox(c: Cloud, me: string, to: string, data: Sendable): Promise<string> {
-  const next = (sending.get(to) ?? Promise.resolve()).catch(() => {}).then(() => sendOne(c, me, to, data));
+  const next = (sending.get(to) ?? Promise.resolve()).catch(() => {}).then(() => inTime(sendOne(c, me, to, data)));
   sending.set(to, next);
   void next.catch(() => {}).finally(() => { if (sending.get(to) === next) sending.delete(to); });
   return next;

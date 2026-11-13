@@ -19,6 +19,23 @@ import { getRecentStickers, putRecentStickers } from '../db/db';
 export interface ThreadWith { uid: string; name?: string }
 
 const COUNT_FROM = 100; // the count shows only once a message nears the limit
+/** A send not answered by then says it's going ("Sending…") until it is; cloud/friends gives up on it at SEND_WAIT_MS. */
+const SLOW_MS = 1000;
+
+/**
+ * What a send that failed after its sheet was closed left behind (the sticker, the words, why), per you and friend: the thread
+ * puts it back in the box and says why when it next opens, or at once if it's open again already, so nothing that didn't go
+ * is lost without a word.
+ */
+type Unsent = { sticker?: string; text?: string; why?: string };
+const unsent = new Map<string, Unsent>();
+const openThreads = new Map<string, () => void>();
+const noteUnsent = (key: string, x: Unsent) => { unsent.set(key, { ...unsent.get(key), ...x }); openThreads.get(key)?.(); };
+/** The line a failed send shows: its own words when it has them, else its code, for the next report from the phone. */
+const whyNot = (e: unknown) => {
+  const x = e as { plain?: boolean; short?: string; message?: string; code?: string };
+  return x.short ?? (x.plain ? x.message! : `Couldn’t send${x.code ? ` (${x.code})` : ''}. Try again.`);
+};
 
 /**
  * Pings and messages with one friend, in a sheet from the bottom (never a centred modal: the board stays visible above
@@ -32,6 +49,10 @@ const COUNT_FROM = 100; // the count shows only once a message nears the limit
  * waits in the box until Send (nothing goes by mistake); the row of the last 12 sent from this profile sends at a tap, as a ping does.
  * The box is a contenteditable (ui/MessageBox) so iOS's emoji keyboard offers its Stickers, Memoji and Genmoji there too: one put
  * in the box the same way becomes the sticker waiting for Send, and the words round it stay as they were.
+ *
+ * A sticker sent from the box stays there, marked as sending, until the server has it (owner, 2026-11-12: one let go at the tap
+ * "looked good" and never came, and nothing said so); one not sent stays with the line saying why. A send that takes a while
+ * says "Sending…"; one with no answer fails (cloud/friends SEND_WAIT_MS), and words that didn't go come back to the box.
  */
 export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }: {
   me: string; friend: ThreadWith; gyms: GymsStore; onClose: () => void; onViewLog: (f: { uid: string; name: string }) => void; onChanged: () => void;
@@ -64,6 +85,12 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   const [menu, setMenu] = useState(false);
   /** The sticker in the box, waiting for Send. */
   const [pending, setPending] = useState<string | null>(null);
+  /** The box's sticker once Send is tapped, until its send ends: kept in a ref too, so a second tap can't send it twice. */
+  const [outgoing, setOutgoing] = useState<string | null>(null);
+  const going = useRef<string | null>(null);
+  const key = `${me}:${friend.uid}`;
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   /**
    * The recent row as shown: as kept when the sheet opened, with any new one sent from the box put first. One resent from the row
    * goes first only in what's kept (`keptRecent`), so the row never moves under a finger tapping it again and again.
@@ -115,21 +142,25 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   // the queue is empty, not after each. A refusal ends the run: what's still queued is dropped, and the line says why.
   const queue = useRef<Promise<void>>(Promise.resolve());
   const run = useRef({ waiting: 0, stop: false, last: '', same: 0, n: 0 });
-  const send = (f: () => Promise<unknown>, done: string) => {
+  // `undo`: what puts it back when it doesn't go, refused or dropped from a stopped run (the sheet closed: kept for its next open).
+  const send = (f: () => Promise<unknown>, done: string, undo?: () => void) => {
     const r = run.current;
     r.waiting++;
     queue.current = queue.current.then(async () => {
+      let slow: ReturnType<typeof setTimeout> | undefined;
       try {
-        if (r.stop) return;
+        if (r.stop) { undo?.(); return; }
+        slow = setTimeout(() => { if (alive.current) setMsg({ ok: true, text: 'Sending…', n: ++r.n }); }, SLOW_MS);
         await f();
         r.same = r.last === done ? r.same + 1 : 1;
         r.last = done;
         setMsg({ ok: true, text: r.same > 1 ? `${done} ×${r.same}` : done, fades: true, n: ++r.n });
       } catch (e) {
         r.stop = true;
-        const x = e as { plain?: boolean; short?: string; message?: string };
-        setMsg({ ok: false, text: x.short ?? (x.plain ? x.message! : 'Couldn’t send.'), n: ++r.n });
+        undo?.();
+        if (alive.current) setMsg({ ok: false, text: whyNot(e), n: ++r.n }); else noteUnsent(key, { why: whyNot(e) });
       } finally {
+        clearTimeout(slow);
         if (!--r.waiting) { run.current = { waiting: 0, stop: false, last: '', same: 0, n: r.n }; void load(); }
       }
     });
@@ -140,10 +171,18 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
     if (show) setRecent((r) => withRecent(r, st));
     void putRecentStickers(keptRecent.current).catch(() => {});
   };
-  const sticker = (st: string, fromBox = false) => send(async () => {
-    try { await sendSticker(await loadCloud(), me, friend.uid, st); } catch (e) { if (fromBox) setPending((p) => p ?? st); throw e; }
-    remember(st, fromBox);
-  }, 'Sent sticker');
+  // From the box: it stays there until the server has it, then goes; not sent, it stays (or comes back, if taken out meanwhile).
+  const sticker = (st: string, fromBox = false) => {
+    if (fromBox) { going.current = st; setOutgoing(st); }
+    const ended = () => { if (fromBox && going.current === st) { going.current = null; setOutgoing(null); } };
+    const undo = () => { ended(); if (!fromBox) return; if (alive.current) setPending((p) => p ?? st); else noteUnsent(key, { sticker: st }); };
+    send(async () => {
+      await sendSticker(await loadCloud(), me, friend.uid, st);
+      ended();
+      if (fromBox) setPending((p) => (p === st ? null : p));
+      remember(st, fromBox);
+    }, 'Sent sticker', undo);
+  };
   /** An image pasted, picked or put in by the keyboard: made into a sticker, it waits in the box; one that can't be says why. */
   const take = async (made: Promise<string>) => {
     try { setPending(await made); } catch (e) { setMsg({ ok: false, text: (e as { plain?: boolean }).plain ? (e as Error).message : 'Couldn’t read that image.', n: Date.now() }); }
@@ -152,13 +191,27 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   const put = (t: string) => { setText(t); writeBox(field.current, t); };
   const submit = () => {
     const t = text;
-    if (pending) { setPending(null); sticker(pending, true); }
+    if (pending && going.current !== pending) sticker(pending, true);
     if (!messageOk(t)) return;
     put('');
-    send(async () => {
-      try { await sendMessage(await loadCloud(), me, friend.uid, t); } catch (e) { if (!readBox(field.current)) put(t); throw e; }
-    }, 'Sent');
+    send(async () => sendMessage(await loadCloud(), me, friend.uid, t), 'Sent', () => {
+      if (!alive.current) noteUnsent(key, { text: t }); else if (!readBox(field.current)) put(t);
+    });
   };
+  // What a send left when its sheet closed before it failed: back in the box, with why.
+  useEffect(() => {
+    const restore = () => {
+      const u = unsent.get(key);
+      if (!u) return;
+      unsent.delete(key);
+      if (u.sticker) setPending((p) => p ?? u.sticker!);
+      if (u.text && !readBox(field.current)) put(u.text);
+      if (u.why) setMsg({ ok: false, text: u.why, n: Date.now() });
+    };
+    restore();
+    openThreads.set(key, restore);
+    return () => { if (openThreads.get(key) === restore) openThreads.delete(key); };
+  }, [key]);
   const act = async (f: () => Promise<void>, after: () => void) => {
     setBusy(true); setMsg(null);
     try { await f(); changed.current(); after(); } catch (e) { setMsg({ ok: false, text: cloudError(e) }); } finally { setBusy(false); }
@@ -242,7 +295,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
             <button type="button" className="mini icon add-sticker" aria-label="Add a sticker" disabled={!state} onClick={() => picker.current?.click()}><Icon name="sticker" /></button>
             <input ref={picker} type="file" accept="image/*" hidden aria-hidden="true" tabIndex={-1} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void take(makeSticker(f)); }} />
             {pending && (
-              <span className="compose-sticker">
+              <span className="compose-sticker" aria-busy={pending === outgoing}>
                 <img src={pending} alt="Sticker to send" draggable={false} />
                 <button type="button" className="remove" aria-label="Remove the sticker" onClick={() => setPending(null)}><Icon name="close" size={14} sw={2.5} /></button>
               </span>
@@ -252,7 +305,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
               onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} />
             <span className="compose-side">
               <span className={`small ${n >= MAX_MESSAGE ? 'warn' : 'muted'}`} aria-live="polite">{n > COUNT_FROM ? `${n}/${MAX_MESSAGE}` : ''}</span>
-              <button type="submit" className="mini primary send" aria-label="Send" disabled={!state || (!messageOk(text) && !pending)}><Icon name="send" size={22} sw={2.25} /></button>
+              <button type="submit" className="mini primary send" aria-label="Send" disabled={!state || (!messageOk(text) && (!pending || pending === outgoing))}><Icon name="send" size={22} sw={2.25} /></button>
             </span>
           </form>
         </>) : state && <p className="muted small">You’re not friends with {who} now, so you can’t message them.</p>}
