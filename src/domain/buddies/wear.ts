@@ -1,13 +1,15 @@
 import { headOf } from './anchorFix';
 import { FRAMES, LOOK } from './anchors';
 import { guess, learnFrom, turn, type Body, type Look, type Marks, type Wear, type World } from './guess';
+import { PLACED } from './marks';
 import { BUDDIES, packOf } from './roster';
 
 // A held item placed by hand (owner 2026-11-12): in the accessory placer (public/tools/accessory-placer.html) he drags it, sizes
 // it, stretches its width and height apart, tilts it a full turn and mirrors it, frame by frame of the strip the app shows (an
 // older character's idle strip or still picture, a Tiny buddy's poses: the same files, pixel for pixel), on any buddy. Its marks
 // reach the app two ways: on the phone that made them at once (the placer saves them in this site's storage, which
-// ui/buddies/BuddySprite reads), and for everyone once its Copy is pasted into WEAR here (wearFromMarks). Read as untrusted.
+// ui/buddies/BuddySprite reads over WEAR, frame by frame), and for everyone once its Copy is baked into domain/buddies/marks
+// (scripts/bake-marks.mjs), which is WEAR here. Read as untrusted.
 // A frame nobody placed takes a guess learned from the frames that were (domain/buddies/guess, which the placer shares), else
 // the head anchor as it always has.
 
@@ -19,8 +21,15 @@ export const ITEM = 16;
 /** How far a held item sits into the head: the Tiny sprites' outline is two pixels thick (the older characters', one). */
 export const SINK = 2, SINK_OLD = 1;
 
-/** Placed by hand for everyone: the owner's Held marks, from the placer's Copy through wearFromMarks. None sent yet. */
-export const WEAR: WearMap = {};
+/** Placed by hand for everyone: the owner's Held marks, baked from the placer's Copy (domain/buddies/marks, 2026-11-12). */
+export const WEAR: WearMap = PLACED;
+
+/** Some marks over others, frame by frame: `top`'s frame where it has one, else `base`'s (this phone's marks over WEAR). */
+export function over(base: WearMap, top: WearMap): WearMap {
+  const out: Record<string, Readonly<Record<number, Wear>>> = { ...base };
+  for (const [id, fs] of Object.entries(top)) out[id] = { ...(Object.hasOwn(base, id) ? base[id] : {}), ...fs };
+  return out;
+}
 
 const lookOf = ([bx, by, bw, bh, neck, ...top]: readonly number[], head: readonly [number, number]): Look => ({ head, box: [bx, by, bw, bh], neck, top });
 /** An older character's held item unplaced on its card (the hero: Tiny scale 8 where that fits 280 × 144 css px, else as large

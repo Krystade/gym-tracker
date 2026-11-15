@@ -3,21 +3,20 @@
 //
 //   node scripts/guess-eval.mjs marks.json          a table: position off in the frame's own pixels, size off, tilt off
 //   node scripts/guess-eval.mjs marks.json --json   the whole report, every mark's miss included
+//   node scripts/guess-eval.mjs                     the same on the marks baked into the app (src/domain/buddies/marks.ts)
 //
 // The maths is the app's own file, as node runs it (type stripping); every buddy's shape is the placer's copy of the app's
 // (guess.test checks it matches), so the numbers are the ones the app and the placer would land on.
 import { readFileSync } from 'node:fs';
 import { learnFrom, leaveOneOut } from '../src/domain/buddies/guess.ts';
 
-const [file, flag] = process.argv.slice(2);
-if (!file) {
-  console.error('Usage: node scripts/guess-eval.mjs marks.json [--json]   (marks.json: the accessory placer’s Copy)');
-  process.exit(2);
-}
+const args = process.argv.slice(2), flag = args.find((a) => a === '--json'), file = args.find((a) => a !== '--json');
 const page = readFileSync(new URL('../public/tools/accessory-placer.html', import.meta.url), 'utf8');
 const line = page.split('\n').find((l) => l.startsWith('const APP = '));
-const { world, buddies } = JSON.parse(line.slice('const APP = '.length, -1));
-const marks = learnFrom(JSON.parse(readFileSync(file, 'utf8')), world);
+// The placer's copy of the app: every buddy's shape, and the baked marks as the placer saves its own.
+const app = JSON.parse(line.slice('const APP = '.length, -1)), { world, buddies } = app;
+const marks = learnFrom(file ? JSON.parse(readFileSync(file, 'utf8')) : { held: app.marks ?? {} }, world);
+if (!file && !flag) console.log('The marks baked into the app (src/domain/buddies/marks.ts):');
 const report = leaveOneOut(marks, world);
 if (flag === '--json') {
   console.log(JSON.stringify(report, null, 2));

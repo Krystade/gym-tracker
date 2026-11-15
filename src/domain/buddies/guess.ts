@@ -27,8 +27,12 @@ export interface Guess { wear: Wear; how: 'own' | 'like' | 'pack'; from: string[
 export const NEAR = 0.2;
 export const MOST = 3;
 
-/** A tilt as one turn: (-180, 180]. */
-export const turn = (r: number): number => { const t = (((r % 360) + 360) % 360); return t > 180 ? t - 360 : t; };
+/** A tilt as one turn: (-180, 180]. One already there is kept as it is (the modulo would leave float dust: 0.7 as 0.69999…). */
+export const turn = (r: number): number => {
+  if (r > -180 && r <= 180) return r + 0; // + 0: not -0
+  const t = (((r % 360) + 360) % 360);
+  return t > 180 ? t - 360 : t;
+};
 
 const num = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 

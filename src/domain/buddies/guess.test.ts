@@ -10,7 +10,7 @@ import { accName } from '../../ui/buddies/Worn';
 import { HELD } from './anchors';
 import { guess, leaveOneOut, MOST, NEAR, plainWear, type Body, type Look, type Marks, type Wear, type World } from './guess';
 import { ACCESSORIES, BUDDIES, CREDIT_ROWS, defaultName, packOf } from './roster';
-import { WORLD } from './wear';
+import { WEAR, WORLD } from './wear';
 
 // The learned guesses (domain/buddies/guess): which marks teach a frame, how a mark moves from one shape to another, the
 // leave-one-out check on synthetic marks, and the placer's generated copy of the maths and of the app's buddies.
@@ -147,6 +147,8 @@ const app = {
     id: b.id, name: defaultName(b.id), pack: packOf(b.id), w: b.art?.w ?? 16, h: b.art?.h ?? 16, ms: b.art ? b.art.ms : POSE_MS, files: b.art ? [b.id] : [...b.poses],
   })),
   world: WORLD,
+  /** The baked marks (domain/buddies/marks) as the placer saves its own: buddy → strip → frame. It starts from these. */
+  marks: Object.fromEntries(Object.entries(WEAR).map(([id, fs]) => [id, { [WORLD[id].strip]: fs }])),
 };
 const appLine = `const APP = ${JSON.stringify(app)};`;
 if (process.env.UPDATE_PLACER) {
@@ -161,10 +163,12 @@ describe('the placer’s copy', () => {
   it('has guess.ts as the app runs it, word for word', () => {
     expect(page.slice(page.indexOf(BEGIN), page.indexOf(END) + END.length)).toBe(block);
   });
-  it('has every buddy, every held item on its base, and every frame’s shape and head anchor as the app sees them', () => {
+  it('has every buddy, every held item on its base, every frame’s shape and head anchor as the app sees them, and the baked marks', () => {
     expect(page.split('\n').filter((l) => l.startsWith('const APP = '))).toEqual([appLine]);
     expect(app.buddies.length).toBe(BUDDIES.length);
     expect(new Set(app.buddies.map((b) => b.id)).size).toBe(BUDDIES.length);
     expect(app.buddies.filter((b) => !BUDDIES.find((x) => x.id === b.id)!.art).length).toBe(145);
+    expect(app.marks.c017).toEqual({ poses: { 0: WEAR.c017[0] } });
+    expect(app.marks.dudemrs.idle[2]).toEqual(WEAR.dudemrs[2]);
   });
 });

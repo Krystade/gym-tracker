@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { heldStyle, parseWear, turn, wearFor, wearFromMarks, wearOn, WORLD, type Wear } from './wear';
+import { heldStyle, over, parseWear, turn, WEAR, wearFor, wearFromMarks, wearOn, WORLD, type Wear } from './wear';
+import { STAND_INS } from './marks';
 import { BUDDIES } from './roster';
 
 // A held item placed by hand (domain/buddies/wear): the placer's marks read as untrusted, its unmarked frames following the head
@@ -60,6 +61,48 @@ describe('what the app draws', () => {
     expect(wearFor(marks, 'ckwhite', 0)).toMatchObject({ x: 7.5, y: 1, w: 8, h: 8 }); // the same goat in white
     expect(wearFor({}, 'ckwhite', 0)).toBeNull();
     expect(wearFor(marks, 'truck', 0)).toBeNull(); // nothing like it, none of its pack
+  });
+});
+
+describe('the owner’s marks, baked in (domain/buddies/marks, from his Copy of 2026-11-12)', () => {
+  it('every Held frame he placed, each one reading back as itself through the placer’s Copy', () => {
+    expect(Object.keys(WEAR).length).toBe(161);
+    expect(Object.values(WEAR).reduce((n, fs) => n + Object.keys(fs).length, 0)).toBe(230);
+    const copy = { held: Object.fromEntries(Object.entries(WEAR).map(([id, fs]) => [id, { [WORLD[id].strip]: fs }])) };
+    expect(wearFromMarks(copy)).toEqual(WEAR);
+  });
+  it('as he placed them: the knight Tiny c017 mirrored and turned 90°, Mrs. Dude’s idle frames, sized and stretched as the strip goes', () => {
+    expect(WEAR.c017[0]).toEqual({ x: 11.5, y: 13, w: 8.26, h: 8.26, r: 90, f: true });
+    expect(heldStyle([8, 16], [11.5 * 4, 13 * 4], (8.26 * 4) / 16)).toMatchObject({ width: 8.26 * 4, height: 8.26 * 4 });
+    expect(heldStyle([8, 16], [46, 52], 2.065, 2.065, WEAR.c017[0].r, WEAR.c017[0].f).transform).toBe('rotate(90deg) scaleX(-1)');
+    expect(WEAR.dudemrs[1]).toEqual({ x: 19, y: 85.5, w: 29.6, h: 29.6, r: 35.3, f: true }); // frame 2 counting from 1
+    expect(WEAR.dudemrs[2]).toEqual({ x: 9, y: 80.5, w: 33.15, h: 33.15, r: 61, f: true }); // and from 0
+    expect(Object.keys(WEAR.dudemrs).length).toBe(14);
+    expect(WEAR.d090).toMatchObject({ 0: { y: 17.5 }, 2: { y: 15.5 } }); // a Tiny buddy pose by pose
+  });
+  it('a baked mark comes before any guess; a frame without one is guessed from them', () => {
+    for (const [id, fs] of Object.entries(WEAR)) for (const [f, w] of Object.entries(fs)) expect(wearFor(WEAR, id, Number(f)), `${id} ${f}`).toBe(w);
+    expect(WEAR.c081).toBeUndefined();
+    expect(wearFor(WEAR, 'c081', 0)).not.toBeNull(); // a Tiny Creature he left: learned from his marks
+    expect(WEAR.dudemr).toBeUndefined();
+    expect(wearFor(WEAR, 'dudemr', 0)).not.toBeNull();
+  });
+  it('this phone’s marks win frame by frame, the baked ones kept for the frames it doesn’t have', () => {
+    const mine = { dudemrs: { 2: mark({ x: 1 }) }, c081: { 0: mark() } };
+    const both = over(WEAR, mine);
+    expect(both.dudemrs[2]).toEqual(mark({ x: 1 }));
+    expect(both.dudemrs[3]).toBe(WEAR.dudemrs[3]);
+    expect(both.c081[0]).toEqual(mark());
+    expect(both.c017).toBe(WEAR.c017);
+    expect(WEAR.dudemrs[2].x).toBe(9); // untouched
+  });
+  it('the old stand-in slots kept as sent, though nothing draws them: Froglet’s croak face tilted -58.5°, Mr. Dude’s head', () => {
+    expect(Object.keys(STAND_INS).sort()).toEqual(['face', 'feet', 'hands', 'head', 'legs', 'torso']);
+    expect(STAND_INS.face.froglet.croak[2]).toEqual({ x: 8, y: 8.5, w: 6, r: -58.5, f: false });
+    expect(STAND_INS.face.froglet.croak[3]).toEqual({ x: 7.5, y: 7, w: 6, r: -58.5, f: false });
+    expect(STAND_INS.legs.froglet.idle[0]).toEqual({ x: 7.5, y: 15.5, w: 6.6, r: -3.5, f: true });
+    expect(Object.keys(STAND_INS.head.dudemr.idle)).toEqual(['0', '10', '11']);
+    expect(parseWear(STAND_INS.head.ckpig.idle[1])).toEqual({ x: 6, y: 1, w: 6, h: 6, r: 0, f: false }); // no height: square
   });
 });
 

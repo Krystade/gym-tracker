@@ -150,15 +150,15 @@ test('the lead on Today holds what its card does (placed, guessed or on the anch
     await new Promise((ok) => { tx.oncomplete = ok; });
     db.close();
   }, { lead, day });
-  // The Tiny one placed by hand on its first pose (tilted, out front); the others learn nothing like them: guess or anchor.
+  // The Tiny one placed on this phone on its first pose (tilted, out front), over the baked marks; the others as baked.
   await page.evaluate(() => localStorage.setItem('acc-marks', JSON.stringify({ held: { c066: { poses: { 0: { x: 13, y: 9, w: 8, h: 8, r: 30, f: false } } } } })));
   for (const [k, id] of ['c066', 'truck', 'dudemrs', 'c066'].entries()) {
-    if (k === 3) await page.evaluate(() => localStorage.removeItem('acc-marks')); // and unplaced: on its head anchor
+    if (k === 3) await page.evaluate(() => localStorage.removeItem('acc-marks')); // and as baked into the app
     await seed(id);
     await page.reload();
     const lead = page.locator('.today-buddy'), held = lead.locator('img.bu-held[data-held="d105"]');
     await expect(held, id).toBeVisible();
-    if (k === 0) await expect(held).toHaveAttribute('data-placed', '');
+    await expect(held).toHaveAttribute('data-placed', ''); // every one placed: on this phone, else baked into the app
     // On screen, below the status bar's backdrop.
     const box = (await held.boundingBox())!;
     expect(box.y, id).toBeGreaterThanOrEqual((await lead.boundingBox())!.y - 12.5); // no higher than the lead's own room
