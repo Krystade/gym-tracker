@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { canSpend, choose, CHOOSE, ODDS, pityIn, pull, PULL, REFUND, type Ledger, type Spend, type Wallet } from '../../domain/buddies/gacha';
+import { canSpend, choose, CHOOSE, dupeRefund, ODDS, pityIn, pull, PULL, pulledCount, type Ledger, type Spend, type Wallet } from '../../domain/buddies/gacha';
 import { ACCESSORY, BUDDY, POOL, RARITIES, type Banner, type Rarity } from '../../domain/buddies/roster';
 import { BOX, BuddySprite, drawnSize } from './BuddySprite';
 import { useSheet } from '../useSheet';
@@ -8,7 +8,7 @@ import { AccIcon, accName, SLOT_NAME } from './Worn';
 // Pulls, tickets and choosing (Gym Buddies plan §16.10 stage 5, odds and prices from domain/buddies/gacha): one sheet in three
 // modes, on either banner. It shows the odds, what's left to find at each rarity, and how far pity is; a pull is rolled once
 // here (a fresh random seed), kept as a spend, and revealed in under a second (transform and opacity only, none under reduced
-// motion). Landing on a rarity you've completed gives part of the price back, and says so.
+// motion). A pull can land one you already have (owner 2026-11-15): half the banner's pull price comes back, and it says so.
 
 export type Mode = 'pull' | 'ticket' | 'choose';
 const RARITY: Record<Rarity, string> = { 0: 'Common', 1: 'Uncommon', 2: 'Rare', 3: 'Epic', 4: 'Legendary' };
@@ -63,7 +63,7 @@ export function PullSheet({ mode: first, banner: firstBanner, ledger, wallet, to
           {(['buddy', 'acc'] as const).map((b) => <button key={b} aria-pressed={banner === b} onClick={() => { setBanner(b); setShown(null); setPicked(null); }}>{BANNER[b]}</button>)}
         </div>
         <div className="bu-sheet-body">
-          {shown && <Reveal s={shown} names={names} onOpen={() => onOpen(shown)} />}
+          {shown && <Reveal s={shown} count={shown.got ? pulledCount(ledger, shown.got) : 0} names={names} onOpen={() => onOpen(shown)} />}
           {mode !== 'choose' ? (
             <>
               <table className="bu-odds" aria-label={`Odds, ${BANNER[banner].toLowerCase()}`}>
@@ -73,20 +73,21 @@ export function PullSheet({ mode: first, banner: firstBanner, ledger, wallet, to
                     <tr key={r} className={`r${r}`}>
                       <th scope="row"><span className="bu-rarity">{RARITY[r as Rarity]}</span></th>
                       <td>{pct(ODDS[r])}</td>
-                      <td>{left(r) ? left(r) : <span className="muted">all yours · {Math.round(PULL[banner] * REFUND[r])} back</span>}</td>
+                      <td>{left(r) ? left(r) : <span className="muted">all yours</span>}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <p className="bu-pity small">Rare or better within <b>{pity.rare}</b> {pity.rare === 1 ? 'pull' : 'pulls'} · epic or better within <b>{pity.epic}</b>. Tickets count.</p>
+              <p className="small muted">Any of a rarity can land, even one you have: a duplicate gives {pts(dupeRefund(banner))} back.</p>
               {mode === 'pull'
                 ? <button className="primary wide" disabled={!can || busy} onClick={() => roll('pull')}>{can ? `Pull for ${pts(PULL[banner])}` : `Pull needs ${pts(PULL[banner])}`}</button>
                 : <button className="primary wide" disabled={!can || busy} onClick={() => roll('ticket')}>{wallet.tickets ? `Use a ticket (${wallet.tickets} left)` : 'No tickets yet'}</button>}
-              {mode === 'ticket' && !wallet.tickets && <p className="small muted">Gold and platinum achievements give tickets. A ticket is a free pull on either banner.</p>}
+              {mode === 'ticket' && !wallet.tickets && <p className="small muted">Tickets come from goal weeks, every 5 sessions, and gold and platinum achievements. A ticket is a free pull on either banner.</p>}
             </>
           ) : (
             <>
-              <p className="small muted">Saving up costs more than pulling, but you get the one you want.</p>
+              <p className="small muted">Choosing costs far more than pulling, but you get the one you want.</p>
               {[...RARITIES.keys()].reverse().map((r) => {
                 const xs = POOL[banner].filter((x) => x.rarity === r && !ledger.owned.has(x.id));
                 if (!xs.length) return null;
@@ -119,8 +120,9 @@ export function PullSheet({ mode: first, banner: firstBanner, ledger, wallet, to
   );
 }
 
-/** What a spend landed on, revealed (≤ 1 s, transform and opacity only), or the refund when its rarity was complete. */
-function Reveal({ s, names, onOpen }: { s: Spend; names: (id: string) => string; onOpen: () => void }) {
+/** What a spend landed on, revealed (≤ 1 s, transform and opacity only): new, or a duplicate and its refund (`count`: how many
+ *  times it has landed, this one included). An old spend that landed on a complete rarity shows its refund alone. */
+function Reveal({ s, count, names, onOpen }: { s: Spend; count: number; names: (id: string) => string; onOpen: () => void }) {
   const acc = s.got ? ACCESSORY.get(s.got) : undefined, bud = s.got ? BUDDY.get(s.got) : undefined;
   // An older character too big for the art's square shows in full above the words (owner 2026-11-06: in all its glory).
   const big = !!bud && drawnSize(bud, 5, BOX.reveal).some((x) => x > 80);
@@ -132,7 +134,7 @@ function Reveal({ s, names, onOpen }: { s: Spend; names: (id: string) => string;
           <span className="bu-reveal-text">
             <span className="bu-rarity">{RARITY[s.rarity]}{acc ? ` ${SLOT_NAME[acc.slot].toLowerCase()}` : ''}</span>
             <b>{bud ? names(s.got) : accName(s.got)}</b>
-            <span className="small muted">New{bud ? ' buddy' : ''}: it’s yours.</span>
+            <span className="small muted">{s.refund ? `Yours already (×${count}): ${pts(s.refund)} back.` : `New${bud ? ' buddy' : ''}: it’s yours.`}</span>
             <button className="mini" onClick={onOpen}>{bud ? 'See its card' : 'Wear it'}</button>
           </span>
         </>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { PULL, starterOffer, walletOf, type Spend, type Wallet } from '../domain/buddies/gacha';
+import { PULL, pulledCount, starterOffer, walletOf, type Spend, type Wallet } from '../domain/buddies/gacha';
 import { NAME_MAX } from '../domain/buddies/kept';
 import { earned } from '../domain/buddies/points';
 import { ACCESSORY, BUDDIES, BUDDY, CREDIT_ROWS, RARITIES, SLOTS, STATS, defaultName, type Banner, type BuddyDef, type Rarity, type Slot, type Stat } from '../domain/buddies/roster';
@@ -110,7 +110,7 @@ export function BuddiesScreen({ buddies, entries, today, profile }: { buddies: B
       </button>
       <section className="card bu-how" aria-label="How buddies grow">
         <p className="small"><b>How they grow.</b> Every buddy gets all the training you log after it joins: Power from PRs and steps up, Size from sets, Grit from sessions and goal weeks, Stamina from cardio. Its trait grows faster.</p>
-        <p className="small"><b>Points:</b> 1 a set, 5 a session, 20 a goal week, 1 per 3 cardio minutes, and achievements. Gold and platinum achievements give tickets, each a free pull.</p>
+        <p className="small"><b>Points:</b> 1 a set, 5 a session, 20 a goal week, 1 per 3 cardio minutes, and achievements. <b>Tickets</b>, each a free pull: 1 a goal week, 1 every 5 sessions, and gold and platinum achievements. A pull can land one you have: half its price comes back.</p>
         <p className="small"><b>Accessories</b> are shared: any buddy can wear any you own. Tap a slot on a card to change it.</p>
       </section>
       {sheets}
@@ -239,10 +239,13 @@ function FirstPick({ buddies }: { buddies: BuddiesStore }) {
       <button className="primary wide" disabled={!sel || busy} onClick={() => { if (sel) { setBusy(true); void buddies.pickFirst(sel).catch(() => setBusy(false)); } }}>
         {sel ? `Pick ${defaultName(sel)}` : 'Tap one to pick it'}
       </button>
-      <p className="muted small">More buddies come from points you earn by training, and tickets from gold and platinum achievements.</p>
+      <p className="muted small">More buddies come from points you earn by training, and tickets from goal weeks, every 5 sessions, and gold and platinum achievements.</p>
     </>
   );
 }
+
+/** "×3" in a tile's corner once it has landed more than once. */
+const Count = ({ n: k }: { n: number }) => (k > 1 ? <span className="bu-count" aria-hidden="true">×{k}</span> : null);
 
 function Collection({ buddies, onBack, onOpen }: { buddies: BuddiesStore; onBack: () => void; onOpen: (id: string) => void }) {
   const mine = new Set(buddies.owned.map((o) => o.def.id));
@@ -260,7 +263,7 @@ function Collection({ buddies, onBack, onOpen }: { buddies: BuddiesStore; onBack
               {all.map((b) => (
                 <li key={b.id}>
                   {mine.has(b.id)
-                    ? <button className={`bu-tile r${r}`} onClick={() => onOpen(b.id)} aria-label={nameOf(buddies, b.id)}><BuddySprite def={b} scale={3} box={BOX.tile} /><b>{nameOf(buddies, b.id)}</b></button>
+                    ? <button className={`bu-tile r${r}`} onClick={() => onOpen(b.id)} aria-label={nameOf(buddies, b.id)}><BuddySprite def={b} scale={3} box={BOX.tile} /><b>{nameOf(buddies, b.id)}</b><Count n={buddies.ledger ? pulledCount(buddies.ledger, b.id) : 0} /></button>
                     : <div className={`bu-tile r${r} unmet`} role="img" aria-label={`Not met yet, ${RARITY[r as Rarity].toLowerCase()}`}><BuddySprite def={b} scale={3} box={BOX.tile} still shadow /><b aria-hidden="true">?</b></div>}
                 </li>
               ))}

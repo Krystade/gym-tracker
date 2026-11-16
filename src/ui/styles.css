@@ -1406,6 +1406,9 @@ h1 + .card > h2#notify-h { position: absolute; width: 1px; height: 1px; padding:
    or wider than the Tiny ones on purpose. */
 .bu-roster li, .bu-coll li { display: grid; }
 .bu-roster .bu-tile, .bu-coll .bu-tile { align-content: end; }
+/* How many times it has landed (domain/buddies/gacha pulledCount), in the corner so the tile keeps its height. */
+.bu-coll .bu-tile { position: relative; }
+.bu-tile > .bu-count { position: absolute; top: 4px; right: 6px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .bu-row { width: 100%; justify-content: space-between; text-align: left; padding: 10px 16px; margin: 0 0 16px; background: var(--surface); border-radius: var(--r-group); }
 .bu-row > span { display: grid; gap: 2px; }
 .bu-row .muted { font-size: var(--fs-sub); font-weight: 400; }

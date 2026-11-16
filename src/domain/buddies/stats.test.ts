@@ -147,14 +147,15 @@ describe('rewards and points', () => {
     expect(awards(a, '2026-11-01')).toEqual({ points: POINTS.bronze! + 2 * POINTS.bronze!, tickets: TICKETS['prs:gold'] + TICKETS['every-muscle:gold'] });
     expect(DEF.get('comeback')!.repeat).toBe(true);
   });
-  it('points: 1 a set, 1 per 3 cardio minutes, 5 a session, 20 a goal week, plus awards', () => {
+  it('points: 1 a set, 1 per 3 cardio minutes, 5 a session, 20 a goal week, plus awards; tickets: 1 a goal week, 1 per 5 sessions, plus awards', () => {
     const log = lifter(3), t = train(log), ach = achievements(log, { profile, today: TODAY, since: MON });
     const e = earned(t, ach);
-    expect(e.parts).toEqual({ sets: 18, cardio: 30, sessions: 30, goalWeeks: 60, awards: awards(ach, MON).points });
+    expect(e.parts).toEqual({ sets: 18, cardio: 30, sessions: 30, goalWeeks: 60, awards: awards(ach, MON).points, goalWeekTickets: 3, sessionTickets: 1, awardTickets: awards(ach, MON).tickets });
+    expect(e.tickets).toBe(3 + 1 + awards(ach, MON).tickets);
     expect(e.parts.awards).toBeGreaterThan(0);
     expect(e.points).toBe(18 + 30 + 30 + 60 + e.parts.awards);
     expect(INCOME.goalWeek).toBe(20);
-    expect(earned(train(log, day(100)), ach).points).toBe(0); // history pays nothing
+    expect(earned(train(log, day(100)), ach)).toMatchObject({ points: 0, tickets: 0 }); // history pays nothing
   });
 });
 

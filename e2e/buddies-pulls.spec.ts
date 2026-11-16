@@ -24,6 +24,7 @@ const fits = async (page: Page, what: string) => {
 };
 
 test('pull, choose and wear: odds and pity shown, a pull revealed and worn, a held item on the head', async ({ page }) => {
+  test.setTimeout(90_000); // a 1,000-set import: choosing costs ten times a pull's worth (owner 2026-11-15)
   await notched(page);
   await page.goto('/');
   await goto(page, 'Buddies');
@@ -33,14 +34,16 @@ test('pull, choose and wear: odds and pity shown, a pull revealed and worn, a he
   await page.getByRole('button', { name: `Pick ${first}` }).click();
   await expect(page.getByRole('region', { name: `${first}’s card` })).toBeVisible();
 
-  // 120 sets today: 120 points for the sets and 5 for the session, before any achievements.
+  // 1,000 sets today: 1,000 points for the sets and 5 for the session, before any achievements: enough for a pull and up to four
+  // common accessories chosen (CHOOSE.acc[0] each).
   const today = iso(new Date());
-  const rows = Array.from({ length: 120 }, (_, i) => `${today},Bench Press,,${i + 1},135,8,,,,sample,${today}T10:${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}`);
+  const rows = Array.from({ length: 1000 }, (_, i) => `${today},Bench Press,,${i + 1},135,8,,,,sample,${today}T10:${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}`);
   await goto(page, 'Backup');
   await page.getByLabel('Import CSV').setInputFiles({ name: 'h.csv', mimeType: 'text/csv', buffer: Buffer.from([HEADER, ...rows].join('\n')) });
-  await expect(page.getByText('✓ Imported 120 new sets')).toBeVisible();
+  await expect(page.getByText('✓ Imported 1000 new sets')).toBeVisible({ timeout: 30_000 });
   await goto(page, 'Buddies');
-  await expect.poll(() => points(page)).toBeGreaterThanOrEqual(125);
+  await expect.poll(() => points(page)).toBeGreaterThanOrEqual(1005);
+  expect(1005).toBeGreaterThanOrEqual(PULL.acc + 4 * CHOOSE.acc[0]);
   const start = await points(page);
 
   // The pull sheet: odds, what's left, pity; the banner switch; a ticket needs a ticket.

@@ -2,25 +2,28 @@ import { INCOME } from './points';
 import { pointsAt } from './rewards';
 import { POOL, RETIRED, type Banner, type Rarity } from './roster';
 
-// Pulls, tickets and choosing (plan §16.5, §16.7 with §15.4's odds, pity and refunds; owner 2026-10-28: either banner can
-// take a ticket, nothing costs money; owner 2026-10-29: everything owned in about 6 months at his own pace).
-// - What is stored is only the spends, each with its roll: a sync never re-rolls one (rule 6). Everything else (what you own,
-//   pity, the points spent) is worked out from them, in the order they were made.
-// - A pull never lands on something you own while its rarity still has something you're missing; once a rarity is complete,
-//   landing on it refunds part of the price instead.
+// Pulls, tickets and choosing (plan §16.5, §16.7 with §15.4's odds and pity; owner 2026-10-28: either banner can take a ticket,
+// nothing costs money; owner 2026-11-15: the gambling and the tickets up front, owning everything slower is fine).
+// - What is stored is only the spends, each with its roll and its price: a sync never re-rolls or re-prices one (rule 6), and
+//   one made under older prices or older rules keeps its stored cost, got and refund exactly. Everything else (what you own,
+//   how many times each landed, pity, the points spent) is worked out from them, in the order they were made.
+// - A pull lands by ODDS on a rarity, then on any one of that rarity, owned or not: a duplicate gives back half the banner's
+//   pull price (a ticket's too). Nothing owned is ever taken away.
 // - Pity, per banner: a rare or better by the 10th pull, an epic or better by the 40th. A ticket is a pull: it counts too.
-// - Prices are worked out from the roster (how many of each rarity) and TARGET, never written in: re-sorting rarities or
-//   adding buddies keeps the 6 months with no retuning (economy.test simulates it).
+// - Prices are written in (owner 2026-11-15): a pull 15 points a buddy, 10 an accessory; choosing one costs ten times what it
+//   did against the pull (economy.test simulates how long owning everything takes at TARGET's pace and reports it).
 
 export const ODDS = [0.60, 0.27, 0.09, 0.03, 0.01] as const;
 export const PITY_RARE = 10, PITY_EPIC = 40;
-/** Share of the pull's price back when its rarity is already complete, common → legendary. */
-export const REFUND = [0.2, 0.3, 0.4, 0.5, 0.6] as const;
+/** Share of the banner's pull price back when a pull (points or ticket) lands on something already owned. */
+export const DUPE_REFUND = 0.5;
 export const STARTERS = 3;
+/** Pulls in a multi-pull (pullMany), at least one of them rare or better. */
+export const MULTI = 10;
 
-/** The pace prices are set for: the owner's own, from his log (2026-10-29: 1.23 sessions a week over 26 weeks, about 10
- *  working sets each), owning everything in about 26 weeks. A goal week 85% of weeks and about 15 achievement points a week.
- *  Your body's two paying families on top (owner 2026-10-29): weighing in about 4 days a week, a photo day every 2 weeks. */
+/** The owner's own pace, from his log (2026-10-29: 1.23 sessions a week, about 10 working sets each). A goal week 85% of weeks
+ *  and about 15 achievement points a week. Your body's two paying families on top (owner 2026-10-29): weighing in about 4 days
+ *  a week, a photo day every 2 weeks, their levels averaged over `weeks`. */
 export const TARGET = {
   weeks: 26, sessionsPerWeek: 1.2, setsPerSession: 10, goalWeekShare: 0.85, achievementPointsPerWeek: 15, weighInsPerWeek: 4, photoDaysPerWeek: 0.5,
 } as const;
@@ -31,39 +34,19 @@ export const bodyPointsPerWeek = (): number =>
 export const targetIncome = (): number =>
   TARGET.sessionsPerWeek * (TARGET.setsPerSession * INCOME.set + INCOME.session) + TARGET.goalWeekShare * INCOME.goalWeek + TARGET.achievementPointsPerWeek
   + bodyPointsPerWeek();
+/** Tickets a week at TARGET's pace from goal weeks and sessions (achievements' gold and platinum on top). */
+export const targetTickets = (): number => TARGET.goalWeekShare * INCOME.goalWeekTickets + TARGET.sessionsPerWeek / INCOME.sessionsPerTicket;
 
-/** Relative prices, scaled to TARGET: a pull, then choosing common → legendary (saving up to pick costs about 2–3× what
- *  gambling does). */
-const SHAPE: Record<Banner, { pull: number; choose: readonly number[] }> = {
-  buddy: { pull: 13, choose: [30, 50, 95, 170, 280] },
-  acc: { pull: 8, choose: [20, 30, 55, 100, 180] },
+/** Points for a random pull (owner 2026-11-15; until then about 4 a buddy and 3 an accessory). */
+export const PULL: Record<Banner, number> = { buddy: 15, acc: 10 };
+/** Points to choose one directly, common → legendary: the old prices (buddy 10, 17, 32, 57, 93 at a pull of 4; accessory
+ *  7, 10, 18, 33, 60 at 3) × the new pull over the old × 10, rounded (owner 2026-11-15). */
+export const CHOOSE: Record<Banner, readonly number[]> = {
+  buddy: [375, 638, 1200, 2138, 3488],
+  acc: [233, 333, 600, 1100, 2000],
 };
-
-/** What a pull is worth by the odds: what it can land that's missing at its choosing price, a complete rarity its refund. */
-export const pullWorth = (left: readonly number[], pull: number, choose: readonly number[]): number =>
-  ODDS.reduce((a, q, r) => a + q * (left[r] > 0 ? choose[r] : pull * REFUND[r]), 0);
-
-/** Points to own `left` (how many missing of each rarity) on average, without luck or pity, for a player who pulls while a
- *  pull is worth its price and then chooses the rest. */
-export function costToOwn(left: readonly number[], pull: number, choose: readonly number[]): number {
-  const l = [...left];
-  let cost = 0;
-  for (let i = 0; i < 100_000 && l.some((n) => n > 1e-9) && pullWorth(l, pull, choose) >= pull; i++) {
-    cost += pull;
-    ODDS.forEach((q, r) => { const got = Math.min(l[r], q); l[r] -= got; cost -= (q - got) * pull * REFUND[r]; });
-  }
-  return cost + l.reduce((a, n, r) => a + n * choose[r], 0);
-}
-
-const counts = (b: Banner) => { const c = [0, 0, 0, 0, 0]; for (const x of POOL[b]) c[x.rarity]++; if (b === 'buddy') c[0] = Math.max(0, c[0] - 1); return c; };
-/** How much SHAPE is scaled by: TARGET's points over TARGET's weeks buy everything but the starter. */
-export const PRICE_SCALE = (targetIncome() * TARGET.weeks) /
-  (['buddy', 'acc'] as const).reduce((a, b) => a + costToOwn(counts(b), SHAPE[b].pull, SHAPE[b].choose), 0);
-const price = (x: number) => Math.max(1, Math.round(x * PRICE_SCALE));
-/** Points for a random pull. */
-export const PULL: Record<Banner, number> = { buddy: price(SHAPE.buddy.pull), acc: price(SHAPE.acc.pull) };
-/** Points to choose one directly, common → legendary. */
-export const CHOOSE: Record<Banner, readonly number[]> = { buddy: SHAPE.buddy.choose.map(price), acc: SHAPE.acc.choose.map(price) };
+/** Points back for a duplicate on `b`'s banner. */
+export const dupeRefund = (b: Banner): number => Math.round(PULL[b] * DUPE_REFUND);
 
 export type SpendKind = 'pull' | 'ticket' | 'choose' | 'starter';
 export interface Spend {
@@ -73,9 +56,9 @@ export interface Spend {
   kind: SpendKind; banner: Banner;
   /** Points paid (0 for a ticket or the starter). */ cost: number;
   /** The roll's seed, kept for the record. */ seed?: number;
-  /** What it landed on; null when it landed on a complete rarity and refunded. */ got: string | null;
+  /** What it landed on (null only on a spend from before 2026-11-15 that landed on a complete rarity and refunded). */ got: string | null;
   rarity: Rarity;
-  /** Points given back (a complete rarity). */ refund: number;
+  /** Points given back: a duplicate (before 2026-11-15, a complete rarity), as stored. */ refund: number;
 }
 
 /** A small seeded generator (mulberry32): the same seed always rolls the same pull. */
@@ -94,6 +77,7 @@ export interface Pity { rare: number; epic: number }
 export interface Ledger {
   spends: Spend[];
   /** Each thing you own and the day it joined (the first spend that landed it). */ owned: Map<string, string>;
+  /** How many spends landed each thing (pulls, tickets, a choice, the starter): read it with pulledCount. */ landed: Map<string, number>;
   spent: number; refunds: number; ticketsUsed: number;
   /** Pulls since the last rare-or-better and epic-or-better, per banner. */ pity: Record<Banner, Pity>;
   starter: boolean;
@@ -113,6 +97,27 @@ export function parseSpend(x: unknown): Spend | null {
   return { id: s.id, at: s.at, day: s.day, kind: s.kind!, banner: s.banner, cost: s.cost, ...(typeof s.seed === 'number' && { seed: s.seed }), got, rarity: s.rarity as Rarity, refund: s.refund };
 }
 
+const empty = (): Ledger => ({ spends: [], owned: new Map(), landed: new Map(), spent: 0, refunds: 0, ticketsUsed: 0, pity: { buddy: { rare: 0, epic: 0 }, acc: { rare: 0, epic: 0 } }, starter: false });
+
+/** Adds one spend, made after every spend already in `l`, to `l` itself (mutated, and returned): what ledgerOf folds with, and
+ *  a long simulation's way not to fold everything again each step. Takes its stored cost, got and refund exactly as they are. */
+export function addSpend(l: Ledger, s: Spend): Ledger {
+  if (s.kind === 'starter') { if (l.starter || s.banner !== 'buddy') return l; l.starter = true; }
+  l.spends.push(s);
+  l.spent += s.cost; l.refunds += s.refund;
+  if (s.kind === 'ticket') l.ticketsUsed++;
+  if (s.kind === 'pull' || s.kind === 'ticket') {
+    const p = l.pity[s.banner];
+    p.rare = s.rarity >= 2 ? 0 : p.rare + 1;
+    p.epic = s.rarity >= 3 ? 0 : p.epic + 1;
+  }
+  if (s.got) {
+    if (!l.owned.has(s.got)) l.owned.set(s.got, s.day);
+    l.landed.set(s.got, (l.landed.get(s.got) ?? 0) + 1);
+  }
+  return l;
+}
+
 /** What the spends add up to, made in order (each id once). Never re-rolls: a spend's stored `got` is what it got. One that
  *  landed a buddy since retired (roster RETIRED) is left out, as if never made: its points or ticket come back, and a starter
  *  can be picked again. */
@@ -120,20 +125,11 @@ export function ledgerOf(spends: readonly Spend[]): Ledger {
   const seen = new Set<string>();
   const xs = [...spends].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
     .filter((s) => !seen.has(s.id) && !!seen.add(s.id) && !(s.got && RETIRED.has(s.got)));
-  const l: Ledger = { spends: xs, owned: new Map(), spent: 0, refunds: 0, ticketsUsed: 0, pity: { buddy: { rare: 0, epic: 0 }, acc: { rare: 0, epic: 0 } }, starter: false };
-  for (const s of xs) {
-    if (s.kind === 'starter') { if (l.starter || s.banner !== 'buddy') continue; l.starter = true; }
-    l.spent += s.cost; l.refunds += s.refund;
-    if (s.kind === 'ticket') l.ticketsUsed++;
-    if (s.kind === 'pull' || s.kind === 'ticket') {
-      const p = l.pity[s.banner];
-      p.rare = s.rarity >= 2 ? 0 : p.rare + 1;
-      p.epic = s.rarity >= 3 ? 0 : p.epic + 1;
-    }
-    if (s.got && !l.owned.has(s.got)) l.owned.set(s.got, s.day);
-  }
-  return l;
+  return xs.reduce(addSpend, empty());
 }
+
+/** How many times `id` has landed (every pull, ticket, choice or starter that got it, the old spends too): "×3" on its card. */
+export const pulledCount = (l: Ledger, id: string): number => l.landed.get(id) ?? 0;
 
 /** Points and tickets left: what training earned (domain/buddies/points), less what was spent, plus refunds. Never below 0. */
 export interface Wallet { points: number; tickets: number }
@@ -143,24 +139,43 @@ export const walletOf = (earned: Wallet, l: Ledger): Wallet =>
 /** Pulls left until pity's next guarantee: "rare+ in 3". */
 export const pityIn = (l: Ledger, b: Banner): Pity => ({ rare: PITY_RARE - l.pity[b].rare, epic: PITY_EPIC - l.pity[b].epic });
 
-/** The rarity a roll lands on: the odds, then pity. */
-export function rollRarity(x: number, pity: Pity): Rarity {
+/** The rarity a roll lands on: the odds, then pity, then `floor` (a multi-pull's guaranteed rare). */
+export function rollRarity(x: number, pity: Pity, floor: Rarity = 0): Rarity {
   let r = 0, acc = ODDS[0];
   while (r < 4 && x >= acc) acc += ODDS[++r];
   if (pity.epic + 1 >= PITY_EPIC && r < 3) return 3;
   if (pity.rare + 1 >= PITY_RARE && r < 2) return 2;
-  return r as Rarity;
+  return Math.max(r, floor) as Rarity;
 }
 
-const missing = (l: Ledger, b: Banner, r: Rarity) => POOL[b].filter((x) => x.rarity === r && !l.owned.has(x.id)).map((x) => x.id).sort();
+const ofRarity = new Map((['buddy', 'acc'] as const).flatMap((b) =>
+  [0, 1, 2, 3, 4].map((r) => [`${b}${r}`, POOL[b].filter((x) => x.rarity === r).map((x) => x.id).sort()] as const)));
+
+function roll(l: Ledger, banner: Banner, how: 'pull' | 'ticket', seed: number, at: number, day: string, id: string, floor: Rarity): Spend {
+  const next = rng(seed);
+  const rarity = rollRarity(next(), l.pity[banner], floor);
+  const all = ofRarity.get(`${banner}${rarity}`)!;
+  const got = all[Math.floor(next() * all.length)];
+  return { id, at, day, kind: how, banner, cost: how === 'pull' ? PULL[banner] : 0, seed: seed >>> 0, got, rarity, refund: l.owned.has(got) ? dupeRefund(banner) : 0 };
+}
 
 /** A pull (with points, or a ticket): rolled once here from `seed`, then kept as is. */
-export function pull(l: Ledger, banner: Banner, how: 'pull' | 'ticket', seed: number, at: number, day: string, id = `${at}-${seed >>> 0}`): Spend {
-  const next = rng(seed);
-  const rarity = rollRarity(next(), l.pity[banner]);
-  const left = missing(l, banner, rarity);
-  const got = left.length ? left[Math.floor(next() * left.length)] : null;
-  return { id, at, day, kind: how, banner, cost: how === 'pull' ? PULL[banner] : 0, seed: seed >>> 0, got, rarity, refund: got ? 0 : Math.round(PULL[banner] * REFUND[rarity]) };
+export const pull = (l: Ledger, banner: Banner, how: 'pull' | 'ticket', seed: number, at: number, day: string, id = `${at}-${seed >>> 0}`): Spend =>
+  roll(l, banner, how, seed, at, day, id, 0);
+
+/** `n` pulls in one go on one banner (MULTI by default; `how` for all of them, or one each), rolled in order from one `seed`,
+ *  each from the ledger as the ones before it left it (pity, duplicates), `at`, `at` + 1, … apart. At least one is rare or
+ *  better: the last is raised to rare when none before it was. Each is an ordinary spend, kept as is. */
+export function pullMany(l: Ledger, banner: Banner, how: 'pull' | 'ticket' | readonly ('pull' | 'ticket')[], seed: number, at: number, day: string, n = MULTI): Spend[] {
+  const next = rng(seed), out: Spend[] = [];
+  const run: Ledger = { ...l, spends: [...l.spends], owned: new Map(l.owned), landed: new Map(l.landed), pity: { buddy: { ...l.pity.buddy }, acc: { ...l.pity.acc } } };
+  for (let i = 0; i < n; i++) {
+    const s = Math.floor(next() * 2 ** 32), h = typeof how === 'string' ? how : how[i] ?? 'pull';
+    const floor: Rarity = i === n - 1 && !out.some((x) => x.rarity >= 2) ? 2 : 0;
+    out.push(roll(run, banner, h, s, at + i, day, `${at + i}-${s}`, floor));
+    addSpend(run, out[i]);
+  }
+  return out;
 }
 
 /** Choosing one directly, saved up for. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canSpend, CHOOSE, choose, ledgerOf, ODDS, parseSpend, PITY_EPIC, PITY_RARE, pityIn, pull, PULL, REFUND, rng, rollRarity, starter, starterOffer, walletOf, type Spend } from './gacha';
+import { canSpend, CHOOSE, choose, DUPE_REFUND, dupeRefund, ledgerOf, MULTI, ODDS, parseSpend, PITY_EPIC, PITY_RARE, pityIn, pull, PULL, pulledCount, pullMany, rng, rollRarity, starter, starterOffer, walletOf, type Spend } from './gacha';
 import { POOL, RETIRED, type Banner } from './roster';
 
 const D = '2026-11-01';
@@ -46,24 +46,68 @@ describe('odds and pity', () => {
   });
 });
 
-describe('no duplicates, then refunds', () => {
-  it('a pull never lands on something owned while its rarity has something missing', () => {
+describe('duplicates, refunds and multi-pulls', () => {
+  it('a pull lands on any one of its rarity, owned or not: duplicates happen, each giving half the pull back (a ticket too)', () => {
     const s = pulls(POOL.acc.length * 3, 'acc', 11);
-    const got = s.map((x) => x.got).filter(Boolean);
-    expect(new Set(got).size).toBe(got.length);
-    for (const x of s) if (!x.got) {
-      // a refund only when, at that moment, every item of its rarity was already owned
-      const before = ledgerOf(s.slice(0, s.indexOf(x)));
-      expect(POOL.acc.filter((p) => p.rarity === x.rarity).every((p) => before.owned.has(p.id))).toBe(true);
-      expect(x.refund).toBe(Math.round(PULL.acc * REFUND[x.rarity]));
-    }
+    const got = s.map((x) => x.got);
+    expect(got.every((g) => !!g)).toBe(true);
+    expect(new Set(got).size).toBeLessThan(got.length);
+    s.forEach((x, i) => {
+      const before = ledgerOf(s.slice(0, i));
+      expect(POOL.acc.find((p) => p.id === x.got)!.rarity).toBe(x.rarity);
+      expect(x.refund).toBe(before.owned.has(x.got!) ? dupeRefund('acc') : 0);
+    });
+    expect([dupeRefund('buddy'), dupeRefund('acc')]).toEqual([Math.round(PULL.buddy * DUPE_REFUND), Math.round(PULL.acc * DUPE_REFUND)]);
+    const mine = ledgerOf(POOL.acc.map((p, i) => choose('acc', p.id, i + 1, D, `c${p.id}`)));
+    const t = pull(mine, 'acc', 'ticket', 5, 999, D);
+    expect([t.cost, t.refund]).toEqual([0, dupeRefund('acc')]);
   });
-  it('a complete rarity refunds its share of the price', () => {
-    const commons = POOL.buddy.filter((p) => p.rarity === 0).map((p) => choose('buddy', p.id, 1, D, `c${p.id}`));
-    const l = ledgerOf(commons);
-    let seed = 0; while (rollRarity(rng(seed)(), l.pity.buddy) !== 0) seed++;
-    const p = pull(l, 'buddy', 'pull', seed, 2, D);
-    expect([p.got, p.refund]).toEqual([null, Math.round(PULL.buddy * REFUND[0])]);
+  it('within a rarity every one is as likely, owned or not (each within ±25% of its share over 60k rolls)', () => {
+    const owned = ledgerOf(POOL.acc.filter((p) => p.rarity === 0).slice(0, 10).map((p, i) => choose('acc', p.id, i + 1, D, `c${i}`)));
+    const commons = POOL.acc.filter((p) => p.rarity === 0), hit = new Map<string, number>();
+    const r = rng(3);
+    let n = 0;
+    for (let i = 0; i < 100_000; i++) {
+      const p = pull(owned, 'acc', 'pull', Math.floor(r() * 2 ** 32), 1, D);
+      if (p.rarity === 0) { n++; hit.set(p.got!, (hit.get(p.got!) ?? 0) + 1); }
+    }
+    for (const c of commons) expect(Math.abs((hit.get(c.id) ?? 0) / (n / commons.length) - 1)).toBeLessThan(0.25);
+  });
+  it('pulledCount: every spend that landed it, old spends and refunds as stored; nothing owned is taken away', () => {
+    const id = POOL.acc[0].id;
+    const old: Spend = { id: 'old', at: 1, day: D, kind: 'pull', banner: 'acc', cost: 3, seed: 1, got: null, rarity: 0, refund: 1 };
+    const s = [old, choose('acc', id, 2, D, 'c'), { ...pull(ledgerOf([]), 'acc', 'pull', 1, 3, D, 'p'), got: id, rarity: POOL.acc[0].rarity, refund: 5 },
+      { ...pull(ledgerOf([]), 'acc', 'ticket', 2, 4, D, 't'), got: id, rarity: POOL.acc[0].rarity, refund: 5 }];
+    const l = ledgerOf(s);
+    expect(pulledCount(l, id)).toBe(3);
+    expect(pulledCount(l, POOL.acc[1].id)).toBe(0);
+    expect([l.spent, l.refunds]).toEqual([3 + CHOOSE.acc[POOL.acc[0].rarity] + PULL.acc, 1 + 5 + 5]); // old cost and refund kept exactly
+    expect([...l.owned.keys()]).toEqual([id]);
+  });
+  it(`pullMany: ${MULTI} seeded pulls in order, the same for the same seed, at least one rare or better every time`, () => {
+    const base = ledgerOf(pulls(3, 'buddy', 2));
+    expect(pullMany(base, 'buddy', 'pull', 77, 100, D)).toEqual(pullMany(base, 'buddy', 'pull', 77, 100, D));
+    for (let seed = 0; seed < 2000; seed++) {
+      const xs = pullMany(base, 'buddy', 'pull', seed, 100, D);
+      expect(xs).toHaveLength(MULTI);
+      expect(xs.some((x) => x.rarity >= 2)).toBe(true);
+      expect(new Set(xs.map((x) => x.id)).size).toBe(MULTI);
+      expect(xs.map((x) => x.at)).toEqual(Array.from({ length: MULTI }, (_, i) => 100 + i));
+    }
+    // each is the pull it would be from the ledger the ones before it left: pity and duplicates carry through
+    const xs = pullMany(base, 'acc', ['ticket', 'ticket', 'pull'], 9, 200, D, 3);
+    xs.forEach((x, i) => expect(x.refund).toBe(ledgerOf([...base.spends, ...xs.slice(0, i)]).owned.has(x.got!) ? dupeRefund('acc') : 0));
+    expect(xs.map((x) => [x.kind, x.cost])).toEqual([['ticket', 0], ['ticket', 0], ['pull', PULL.acc]]);
+    expect(base.spends).toHaveLength(3); // the ledger it was given is left as it was
+  });
+  it('without the guarantee about 2 in 7 tens (0.87^9) would hold no rare in the first 9: the floor only lifts the last pull of such a run', () => {
+    let lifted = 0;
+    for (let seed = 0; seed < 2000; seed++) {
+      const xs = pullMany(ledgerOf([]), 'acc', 'pull', seed, 1, D);
+      if (xs.slice(0, -1).every((x) => x.rarity < 2)) { lifted++; expect(xs.at(-1)!.rarity).toBeGreaterThanOrEqual(2); }
+    }
+    expect(lifted / 2000).toBeGreaterThan(0.24);
+    expect(lifted / 2000).toBeLessThan(0.33);
   });
 });
 
@@ -85,7 +129,7 @@ describe('the ledger', () => {
     const l = ledgerOf(s);
     expect(walletOf({ points: 1000, tickets: 2 }, l)).toEqual({ points: 1000 - 6 * PULL.buddy + l.refunds, tickets: 2 });
     expect(walletOf({ points: 10, tickets: 0 }, l).points).toBe(0);
-    expect(l.owned.size).toBe(s.filter((x) => x.got).length);
+    expect(l.owned.size).toBe(new Set(s.map((x) => x.got)).size);
   });
   it('one starter only, free, from three commons offered the same for the same seed', () => {
     const offer = starterOffer(77);
