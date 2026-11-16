@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { PULL, pulledCount, starterOffer, walletOf, type Spend, type Wallet } from '../domain/buddies/gacha';
+import { canSpend, multiBill, payWith, pull, pullMany, pulledCount, starterOffer, walletOf, type Spend, type Wallet } from '../domain/buddies/gacha';
 import { NAME_MAX } from '../domain/buddies/kept';
 import { earned } from '../domain/buddies/points';
 import { ACCESSORY, BUDDIES, BUDDY, CREDIT_ROWS, RARITIES, SLOTS, STATS, defaultName, type Banner, type BuddyDef, type Rarity, type Slot, type Stat } from '../domain/buddies/roster';
@@ -11,6 +11,8 @@ import type { BuddiesStore } from '../state/useBuddies';
 import { useProfileId } from '../state/profileDb';
 import { BOX, BuddySprite } from './buddies/BuddySprite';
 import { PullSheet, type Mode } from './buddies/PullSheet';
+import { onePull, PullBooth, tenPulls } from './buddies/PullBooth';
+import { PullShow, type Again, type Show } from './buddies/PullShow';
 import { AccIcon, accName, SLOT_NAME, WardrobeSheet, wornClass } from './buddies/Worn';
 import { Icon } from './icons';
 
@@ -37,6 +39,8 @@ type Sheet = { at: 'pull'; mode: Mode; banner: Banner } | { at: 'wear'; id: stri
 export function BuddiesScreen({ buddies, entries, today, profile }: { buddies: BuddiesStore; entries: readonly SetEntry[]; today: string; profile: Profile }) {
   const [view, setView] = useState<View>({ at: 'home' });
   const [sheet, setSheet] = useState<Sheet>(null);
+  const [show, setShow] = useState<Show | null>(null);
+  const [pending, setPending] = useState<readonly Spend[]>([]);
   const go = (v: View) => { setView(v); setSheet(null); window.scrollTo(0, 0); };
   const { kept, ledger, owned, lead } = buddies;
   const ach = useAchievements(entries, today);
@@ -45,18 +49,47 @@ export function BuddiesScreen({ buddies, entries, today, profile }: { buddies: B
   const wallet = useMemo(() => (training && ledger ? walletOf(earned(training, ach), ledger) : null), [training, ach, ledger]);
   if (!kept || !training || !wallet) return <><h1>Buddies</h1><p className="muted">Loading…</p></>;
   if (!owned.length || !lead) return <FirstPick buddies={buddies} />;
+  const names = (id: string) => nameOf(buddies, id);
+  // A pull's show starts at once and the spend is kept behind it; the next waits until the ledger has it (a stale ledger
+  // would roll from old pity and an old wallet).
+  const saved = (xs: readonly Spend[]) => xs.every((x) => ledger!.spends.some((y) => y.id === x.id));
+  const busy = !saved(pending);
+  const seed = () => crypto.getRandomValues(new Uint32Array(1))[0];
+  const pullOne = (b: Banner) => {
+    const how = payWith(wallet);
+    if (busy || !canSpend(wallet, ledger!, { kind: how, banner: b, got: null })) return;
+    const s = pull(ledger!, b, how, seed(), Date.now(), today);
+    setShow({ spends: [s], before: ledger!, banner: b }); setPending([s]);
+    void buddies.spend(s).catch(() => { setShow(null); setPending([]); });
+  };
+  const pullTen = (b: Banner) => {
+    const bill = multiBill(wallet, b);
+    if (busy || !bill.ok) return;
+    const xs = pullMany(ledger!, b, bill.how, seed(), Date.now(), today);
+    setShow({ spends: xs, before: ledger!, banner: b, bill: { tickets: bill.tickets, points: bill.points } }); setPending(xs);
+    void buddies.spendMany(xs).catch(() => { setShow(null); setPending([]); });
+  };
+  const openSpend = (sp: Spend) => {
+    setShow(null);
+    if (!sp.got) return;
+    if (BUDDY.has(sp.got)) { go({ at: 'card', id: sp.got, from: 'home' }); return; }
+    void buddies.equip(lead.id, ACCESSORY.get(sp.got)!.slot, sp.got);
+    go({ at: 'home' });
+  };
+  const again: Again | undefined = show && (() => {
+    const b = show.banner;
+    if (show.spends.length > 1) { const t = tenPulls(wallet, b); return { label: '10 more', sub: t.sub, ok: t.ok && !busy, run: () => pullTen(b) }; }
+    const o = onePull(wallet, ledger!, b);
+    return { label: 'Pull again', sub: o.sub, ok: o.ok && !busy, run: () => pullOne(b), ticket: o.label !== 'Pull' };
+  })() || undefined;
+  const overlay = show && <PullShow key={show.spends[0].id} show={show} names={names} onClose={() => setShow(null)} onOpen={openSpend} again={again} />;
   const statsFor = (id: string) => { const o = owned.find((x) => x.def.id === id)!; return statsOf(o.def, o.day, training); };
   const ownedIds = new Set(ledger!.owned.keys());
   const onSlot = (id: string, slot: Slot) => setSheet({ at: 'wear', id, slot });
   const sheets = sheet?.at === 'pull' ? (
-    <PullSheet mode={sheet.mode} banner={sheet.banner} ledger={ledger!} wallet={wallet} today={today} names={(id) => nameOf(buddies, id)}
-      onSpend={buddies.spend} onClose={() => setSheet(null)}
-      onOpen={(sp: Spend) => {
-        if (!sp.got) return;
-        if (BUDDY.has(sp.got)) { go({ at: 'card', id: sp.got, from: 'home' }); return; }
-        void buddies.equip(lead.id, ACCESSORY.get(sp.got)!.slot, sp.got);
-        go({ at: 'home' });
-      }} />
+    <PullSheet mode={sheet.mode} banner={sheet.banner} ledger={ledger!} wallet={wallet} today={today} names={names}
+      onSpend={buddies.spend} onClose={() => setSheet(null)} onOpen={openSpend} busy={busy}
+      onShow={(s) => { setShow({ spends: [s], before: ledger!, banner: s.banner }); setPending([s]); }} />
   ) : sheet?.at === 'wear' ? (
     <WardrobeSheet slot={sheet.slot} wearing={kept.prefs[sheet.id]?.equip?.[sheet.slot]} owned={ownedIds} name={nameOf(buddies, sheet.id)}
       onPick={(acc) => void buddies.equip(sheet.id, sheet.slot, acc)} onClose={() => setSheet(null)}
@@ -73,6 +106,7 @@ export function BuddiesScreen({ buddies, entries, today, profile }: { buddies: B
         <button className="back" onClick={() => go(view.from === 'collection' ? { at: 'collection' } : { at: 'home' })}>‹ {view.from === 'collection' ? 'Collection' : 'Buddies'}</button>
         <BuddyCard key={def.id} buddies={buddies} def={def} stats={statsFor(def.id)} today={today} title onSlot={onSlot} />
         {sheets}
+        {overlay}
       </>
     );
   }
@@ -83,12 +117,9 @@ export function BuddiesScreen({ buddies, entries, today, profile }: { buddies: B
         <h1>Buddies</h1>
         <WalletPills w={wallet} />
       </div>
+      <PullBooth wallet={wallet} ledger={ledger!} busy={busy} onPull={pullOne} onTen={pullTen}
+        onOdds={(b) => setSheet({ at: 'pull', mode: 'pull', banner: b })} onChoose={() => setSheet({ at: 'pull', mode: 'choose', banner: 'buddy' })} />
       <BuddyCard key={lead.id} buddies={buddies} def={lead} stats={statsFor(lead.id)} today={today} onSlot={onSlot} />
-      <section className="bu-get" aria-label="Get more">
-        <button className="primary" onClick={() => setSheet({ at: 'pull', mode: 'pull', banner: 'buddy' })}>Pull<span>{PULL.buddy} points</span></button>
-        <button onClick={() => setSheet({ at: 'pull', mode: 'ticket', banner: 'buddy' })}>Ticket<span>{n(wallet.tickets)} left</span></button>
-        <button onClick={() => setSheet({ at: 'pull', mode: 'choose', banner: 'buddy' })}>Choose<span>save up</span></button>
-      </section>
       <section className="bu-roster" aria-labelledby="bu-roster-h">
         <h2 id="bu-roster-h">Your buddies <span className="muted small">{owned.length} of {BUDDIES.length}</span></h2>
         <ul>
@@ -114,6 +145,7 @@ export function BuddiesScreen({ buddies, entries, today, profile }: { buddies: B
         <p className="small"><b>Accessories</b> are shared: any buddy can wear any you own. Tap a slot on a card to change it.</p>
       </section>
       {sheets}
+      {overlay}
     </>
   );
 }
@@ -121,8 +153,7 @@ export function BuddiesScreen({ buddies, entries, today, profile }: { buddies: B
 function WalletPills({ w }: { w: Wallet }) {
   return (
     <p className="bu-wallet">
-      <span className="bu-pill"><i className="bu-coin" aria-hidden="true" />{n(w.points)}<span className="sr-only"> {w.points === 1 ? 'point' : 'points'},</span></span>{' '}
-      <span className="bu-pill"><i className="bu-ticket" aria-hidden="true" />{n(w.tickets)}<span className="sr-only"> {w.tickets === 1 ? 'ticket' : 'tickets'}</span></span>
+      <span className="bu-pill"><i className="bu-coin" aria-hidden="true" />{n(w.points)}<span className="sr-only"> {w.points === 1 ? 'point' : 'points'}</span></span>
     </p>
   );
 }
@@ -245,7 +276,7 @@ function FirstPick({ buddies }: { buddies: BuddiesStore }) {
 }
 
 /** "×3" in a tile's corner once it has landed more than once. */
-const Count = ({ n: k }: { n: number }) => (k > 1 ? <span className="bu-count" aria-hidden="true">×{k}</span> : null);
+const Count = ({ n: k }: { n: number }) => (k > 1 ? <span className="bu-count" aria-hidden="true"><i>×</i>{k}</span> : null);
 
 function Collection({ buddies, onBack, onOpen }: { buddies: BuddiesStore; onBack: () => void; onOpen: (id: string) => void }) {
   const mine = new Set(buddies.owned.map((o) => o.def.id));
@@ -260,13 +291,13 @@ function Collection({ buddies, onBack, onOpen }: { buddies: BuddiesStore; onBack
           <section key={r} className="bu-coll-group" aria-label={RARITY[r as Rarity]}>
             <h2><span className={`bu-rarity r${r}`}>{RARITY[r as Rarity]}</span> <span className="muted small">{all.filter((b) => mine.has(b.id)).length} of {all.length}</span></h2>
             <ul className="bu-coll">
-              {all.map((b) => (
+              {all.map((b) => { const k = buddies.ledger ? pulledCount(buddies.ledger, b.id) : 0; return (
                 <li key={b.id}>
                   {mine.has(b.id)
-                    ? <button className={`bu-tile r${r}`} onClick={() => onOpen(b.id)} aria-label={nameOf(buddies, b.id)}><BuddySprite def={b} scale={3} box={BOX.tile} /><b>{nameOf(buddies, b.id)}</b><Count n={buddies.ledger ? pulledCount(buddies.ledger, b.id) : 0} /></button>
+                    ? <button className={`bu-tile r${r}${k > 1 ? ' counted' : ''}`} onClick={() => onOpen(b.id)} aria-label={nameOf(buddies, b.id)}><BuddySprite def={b} scale={3} box={BOX.tile} /><b>{nameOf(buddies, b.id)}</b><Count n={k} /></button>
                     : <div className={`bu-tile r${r} unmet`} role="img" aria-label={`Not met yet, ${RARITY[r as Rarity].toLowerCase()}`}><BuddySprite def={b} scale={3} box={BOX.tile} still shadow /><b aria-hidden="true">?</b></div>}
                 </li>
-              ))}
+              ); })}
             </ul>
           </section>
         );

@@ -37,7 +37,9 @@ test('the first buddy: three commons, one picked; it leads, earns from the set l
   await expect(card.getByText('Lead', { exact: true })).toBeVisible();
   await expect(card.getByText('Lv 0')).toBeVisible();
   const wallet = page.locator('.bu-wallet');
-  await expect(wallet).toHaveText('0 points, 0 tickets');
+  const tix = page.locator('.bu-tix'); // the tickets, as a ticket up front (owner 2026-11-15)
+  await expect(wallet).toHaveText('0 points');
+  await expect(tix).toHaveAttribute('aria-label', 'No tickets yet');
   await expect(page.getByRole('heading', { name: /^Your buddies/ })).toContainText(`1 of ${BUDDIES.length}`);
   expect((await sprites(page)).map(([, w]) => w)).not.toContain(-1);
 
@@ -54,7 +56,8 @@ test('the first buddy: three commons, one picked; it leads, earns from the set l
   await lead(page).click();
   await expect(page.getByRole('heading', { name: 'Buddies', level: 1 })).toBeVisible();
   // 1 for the set, 5 for the session, and whatever the achievements it unlocked pay (§16.5); no tickets below gold.
-  await expect(wallet).toHaveText(/^\d+ points, 0 tickets$/);
+  await expect(wallet).toHaveText(/^\d+ points$/);
+  await expect(tix).toHaveAttribute('aria-label', 'No tickets yet');
   expect(Number((await wallet.textContent())!.match(/^\d+/)![0])).toBeGreaterThanOrEqual(6);
   await expect(card.getByText(/^With you since today: 1 set, 1 session\.$/)).toBeVisible();
   await expect(card.getByRole('listitem', { name: 'Size 0' })).toBeVisible();

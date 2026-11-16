@@ -29,7 +29,7 @@ test('a buddy sheet closes on a swipe down, holds the page still, and nothing in
   });
   for (const sel of ['h1', '.bu-hero img', '.bu-hero', 'button', '.tabs']) expect(await css(sel), sel).toBe('none | manipulation');
 
-  const get = page.getByRole('region', { name: 'Get more' }).getByRole('button', { name: /^Pull/ });
+  const get = page.getByRole('region', { name: 'Buddies banner' }).getByRole('button', { name: /^Odds:/ }); // the pull sheet, from pity
   const sheet = page.getByRole('dialog', { name: /^(Pull|Choose one)$/ }); // named for its mode
   await get.click();
   await expect(sheet).toBeVisible();

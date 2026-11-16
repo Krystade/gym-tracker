@@ -202,3 +202,13 @@ export function canSpend(w: Wallet, l: Ledger, s: Pick<Spend, 'kind' | 'banner' 
   const x = s.got ? POOL[s.banner].find((p) => p.id === s.got) : undefined;
   return !!x && !l.owned.has(x.id) && w.points >= CHOOSE[s.banner][x.rarity];
 }
+
+/** How a pull paid from the wallet goes (owner 2026-11-15: tickets up front): a ticket while there is one, else points. */
+export const payWith = (w: Wallet): 'pull' | 'ticket' => (w.tickets >= 1 ? 'ticket' : 'pull');
+
+/** A multi-pull's bill on `b` (pullMany's `how`): tickets first, then points for the rest. `short`: points still to earn. */
+export interface MultiBill { how: ('pull' | 'ticket')[]; tickets: number; points: number; ok: boolean; short: number }
+export function multiBill(w: Wallet, b: Banner, n = MULTI): MultiBill {
+  const tickets = Math.min(Math.max(0, Math.floor(w.tickets)), n), points = (n - tickets) * PULL[b];
+  return { how: Array.from({ length: n }, (_, i) => (i < tickets ? 'ticket' : 'pull')), tickets, points, ok: w.points >= points, short: Math.max(0, points - w.points) };
+}

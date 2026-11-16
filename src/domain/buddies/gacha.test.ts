@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canSpend, CHOOSE, choose, DUPE_REFUND, dupeRefund, ledgerOf, MULTI, ODDS, parseSpend, PITY_EPIC, PITY_RARE, pityIn, pull, PULL, pulledCount, pullMany, rng, rollRarity, starter, starterOffer, walletOf, type Spend } from './gacha';
+import { canSpend, CHOOSE, choose, multiBill, payWith, DUPE_REFUND, dupeRefund, ledgerOf, MULTI, ODDS, parseSpend, PITY_EPIC, PITY_RARE, pityIn, pull, PULL, pulledCount, pullMany, rng, rollRarity, starter, starterOffer, walletOf, type Spend } from './gacha';
 import { POOL, RETIRED, type Banner } from './roster';
 
 const D = '2026-11-01';
@@ -170,5 +170,23 @@ describe('the ledger', () => {
     expect(parseSpend({ ...ok, banner: 'cash' })).toBeNull();
     expect(parseSpend({ ...ok, rarity: 9 })).toBeNull();
     expect(parseSpend({ ...ok, got: 'not-a-buddy' })!.got).toBeNull();
+  });
+});
+
+describe('paying for pulls: tickets first', () => {
+  it('a single pull takes a ticket while there is one, else points', () => {
+    expect(payWith({ points: 999, tickets: 1 })).toBe('ticket');
+    expect(payWith({ points: 999, tickets: 0 })).toBe('pull');
+  });
+  it(`a ${MULTI}-pull spends tickets first, then ${PULL.buddy} points a pull for the rest, and says how short it is`, () => {
+    const b = multiBill({ points: 200, tickets: 3 }, 'buddy');
+    expect(b.how).toEqual([...Array(3).fill('ticket'), ...Array(MULTI - 3).fill('pull')]);
+    expect([b.tickets, b.points, b.ok, b.short]).toEqual([3, (MULTI - 3) * PULL.buddy, true, 0]);
+    expect(multiBill({ points: 0, tickets: 12 }, 'acc')).toMatchObject({ tickets: MULTI, points: 0, ok: true });
+    expect(multiBill({ points: 100, tickets: 0 }, 'buddy')).toMatchObject({ tickets: 0, points: MULTI * PULL.buddy, ok: false, short: MULTI * PULL.buddy - 100 });
+    // the bill is what pullMany charges
+    const xs = pullMany(ledgerOf([]), 'acc', multiBill({ points: 500, tickets: 4 }, 'acc').how, 5, 1, D);
+    expect(xs.reduce((a, x) => a + x.cost, 0)).toBe(multiBill({ points: 500, tickets: 4 }, 'acc').points);
+    expect(xs.filter((x) => x.kind === 'ticket')).toHaveLength(4);
   });
 });

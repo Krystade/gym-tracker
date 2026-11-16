@@ -51,6 +51,8 @@ export function useBuddies(today: string) {
 
   /** A pull, a ticket or a choice (domain/buddies/gacha, rolled by the caller once): kept as is, never rolled again. */
   const spend = useCallback(async (s: Spend) => { await db.addSpend(s); await reload(); }, [reload]);
+  /** A multi-pull's spends (gacha pullMany), kept in order, then read back once. */
+  const spendMany = useCallback(async (xs: readonly Spend[]) => { for (const s of xs) await db.addSpend(s); await reload(); }, [reload]);
   /** Puts an accessory on a buddy (null takes that slot's off). Accessories are shared: any buddy may wear any you own. */
   const equip = useCallback(async (id: string, slot: Slot, acc: string | null) => {
     const p = kept?.prefs[id];
@@ -60,6 +62,6 @@ export function useBuddies(today: string) {
     await reload();
   }, [kept, reload]);
 
-  return { kept, ledger, owned, lead, reload, pickFirst, makeLead, rename, spend, equip };
+  return { kept, ledger, owned, lead, reload, pickFirst, makeLead, rename, spend, spendMany, equip };
 }
 export type BuddiesStore = ReturnType<typeof useBuddies>;

@@ -22,11 +22,13 @@ export const nameOfItem = (id: string, names: (id: string) => string) => (BUDDY.
 
 const seed = () => crypto.getRandomValues(new Uint32Array(1))[0];
 
-export function PullSheet({ mode: first, banner: firstBanner, ledger, wallet, today, names, onSpend, onClose, onOpen }: {
+export function PullSheet({ mode: first, banner: firstBanner, ledger, wallet, today, names, onSpend, onClose, onOpen, onShow, busy: held = false }: {
   mode: Mode; banner: Banner; ledger: Ledger; wallet: Wallet; today: string;
   /** A buddy's name (its own, else its roster name). */ names: (id: string) => string;
   onSpend: (s: Spend) => Promise<void>; onClose: () => void;
   /** Opens what was landed on: a buddy's card, or the lead's card to wear an accessory. */ onOpen: (s: Spend) => void;
+  /** A pull's show over everything (ui/buddies/PullShow), as it's kept. */ onShow?: (s: Spend) => void;
+  /** A pull made elsewhere is still being kept. */ busy?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>(first);
   const [banner, setBanner] = useState<Banner>(firstBanner);
@@ -41,7 +43,7 @@ export function PullSheet({ mode: first, banner: firstBanner, ledger, wallet, to
     setBusy(true);
     void onSpend(s).then(() => { setShown(s); setPicked(null); }).finally(() => setBusy(false));
   };
-  const roll = (how: 'pull' | 'ticket') => go(pull(ledger, banner, how, seed(), Date.now(), today));
+  const roll = (how: 'pull' | 'ticket') => { const s = pull(ledger, banner, how, seed(), Date.now(), today); onShow?.(s); go(s); };
 
   const can = mode === 'choose' ? !!picked && canSpend(wallet, ledger, { kind: 'choose', banner, got: picked })
     : canSpend(wallet, ledger, { kind: mode, banner, got: null });
@@ -81,8 +83,8 @@ export function PullSheet({ mode: first, banner: firstBanner, ledger, wallet, to
               <p className="bu-pity small">Rare or better within <b>{pity.rare}</b> {pity.rare === 1 ? 'pull' : 'pulls'} · epic or better within <b>{pity.epic}</b>. Tickets count.</p>
               <p className="small muted">Any of a rarity can land, even one you have: a duplicate gives {pts(dupeRefund(banner))} back.</p>
               {mode === 'pull'
-                ? <button className="primary wide" disabled={!can || busy} onClick={() => roll('pull')}>{can ? `Pull for ${pts(PULL[banner])}` : `Pull needs ${pts(PULL[banner])}`}</button>
-                : <button className="primary wide" disabled={!can || busy} onClick={() => roll('ticket')}>{wallet.tickets ? `Use a ticket (${wallet.tickets} left)` : 'No tickets yet'}</button>}
+                ? <button className="primary wide" disabled={!can || busy || held} onClick={() => roll('pull')}>{can ? `Pull for ${pts(PULL[banner])}` : `Pull needs ${pts(PULL[banner])}`}</button>
+                : <button className="primary wide" disabled={!can || busy || held} onClick={() => roll('ticket')}>{wallet.tickets ? `Use a ticket (${wallet.tickets} left)` : 'No tickets yet'}</button>}
               {mode === 'ticket' && !wallet.tickets && <p className="small muted">Tickets come from goal weeks, every 5 sessions, and gold and platinum achievements. A ticket is a free pull on either banner.</p>}
             </>
           ) : (
@@ -111,7 +113,7 @@ export function PullSheet({ mode: first, banner: firstBanner, ledger, wallet, to
           )}
         </div>
         {mode === 'choose' && (
-          <button className="primary wide bu-choose-go" disabled={!can || busy} onClick={() => picked && go(choose(banner, picked, Date.now(), today))}>
+          <button className="primary wide bu-choose-go" disabled={!can || busy || held} onClick={() => picked && go(choose(banner, picked, Date.now(), today))}>
             {!pickedDef ? 'Tap one to choose it' : can ? `Choose ${nameOfItem(pickedDef.id, names)} for ${pts(CHOOSE[banner][pickedDef.rarity])}` : `${nameOfItem(pickedDef.id, names)} needs ${pts(CHOOSE[banner][pickedDef.rarity])}`}
           </button>
         )}

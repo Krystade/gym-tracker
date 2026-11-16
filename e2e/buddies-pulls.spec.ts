@@ -4,10 +4,14 @@ import { goto } from './nav';
 import { audit, notched, type Allow } from './layout';
 import { iso } from './seed';
 import { CHOOSE, PULL } from '../src/domain/buddies/gacha';
+import { HELD } from '../src/domain/buddies/anchors';
+import { PLACED } from '../src/domain/buddies/marks';
+import { BUDDIES, defaultName } from '../src/domain/buddies/roster';
+import { heldStyle, WEAR, wearFor } from '../src/domain/buddies/wear';
 
 // Gym Buddies stage 5 (plan §16.10): pulls and the wardrobe. With points from sets logged today: the pull sheet's odds and pity,
 // an accessory pull revealed and worn, choosing one saved up for, the wardrobe sheet from a card's slot, and a buddy wearing a
-// held item (on its head anchor), an aura, a plinth and a backdrop. On the 13 mini, notch and home indicator included.
+// held item (where the owner's baked marks put it: in its hands), an aura, a plinth and a backdrop. On the 13 mini, notch and home indicator included.
 
 const SHOTS = 'screenshots/buddies';
 const WORN: Allow[] = [];
@@ -23,14 +27,18 @@ const fits = async (page: Page, what: string) => {
   expect((await audit(page, WORN)).map((f) => `${f.kind}: ${f.a} × ${f.b ?? ""} ${f.detail}`), what).toEqual([]);
 };
 
-test('pull, choose and wear: odds and pity shown, a pull revealed and worn, a held item on the head', async ({ page }) => {
+test('pull, choose and wear: odds and pity shown, a pull revealed and worn, a held item where its baked mark puts it', async ({ page }) => {
   test.setTimeout(90_000); // a 1,000-set import: choosing costs ten times a pull's worth (owner 2026-11-15)
   await notched(page);
   await page.goto('/');
   await goto(page, 'Buddies');
   const offer = page.getByRole('group', { name: 'Your first buddy' }).getByRole('button');
-  const first = (await offer.first().locator('b').textContent())!;
-  await offer.first().click();
+  // A Tiny one with the owner's mark baked in for every pose, where one is offered (60b212a: held items sit where he marked them).
+  const offered = await offer.locator('b').allTextContents();
+  const idOf = (name: string) => BUDDIES.find((b) => defaultName(b.id) === name)!;
+  const marked = (name: string) => { const b = idOf(name); return !b.art && b.poses.every((_, f) => PLACED[b.id]?.[f]); };
+  const first = offered.find(marked) ?? offered[0];
+  await offer.nth(offered.indexOf(first)).click();
   await page.getByRole('button', { name: `Pick ${first}` }).click();
   await expect(page.getByRole('region', { name: `${first}’s card` })).toBeVisible();
 
@@ -47,7 +55,7 @@ test('pull, choose and wear: odds and pity shown, a pull revealed and worn, a he
   const start = await points(page);
 
   // The pull sheet: odds, what's left, pity; the banner switch; a ticket needs a ticket.
-  await page.getByRole('region', { name: 'Get more' }).getByRole('button', { name: /^Pull/ }).click();
+  await page.getByRole('region', { name: 'Buddies banner' }).getByRole('button', { name: /^Odds: rare in 10, epic in 40$/ }).click();
   const pull = page.getByRole('dialog', { name: /^(Pull|Use a ticket|Choose one)$/ }); // named for its mode
   await expect(pull.getByRole('table', { name: 'Odds, buddies' })).toContainText('60%');
   await expect(pull.getByRole('row', { name: /^Legendary 1%/ })).toBeVisible();
@@ -58,6 +66,11 @@ test('pull, choose and wear: odds and pity shown, a pull revealed and worn, a he
   await pull.getByRole('button', { name: 'Accessories' }).click();
   await expect(pull.getByRole('table', { name: 'Odds, accessories' })).toBeVisible();
   await pull.getByRole('button', { name: `Pull for ${PULL.acc} points` }).click();
+  // Its show over everything (e2e/buddies-pullshow): a tap skips to what landed, Done goes back to the sheet.
+  const showing = page.getByRole('dialog', { name: 'Your pull' });
+  await showing.click();
+  await showing.getByRole('button', { name: 'Done' }).click();
+  await expect(showing).toHaveCount(0);
   const shown = pull.getByRole('status');
   await expect(shown).toContainText(/(Common|Uncommon|Rare|Epic|Legendary) (held|aura|plinth|backdrop)/);
   await expect(pull.getByText(/^Rare or better within (9|10) pulls?/)).toBeVisible(); // one pull nearer, or reset by a rare
@@ -109,10 +122,18 @@ test('pull, choose and wear: odds and pity shown, a pull revealed and worn, a he
   const held = hero.locator('img.bu-held[data-held="d105"]');
   await expect(held).toBeVisible();
   expect(await held.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBe(16);
-  // The sword rests on the head: its foot within the sprite's top half, and inside the hero.
-  const [h, s, b] = await Promise.all([held.boundingBox(), hero.locator('.bu-sprite').boundingBox(), hero.boundingBox()]);
-  expect(h!.y + h!.height).toBeGreaterThan(s!.y);
-  expect(h!.y + h!.height).toBeLessThan(s!.y + s!.height / 2);
+  // The sword sits where the baked marks put it (domain/buddies/marks, since 60b212a: in its hands, not on its head): on the
+  // hero (Tiny scale 8) at the pose showing's mark, its base on the marked point, its size, tilt and mirror as marked. A frame
+  // he didn't mark takes the guess learned from his marks (domain/buddies/guess); the buddy picked has its own where offered.
+  const def = idOf(first);
+  const want = def.poses.map((_, f) => { const w = wearFor(WEAR, def.id, f)!; return heldStyle(HELD.d105, [w.x * 8, w.y * 8], (w.w * 8) / 16, (w.h * 8) / 16, w.r, w.f); });
+  if (marked(first)) def.poses.forEach((_, f) => expect(wearFor(WEAR, def.id, f), `${def.id} pose ${f}`).toEqual(PLACED[def.id][f]));
+  await expect(held).toHaveAttribute('data-placed', '');
+  const box = await held.evaluate((i: HTMLImageElement) => ({ left: parseFloat(i.style.left), top: parseFloat(i.style.top), width: parseFloat(i.style.width), height: parseFloat(i.style.height), transform: i.style.transform || undefined }));
+  expect(want.some((w) => w.left === box.left && w.top === box.top && Math.abs(w.width - box.width) < 0.01 && Math.abs(w.height - box.height) < 0.01
+    && (w.transform ?? undefined) === box.transform), `${def.id}: ${JSON.stringify(box)} in ${JSON.stringify(want)}`).toBe(true);
+  // And on the hero, not off its top.
+  const [h, b] = await Promise.all([held.boundingBox(), hero.boundingBox()]);
   expect(h!.y).toBeGreaterThanOrEqual(b!.y);
   // Spent: one pull and the choices; nothing below zero.
   expect(await points(page)).toBeLessThanOrEqual(start - PULL.acc - chosen * CHOOSE.acc[0]);
