@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { headOf } from '../../domain/buddies/anchorFix';
 import { FRAMES, HELD } from '../../domain/buddies/anchors';
 import type { BuddyDef } from '../../domain/buddies/roster';
-import { heldStyle, over, SINK, SINK_OLD, WEAR, wearFor, wearFromMarks, type HeldStyle, type Wear, type WearMap } from '../../domain/buddies/wear';
+import { heldStyle, over, SINK, SINK_OLD, unmoved, WEAR, wearFor, wearFromMarks, type HeldStyle, type Wear, type WearMap } from '../../domain/buddies/wear';
 
 // A buddy's sprite (public/buddies/<pose>.png, 16 × 16) at a whole-number scale, drawn pixelated. A buddy of several poses
 // cycles through them (owner: a group cycles); under reduced motion it holds its first. Every pose is in the page from the
@@ -37,13 +37,14 @@ export const BOX = {
 } as const satisfies Record<string, readonly [number, number]>;
 
 /** The accessory placer's own copy of its marks (same site, so the same storage): what's placed there shows here at once, over
- *  WEAR frame by frame, on this phone only. Read when the app loads and again when it's shown after the placer. */
+ *  WEAR frame by frame, on this phone only (less any WEAR has since moved onto the hand: wear unmoved). Read when the app loads
+ *  and again when it's shown after the placer. */
 const MARKS = 'acc-marks';
 let placed: WearMap = WEAR;
 /** Each buddy's frame's placement, placed or guessed (null: none), worked out once for the marks there are. */
 const worn = new Map<string, Wear | null>();
 function readPlaced() {
-  try { const raw = localStorage.getItem(MARKS); placed = raw ? over(WEAR, wearFromMarks(JSON.parse(raw))) : WEAR; } catch { placed = WEAR; }
+  try { const raw = localStorage.getItem(MARKS); placed = raw ? over(WEAR, unmoved(wearFromMarks(JSON.parse(raw)))) : WEAR; } catch { placed = WEAR; }
   worn.clear();
 }
 function wearAt(id: string, f: number): Wear | null {

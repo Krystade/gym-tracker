@@ -10,6 +10,8 @@ import { accName } from '../../ui/buddies/Worn';
 import { HELD } from './anchors';
 import { guess, leaveOneOut, MOST, NEAR, plainWear, type Body, type Look, type Marks, type Wear, type World } from './guess';
 import { ACCESSORIES, BUDDIES, CREDIT_ROWS, defaultName, packOf } from './roster';
+import { PLACED } from './marks';
+import { SUPERSEDED } from './tracked';
 import { WEAR, WORLD } from './wear';
 
 // The learned guesses (domain/buddies/guess): which marks teach a frame, how a mark moves from one shape to another, the
@@ -139,6 +141,7 @@ const source = readFileSync(new URL('./guess.ts', import.meta.url), 'utf8');
 const exported = [...source.matchAll(/^export (?:const|function) (\w+)/gm)].map((m) => m[1]);
 const code = (await transformWithOxc(source, 'guess.ts', { lang: 'ts' })).code.replace(/^export /gm, '').trimEnd();
 const block = `${BEGIN}\n${code}\nreturn { ${exported.join(', ')} };\n${END}`;
+const sameWear = (a: Wear, b: Wear | undefined) => !!b && (['x', 'y', 'w', 'h', 'r', 'f'] as const).every((k) => a[k] === b[k]);
 const packs = CREDIT_ROWS.map((c) => c.what).filter((p) => BUDDIES.some((b) => packOf(b.id) === p));
 const app = {
   held: Object.fromEntries(ACCESSORIES.filter((a) => a.sprite).map((a) => [a.id, [accName(a.id), ...HELD[a.id]]])),
@@ -147,8 +150,13 @@ const app = {
     id: b.id, name: defaultName(b.id), pack: packOf(b.id), w: b.art?.w ?? 16, h: b.art?.h ?? 16, ms: b.art ? b.art.ms : POSE_MS, files: b.art ? [b.id] : [...b.poses],
   })),
   world: WORLD,
-  /** The baked marks (domain/buddies/marks) as the placer saves its own: buddy → strip → frame. It starts from these. */
+  /** The baked marks (domain/buddies/marks, with tracked over them: WEAR) as the placer saves its own: buddy → strip → frame. It
+   *  starts from these. */
   marks: Object.fromEntries(Object.entries(WEAR).map(([id, fs]) => [id, { [WORLD[id].strip]: fs }])),
+  /** His marks the app has since moved onto the hand (domain/buddies/tracked), as he placed them: dropped from this phone's own. */
+  superseded: Object.fromEntries(Object.entries(SUPERSEDED).map(([id, fs]) => [id, { [WORLD[id].strip]: fs }])),
+  /** The baked frames that aren't his own mark as he placed it (moved onto the hand, or filled in): buddy → frames. */
+  moved: Object.fromEntries(Object.entries(WEAR).map(([id, fs]) => [id, Object.keys(fs).map(Number).filter((f) => !sameWear(fs[f], PLACED[id]?.[f]))]).filter(([, fs]) => fs.length)),
 };
 const appLine = `const APP = ${JSON.stringify(app)};`;
 if (process.env.UPDATE_PLACER) {

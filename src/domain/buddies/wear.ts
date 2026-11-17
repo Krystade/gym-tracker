@@ -3,6 +3,7 @@ import { FRAMES, LOOK } from './anchors';
 import { guess, learnFrom, turn, type Body, type Look, type Marks, type Wear, type World } from './guess';
 import { PLACED } from './marks';
 import { BUDDIES, packOf } from './roster';
+import { SUPERSEDED, TRACKED } from './tracked';
 
 // A held item placed by hand (owner 2026-11-12): in the accessory placer (public/tools/accessory-placer.html) he drags it, sizes
 // it, stretches its width and height apart, tilts it a full turn and mirrors it, frame by frame of the strip the app shows (an
@@ -10,6 +11,8 @@ import { BUDDIES, packOf } from './roster';
 // reach the app two ways: on the phone that made them at once (the placer saves them in this site's storage, which
 // ui/buddies/BuddySprite reads over WEAR, frame by frame), and for everyone once its Copy is baked into domain/buddies/marks
 // (scripts/bake-marks.mjs), which is WEAR here. Read as untrusted.
+// Every frame of a buddy that moves is then kept on its hand (owner 2026-11-16, domain/buddies/tracked from
+// scripts/track-held.mjs): the hand followed frame to frame in the sprite's own pixels, his mark kept where it sits on it.
 // A frame nobody placed takes a guess learned from the frames that were (domain/buddies/guess, which the placer shares), else
 // the head anchor as it always has.
 
@@ -21,13 +24,27 @@ export const ITEM = 16;
 /** How far a held item sits into the head: the Tiny sprites' outline is two pixels thick (the older characters', one). */
 export const SINK = 2, SINK_OLD = 1;
 
-/** Placed by hand for everyone: the owner's Held marks, baked from the placer's Copy (domain/buddies/marks, 2026-11-12). */
-export const WEAR: WearMap = PLACED;
-
 /** Some marks over others, frame by frame: `top`'s frame where it has one, else `base`'s (this phone's marks over WEAR). */
 export function over(base: WearMap, top: WearMap): WearMap {
   const out: Record<string, Readonly<Record<number, Wear>>> = { ...base };
   for (const [id, fs] of Object.entries(top)) out[id] = { ...(Object.hasOwn(base, id) ? base[id] : {}), ...fs };
+  return out;
+}
+
+/** For everyone: the owner's Held marks, baked from the placer's Copy (domain/buddies/marks, 2026-11-12), with every frame of a
+ *  buddy that moves on its hand (domain/buddies/tracked, owner 2026-11-16: his mark where it sits on the hand, else moved there). */
+export const WEAR: WearMap = over(PLACED, TRACKED);
+
+const same = (a: Wear, b: Wear) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h && a.r === b.r && a.f === b.f;
+/** This phone's own marks less the ones WEAR has since moved onto the hand (tracked SUPERSEDED: exactly the mark he placed
+ *  there), so the phone that placed them draws them on the hand too; one placed there anew still wins. */
+export function unmoved(mine: WearMap): WearMap {
+  const out: Record<string, Readonly<Record<number, Wear>>> = {};
+  for (const [id, fs] of Object.entries(mine)) {
+    const old = Object.hasOwn(SUPERSEDED, id) ? SUPERSEDED[id] : {};
+    const kept = Object.entries(fs).filter(([f, w]) => !(Object.hasOwn(old, f) && same(old[Number(f)], w)));
+    if (kept.length) out[id] = Object.fromEntries(kept);
+  }
   return out;
 }
 

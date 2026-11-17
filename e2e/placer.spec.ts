@@ -106,15 +106,28 @@ test('the placer by touch: a drag keeps its offset, Mirror flips and keeps, a tw
 });
 
 test('guesses: learned from the marks, Accept keeps the app’s own numbers, this phone’s marks win frame by frame, and Copy sends all', async ({ page }) => {
+  // Every buddy that moves has all its frames in the app now (domain/buddies/tracked), so a placer whose app hasn't got Mr. Dude's:
+  // the guesses' flow on a strip of frames, as it was for him before his were baked.
+  await page.route('**/tools/accessory-placer.html', async (route) => {
+    const res = await route.fetch(), body = await res.text();
+    const app = body.replace(/^const APP = (.*);$/m, (_, j: string) => {
+      const a = JSON.parse(j);
+      delete a.marks.dudemr; delete a.moved.dudemr; delete a.superseded.dudemr;
+      return `const APP = ${JSON.stringify(a)};`;
+    });
+    expect(app).not.toBe(body);
+    await route.fulfill({ response: res, body: app });
+  });
+  const { dudemr: _, ...unbaked } = WEAR;
   await page.goto('tools/accessory-placer.html');
   const seed = { held: { ckbrown: { idle: { 0: { x: 7.5, y: 2, w: 9, h: 7, r: 20, f: true } } } }, head: { ckbrown: { idle: { 0: { x: 1, y: 1, w: 3 } } } } };
   await page.evaluate((m) => localStorage.setItem('acc-marks', JSON.stringify(m)), seed);
   await page.reload();
   // What the app draws with this phone's marks: its own over the baked ones, frame by frame.
-  const drawn = (m: unknown) => over(WEAR, wearFromMarks(m));
+  const drawn = (m: unknown) => over(unbaked, wearFromMarks(m));
   // As Accept saves a guess: to the hundredth (one moved with the head can carry float dust, 23.09 + 44 - 44).
   const cents = (w: Wear | null) => w && { ...w, x: Math.round(w.x * 100) / 100, y: Math.round(w.y * 100) / 100 };
-  // Mr. Dude, never placed: a guess learned from the marks, in the guess colour.
+  // Mr. Dude, not in this app: a guess learned from the marks, in the guess colour.
   await open(page, 'Mr. Dude');
   await expect(page.locator('#state')).toHaveText('Guess');
   await expect(page.locator('#why')).toContainText('learned from');
@@ -136,14 +149,17 @@ test('guesses: learned from the marks, Accept keeps the app’s own numbers, thi
   // The old stand-in slot's mark is kept, untouched; the baked marks stay out of this phone's own.
   expect(m.head).toEqual(seed.head);
   expect(m.held.c017).toBeUndefined();
-  // The brown goat: this phone's mark on its first frame, the baked one on the next.
+  // The brown goat: this phone's mark on its first frame, the baked one on the next (moved onto its hand), then his own as placed.
   await open(page, 'Moko');
   const tilt = page.getByRole('spinbutton', { name: 'Tilt in degrees' });
   await expect(page.locator('#why')).toContainText('the app has your earlier mark');
   await expect(tilt).toHaveValue('20');
   await page.getByRole('button', { name: 'Next frame' }).tap();
-  await expect(page.locator('#why')).toHaveText('Set by you, and in the app for everyone.');
+  await expect(page.locator('#state')).toHaveText('On its hand');
+  await expect(page.locator('#why')).toHaveText('In the app for everyone: kept on its hand from your marks, the hand followed from frame to frame.');
   await expect(tilt).toHaveValue(String(WEAR.ckbrown[1].r));
+  await page.getByRole('button', { name: 'Next frame' }).tap();
+  await expect(page.locator('#why')).toHaveText('Set by you, and in the app for everyone.');
   // A Tiny buddy of four poses, baked: a nudge saves that pose alone, under its poses, a pixel on from the app's.
   await open(page, 'Bosy');
   await expect(page.locator('#fno')).toHaveText('Pose 1 of 4');

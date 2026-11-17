@@ -6,6 +6,7 @@ import { iso } from './seed';
 import { CHOOSE, PULL } from '../src/domain/buddies/gacha';
 import { HELD } from '../src/domain/buddies/anchors';
 import { PLACED } from '../src/domain/buddies/marks';
+import { SUPERSEDED, TRACKED } from '../src/domain/buddies/tracked';
 import { BUDDIES, defaultName } from '../src/domain/buddies/roster';
 import { heldStyle, WEAR, wearFor } from '../src/domain/buddies/wear';
 
@@ -127,7 +128,8 @@ test('pull, choose and wear: odds and pity shown, a pull revealed and worn, a he
   // he didn't mark takes the guess learned from his marks (domain/buddies/guess); the buddy picked has its own where offered.
   const def = idOf(first);
   const want = def.poses.map((_, f) => { const w = wearFor(WEAR, def.id, f)!; return heldStyle(HELD.d105, [w.x * 8, w.y * 8], (w.w * 8) / 16, (w.h * 8) / 16, w.r, w.f); });
-  if (marked(first)) def.poses.forEach((_, f) => expect(wearFor(WEAR, def.id, f), `${def.id} pose ${f}`).toEqual(PLACED[def.id][f]));
+  // His mark, or where it was moved onto the hand (domain/buddies/tracked: a bird's raised-wing pose, the chest's open lid).
+  if (marked(first)) def.poses.forEach((_, f) => expect(wearFor(WEAR, def.id, f), `${def.id} pose ${f}`).toEqual(SUPERSEDED[def.id]?.[f] ? TRACKED[def.id][f] : PLACED[def.id][f]));
   await expect(held).toHaveAttribute('data-placed', '');
   const box = await held.evaluate((i: HTMLImageElement) => ({ left: parseFloat(i.style.left), top: parseFloat(i.style.top), width: parseFloat(i.style.width), height: parseFloat(i.style.height), transform: i.style.transform || undefined }));
   expect(want.some((w) => w.left === box.left && w.top === box.top && Math.abs(w.width - box.width) < 0.01 && Math.abs(w.height - box.height) < 0.01
