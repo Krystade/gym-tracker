@@ -41,10 +41,11 @@ test('a chart’s line label doesn’t select on a press; a message’s text doe
   await field.click();
   await expect(field).toBeFocused();
   await field.pressSequentially('Deadlifts tonight');
-  await expect(field).toHaveValue('Deadlifts tonight');
+  // The box is a contenteditable since 2026-11-12 (ui/MessageBox): its words are its text, its selection the document's.
+  await expect(field).toHaveText('Deadlifts tonight');
   // A word in the box selects, as it always has.
   await field.dblclick();
-  expect(await field.evaluate((el: HTMLTextAreaElement) => el.selectionEnd - el.selectionStart), 'a word selected in the box').toBeGreaterThan(0);
+  expect(await field.evaluate((el) => { const s = getSelection(); return s && el.contains(s.anchorNode) ? s.toString().length : 0; }), 'a word selected in the box').toBeGreaterThan(0);
   await sheet.getByRole('button', { name: 'Send', exact: true }).click();
   const bubble = sheet.locator('.bubble.mine .bubble-text');
   await expect(bubble).toHaveText('Deadlifts tonight');

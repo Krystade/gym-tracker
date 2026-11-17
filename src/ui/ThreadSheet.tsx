@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { blockFriend, clearSentGym, friendState, markRead, removeFriend, sendMessage, sendPing, sendSticker, setMuted } from '../cloud/friends';
 import { MAX_MESSAGE, messageOk, PRESET_KEYS, PRESETS, shortAgo, type PresetKey } from '../domain/messages';
@@ -12,8 +12,9 @@ import { useArmed } from './useArmed';
 import { useSheet } from './useSheet';
 import { makeSticker, stickerFromElement } from './stickerImage';
 import { MessageBox, readBox, writeBox } from './MessageBox';
-import { withRecent } from '../domain/sticker';
-import { getRecentStickers, putRecentStickers } from '../db/db';
+import { rankOf, recentRow, stickerId } from '../domain/stickerLibrary';
+import { keepStickers, setFavourite, useStickers } from '../state/stickers';
+import { StickerDrawer } from './StickerDrawer';
 
 /** The friend a thread is with: from a row (name known) or a notification (uid alone). */
 export interface ThreadWith { uid: string; name?: string }
@@ -45,8 +46,11 @@ const whyNot = (e: unknown) => {
  * 2026-11-12: 👀 over and over): nothing waits or locks between them; they go one after another, as fast as they're taken,
  * and only your day's 300 (socialRate) stops them, with a line saying so.
  *
- * Stickers (owner, 2026-11-12: "like iOS stickers in Messages"): one pasted into the box, or picked with the sticker button,
- * waits in the box until Send (nothing goes by mistake); the row of the last 12 sent from this profile sends at a tap, as a ping does.
+ * Stickers (owner, 2026-11-12: "like iOS stickers in Messages"): one pasted into the box waits there until Send (nothing goes by
+ * mistake). The sticker button opens your stickers in the keyboard's place (ui/StickerDrawer, owner 2026-11-16: sending them was
+ * still "pretty clunky"): every one sent, added from Photos or seen in a thread, favourites first, each sent at a tap. The row above
+ * the pings is your favourites, then the last 12 sent, and sends at a tap as a ping does. A sticker in the thread, tapped, offers
+ * Favourite.
  * The box is a contenteditable (ui/MessageBox) so iOS's emoji keyboard offers its Stickers, Memoji and Genmoji there too: one put
  * in the box the same way becomes the sticker waiting for Send, and the words round it stay as they were.
  *
@@ -92,13 +96,23 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   /**
-   * The recent row as shown: as kept when the sheet opened, with any new one sent from the box put first. One resent from the row
-   * goes first only in what's kept (`keptRecent`), so the row never moves under a finger tapping it again and again.
+   * Your stickers (state/stickers) and the recent row as shown: favourites first, then the order the recents had when the sheet
+   * opened (`rowRank`), with one new from the box put first. One resent from the row goes first only in what's kept, so the row
+   * never moves under a finger tapping it again and again; it's laid out again when the drawer folds away.
    */
-  const [recent, setRecent] = useState<string[]>([]);
-  const keptRecent = useRef<string[]>([]);
-  useEffect(() => { void getRecentStickers().then((l) => { keptRecent.current = l; setRecent(l); }).catch(() => {}); }, []);
-  const picker = useRef<HTMLInputElement>(null);
+  const lib = useStickers(me);
+  const [rowRank, setRowRank] = useState<ReadonlyMap<string, number> | null>(null);
+  const recent = lib ? recentRow(lib, rowRank ?? undefined) : [];
+  useEffect(() => {
+    if (!lib) return;
+    const r = recentRow(lib, rowRank ?? undefined);
+    if (!rowRank || r.some((s) => !rowRank.has(s.id))) setRowRank(rankOf(r));
+  }, [lib, rowRank]);
+  /** The drawer of your stickers, open in the keyboard's place. */
+  const [drawer, setDrawer] = useState(false);
+  const drawerId = useId();
+  /** The sticker in the thread tapped for its Favourite (its item's id). */
+  const [picked, setPicked] = useState<string | null>(null);
   const { armed, arm, tap, settling } = useArmed<'remove' | 'block'>();
   const box = useSheet<HTMLElement>(onClose);
   const list = useRef<HTMLOListElement>(null);
@@ -128,8 +142,15 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
     navigator.serviceWorker?.addEventListener('message', onMsg);
     return () => { document.removeEventListener('visibilitychange', onVis); navigator.serviceWorker?.removeEventListener('message', onMsg); };
   }, [load]);
-  // The newest at the bottom, in view.
-  useEffect(() => { const el = list.current; if (el) el.scrollTop = el.scrollHeight; }, [items]);
+  // The newest at the bottom, in view; again as the drawer takes the keyboard's place or gives it back (the thread shorter or taller).
+  useEffect(() => { const el = list.current; if (el) el.scrollTop = el.scrollHeight; }, [items, drawer]);
+  // A sticker's Favourite, shown under the last one, is scrolled into the thread's view (the list alone: never the page under it).
+  useEffect(() => {
+    const el = list.current, chip = el?.querySelector('.sticker-fav');
+    if (!el || !chip) return;
+    const over = chip.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom;
+    if (over > 0) el.scrollTop += over + 4;
+  }, [picked]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -167,9 +188,8 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
   };
   const ping = (k: PresetKey) => void send(async () => sendPing(await loadCloud(), me, friend.uid, k), `Sent ${PRESETS[k].emoji}`);
   const remember = (st: string, show: boolean) => {
-    keptRecent.current = withRecent(keptRecent.current, st);
-    if (show) setRecent((r) => withRecent(r, st));
-    void putRecentStickers(keptRecent.current).catch(() => {});
+    void keepStickers(me, [{ src: st, at: Date.now(), sent: true }], true).catch(() => {});
+    if (show) setRowRank((r) => { if (!r) return r; const m = new Map(r); m.delete(stickerId(st)); return m; });
   };
   // From the box: it stays there until the server has it, then goes; not sent, it stays (or comes back, if taken out meanwhile).
   const sticker = (st: string, fromBox = false) => {
@@ -222,7 +242,19 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
     void act(async () => setMuted(await loadCloud(), me, friend.uid, next), () => { setState({ ...state, muted: next }); setMsg({ ok: true, text: next ? `Muted. ${who} won’t ring your phone; their messages still come in here.` : `${who} can ring your phone again.` }); });
   };
   const gymRow = (id: string) => sentGyms.find((g) => g.id === id);
+  /** The sticker button: the drawer up in the keyboard's place (the keyboard goes down for it), or folded away again. */
+  const toggleDrawer = () => {
+    if (drawer) { setDrawer(false); setRowRank(null); return; }
+    if (field.current && document.activeElement === field.current) field.current.blur();
+    setDrawer(true);
+  };
+  // A tap in the box brings the keyboard back up in the drawer's place.
+  const typing = () => { if (drawer) { setDrawer(false); setRowRank(null); } };
+  const favourite = (src: string, on: boolean) => void setFavourite(me, src, on).then(
+    () => setMsg({ ok: true, text: on ? 'Added to your favourites.' : 'Taken out of your favourites.', fades: true, n: Date.now() }),
+    () => setMsg({ ok: false, text: 'Couldn’t keep that on this phone. Try again.', n: Date.now() }));
   const n = text.length, can = state?.friend !== false;
+  const line = msg && <p key={msg.n} role={msg.ok ? 'status' : 'alert'} className={msg.ok ? `ok small${msg.fades ? ' fades' : ''}` : 'warn small'}>{msg.text}</p>;
 
   return (
     <>
@@ -268,19 +300,31 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
                       }, () => { setMsg({ ok: true, text: `Added ${g.gym.name} to your gyms.` }); void load(); })}>Add</button>
                       <button className="mini" disabled={busy} onClick={() => void act(async () => clearSentGym(await loadCloud(), me, g.id), () => void load())}>Dismiss</button>
                     </span>
-                  </>) : i.sticker ? <img className="sticker-img" src={i.sticker} alt="Sticker" draggable={false} onContextMenu={(e) => e.preventDefault()} />
-                    : <span className="bubble-text">{i.text}</span>}
+                  </>) : i.sticker ? (<>
+                    <button type="button" className="sticker-hit" aria-expanded={picked === i.id} onClick={() => setPicked((p) => (p === i.id ? null : i.id))} onContextMenu={(e) => e.preventDefault()}>
+                      <img className="sticker-img" src={i.sticker} alt="Sticker" draggable={false} />
+                    </button>
+                    {picked === i.id && (() => {
+                      const id = stickerId(i.sticker), on = !!lib?.some((x) => x.id === id && x.fav != null);
+                      return (
+                        <span className="bubble-actions">
+                          <button type="button" className="mini sticker-fav" aria-pressed={on} onClick={() => favourite(i.sticker!, !on)}><Icon name={on ? 'star-on' : 'star'} size={18} />Favourite</button>
+                        </span>
+                      );
+                    })()}
+                  </>) : <span className="bubble-text">{i.text}</span>}
                   <time className="muted" dateTime={new Date(i.at).toISOString()}>{shortAgo(i.at, Date.now())}</time>
                 </li>
               );
             })}
         </ol>
         {can ? (<>
-          {recent.length > 0 && (
+          {!drawer && recent.length > 0 && (
             <div className="recent-stickers" role="group" aria-label="Recent stickers">
               {recent.map((st, k) => (
-                <button key={st.slice(-24) + k} className="recent-sticker" disabled={!state} aria-label={`Send sticker ${k + 1}`} onClick={() => sticker(st)} onContextMenu={(e) => e.preventDefault()}>
-                  <img src={st} alt="" draggable={false} />
+                <button key={st.id} className="recent-sticker" disabled={!state} aria-label={`Send sticker ${k + 1}${st.fav != null ? ', a favourite' : ''}`} onClick={() => sticker(st.src)} onContextMenu={(e) => e.preventDefault()}>
+                  <img src={st.src} alt="" draggable={false} />
+                  {st.fav != null && <span className="sd-star" aria-hidden="true"><Icon name="star-on" size={12} sw={1.5} /></span>}
                 </button>
               ))}
             </div>
@@ -292,8 +336,7 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
           </div>
           {/* Enter is a new line (a message can have several); Send sends, and so does Cmd or Ctrl+Enter on a keyboard. */}
           <form className="compose" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-            <button type="button" className="mini icon add-sticker" aria-label="Add a sticker" disabled={!state} onClick={() => picker.current?.click()}><Icon name="sticker" /></button>
-            <input ref={picker} type="file" accept="image/*" hidden aria-hidden="true" tabIndex={-1} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void take(makeSticker(f)); }} />
+            <button type="button" className="mini icon add-sticker" aria-label="Stickers" aria-expanded={drawer} aria-controls={drawerId} disabled={!state} onClick={toggleDrawer}><Icon name="sticker" /></button>
             {pending && (
               <span className="compose-sticker" aria-busy={pending === outgoing}>
                 <img src={pending} alt="Sticker to send" draggable={false} />
@@ -302,14 +345,17 @@ export function ThreadSheet({ me, friend, gyms, onClose, onViewLog, onChanged }:
             )}
             <MessageBox ref={field} label={`Message ${who}`} placeholder="Message" max={MAX_MESSAGE} empty={!text} onText={setText}
               onFile={(f) => void take(makeSticker(f))} onImage={(urls, el) => void take(stickerFromElement(urls, el))}
-              onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} />
+              onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} onFocus={typing} />
             <span className="compose-side">
               <span className={`small ${n >= MAX_MESSAGE ? 'warn' : 'muted'}`} aria-live="polite">{n > COUNT_FROM ? `${n}/${MAX_MESSAGE}` : ''}</span>
               <button type="submit" className="mini primary send" aria-label="Send" disabled={!state || (!messageOk(text) && (!pending || pending === outgoing))}><Icon name="send" size={22} sw={2.25} /></button>
             </span>
           </form>
+          {/* Its line goes above the drawer, so a send's "Sent" never moves the sticker under the finger. */}
+          {drawer && line}
+          {drawer && <StickerDrawer id={drawerId} uid={me} disabled={!state} onSend={(st) => sticker(st)} onNote={(ok, text) => setMsg({ ok, text, n: Date.now() })} />}
         </>) : state && <p className="muted small">You’re not friends with {who} now, so you can’t message them.</p>}
-        {msg && <p key={msg.n} role={msg.ok ? 'status' : 'alert'} className={msg.ok ? `ok small${msg.fades ? ' fades' : ''}` : 'warn small'}>{msg.text}</p>}
+        {!(can && drawer) && line}
       </section>
     </>
   );

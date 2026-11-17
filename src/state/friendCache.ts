@@ -15,6 +15,7 @@ import type { ReadSummary } from '../domain/compare';
 import { record } from '../push/store';
 import type { Post } from '../domain/board';
 import type { Mine, Notice } from '../cloud/board';
+import { forgetStickers, keepFromThread } from './stickers';
 
 // Friends as last read, for one account, kept on the phone: Friends, Crew, the threads and the Friends tab's dot show
 // it at once and read Firestore again quietly behind it (stale-while-revalidate). It's read in the background after the
@@ -205,6 +206,7 @@ export async function forgetFriendCaches(): Promise<void> {
   emit();
   await writing.catch(() => {});
   await deleteFriendCaches().catch(() => {});
+  await forgetStickers(); // theirs among them
 }
 
 export function resetFriendCacheForTests() {
@@ -303,6 +305,7 @@ export function refreshNews(c: Cloud, uid: string, join = false): Promise<Friend
     const names = Object.fromEntries((kept.lists?.friends ?? []).map((f) => [f.uid, f.name]));
     const { inbox, ...n } = await friendNews(c, uid, now, { inbox: whole ? undefined : kept.inbox?.items, names });
     await patchFriendCache(uid, (x) => ({ ...x, news: { ...n, at: Date.now() }, inbox: { items: inbox, full: whole ? now : x.inbox?.full ?? now } }));
+    void keepFromThread(uid, inbox); // a sticker a friend sent is one of yours to send now too (state/stickers)
     return n;
   }, join);
 }
@@ -345,6 +348,7 @@ export function refreshThread(c: Cloud, uid: string, f: string, join = false, ke
       t = { at: Date.now(), ...(await listThread(c, uid, f)) };
     }
     await patchFriendCache(uid, (y) => ({ ...y, threads: { ...y.threads, [f]: t } }));
+    void keepFromThread(uid, t.items);
     return t;
   }, join);
 }

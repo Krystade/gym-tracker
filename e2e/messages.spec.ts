@@ -705,3 +705,148 @@ test('a sticker and words that get no answer stay, and the line says so; Send th
   await expect(sheet.locator('.bubble.mine .bubble-text')).toHaveText(['Got it?']);
   await expect.poll(() => boxValue(field)).toBe('');
 });
+
+// ---- Your stickers (owner, 2026-11-16: "stickers send now but the process of sending them is still pretty clunky"): the sticker
+// button opens every sticker sent, added or received, in the keyboard's place; a tap sends one. ----
+
+const COLOURS = [['#e63946', 'PR'], ['#2a9d8f', 'GO'], ['#f4a261', '+5'], ['#457b9d', 'LFG'], ['#8338ec', 'W'], ['#06d6a0', 'OK'], ['#ff006e', 'NICE']] as const;
+const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+/** A PNG to pick from Photos: a disc of `colour` with a word on its top half, on clear; `colour` null, clear all over. */
+async function photo(page: Page, name: string, colour: string | null, word = '') {
+  const b64 = await page.evaluate(([colour, word]) => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 240;
+    const g = c.getContext('2d')!;
+    if (colour) {
+      g.fillStyle = colour; g.beginPath(); g.arc(120, 120, 96, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#ffffff'; g.font = 'bold 44px sans-serif'; g.textAlign = 'center'; g.fillText(word, 120, 92);
+    }
+    return c.toDataURL('image/png').split(',')[1];
+  }, [colour, word] as const);
+  return { name, mimeType: 'image/png', buffer: Buffer.from(b64, 'base64') };
+}
+
+test('your stickers: the button opens them in the keyboard’s place; Add from Photos takes several, a tap sends, a friend’s is kept, a favourite goes first', async ({ browser }, info) => {
+  test.setTimeout(180_000);
+  const [a, b] = await Promise.all([person(browser), person(browser)]);
+  await befriend(b, a, b.name);
+  await crew(a.page).getByTestId(`crew-${b.name}`).getByRole('button', { name: `Message @${b.name}` }).click();
+  const sheet = sheetOf(a.page, b.name);
+  const field = sheet.getByRole('textbox', { name: `Message @${b.name}` });
+  await expect(sheet.getByRole('button', { name: 'Send 💪 Strong' })).toBeEnabled();
+
+  // Typing, then the sticker button: the box lets go of the keyboard and the drawer comes up in its place (no photo picker).
+  await field.click();
+  const open = sheet.getByRole('button', { name: 'Stickers' });
+  await open.click();
+  await expect(open).toHaveAttribute('aria-expanded', 'true');
+  const drawer = sheet.getByRole('region', { name: 'Your stickers' });
+  await expect(drawer).toBeVisible();
+  expect(await field.evaluate((el) => document.activeElement === el)).toBe(false);
+  await expect(drawer).toContainText('Stickers you send, and the ones friends send you, are kept here.');
+  await a.page.screenshot({ path: `${SHOTS}/drawer-empty.png` });
+
+  // Add from Photos: several at once, each made a sticker, the first picked first; one with nothing in it says why.
+  await drawer.getByLabel('Add from Photos').setInputFiles([...await Promise.all(COLOURS.map(([c, w], i) => photo(a.page, `s${i}.png`, c, w))), await photo(a.page, 'blank.png', null)]);
+  await expect(sheet.getByRole('alert')).toHaveText(`Added ${COLOURS.length} stickers. 1 couldn’t be: That image is empty.`);
+  const cells = drawer.getByRole('group', { name: 'Stickers' }).getByRole('button');
+  await expect(cells).toHaveCount(COLOURS.length);
+  for (const k of [0, 2, 6]) expect(near(await middle(cells.nth(k).locator('img')), rgb(COLOURS[k][0]))).toBe(true);
+
+  // A tap sends it at once; tapped again and again where it is, every tap sends and the grid holds still under the finger.
+  const sent = sheet.locator('.bubble.mine.sticker img');
+  const at = await mid(cells.nth(2));
+  await a.page.touchscreen.tap(at.x, at.y);
+  await expect(sent).toHaveCount(1);
+  for (let i = 0; i < 2; i++) await a.page.touchscreen.tap(at.x, at.y);
+  await expect(sent).toHaveCount(3, { timeout: 30_000 });
+  expect(near(await middle(cells.nth(2).locator('img')), rgb(COLOURS[2][0]))).toBe(true);
+  for (let k = 0; k < 3; k++) expect(near(await middle(sent.nth(k)), rgb(COLOURS[2][0]))).toBe(true);
+  expect(await noSideScroll(a.page)).toBe(true);
+  // The drawer on the screen, clear of the home bar.
+  const foot = (await drawer.boundingBox())!;
+  expect(foot.y + foot.height).toBeLessThanOrEqual(812 - BOTTOM);
+  await a.page.screenshot({ path: `${SHOTS}/drawer.png` });
+  await info.attach('drawer', { path: `${SHOTS}/drawer.png`, contentType: 'image/png' });
+
+  // A tap in the box: the drawer folds away for the keyboard, and the recent row has the one sent.
+  await field.click();
+  await expect(drawer).toHaveCount(0);
+  await expect(open).toHaveAttribute('aria-expanded', 'false');
+  await expect(sheet.getByRole('group', { name: 'Recent stickers' }).getByRole('button')).toHaveCount(1);
+
+  // B: A's sticker came in and is one of B's own now, kept once though it came three times.
+  await b.page.reload();
+  await goto(b.page, 'Friends');
+  await crew(b.page).getByTestId(`crew-${a.name}`).getByRole('button', { name: new RegExp(`^Message @${a.name}`) }).click();
+  const bs = sheetOf(b.page, a.name);
+  const theirs = bs.locator('.bubble.theirs.sticker');
+  await expect(theirs.locator('img')).toHaveCount(3);
+  const bOpen = bs.getByRole('button', { name: 'Stickers' });
+  await bOpen.click();
+  const bd = bs.getByRole('region', { name: 'Your stickers' });
+  const bcells = bd.getByRole('group', { name: 'Stickers' }).getByRole('button');
+  await expect(bcells).toHaveCount(1);
+  expect(near(await middle(bcells.first().locator('img')), rgb(COLOURS[2][0]))).toBe(true);
+  // B adds one of their own and sends it from the drawer: it goes first, being newest.
+  await bd.getByLabel('Add from Photos').setInputFiles([await photo(b.page, 'b.png', '#ffbe0b', 'B')]);
+  await expect(bs.getByRole('status')).toHaveText('Added the sticker.');
+  await expect(bcells).toHaveCount(2);
+  await bcells.first().click();
+  await expect(bs.locator('.bubble.mine.sticker img')).toHaveCount(1);
+  await bOpen.click();
+  await expect(bd).toHaveCount(0);
+  // The recent row is what B sent: A's only came in.
+  const row = bs.getByRole('group', { name: 'Recent stickers' }).getByRole('button');
+  await expect(row).toHaveCount(1);
+  expect(near(await middle(row.first().locator('img')), rgb('#ffbe0b'))).toBe(true);
+
+  // A's sticker in the thread, tapped, offers Favourite: then it's first in the row, marked, ahead of what B sent.
+  await theirs.first().getByRole('button', { name: 'Sticker' }).click();
+  const fav = theirs.first().getByRole('button', { name: 'Favourite' });
+  await expect(fav).toHaveAttribute('aria-pressed', 'false');
+  await fav.click();
+  await expect(fav).toHaveAttribute('aria-pressed', 'true');
+  await expect(bs.getByRole('status')).toHaveText('Added to your favourites.');
+  await expect(row).toHaveCount(2);
+  await expect(row.first()).toHaveAccessibleName('Send sticker 1, a favourite');
+  expect(near(await middle(row.first().locator('img')), rgb(COLOURS[2][0]))).toBe(true);
+  await expect(row.nth(1)).toHaveAccessibleName('Send sticker 2');
+  await b.page.screenshot({ path: `${SHOTS}/recent-row.png` });
+  await info.attach('recent-row', { path: `${SHOTS}/recent-row.png`, contentType: 'image/png' });
+  // And first in the drawer.
+  await bOpen.click();
+  await expect(bcells.first()).toHaveAccessibleName('Send sticker 1, a favourite');
+  expect(near(await middle(bcells.first().locator('img')), rgb(COLOURS[2][0]))).toBe(true);
+
+  // Held down: Edit (the hold makes nothing a favourite). × takes one out, with Undo in its place; Done, and it's gone, and a
+  // thread that still has it doesn't bring it back on the next launch.
+  // A finger held down, then lifted: as on the phone, the click lands where it lifts, on whatever Edit has put there by then.
+  const hold = await mid(bcells.nth(1));
+  await bcells.nth(1).dispatchEvent('pointerdown', { pointerType: 'touch', isPrimary: true, clientX: hold.x, clientY: hold.y });
+  await b.page.waitForTimeout(700);
+  await b.page.evaluate(({ x, y }) => {
+    const el = document.elementFromPoint(x, y) as HTMLElement;
+    el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y }));
+    el.click();
+  }, hold);
+  await expect(bd.getByRole('button', { name: 'Done' })).toBeVisible();
+  await b.page.waitForTimeout(500); // what a stray click would have done is kept and shown by now
+  expect(await bd.getByRole('button', { name: 'Favourite sticker 1' }).getAttribute('aria-pressed')).toBe('true');
+  expect(await bd.getByRole('button', { name: 'Favourite sticker 2' }).getAttribute('aria-pressed'), 'the hold made nothing a favourite').toBe('false');
+  // And the sticker held is where it was: Edit moved nothing under the finger.
+  const held = await mid(bd.getByRole('button', { name: 'Favourite sticker 2' }));
+  expect(Math.abs(held.x - hold.x) + Math.abs(held.y - hold.y)).toBeLessThanOrEqual(1);
+  await bd.getByRole('button', { name: 'Remove sticker 2' }).click();
+  await expect(bd.getByRole('button', { name: 'Put sticker 2 back' })).toBeVisible();
+  await b.page.screenshot({ path: `${SHOTS}/drawer-edit.png` });
+  await bd.getByRole('button', { name: 'Done' }).click();
+  await expect(bcells).toHaveCount(1);
+  await b.page.reload();
+  await goto(b.page, 'Friends');
+  await crew(b.page).getByTestId(`crew-${a.name}`).getByRole('button', { name: new RegExp(`^Message @${a.name}`) }).click();
+  await expect(bs.locator('.bubble.mine.sticker img')).toHaveCount(1);
+  await bOpen.click();
+  await expect(bcells).toHaveCount(1);
+  await expect(bcells.first()).toHaveAccessibleName('Send sticker 1, a favourite');
+});

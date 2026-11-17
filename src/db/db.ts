@@ -18,6 +18,7 @@ import { parseBuddies, parseLead, parsePrefs, type BuddyPrefs, type BuddyPrefsMa
 import { parseSpend, type Spend } from '../domain/buddies/gacha';
 import { asDay, floored } from '../domain/buddies/start';
 import { decodeLedger, encodeLedger, hasNew, mergeLedgers, type StoredLedger } from '../domain/together';
+import type { KeptSticker } from '../domain/stickerLibrary';
 
 const STORE = 'sets';
 /** The first profile: it keeps the original database, so existing data needs no migration. */
@@ -223,6 +224,41 @@ export const getRecentStickers = async (): Promise<string[]> => {
   return Array.isArray(x?.list) ? x.list.filter((s): s is string => typeof s === 'string') : [];
 };
 export const putRecentStickers = async (list: string[]): Promise<void> => { await (await db()).put('config', { key: 'stickers', list }); };
+
+// Your stickers (domain/stickerLibrary), per account, in the shared store: one record each (`sticker:<uid>:<id>`), so sending
+// one rewrites that one alone, and the ids you removed (`sticker-removed:<uid>`), so a thread doesn't bring them back. This
+// phone's alone: never synced or backed up, and gone on signing out (state/stickers forgetStickers).
+const stickerKey = (uid: string, id = '') => `sticker:${uid}:${id}`;
+const stickerRange = (uid: string) => IDBKeyRange.bound(stickerKey(uid), `sticker:${uid};`, false, true); // `;` follows `:`
+const REMOVED_MAX = 500;
+export async function getStickerLibrary(uid: string): Promise<{ lib: KeptSticker[]; removed: string[] }> {
+  const d = await shared();
+  const [rows, gone] = await Promise.all([d.getAll('kv', stickerRange(uid)), d.get('kv', `sticker-removed:${uid}`)]);
+  const lib = (rows as (KeptSticker & { key: string })[]).filter((r) => typeof r.src === 'string' && typeof r.id === 'string' && typeof r.at === 'number')
+    .map(({ key: _key, ...s }) => s);
+  const removed = Array.isArray((gone as { ids?: unknown } | undefined)?.ids) ? (gone as { ids: unknown[] }).ids.filter((x): x is string => typeof x === 'string') : [];
+  return { lib, removed };
+}
+/** One transaction: `put` written, `drop` deleted, and the removed ids (newest last) as given, when given. */
+export async function putStickerLibrary(uid: string, put: KeptSticker[], drop: string[], removed?: string[]): Promise<void> {
+  const tx = (await shared()).transaction('kv', 'readwrite');
+  await Promise.all([
+    ...put.map((s) => tx.store.put({ ...s, key: stickerKey(uid, s.id) })),
+    ...drop.map((id) => tx.store.delete(stickerKey(uid, id))),
+    ...(removed ? [tx.store.put({ key: `sticker-removed:${uid}`, ids: removed.slice(-REMOVED_MAX) })] : []),
+    tx.done,
+  ]);
+}
+/** Every account's stickers off this phone. */
+export async function deleteStickerLibraries(): Promise<void> {
+  const d = await shared();
+  const keys = [
+    ...(await d.getAllKeys('kv', IDBKeyRange.bound('sticker:', 'sticker;', false, true))),
+    ...(await d.getAllKeys('kv', IDBKeyRange.bound('sticker-removed:', 'sticker-removed;', false, true))),
+  ];
+  const tx = d.transaction('kv', 'readwrite');
+  await Promise.all([...keys.map((k) => tx.store.delete(k)), tx.done]);
+}
 
 /**
  * The day this profile's achievements count from (domain/achievements `since`; owner 2026-10-21: everyone starts from 0): its

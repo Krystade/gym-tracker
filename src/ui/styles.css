@@ -1142,15 +1142,68 @@ html.sheet-lock { overflow: hidden; overscroll-behavior: none; }
    A long press does nothing: no select, no callout, no drag. */
 .bubble.sticker { align-items: flex-end; padding: 0; background: none; border-radius: 0; }
 .bubble.sticker time { color: var(--text-3); }
-.sticker-img, .recent-sticker img, .compose-sticker img {
+.sticker-img, .recent-sticker img, .compose-sticker img, .sticker-drawer img {
   display: block; object-fit: contain; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-user-drag: none;
 }
 .sticker-img { width: 120px; height: 120px; }
 /* The last 12 sent, in one row that scrolls sideways: each a 52px target, the sticker inside at 44. */
 .recent-stickers { display: flex; gap: 2px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; flex: none; margin: 0 -4px; padding: 0 4px; }
 .recent-stickers::-webkit-scrollbar { display: none; }
-.recent-sticker { flex: none; width: 52px; height: 52px; min-height: 52px; padding: 4px; border-radius: 12px; background: none; }
+.recent-sticker { position: relative; flex: none; width: 52px; height: 52px; min-height: 52px; padding: 4px; border-radius: 12px; background: none; }
 .recent-sticker img { width: 44px; height: 44px; }
+/* A favourite's mark: a small accent star on the sticker's corner, ringed in what's behind it so it reads apart from the image. */
+.sd-star {
+  position: absolute; right: 1px; bottom: 1px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--surface-2); color: var(--accent); pointer-events: none;
+}
+.recent-sticker .sd-star { width: 16px; height: 16px; right: 0; bottom: 0; }
+/* A sticker in the thread is a button with none of a button's chrome: tapped, its Favourite shows under it. */
+.sticker-hit { display: block; min-height: 0; padding: 0; border-radius: 0; background: none; }
+.bubble.sticker .bubble-actions { order: 2; }
+.bubble.mine.sticker .bubble-actions { justify-content: flex-end; }
+.bubble.sticker .bubble-actions .mini.sticker-fav { gap: 6px; padding: 0 16px 0 12px; border-radius: var(--r-pill); background: var(--fill); color: var(--text); }
+.bubble.sticker .bubble-actions .mini.sticker-fav[aria-pressed='true'] { color: var(--accent-text); }
+.compose .add-sticker[aria-expanded='true'] { background: var(--fill); color: var(--accent-text); }
+
+/* Your stickers, in the keyboard's place under the box (ui/StickerDrawer): a well a shade darker than the sheet, about a
+   keyboard's height, its grid the only part that scrolls. Five to a row, each a 64px target with the sticker inside. */
+.sticker-drawer {
+  height: 300px; display: flex; flex-direction: column; gap: 6px; margin: 0 -8px; padding: 8px 8px 0;
+  background: var(--surface); border-radius: var(--r-lg) var(--r-lg) var(--r-md) var(--r-md);
+}
+.sd-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: none; height: 44px; } /* one height, Add from Photos or the hint in it: the grid never moves */
+.sd-add { min-height: 40px; padding: 0 16px 0 12px; border-radius: var(--r-pill); font-size: var(--fs-sub); gap: 8px; }
+.sd-add .ic { color: var(--accent-text); }
+.sd-add.disabled { opacity: 0.45; pointer-events: none; }
+.sd-edit { min-height: 40px; font-size: var(--fs-sub); }
+.sd-hint { flex: 1 1 auto; display: flex; align-items: center; margin: 0 0 0 6px; max-height: 44px; overflow: hidden; font-size: var(--fs-sm); line-height: 18px; color: var(--text-2); }
+.sd-grid {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none;
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-content: start; gap: 4px; padding: 2px 0 10px;
+}
+.sd-grid::-webkit-scrollbar { display: none; }
+.sd-cell { position: relative; aspect-ratio: 1; min-height: 0; padding: 6px; border-radius: 12px; background: none; }
+.sd-cell img, .sd-pick img { width: 100%; height: 100%; }
+/* Editing: each a tile you can tap, a favourite ringed in the accent, its × on the corner; one removed waits faded with Undo. */
+div.sd-cell { padding: 0; }
+.sd-pick { position: absolute; inset: 0; min-height: 0; padding: 6px; border-radius: 12px; background: var(--fill); }
+.sd-pick[aria-pressed='true'] { box-shadow: inset 0 0 0 2px var(--accent); }
+.sd-remove {
+  position: absolute; top: 2px; right: 2px; z-index: 1; width: 24px; height: 24px; min-height: 24px; min-width: 24px; padding: 0;
+  border-radius: 50%; background: var(--fill-2); color: var(--text); box-shadow: 0 0 0 2px var(--surface);
+}
+.sd-remove::after { content: ''; position: absolute; inset: -8px; }
+.sd-ghost { background: var(--fill); }
+.sd-ghost img { opacity: 0.12; }
+.sd-ghost span { position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--fs-sm); font-weight: 600; color: var(--accent-text); }
+/* Edit, as on the Home Screen: the tiles jiggle, each a beat apart (none of it under reduced motion). */
+@keyframes sd-jiggle { from { rotate: -1.6deg; } to { rotate: 1.6deg; } }
+.sticker-drawer[data-editing] .sd-pick { animation: sd-jiggle 0.26s ease-in-out infinite alternate; }
+.sticker-drawer[data-editing] .sd-cell:nth-child(2n) .sd-pick { animation-delay: -0.13s; }
+.sticker-drawer[data-editing] .sd-cell:nth-child(3n) .sd-pick { animation-duration: 0.3s; }
+@media (prefers-reduced-motion: reduce) { .sticker-drawer[data-editing] .sd-pick { animation: none; } }
+.sd-empty { flex: 1 1 auto; display: grid; align-content: center; justify-items: center; gap: 2px; padding: 0 24px 16px; text-align: center; }
+.sd-empty p { margin: 0; max-width: 32ch; }
 /* In the box: the sticker button at its start, and a sticker waiting for Send with its remove. */
 .compose .add-sticker { width: 44px; height: 44px; border-radius: 50%; }
 .compose-sticker { position: relative; flex: none; align-self: center; width: 56px; height: 56px; margin: 2px 0; }

@@ -428,6 +428,28 @@ test('a sheet with a field rides above the keyboard: the thread’s message box 
   await vv(pa, { offsetTop: 120, height: H - KB });
   await expect.poll(() => bottomOf(sheet)).toBe(120 + H - KB);
   expect(await topOf(sheet)).toBeGreaterThanOrEqual(120);
+  // The keyboard changing height under the box (owner, 2026-11-16: the emoji keyboard, its sticker strip, a sticker app's search
+  // in it) never takes the box away, focuses it or blurs it: the same node, still focused, untouched. And when the box loses
+  // focus with the keyboard still up (an extension in the keyboard taking the typing), nothing gives it back.
+  await field.evaluate((el) => {
+    const w = window as unknown as { __calls: string[]; __box: Element; __blur: () => void };
+    const own = { focus: HTMLElement.prototype.focus, blur: HTMLElement.prototype.blur };
+    w.__calls = []; w.__box = el; w.__blur = () => own.blur.call(el);
+    HTMLElement.prototype.focus = function (this: HTMLElement, o?: FocusOptions) { if (this === el) w.__calls.push('focus'); return own.focus.call(this, o); };
+    HTMLElement.prototype.blur = function (this: HTMLElement) { if (this === el) w.__calls.push('blur'); return own.blur.call(this); };
+  });
+  const untouched = () => pa.evaluate(() => {
+    const w = window as unknown as { __calls: string[]; __box: Element };
+    return { same: document.querySelector('.compose [contenteditable]') === w.__box, focused: document.activeElement === w.__box, calls: w.__calls };
+  });
+  for (const kb of [KB + 52, KB - 40, KB + 120, KB]) { await vv(pa, { height: H - kb }); await pa.evaluate(() => dispatchEvent(new Event('resize'))); }
+  await pa.waitForTimeout(900); // past the pin's checks at 100, 400 and 800 ms
+  expect(await untouched()).toEqual({ same: true, focused: true, calls: [] });
+  await pa.evaluate(() => { (window as unknown as { __blur: () => void }).__blur(); dispatchEvent(new Event('blur')); dispatchEvent(new Event('focus')); });
+  await vv(pa, { height: H - KB - 52 });
+  await pa.waitForTimeout(900);
+  expect(await untouched()).toEqual({ same: true, focused: false, calls: [] });
+  await field.focus();
   // The keyboard goes: the sheet back on the bottom edge.
   await field.blur();
   await vv(pa, { offsetTop: 0, height: null });

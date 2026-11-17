@@ -48,10 +48,10 @@ function insertPlain(el: HTMLElement, s: string, max: number) {
  * text goes in as plain text. `max` is a <textarea>'s maxLength: typing and pastes stop at it, and anything that gets past
  * (dictation, a replacement) is cut back to it.
  */
-export function MessageBox({ ref, label, placeholder, max, empty, onText, onFile, onImage, onKeyDown }: {
+export function MessageBox({ ref, label, placeholder, max, empty, onText, onFile, onImage, onKeyDown, onFocus }: {
   ref: Ref<HTMLDivElement>; label: string; placeholder: string; max: number; empty: boolean;
   onText: (t: string) => void; onFile: (f: File) => void; onImage: (urls: string[], el: HTMLImageElement | null) => void;
-  onKeyDown?: (e: KeyboardEvent<HTMLDivElement>) => void;
+  onKeyDown?: (e: KeyboardEvent<HTMLDivElement>) => void; onFocus?: () => void;
 }) {
   const own = useRef<HTMLDivElement>(null);
   const props = useRef({ max, onText, onFile, onImage });
@@ -132,6 +132,6 @@ export function MessageBox({ ref, label, placeholder, max, empty, onText, onFile
   return (
     <div ref={setRef} className={`compose-field${empty ? ' empty' : ''}`} contentEditable role="textbox" aria-multiline="true" aria-label={label}
       aria-placeholder={placeholder} data-placeholder={placeholder} enterKeyHint="enter" inputMode="text" autoCapitalize="sentences" autoCorrect="on"
-      spellCheck onKeyDown={onKeyDown} />
+      spellCheck onKeyDown={onKeyDown} onFocus={onFocus} />
   );
 }

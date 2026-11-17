@@ -28,6 +28,11 @@ const P = {
   // A sticker: a rounded square with its corner peeled up, and a smile on it.
   sticker: <><path d="M4.75 7.5A2.75 2.75 0 0 1 7.5 4.75h9a2.75 2.75 0 0 1 2.75 2.75v5.25l-6.5 6.5H7.5a2.75 2.75 0 0 1-2.75-2.75z" /><path d="M19.25 12.75h-3.75a2.75 2.75 0 0 0-2.75 2.75v3.75" /><path d="M9 12.25c1.6 1.5 4.4 1.5 6 0" /><circle cx="9.25" cy="9" r="1" fill="currentColor" stroke="none" /><circle cx="14.25" cy="9" r="1" fill="currentColor" stroke="none" /></>,
   send: <path d="M12 18.5V6.5M6.75 11.5 12 6.25l5.25 5.25" />,
+  // A favourite: the five-point star, outlined, and filled once it is one.
+  star: <path d="M12 4.25l2.4 4.86 5.35.78-3.87 3.78.91 5.33L12 16.48l-4.79 2.52.91-5.33-3.87-3.78 5.35-.78z" />,
+  'star-on': <path d="M12 4.25l2.4 4.86 5.35.78-3.87 3.78.91 5.33L12 16.48l-4.79 2.52.91-5.33-3.87-3.78 5.35-.78z" fill="currentColor" />,
+  // Photos: a picture with a hill and the sun.
+  photo: <><rect x="3.75" y="5.25" width="16.5" height="13.5" rx="3" /><circle cx="9" cy="10" r="1.6" /><path d="M4.5 17.25l4.6-4.35 3.4 3.1 2.6-2.35 4.4 3.85" /></>,
   'person-plus': <><circle cx="10" cy="8.25" r="3.25" /><path d="M4 19.25c.55-3.4 2.9-5.25 6-5.25 1.4 0 2.65.38 3.65 1.1" /><path d="M18.25 13.25v6.5M15 16.5h6.5" /></>,
   check: <path d="M5.5 12.5l4.25 4.25L18.5 8" />,
   target: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4.25" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /></>,
