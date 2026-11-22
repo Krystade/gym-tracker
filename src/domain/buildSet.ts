@@ -1,8 +1,8 @@
 import { setId } from './ids';
 import { canonicalName, sameExercise } from './stats';
-import type { CardioData, Flag, Region, SetEntry } from './types';
+import type { CardioData, Flag, Region, SetEntry, Severity } from './types';
 
-export interface NewSetInput { date: string; exercise: string; weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3; target?: SetEntry['target']; gym?: string;
+export interface NewSetInput { date: string; exercise: string; weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: Severity; target?: SetEntry['target']; gym?: string;
   /** When it was done, for a set entered late: a time, or null for unknown. Absent: now. */
   at?: Date | null;
   cardio?: CardioData;
@@ -40,7 +40,7 @@ export function buildNamedSet(sameDay: readonly SetEntry[], input: NewSetInput, 
     ...(input.rir !== undefined && { rir: input.rir }),
     ...(input.note?.trim() && { note: input.note.trim() }),
     ...(flags.includes('pain') && input.painRegion && { painRegion: input.painRegion }),
-    ...(flags.includes('pain') && input.painSeverity && { painSeverity: input.painSeverity }),
+    ...(flags.includes('pain') && input.painSeverity != null && { painSeverity: input.painSeverity }), // 0, a tingle, is kept
     ...(input.target && { target: input.target }),
     ...(input.gym && { gym: input.gym }),
     ...(input.cardio && { cardio: input.cardio }),

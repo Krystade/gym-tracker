@@ -9,7 +9,7 @@ import { isBarbellCompound, isWorking } from './progression';
 import { prKinds } from './records';
 import { daySets, e1rm, liftIndex, sameExercise, learnable } from './stats';
 import { fitTargets, setYield, weeklyBudget } from './targets';
-import type { SetEntry } from './types';
+import { hurts, type SetEntry } from './types';
 import { addedLoad, bodyShare } from './learn/bodyweight';
 import { rate, rateBand, trend, type BodyDay } from './body';
 import { framingOf, POSES, SHOTS, type PhotoMeta } from './photos';
@@ -136,8 +136,8 @@ const days = (a: string, b: string) => Math.round((dayMs(b) - dayMs(a)) / 864e5)
 const chrono = (a: SetEntry, b: SetEntry) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.seq - b.seq || a.setNo - b.setNo);
 /** A lifting set that is work: not a warm-up, not cardio. Attendance and volume count every one, pain and light included. */
 export const lifted = (e: SetEntry) => !e.flags.includes('warmup') && !isCardioEntry(e);
-/** A set that may count for strength: lifted, reps done, not a hold, and neither pain-flagged nor a light-week set. */
-const earns = (e: SetEntry) => lifted(e) && e.reps != null && e.reps >= 1 && !e.flags.some((f) => f === 'partial' || f === 'hold' || f === 'pain' || f === 'light');
+/** A set that may count for strength: lifted, reps done, not a hold, and neither a set that hurt (a tingle is no pain: types.hurts) nor a light-week set. */
+const earns = (e: SetEntry) => lifted(e) && e.reps != null && e.reps >= 1 && !hurts(e) && !e.flags.some((f) => f === 'partial' || f === 'hold' || f === 'light');
 const goalOf = (p: Context['profile']) => Math.min(7, Math.max(1, Math.round(p.weeklyGoal) || 2));
 
 /** A value that only goes up, as dated steps: the day it first reached each value (and, for Together, who with). */
@@ -221,7 +221,7 @@ function prSteps(entries: readonly SetEntry[], since: string, today: string): St
   const dates: string[] = [];
   for (const id of prKinds(entries as SetEntry[]).keys()) {
     const e = byId.get(id);
-    if (e && e.date >= since && e.date <= today && !e.flags.includes('pain') && !e.flags.includes('light')) dates.push(e.date);
+    if (e && e.date >= since && e.date <= today && !hurts(e) && !e.flags.includes('light')) dates.push(e.date);
   }
   return cumulative(dates);
 }

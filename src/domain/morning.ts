@@ -2,7 +2,7 @@ import { addDays } from './analytics';
 import { likelyRegion } from './care';
 import { zoneOf, type Zone } from './learn/pain';
 import { byOrderDone, daySets } from './stats';
-import type { Morning, Region, SetEntry } from './types';
+import { hurts, type Morning, type Region, type SetEntry } from './types';
 
 // Item 08, round 20: the next-morning question (optional, never required). The day after a session with any pain set, one tap:
 // settled, still sore, or worse (a: Silbernagel 2007, pain should have subsided by the next morning; Silbernagel & Crossley 2015,
@@ -18,7 +18,7 @@ const regionOf = (e: SetEntry): Region => e.painRegion ?? likelyRegion(e.exercis
 function painByRegion(entries: readonly SetEntry[], date: string): Map<Region, SetEntry[]> {
   const out = new Map<Region, SetEntry[]>();
   for (const e of [...daySets(entries, date)].sort(byOrderDone)) {
-    if (!e.flags.includes('pain')) continue;
+    if (!hurts(e)) continue;
     const r = regionOf(e), l = out.get(r);
     if (l) l.push(e); else out.set(r, [e]);
   }

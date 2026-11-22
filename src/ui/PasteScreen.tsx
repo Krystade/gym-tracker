@@ -22,7 +22,7 @@ Lat pulldown
 // Cardio reads as History shows it: "20:00 · 1.2 mi · 5%".
 const chip = (s: NoteSet): string => s.cardio ? fmtCardio(s.cardio) :
   s.flags.includes('hold') ? `${s.weight ? `${fmtWeight(s.weight)} lb · ` : ''}${s.reps ?? '—'} s` : `${fmtAdded(s.weight)}×${s.reps ?? '—'}`;
-const BADGE: Partial<Record<string, string>> = { warmup: 'warm-up', pain: 'pain', unsure: '?', partial: 'partial', double_pulley: '2×pulley' };
+const BADGE: Partial<Record<string, string>> = { warmup: 'warm-up', pain: 'pain', unsure: '?', partial: 'partial', double_pulley: '2×pulley', form_fail: 'form fail', good_form: 'good form', full_stack: 'full stack', no_spot: 'no spot' };
 
 export function PasteScreen({ store, today, backLabel = '‹ Back', onBack, onDone }: { store: SetsStore; today: string; backLabel?: string; onBack: () => void; onDone: () => void }) {
   const db = useDb();

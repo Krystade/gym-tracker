@@ -1781,3 +1781,38 @@ h1 + .card > h2#notify-h { position: absolute; width: 1px; height: 1px; padding:
   :is(.p-burst, .p-land) .ps-cap, .ps-ring, .ps-bits, .ps-suck, .ps-flash, .ps-rays { visibility: hidden; }
   .ps .ps-item, .ps .ps-panel, .ps-sum { animation: fade-in 200ms ease-out both !important; opacity: 1; }
 }
+
+/* ---- Points as they're earned (owner, 2026-11-21): the +N off a set as it's logged, the lift's running pill, the workout's
+   summary. The pill and the +N are the accent, as the PR tag; tickets wear the Buddies ticket's lavender. ---- */
+.sets li, .card.folded { position: relative; }
+/* On a folded card: by the chevron, on the name's line. */
+.card.folded > .pts-rise { top: 24px; right: 44px; }
+/* Rises off the right of the row and fades: transform and opacity only, never layout. Reduced motion: a still fade. */
+.pts-rise { position: absolute; right: 16px; top: 50%; margin-top: -10px; line-height: 20px; font-weight: 800; font-size: var(--fs-md);
+  color: var(--accent-text); pointer-events: none; font-variant-numeric: tabular-nums; animation: pts-rise 1.2s ease-out both; }
+@keyframes pts-rise { 0% { opacity: 0; transform: translateY(6px); } 15% { opacity: 1; transform: translateY(0); } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-16px); } }
+@keyframes pts-fade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+.pts-pill { flex: none; align-self: center; white-space: nowrap; font-size: var(--fs-sm); line-height: 18px; font-weight: 700; padding: 3px 8px;
+  border-radius: var(--r-sm); background: var(--fill); color: var(--accent-text); font-variant-numeric: tabular-nums; }
+/* Beside the name when it fits, else first on the line under it (with Test due, after it): never stranded mid-row. */
+.card-head > .pts-pill { margin-right: auto; margin-bottom: 4px; }
+.card-head .test-badge:has(+ .pts-pill) { margin-right: 0; }
+.finish-head .pts-pill { margin-right: 10px; }
+.finish-pts { margin-top: 12px; display: grid; gap: 8px; }
+.finish-pts-rows { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; margin: 0; font-size: var(--fs-sub); }
+.finish-pts-rows > div { display: contents; }
+.finish-pts-rows dt { color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.finish-pts-rows dd { margin: 0; color: var(--accent-text); font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.finish-tickets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0; font-size: var(--fs-sub); }
+.finish-tickets > span:first-child { margin-right: auto; }
+.pts-ticket { flex: none; background: #8f84f0; color: #17123f; font-weight: 700; font-size: var(--fs-sm); line-height: 18px; padding: 2px 8px; border-radius: var(--r-sm); white-space: nowrap; }
+.finish-pts-next { display: grid; gap: 6px; }
+.finish-pts-next p { margin: 0; }
+.finish-ticket-bar { height: 8px; border-radius: var(--r-pill); background: var(--fill); overflow: hidden; }
+.finish-ticket-bar i { display: block; height: 100%; background: #8f84f0; border-radius: inherit; }
+button.wide.finish-buddies { margin: 4px 0 0; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+/* A tingle: on the pain scale, but no pain to any plan, so not in the pain colour. */
+.tag.pain.tingle, .pain-mark.tingle { color: var(--text-2); }
+@media (prefers-reduced-motion: reduce) {
+  .pts-rise { animation: pts-fade 1.2s linear both; transform: none; }
+}

@@ -3,7 +3,7 @@ import { addDays } from '../analytics';
 import type { BodyDay } from '../body';
 import { likelyRegion } from '../care';
 import { MUSCLES, muscleVector, type Muscle } from '../muscles';
-import type { Region, SetEntry } from '../types';
+import { hurts, type Region, type SetEntry } from '../types';
 import { aheadVar, dayOf, READY, type Core, type Est, type LiftCore } from './capacity';
 import { coreFor } from './rest';
 import { backward, cholesky, forward, normCdf } from './num';
@@ -228,7 +228,7 @@ function systemicOf(entries: readonly SetEntry[], body: readonly BodyDay[], toda
   const p = pShift * normCdf(-m / sd);
   const window = shifts.reduce((a, x) => (x.from < a ? x.from : a), shifts[0].from);
   const energy = energyOf(body, window, today);
-  const pain = [...new Set(entries.filter((e) => e.flags.includes('pain') && e.date >= window && e.date < today).map((e) => e.painRegion ?? likelyRegion(e.exercise)))].sort();
+  const pain = [...new Set(entries.filter((e) => hurts(e) && e.date >= window && e.date < today).map((e) => e.painRegion ?? likelyRegion(e.exercise)))].sort();
   const second = !!energy?.low || pain.length >= 2;
   const verdict = p <= P_STAR ? 'steady' : second ? 'deload' : 'alone';
   return { p, shift: { mean: m, sd }, scale: S, pShift, lifts: shifts.map((x) => ({ ...x, pooled: pl.lift(x.key) })), since, window, energy, pain, verdict };

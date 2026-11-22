@@ -5,7 +5,7 @@ import { fmtDay, fmtSet, plural } from '../domain/format';
 import { localDate } from '../domain/ids';
 import type { SetEntry } from '../domain/types';
 
-const BADGE: Partial<Record<string, string>> = { warmup: 'warm-up', pain: 'pain', unsure: '?', partial: 'partial', double_pulley: '2×pulley', hold: 'hold' };
+const BADGE: Partial<Record<string, string>> = { warmup: 'warm-up', pain: 'pain', unsure: '?', partial: 'partial', double_pulley: '2×pulley', hold: 'hold', form_fail: 'form fail', good_form: 'good form', full_stack: 'full stack', no_spot: 'no spot' };
 const FIELD: Record<DupField, string> = { exercise: 'name', flags: 'tags', note: 'note', rir: 'RIR', pain: 'pain', tags: 'your tags', cardio: 'cardio' };
 
 // The last removal, per profile, for Undo: kept for this visit to the app, through a trip to another tab.

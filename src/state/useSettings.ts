@@ -10,7 +10,7 @@ const register = (m: Map<string, ExerciseSettings>) => {
   // And the lifts marked timed (round 32), read by care.isHold.
   setTimedLifts([...m.values()].flatMap((s) => (s.timed ? [s.key] : [])));
 };
-import { defaultTags, type TagPrefs } from '../domain/tags';
+import { defaultTags, withBuiltIns, type TagPrefs } from '../domain/tags';
 
 /** `goal`: the profile's training goal, for a lift's default range (progression.resolveSettings). */
 export function useSettings(goal: TrainingGoal = 'size') {
@@ -19,7 +19,7 @@ export function useSettings(goal: TrainingGoal = 'size') {
   const [tags, setTags] = useState<TagPrefs>(defaultTags);
   const reload = useCallback(() => Promise.all([
     db.getAllSettings().then((all) => { const m = new Map(all.map((s) => [s.key, s])); register(m); setMap(m); }).catch(() => {}),
-    db.getTags().then((t) => setTags(t ?? defaultTags())).catch(() => {}),
+    db.getTags().then((t) => setTags(t ? withBuiltIns(t) : defaultTags())).catch(() => {}),
   ]), []);
   useEffect(() => { void reload(); }, [reload]);
   const get = useCallback((name: string, hold?: boolean) => resolveSettings(map.get(settingsKey(name)), name, hold, goal), [map, goal]);

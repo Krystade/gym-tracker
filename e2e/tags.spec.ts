@@ -58,7 +58,7 @@ test('his own tags join the row, hidden built-ins leave it, and a tagged set sho
   await editor(page).getByRole('switch', { name: 'Show Test' }).click();
   await expect(editor(page).getByRole('switch', { name: 'Show Test' })).toHaveAttribute('aria-checked', 'false');
   await page.screenshot({ path: 'screenshots/r7-tag-editor.png', fullPage: true });
-  await expect(flags(page).getByRole('button')).toHaveText(['Pain', 'Unsure', 'Warm-up', '2× pulley', 'Paused', 'Band', 'Edit tags']);
+  await expect(flags(page).getByRole('button')).toHaveText(['Pain', 'Unsure', 'Warm-up', '2× pulley', 'Form fail', 'Extra good form', 'Full stack', 'No spot', 'Paused', 'Band', 'Edit tags']);
   await editor(page).getByRole('button', { name: 'Remove Band' }).click();
   await editor(page).getByRole('button', { name: 'Done' }).click();
   await expect(editor(page)).toHaveCount(0);
@@ -76,7 +76,7 @@ test('his own tags join the row, hidden built-ins leave it, and a tagged set sho
   // Kept per profile: the row is the same after a reload.
   await page.reload();
   await page.getByRole('button', { name: 'Details' }).click();
-  await expect(flags(page).getByRole('button')).toHaveText(['Pain', 'Unsure', 'Warm-up', '2× pulley', 'Paused', 'Edit tags']);
+  await expect(flags(page).getByRole('button')).toHaveText(['Pain', 'Unsure', 'Warm-up', '2× pulley', 'Form fail', 'Extra good form', 'Full stack', 'No spot', 'Paused', 'Edit tags']);
 
   await goto(page, 'History');
   await expect(page.locator('details.day').first()).toContainText('135 × 8 Paused');
@@ -154,5 +154,5 @@ test('the tag row and a set’s tags reach another phone on the same account', a
   await expect(rows(b)).toHaveCount(1);
   await expect(rows(b).first()).toContainText('Paused');
   await b.getByRole('button', { name: 'Details' }).click();
-  await expect(flags(b).getByRole('button')).toHaveText(['Pain', 'Unsure', 'Warm-up', '2× pulley', 'Paused', 'Edit tags']);
+  await expect(flags(b).getByRole('button')).toHaveText(['Pain', 'Unsure', 'Warm-up', '2× pulley', 'Form fail', 'Extra good form', 'Full stack', 'No spot', 'Paused', 'Edit tags']);
 });

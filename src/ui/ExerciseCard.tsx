@@ -35,6 +35,7 @@ import { useAchLines, useAchOpen } from '../state/useAchievements';
 import { testDue } from '../domain/estimators';
 import { clearDraft } from '../state/drafts';
 import { activeProfileDb } from '../db/db';
+import { setPoints } from '../domain/buddies/points';
 
 const TARGET_LEAD: Partial<Record<string, string>> = { increase: 'Go up: ', test: 'From your test: ', carry: 'Estimate: ', hold: 'Hold: ', ease: 'Lighter: ', light: 'Light week: ' };
 /** A target as its card's line says it: kind, each set's reps or sets × reps, and the load ("Go up: 3 × 8+ · 140 lb"). */
@@ -103,6 +104,9 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   // outside the card (state/cardFold), so the exercise picker taking Today's place doesn't open them all again.
   const [shut, setShut] = useCardFold(date, exercise);
   const [pr, setPr] = useState<string | null>(null);
+  // The points a set just logged earned, rising off its row once (owner, 2026-11-21); gone when it has, or after 1.6 s at most.
+  const [rise, setRise] = useState<{ id: string; n: number } | null>(null);
+  useEffect(() => { if (!rise) return; const t = setTimeout(() => setRise(null), 1600); return () => clearTimeout(t); }, [rise]);
   useEffect(() => { if (!pr) return; const t = setTimeout(() => setPr(null), 6000); return () => clearTimeout(t); }, [pr]);
   // What the set just saved unlocked: lines under the PR line (plan §6), tapped open on Stats.
   const ach = useAchLines(), openAch = useAchOpen();
@@ -133,8 +137,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   // The rest timer may be changed long after this render (or this card gone): it saves through the settings as they are then.
   const settingsNow = useRef(settings);
   settingsNow.current = settings;
-  const target = nextTarget(store.entries, exercise, st, date, plannedSets, light);
-  const sug = suggest(store.entries, exercise, st, date, plannedSets, light);
+  const target = nextTarget(store.entries, exercise, st, date, plannedSets, light, undefined, gym);
+  const sug = suggest(store.entries, exercise, st, date, plannedSets, light, gym);
   // The target as its line says it (and the sheet's head): kind, each set's reps or sets × reps, and the load.
   const targetText = targetLine(sug);
   const [why, setWhy] = useState(false);
@@ -150,6 +154,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   // The last set actually done here, not a pasted one that sorts after it.
   const latest = (xs: SetEntry[]) => xs.findLast((s) => s.loggedAt) ?? xs.at(-1);
   const working = today.filter(isWorking);
+  // Today's points from this lift, as Buddies counts them (domain/buddies/points): its pill in the header.
+  const pts = today.reduce((a, s) => a + setPoints(s), 0);
   // The sets the next one is aimed from: a test is strength, not a set to repeat (owner, 2026-10-23).
   const training = working.filter((x) => !isTest(x));
   const pulley: Flag[] = (latest(today) ?? last?.sets.find(isWorking))?.flags.includes('double_pulley') ? ['double_pulley'] : [];
@@ -198,6 +204,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     // A time for a late set is on the day being logged to.
     const e = await store.add({ date, exercise, ...rest, gym, ...(at !== undefined && { at: at ? new Date(`${date}T${at}:00`) : null }), target: { weight: sug.weight, reps: aim(training.length, sug.weight) ?? sug.reps, sets: sug.sets } });
     if (!e) return false;
+    const n = setPoints(e);
+    if (n > 0) setRise({ id: e.id, n });
     // A set done just now starts the rest; one entered for an earlier time or day doesn't. Inside a superset with a lift still to
     // go in the round, a short switch instead, and that lift's card comes up.
     if (at === undefined && date === realToday) {
@@ -274,6 +282,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       <section className="card folded" data-card={exercise.toLowerCase()} onClickCapture={onTouch}>
         <FoldLine name={exercise} done={complete} count={foldText} pr={today.some((x) => prs.has(x.id))} best={top ? fmtSet(top) : null} test={testDueNow}
           onClick={() => { unfold(); if (testDueNow) setSeekTest((n) => n + 1); }} />
+        {/* The set that finished the lift folds its card: its points rise off the folded line instead. */}
+        {rise && <span key={rise.id} className="pts-rise" aria-hidden="true" onAnimationEnd={() => setRise(null)}>+{rise.n}</span>}
         {pr && <p role="status" className="pr">{pr}</p>}
         <AchLines us={ach.lines} onOpen={openAch} />
         {justDone && onGo && left.length > 0 && (
@@ -291,6 +301,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       <header className="card-head">
         <button className="link" onClick={() => onOpen(exercise)}>{exercise}</button>
         {testDueNow && <button type="button" className="test-badge" onClick={() => { setEditing(null); setSeekTest((n) => n + 1); }}><span className="tag test-tag">Test due</span></button>}
+        {pts > 0 && <span className="pts-pill" aria-label={`${pts} ${pts === 1 ? 'point' : 'points'} from ${exercise} today`}>+{pts} pts</span>}
         {/* Every open card folds from its head (owner, 2026-10-19: a card could only be closed by finishing it). */}
         <button type="button" className="mini icon card-fold" aria-expanded="true" aria-label={`Fold ${exercise}`} onClick={() => { setEditing(null); setShut(true); }}>
           <Icon name="chev-down" size={22} sw={2} />
@@ -323,6 +334,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
             <button className={editing?.id === s.id ? 'set-row editing' : 'set-row'} aria-current={editing?.id === s.id ? 'true' : undefined} onClick={() => setEditing(s)}>
               <SetRowContent s={s} no={i + 1} estRir={estimateRir(s, today, prior, offset)} pr={prs.has(s.id)} />
             </button>
+            {rise?.id === s.id && <span key={s.id} className="pts-rise" aria-hidden="true" onAnimationEnd={() => setRise(null)}>+{rise.n}</span>}
           </li>
         ))}
       </ol>

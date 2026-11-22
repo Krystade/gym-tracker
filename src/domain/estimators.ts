@@ -110,16 +110,16 @@ export function testDue(entries: readonly SetEntry[], exercise: string, today: s
 }
 
 /**
- * At most one test prompt per lift per this many days (owner, 2026-10-28: on his log it fired on 242 lift-days for 1 test). A default:
- * `testDue` takes another, for a learned one later.
+ * At most one test prompt per lift per this many days (owner, 2026-10-28: on his log it fired on 242 lift-days for 1 test; owner,
+ * 2026-11-21: 4 weeks, down from 6). A default: `testDue` takes another, for a learned one later.
  */
-export const TEST_COOLDOWN_DAYS = 42;
+export const TEST_COOLDOWN_DAYS = 28;
 
 /**
- * Item 05's cooldown: the lift had a test in the last 6 weeks, or the prompt was already due on one of its sessions in the last 6
- * weeks. Read off the log alone (nothing to store, the same on every phone, and a replay gives the same days): walking the lift's
+ * Item 05's cooldown: the lift had a test in the last TEST_COOLDOWN_DAYS (4 weeks), or the prompt was already due on one of its
+ * sessions in them. Read off the log alone (nothing to store, the same on every phone, and a replay gives the same days): walking the lift's
  * sessions oldest first since its last test, a session prompts when the rule called it due (as it stood that day, from the log
- * before it) and no session in the 6 weeks before it prompted. The walk starts at most 3 cooldowns back, which bounds its cost.
+ * before it) and no session in the cooldown before it prompted. The walk starts at most 3 cooldowns back, which bounds its cost.
  */
 function cooling(entries: readonly SetEntry[], exercise: string, today: string, st: { increment: number } | undefined, days: number): boolean {
   const mine = liftSets(entries, exercise).filter((e) => e.date < today && e.reps != null && !e.flags.includes('warmup'));

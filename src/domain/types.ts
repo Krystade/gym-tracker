@@ -1,6 +1,17 @@
-export const FLAGS = ['bodyweight', 'partial', 'unsure', 'pain', 'double_pulley', 'warmup', 'test', 'hold', 'cardio', 'light'] as const;
+export const FLAGS = ['bodyweight', 'partial', 'unsure', 'pain', 'double_pulley', 'warmup', 'test', 'hold', 'cardio', 'light',
+  'form_fail', 'good_form', 'full_stack', 'no_spot'] as const;
 export type Flag = (typeof FLAGS)[number];
 export const isFlag = (s: string): s is Flag => (FLAGS as readonly string[]).includes(s);
+
+/** A pain set's severity (SetEntry.painSeverity): 0 tingle, 1 mild, 2 moderate, 3 sharp. */
+export type Severity = 0 | 1 | 2 | 3;
+export const TINGLE = 0;
+export const isSeverity = (n: unknown): n is Severity => n === 0 || n === 1 || n === 2 || n === 3;
+/**
+ * A set that hurt, as every plan reads pain (painPlan, the morning check, the learning core, records, swaps): pain-flagged and not
+ * a tingle. A tingle is kept on the set and counted in the pain report's trend, and nothing else acts on it.
+ */
+export const hurts = (e: { flags: readonly string[]; painSeverity?: number }): boolean => e.flags.includes('pain') && e.painSeverity !== TINGLE;
 
 export const REGIONS = ['elbow', 'lower back', 'shoulder', 'wrist', 'knee', 'other'] as const;
 export type Region = (typeof REGIONS)[number];
@@ -39,9 +50,12 @@ export interface SetEntry {
   rir?: number;
   flags: Flag[];
   note?: string;
-  /** Where a `pain`-flagged set hurt, and how much: 1 mild (≤3/10), 2 moderate (4–5/10), 3 sharp (>5/10). */
+  /**
+   * Where a `pain`-flagged set hurt, and how much: 0 tingle (owner, 2026-11-21: logged and tracked, but no pain to any plan:
+   * see `hurts`), 1 mild (≤3/10), 2 moderate (4–5/10), 3 sharp (>5/10). None: not logged (an import), read as moderate.
+   */
   painRegion?: Region;
-  painSeverity?: 1 | 2 | 3;
+  painSeverity?: Severity;
   /** On a pain set: how that region felt the next morning, and his own words on it, if any (never sent anywhere but his sync). */
   morning?: Morning;
   morningNote?: string;

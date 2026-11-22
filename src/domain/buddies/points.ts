@@ -1,4 +1,6 @@
-import type { Achievements } from '../achievements';
+import { addDays } from '../analytics';
+import { lifted, type Achievements } from '../achievements';
+import type { SetEntry } from '../types';
 import { awards } from './rewards';
 import type { Training } from './stats';
 import type { Wallet } from './gacha';
@@ -35,4 +37,36 @@ export function earned(t: Training, ach: Achievements | null): Earned {
     tickets: parts.goalWeekTickets + parts.sessionTickets + parts.awardTickets,
     parts,
   };
+}
+
+/**
+ * What one set earns as it's logged (Today's "+1" off the row): the set's share of `earned`'s sets part, by the same rule that
+ * counts it there (stats.trainingOf: a lifted set, warm-ups and cardio aside). Cardio pays by the day's minutes, not per bout.
+ */
+export const setPoints = (e: SetEntry): number => (lifted(e) ? INCOME.set : 0);
+
+/** The log as it stood at the end of `day`: what had been counted by then. */
+const upTo = (t: Training, day: string): Training => {
+  const by = (xs: readonly string[]) => xs.filter((d) => d <= day);
+  return { start: t.start, sets: by(t.sets), prs: by(t.prs), steps: by(t.steps), sessions: by(t.sessions), goalWeeks: by(t.goalWeeks), cardio: t.cardio.filter((c) => c.date <= day) };
+};
+const achUpTo = (a: Achievements | null, day: string): Achievements | null => a && {
+  ...a, unlocks: a.unlocks.filter((u) => u.date <= day),
+  repeats: Object.fromEntries(Object.entries(a.repeats).map(([id, ds]) => [id, ds.filter((d) => d <= day)])),
+};
+
+export interface DayEarned extends Earned {
+  /** Sessions counted to the end of the day, and how many more to the next session ticket (1 to INCOME.sessionsPerTicket). */
+  sessions: number; toTicket: number;
+}
+/**
+ * What one day paid (the finish summary, owner 2026-11-21): `earned` to the end of `day` less `earned` to the end of the day
+ * before, part by part, so the summary and the Buddies tab can never disagree. A goal week pays on the day it was met.
+ */
+export function earnedOn(t: Training, ach: Achievements | null, day: string): DayEarned {
+  const prev = addDays(day, -1);
+  const a = earned(upTo(t, day), achUpTo(ach, day)), b = earned(upTo(t, prev), achUpTo(ach, prev));
+  const parts = Object.fromEntries(Object.entries(a.parts).map(([k, v]) => [k, v - b.parts[k as keyof Earned['parts']]])) as Earned['parts'];
+  const sessions = t.sessions.filter((d) => d <= day).length;
+  return { points: a.points - b.points, tickets: a.tickets - b.tickets, parts, sessions, toTicket: INCOME.sessionsPerTicket - (sessions % INCOME.sessionsPerTicket) };
 }

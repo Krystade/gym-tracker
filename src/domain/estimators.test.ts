@@ -200,7 +200,7 @@ describe('testDue: when a test would at least halve what the app doesn’t know 
   });
 });
 
-describe('testDue’s cooldown: at most one prompt per lift per 6 weeks (owner, 2026-10-28)', () => {
+describe('testDue’s cooldown: at most one prompt per lift per 4 weeks (owner, 2026-10-28; 4 weeks from 6: owner, 2026-11-21)', () => {
   const sim = simulate(1, { sessions: 120, pLog: 0.5 }).entries;
   const l = SIM_LIFTS[0].name;
   const days = [...new Set(sim.filter((e) => e.exercise === l).map((e) => e.date))].sort();
@@ -208,22 +208,22 @@ describe('testDue’s cooldown: at most one prompt per lift per 6 weeks (owner, 
   /** The lift's sessions the rule calls due, as it stood each day. */
   const ruled = days.filter((d) => testDue(before(d), l, d));
   const day = (d: string) => Math.round((Date.parse(d) - Date.parse(ruled[0])) / 864e5);
-  it('the first due session prompts; the next ones within 6 weeks don’t, though the rule still calls them due; the first after does', () => {
-    expect(TEST_COOLDOWN_DAYS).toBe(42);
+  it('the first due session prompts; the next ones within 4 weeks don’t, though the rule still calls them due; the first after does', () => {
+    expect(TEST_COOLDOWN_DAYS).toBe(28);
     expect(ruled.length).toBeGreaterThan(4);
     expect(dueWithCooldown(before(ruled[0]), l, ruled[0])).not.toBeNull();
-    const within = ruled.filter((d) => day(d) > 0 && day(d) < 42);
+    const within = ruled.filter((d) => day(d) > 0 && day(d) < 28);
     expect(within.length).toBeGreaterThan(0);
     for (const d of within) expect(dueWithCooldown(before(d), l, d), d).toBeNull();
-    const next = ruled.find((d) => day(d) >= 42)!;
+    const next = ruled.find((d) => day(d) >= 28)!;
     expect(dueWithCooldown(before(next), l, next)).not.toBeNull();
   });
   it('the cooldown is a slot: a shorter one lets a later session prompt', () => {
-    const d = ruled.find((x) => day(x) >= 21 && day(x) < 42)!;
-    expect(dueWithCooldown(before(d), l, d, undefined, null, 21)).not.toBeNull();
+    const d = ruled.find((x) => day(x) >= 14 && day(x) < 28)!;
+    expect(dueWithCooldown(before(d), l, d, undefined, null, 14)).not.toBeNull();
   });
-  it('a test on the lift in the last 6 weeks holds it off too', () => {
-    const next = ruled.find((d) => day(d) >= 42)!;
+  it('a test on the lift in the last 4 weeks holds it off too', () => {
+    const next = ruled.find((d) => day(d) >= 28)!;
     const t = before(next).filter((e) => e.exercise === l).at(-1)!;
     expect(dueWithCooldown([...before(next), { ...t, id: 'tst', flags: ['test'] }], l, next)).toBeNull();
   });

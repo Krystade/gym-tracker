@@ -7,7 +7,7 @@ import { isTimedLift } from './lifts';
 import { muscleVector, MUSCLES } from './muscles';
 import type { Slot } from './program';
 import { exerciseNames, liftSets, sameExercise } from './stats';
-import type { Flag, Region, SetEntry } from './types';
+import { hurts, type Flag, type Region, type SetEntry, type Severity } from './types';
 
 // Not medical advice: these helpers record and surface patterns; they never diagnose.
 
@@ -62,7 +62,7 @@ export function recentPain(entries: SetEntry[], today: string, days = 60): { byE
   const byExercise = new Map<string, number>();
   const regions = new Set<Region>();
   for (const e of entries) {
-    if (!e.flags.includes('pain') || e.date < since || e.date > today) continue;
+    if (!hurts(e) || e.date < since || e.date > today) continue; // a tingle is no pain to a swap
     const k = liftKey(e.exercise); // "Bench  Press" and "bench press" are one lift
     byExercise.set(k, (byExercise.get(k) ?? 0) + 1);
     regions.add(e.painRegion ?? likelyRegion(e.exercise));
@@ -71,7 +71,7 @@ export function recentPain(entries: SetEntry[], today: string, days = 60): { byE
 }
 
 /** Form defaults: a new pain entry guesses the region and starts mild; an old pain set without details stays unknown until tapped. */
-export function painDefaults(initial: { flags: Flag[]; painRegion?: Region; painSeverity?: 1 | 2 | 3 }, exercise: string): { region?: Region; severity?: 1 | 2 | 3 } {
+export function painDefaults(initial: { flags: Flag[]; painRegion?: Region; painSeverity?: Severity }, exercise: string): { region?: Region; severity?: Severity } {
   const had = initial.flags.includes('pain');
   return { region: initial.painRegion ?? (had ? undefined : likelyRegion(exercise)), severity: initial.painSeverity ?? (had ? undefined : 1) };
 }
@@ -119,7 +119,7 @@ export interface RegionReport {
   byExercise: { exercise: string; sets: number; maxSeverity: number; avgWeight: number }[];
 }
 
-/** Pain-flagged sets per region per week (oldest first, ending with this week). */
+/** Pain-flagged sets per region per week (oldest first, ending with this week): tingles too, the one place they count (the trend). */
 export function painReport(entries: SetEntry[], today: string, weeks = 8): RegionReport[] {
   const first = addDays(weekStart(today), -7 * (weeks - 1));
   const by = new Map<Region, SetEntry[]>();

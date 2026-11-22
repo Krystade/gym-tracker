@@ -40,7 +40,7 @@ export function CareBody({ entries, today, who, weeks = 8 }: { entries: SetEntry
           </div>
         );
       })}
-      <p className="muted small">Rule of thumb (pain-monitoring model): up to moderate (5/10) is acceptable if it settles by the next morning and isn’t rising week to week. Mild keeps the weight going up; moderate holds it; sharp (over 5/10): stop that lift for the day, and it starts a step lighter next time.</p>
+      <p className="muted small">A tingle is counted here and changes nothing else. Rule of thumb (pain-monitoring model): up to moderate (5/10) is acceptable if it settles by the next morning and isn’t rising week to week. Mild keeps the weight going up; moderate holds it; sharp (over 5/10): stop that lift for the day, and it starts a step lighter next time.</p>
       <p className="muted small">Not medical advice. See a physio if pain persists.</p>
     </section>
   );

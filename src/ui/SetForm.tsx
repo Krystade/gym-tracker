@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { activeProfileDb } from '../db/db';
 import { localDate } from '../domain/ids';
 import { clearDraft, getDraft, markDirty, saveDraft } from '../state/drafts';
-import { REGIONS, type Flag, type Region } from '../domain/types';
+import { REGIONS, type Flag, type Region, type Severity } from '../domain/types';
 import { derivedFlags } from '../domain/buildSet';
 import { isHold, likelyRegion, painDefaults } from '../domain/care';
 import { Stepper } from './Stepper';
@@ -16,11 +16,12 @@ import { bodyShare } from '../domain/learn/bodyweight';
 import { fmtWeight } from '../domain/format';
 import { fmtClock } from '../domain/cardio';
 
-export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: 1 | 2 | 3; at?: string | null; tags?: string[] }
-const SEVERITY: [1 | 2 | 3, string][] = [[1, 'Mild'], [2, 'Moderate'], [3, 'Sharp']];
+export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: Severity; at?: string | null; tags?: string[] }
+/** The pain scale (owner, 2026-11-21): Tingle first, below Mild, logged and tracked but no pain to any plan (types.hurts). */
+const SEVERITY: [Severity, string][] = [[0, 'Tingle'], [1, 'Mild'], [2, 'Moderate'], [3, 'Sharp']];
 const cap = (r: string) => r[0].toUpperCase() + r.slice(1);
 
-interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; note: string; region?: Region; severity?: 1 | 2 | 3; at?: string; tags?: string[] }
+interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; note: string; region?: Region; severity?: Severity; at?: string; tags?: string[] }
 
 /** `keepDraft`: what's typed survives leaving the screen or switching profile, until it's saved (the new-set form). */
 /**
@@ -69,7 +70,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
   const [tags, setTags] = useState<string[]>(d?.tags ?? initial.tags ?? []);
   const [editTags, setEditTags] = useState(false);
   const [region, setRegion] = useState<Region | undefined>(() => (d ? d.region : painDefaults(initial, exercise).region));
-  const [severity, setSeverity] = useState<1 | 2 | 3 | undefined>(() => (d ? d.severity : painDefaults(initial, exercise).severity));
+  const [severity, setSeverity] = useState<Severity | undefined>(() => (d ? d.severity : painDefaults(initial, exercise).severity));
   // Only a form the user has touched leaves a draft, so an untouched one keeps following the suggested next set.
   const dirty = useRef(d != null);
   // Counts typing, so a save that comes back after the next set's reps were typed leaves them as typed.

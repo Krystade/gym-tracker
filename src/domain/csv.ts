@@ -1,6 +1,6 @@
 import { normalizeName, setId } from './ids';
 import { byOrderDone } from './stats';
-import { isFlag, isMorning, isRegion, type Flag, type SetEntry } from './types';
+import { isFlag, isMorning, isRegion, isSeverity, type Flag, type SetEntry } from './types';
 import { parseTags } from './tags';
 
 export const CSV_HEADER = ['date', 'exercise', 'as_written', 'set', 'weight_lb', 'reps', 'rir', 'flags', 'note', 'source', 'pain_region', 'pain_severity',
@@ -99,7 +99,7 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     if (regionRaw && !isRegion(regionRaw)) return fail(`Unknown pain region "${regionRaw}"`);
     const sevRaw = col(r, 'pain_severity').trim();
     const sev = sevRaw === '' ? undefined : Number(sevRaw);
-    if (sev !== undefined && !(sev === 1 || sev === 2 || sev === 3)) return fail(`Pain severity must be 1-3, got "${sevRaw}"`);
+    if (sev !== undefined && !isSeverity(sev)) return fail(`Pain severity must be 0-3 (0 a tingle), got "${sevRaw}"`);
     const loggedAt = col(r, 'logged_at').trim();
     if (loggedAt && !Number.isFinite(Date.parse(loggedAt))) return fail(`Bad logged_at "${loggedAt}"`);
     // A suggestion needs reps and sets; its weight is empty for a first session.
@@ -141,7 +141,7 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
       ...(asWritten !== '' && { asWritten }),
       ...(note !== '' && { note }),
       ...(regionRaw && isRegion(regionRaw) && { painRegion: regionRaw }),
-      ...(sev !== undefined && { painSeverity: sev as 1 | 2 | 3 }),
+      ...(sev !== undefined && isSeverity(sev) && { painSeverity: sev }),
       ...(loggedAt && { loggedAt }),
       ...(target && { target }),
       ...(gym && { gym }),

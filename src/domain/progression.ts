@@ -180,7 +180,7 @@ export interface Target {
 export type Evidence = { ev: 'a'; cite: string } | { ev: 'b'; method: string } | { ev: 'c'; note: string };
 /** Which input a line is. */
 export type TargetInput = 'last' | 'seed' | 'test' | 'range' | 'goal' | 'progress' | 'hits' | 'rir' | 'step' | 'drop' | 'fit'
-  | 'pain' | 'light' | 'plan' | 'sets' | 'bodyweight' | 'new';
+  | 'pain' | 'light' | 'plan' | 'sets' | 'bodyweight' | 'new' | 'stack';
 /** One input to a target: `what` it is (and the `date` it's from), its `value` here, and its evidence. */
 export interface TargetPart { key: TargetInput; what: string; value: string; evidence: Evidence; date?: string }
 
@@ -318,10 +318,11 @@ export const isTraining = (s: SetEntry): boolean => isWorking(s) && !isTest(s);
 export interface TargetRules { plusOneRir: number; toppedSessions: number }
 export const TARGET_RULES: TargetRules = { plusOneRir: 2, toppedSessions: 2 };
 
+/** `gym`: where the lift is done today, when known: a Full stack session elsewhere doesn't hold this gym's weight (see `fullStack`). */
 export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned?: number | null, light = false,
-  rules: TargetRules = TARGET_RULES): Target | null {
+  rules: TargetRules = TARGET_RULES, gym?: string): Target | null {
   entries = learnable(entries); // the log without sets marked not used (stats.learnable)
-  const t = baseTarget(entries, exercise, st, date, planned, rules);
+  const t = baseTarget(entries, exercise, st, date, planned, rules, gym);
   return light && t ? lighten(t, entries, exercise, st, date, planned) : t;
 }
 
@@ -389,7 +390,32 @@ function holdStep(sessions: { sets: SetEntry[] }[], last: SetEntry[], max: numbe
   return { aimed, rule, parts };
 }
 
-function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null | undefined, rules: TargetRules): Target | null {
+/**
+ * Full stack (owner, 2026-11-21): the lift's last session, test-only sessions since included, had a set tagged Full stack, at the
+ * stack's top: the heaviest such set's load, or null. `gym` (where it's done today, when known): a set at another gym doesn't hold
+ * it; either gym unknown (no gym today, or a set logged without one), it holds (the lift is next done where it was last,
+ * learn/ladder). While it holds, no target adds weight: the reps go on past the range, and the card says to switch lift once the
+ * range is topped.
+ */
+export function fullStack(sessions: readonly { sets: SetEntry[] }[], gym?: string): number | null {
+  let w: number | null = null;
+  for (const x of sessions) for (const e of x.sets) {
+    if (!e.flags.includes('full_stack') || (gym != null && e.gym && e.gym !== gym)) continue;
+    w = Math.max(w ?? -Infinity, e.weight);
+  }
+  return w;
+}
+const stackPart = (w: number, topped: boolean, date: string): TargetPart => ({ key: 'stack', what: 'Full stack last time', date,
+  value: topped ? `${lb(w)} is the stack’s top: reps past the range, or switch lift` : `${lb(w)} is the stack’s top: no more weight here`,
+  evidence: { ev: 'b', method: 'your Full stack tag on that session' } });
+/**
+ * No spot (owner, 2026-11-21: never read as lower strength): a set tagged No spot that fell short of its own target aims from
+ * that target next time, not from the reps it got without a spotter. One that met it aims from what it did, as any set.
+ */
+const unspotted = (x: SetEntry): SetEntry => (x.flags.includes('no_spot') && x.target?.weight != null && x.target.weight === x.weight
+  && x.reps != null && x.reps < x.target.reps ? { ...x, reps: x.target.reps } : x);
+
+function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null | undefined, rules: TargetRules, gym?: string): Target | null {
   const hold = isHoldLift(exercise, entries);
   // A hold reads only its timed sets: a set logged as reps before the lift became timed is no number of seconds (round 32).
   const before = sessionsFor(entries, exercise).filter((x) => x.date < date && !lightSession(x.sets))
@@ -411,14 +437,18 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   const tests = (at < 0 ? before : before.slice(0, at)).flatMap((x) => x.sets.filter((t) => isTest(t) && isWorking(t)));
   const testE1rm = (t: SetEntry) => e1rm({ ...t, reps: (t.reps as number) + (t.rir ?? 0) }) ?? 0;
   const best = Math.max(0, ...tests.map(testE1rm));
+  // Full stack on the last session (or a test-only one since): no weight past it.
+  const stack = fullStack(before.slice(0, Math.max(0, at) + 1), gym);
   if (best > 0) {
-    const w = Math.max(st.increment, Math.round(estimateWeightForReps(best, st.repMax) / st.increment) * st.increment);
+    const fromTest = Math.max(st.increment, Math.round(estimateWeightForReps(best, st.repMax) / st.increment) * st.increment);
+    const w = stack != null && stack > 0 ? Math.min(fromTest, stack) : fromTest;
     const t = tests.find((x) => testE1rm(x) === best)!;
     const parts: TargetPart[] = [
       { key: 'test', what: 'Your test set', date: t.date, value: `${lb(t.weight)} × ${t.reps}${t.rir ? `, ${t.rir} in reserve` : ''} → e1RM ${Math.round(best)} lb`,
         evidence: { ev: 'b', method: 'its e1RM by Epley, reps in reserve counted; the weight for the top of the range' } },
       rangePart(st, exercise, hold),
       stepPart('Rounded to', `${lb(st.increment)} steps`, st.increment !== DEFAULT_INCREMENT, null),
+      ...(w < fromTest ? [stackPart(stack!, false, before[0].date)] : []),
     ];
     return { kind: 'test', weight: w, reps: st.repMin, last: before[0].sets, text: `From your test: ${lb(w)} × ${st.repMin}+`, parts };
   }
@@ -439,6 +469,8 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
     return { kind: 'repeat', weight: w, reps: st.repMin, last: last.sets, text: `Repeat ${lb(w)} and log every rep`, parts };
   }
   const top = Math.max(...working.map(load));
+  // Full stack holds a loaded lift's weight (an assisted lift's "less help" is not more on the stack it maxed: it still steps).
+  const stacked = stack != null && top > 0;
   // Items 01–03 for loaded rep lifts: the learned step and drop, and the range fitted to them.
   const learned = !unit && top > 0 ? learnedFor(entries, exercise, date) : { ladder: null, drop: null };
   const fit = learned.drop ? fitRange(exercise, st, Math.max(0, learned.drop.mean)) : null;
@@ -483,7 +515,7 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   // painPlan). Same reps as last time: a hold progresses nothing; an ease takes the load off, not the reps.
   const gate = painGate(entries, exercise, date);
   if (gate) {
-    const reps = atTop.map((x) => x.reps as number);
+    const reps = atTop.map((x) => unspotted(x).reps as number);
     const perSet = extend(reps);
     // One step lighter: the smallest change the gear allows (a typed increment, else the learned ladder's rung below), so the
     // next session says whether it was enough. A bodyweight lift (item 14) can go down to bodyweight, and below it with help:
@@ -542,7 +574,7 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
     planLine();
     return { kind: 'increase', weight: w, reps: repMin, last: last.sets, done: { total, sets: atTop.length }, step, text: `Go up: ${lb(w)} × ${repMin}+`, parts };
   }
-  if (top > 0 && topped) {
+  if (top > 0 && topped && !stacked) {
     // The next loadable weight (item 01): a typed increment wins, else the learned ladder's next rung, else +increment.
     const typed = st.increment !== DEFAULT_INCREMENT;
     const w = !typed && learned.ladder ? nextRung(learned.ladder, top) : top + st.increment;
@@ -574,12 +606,15 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   }
   // Bodyweight reps have no weight to add, so their target is not capped by the range. Holds step in 5 s, like the stepper,
   // and have no RIR.
-  const uncapped = top === 0 && !unit;
-  const rep = unit ? holdStep(before.slice(Math.max(0, at)), atTop, repMax) : repStep(atTop, uncapped ? Infinity : repMax, rules.plusOneRir);
+  const capless = top === 0 && !unit;
+  // Full stack: the reps go on past the range (owner, 2026-11-21), since the weight can't.
+  const uncapped = capless || stacked;
+  const rep = unit ? holdStep(before.slice(Math.max(0, at)), atTop, repMax) : repStep(atTop.map(unspotted), uncapped ? Infinity : repMax, rules.plusOneRir);
   const { aimed, rule } = rep;
   // A plan with more sets than last time: the extra sets aim at the last one's number.
   const perSet = extend(aimed);
-  const once = toppedNow && !topped ? ' · range topped once: top it again to go up' : '';
+  const once = stacked ? (topped ? ' · full stack: reps past the range, or switch lift' : ' · full stack: no more weight here')
+    : toppedNow && !topped ? ' · range topped once: top it again to go up' : '';
   // Item 03: a range moved by the learned drop says so, in a few words.
   // Item 14: at bodyweight with the range topped there's no weight to go up to here (without his body weight the app can't say how
   // much to add), so the reps keep climbing, and the card says the range is done (display only).
@@ -588,8 +623,9 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   // The range read for "topped" (and, loaded, each set's cap). Bodyweight reps aren't capped, so the range moves no number there:
   // its own line says what it does.
   if (!uncapped) parts.push(progress(toppedWhat), ...rangeLines());
+  if (stacked) parts.push(...rangeLines(), stackPart(stack!, topped, before[0].date));
   parts.push(...rep.parts);
-  if (uncapped) parts.push({ key: 'bodyweight', what: 'Bodyweight reps', value: topped ? `past ${repMax}: add weight or a harder variation` : 'not capped by the range',
+  if (capless) parts.push({ key: 'bodyweight', what: 'Bodyweight reps', value: topped ? `past ${repMax}: add weight or a harder variation` : 'not capped by the range',
     evidence: { ev: 'c', note: 'no weight to add here without your body weight' } });
   planLine(aimed.length);
   return { kind: 'reps', weight: top, reps: Math.min(...perSet), last: last.sets, perSet, why, ...(range && { range, drop: learned.drop! }), text: `${lb(top)} × ${perSet.join(' · ')}${unit ? ' s' : ''}`, parts };

@@ -42,7 +42,8 @@ import type { Program } from '../domain/program';
 import { Icon } from './icons';
 import { BOX, BuddySprite, drawnSize, heldRise } from './buddies/BuddySprite';
 import type { BuddyDef } from '../domain/buddies/roster';
-import type { SetEntry } from '../domain/types';
+import type { Ledger } from '../domain/buddies/gacha';
+import { hurts, type SetEntry } from '../domain/types';
 import { switchFor, type RestPart } from '../domain/timing';
 import { lastSupersets, restsOf, supersets, switchesOf, timedWorking, type Superset } from '../domain/superset';
 import { gapModel } from '../domain/learn/switch';
@@ -79,7 +80,7 @@ function useSameRefs<T>(xs: readonly T[]): readonly T[] {
   return last.current;
 }
 
-export function TodayScreen({ me, who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews, onOpenDay, lead, onOpenBuddies, photos, onOpenPhotos }: {
+export function TodayScreen({ me, who, store, settings, programs, body, gyms, profile, date, today, carried, news, recap, onSplit, onDay, onOpen, onOpenProgram, onOpenGym, onOpenNews, onOpenDay, lead, onOpenBuddies, buddies, photos, onOpenPhotos }: {
   /** Whose sets these are, named only when several people share the phone. */
   who?: string;
   /** The signed-in account, for your tag for whoever the news is from. */ me?: string | null;
@@ -87,6 +88,8 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   carried?: boolean; onSplit?: () => void; onDay: (d: string) => void; onOpen: (name: string) => void; onOpenProgram: () => void; onOpenGym?: () => void;
   /** The lead buddy (Gym Buddies §16.4), beside the day; a tap opens Buddies. None before the first is picked. */
   lead?: { def: BuddyDef; name: string; /** What it holds, drawn as its card draws it. */ held?: string } | null; onOpenBuddies?: () => void;
+  /** Gym Buddies' start and spends (state/useBuddies), for what the workout paid on its summary; none until read. */
+  buddies?: { start: string; ledger: Ledger | null } | null;
   /** Progress photos' dates, for the photo-day line (domain/photos photoDayDue); a tap opens Photos. */
   photos?: readonly PhotoMeta[]; onOpenPhotos?: () => void;
   /** A friend's newest unread ping or message: one line, and a tap opens their thread to reply. */
@@ -375,7 +378,7 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     const pain = persistentPain(store.entries, n, today);
     const planned = programs.program && plan && plannedNames(programs.program, plan).some((p) => sameExercise(p, n))
       ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] ?? n : null;
-    const lastPain = pain ? store.entries.reduce((d, e) => (sameExercise(e.exercise, n) && e.flags.includes('pain') && e.date > d ? e.date : d), '') : '';
+    const lastPain = pain ? store.entries.reduce((d, e) => (sameExercise(e.exercise, n) && hurts(e) && e.date > d ? e.date : d), '') : '';
     const sore = pain && <PainPrompt owner={owner} lift={n} pain={pain} lastPain={lastPain} onSwap={planned ? () => setSwapFor(planned) : undefined} />;
     const x = programs.program && inProgram(programs, n) ? rotationOf(n) : null;
     // No swap offered: the softer note, a lift with no new best for 3 weeks (owner 2026-10-29), in or out of the program.
@@ -442,7 +445,8 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
           the summary takes its place once every planned set is done. The other cards come after it. */}
       {summary && (
         <FinishCard entries={store.entries} date={date} today={today} profile={profile} program={programs.program} plans={programs.plans} how={close.how} body={body.days} settings={settings} owner={owner}
-          planName={programs.program && plan ? (plan.quick != null ? 'Quick' : (programs.program.days[plan.day] ?? programs.program.days[0])?.name) : undefined} onMore={addMore} />
+          planName={programs.program && plan ? (plan.quick != null ? 'Quick' : (programs.program.days[plan.day] ?? programs.program.days[0])?.name) : undefined} onMore={addMore}
+          buddies={buddies} onOpenBuddies={onOpenBuddies} />
       )}
       {programs.program && plan && hasPlan && !summary && (
         <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today} open={open} onToggle={() => setPlanOpen(!open)} onEdit={onOpenProgram}

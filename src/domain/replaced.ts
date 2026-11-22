@@ -77,7 +77,7 @@ export function stillTaken(base: { sets: SetEntry[]; body: BodyDay[] }, now: { s
 export const expired = (r: Replaced, now: number): boolean => r.at < now - KEEP_MS;
 
 /** Flags that only add a note to a set; the others (partial, hold, bodyweight, cardio) change what its numbers mean. */
-const NOTE_FLAGS: Flag[] = ['unsure', 'pain', 'test', 'warmup', 'double_pulley'];
+const NOTE_FLAGS: Flag[] = ['unsure', 'pain', 'test', 'warmup', 'double_pulley', 'form_fail', 'good_form', 'full_stack', 'no_spot'];
 
 /**
  * The synced copy with what only this phone's copy had added in: a note, tags, RIR, a gym, flags like pain or warm-up (with the
@@ -95,7 +95,7 @@ export function combine(mine: SetEntry, theirs: SetEntry): SetEntry | null {
   return sameSet(u, theirs) || sameSet(u, mine) ? null : u;
 }
 
-const FLAG_TEXT: Partial<Record<Flag, string>> = { warmup: 'warm-up', double_pulley: '2× pulley' };
+const FLAG_TEXT: Partial<Record<Flag, string>> = { warmup: 'warm-up', double_pulley: '2× pulley', form_fail: 'form fail', good_form: 'good form', full_stack: 'full stack', no_spot: 'no spot' };
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 /** One copy of a set: its numbers, then whatever about it differs from the other copy. */

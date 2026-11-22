@@ -4,7 +4,7 @@ import { liftKey } from '../ids';
 import { liftFactsVersion, resolveLift } from '../lifts';
 import type { Vector } from '../muscles';
 import { byOrderDone, doneAt, learnable } from '../stats';
-import type { SetEntry } from '../types';
+import { hurts, type SetEntry } from '../types';
 import { addedLoad, bodyShare } from './bodyweight';
 import { inOrder, inv3, truncBelow } from './num';
 import { pool, type Posterior } from './pool';
@@ -78,6 +78,19 @@ const NOISE = { sd: 0.7, k: 10 } as const;
 /** Outer iterations of level ↔ fatigue (00-core §1.3: 2–3; one more for the reps–load slope). */
 const ITERATIONS = 4;
 
+/**
+ * (c) Form fail (owner, 2026-11-21: "counts for volume and points, but less as a strength reading"): its reading of the level
+ * carries this share of a set's weight (its variance in the level filter divided by it: half weight, twice the variance). Its
+ * reps still tire the sets after it like any other.
+ */
+export const FORM_FAIL_WEIGHT = 0.5;
+/**
+ * (c) Extra good form (owner, 2026-11-21: good form is every set's aim, so the effect stays tiny): read as this many more reps to
+ * failure than logged, as if half a rep more in reserve. Half a rep is under the set-to-set noise (0.7 reps, NOISE) and the ±1.0
+ * RIR error of trained lifters (Refalo 2024): it nudges a reading, never leads one (at 10 reps, about 1 % of e1RM by Epley).
+ */
+export const GOOD_FORM_REPS = 0.5;
+
 const DAY = 864e5;
 const dayNo = (date: string) => Math.round(Date.parse(`${date}T00:00:00Z`) / DAY);
 
@@ -129,6 +142,8 @@ interface Block {
   atTarget: Uint8Array; unsure: Uint8Array;
   /** 1 for a set read by the habit that is lighter than the lift's top weight that day and done before it: a ramp set (a bound). */
   light: Uint8Array;
+  /** The set's form tag: 1 Form fail (FORM_FAIL_WEIGHT), 2 Extra good form (GOOD_FORM_REPS), else 0. */
+  form: Uint8Array;
   /**
    * For the rest fit (item 17: learn/rest): 1 where the day is timed; 1 where the set or the lift's set before it was entered
    * late (its time is a guess); the seconds since the lift's set before it that day (NaN: none, or untimed).
@@ -203,7 +218,7 @@ function blockOf(date: string, hard: SetEntry[], gap: number): Block {
     nS: new Float64Array(m), nC: new Float64Array(m), nY: new Float64Array(m), w: new Float64Array(m), logW: new Float64Array(m),
     eS: new Float64Array(m * NT), eC: new Float64Array(m * NT),
     r: new Float64Array(m), k: new Float64Array(m), kind: new Uint8Array(m), atTarget: new Uint8Array(m), unsure: new Uint8Array(m),
-    light: new Uint8Array(m), clock: new Uint8Array(m).fill(timed ? 1 : 0), late: new Uint8Array(m), gapPrev: new Float64Array(m).fill(NaN),
+    light: new Uint8Array(m), form: new Uint8Array(m), clock: new Uint8Array(m).fill(timed ? 1 : 0), late: new Uint8Array(m), gapPrev: new Float64Array(m).fill(NaN),
   };
   let i = 0;
   for (let j = 0; j < rows.length; j++) {
@@ -231,7 +246,10 @@ function blockOf(date: string, hard: SetEntry[], gap: number): Block {
       // How its reps to failure are read.
       const target = e.target && e.target.weight != null && e.target.weight === e.weight ? e.target.reps : null;
       let kind = K_HABIT, k = 0;
-      if (e.flags.includes('pain')) { kind = K_BOUND; k = 0; } // pain limited the set, not strength (04 §7)
+      if (hurts(e)) { kind = K_BOUND; k = 0; } // pain limited the set, not strength (04 §7)
+      // No spot (owner, 2026-11-21: never read as lower strength): stopped for want of a spotter, so its reps (and any reserve logged)
+      // are a floor on reps to failure, which can raise the level and never lower it (a: censoring, 00-core §1.2).
+      else if (e.flags.includes('no_spot')) { kind = K_BOUND; k = e.rir != null ? Math.min(e.rir, 3) : 0; }
       else if (e.flags.includes('light') && e.rir == null) { kind = K_BOUND; k = 0; } // a light week's set, stopped short on purpose (item 06)
       else if (e.rir != null && e.rir >= 4) { kind = K_BOUND; k = 3; } // "4+": at least 4, with a rep of slack (04 §3)
       else if (e.rir != null) { kind = e.flags.includes('test') ? K_TEST : K_RIR; k = e.rir; }
@@ -241,6 +259,7 @@ function blockOf(date: string, hard: SetEntry[], gap: number): Block {
       // A ramp or back-off set: lighter than the day's top weight (a bodyweight set: less added than the day's most).
       if (kind === K_HABIT && (topAdded[lid[a]] > -Infinity ? addedLoad(e) < topAdded[lid[a]] : load[a] < top)) s.light[i] = 1;
       s.unsure[i] = e.flags.includes('unsure') ? 1 : 0;
+      s.form[i] = e.flags.includes('form_fail') ? 1 : e.flags.includes('good_form') ? 2 : 0;
       const pv = prevSame[a];
       if (e.enteredAt || (pv >= 0 && hard[pv].enteredAt)) s.late[i] = 1;
       if (timed && pv >= 0) s.gapPrev[i] = t[a] - t[pv];
@@ -262,7 +281,7 @@ interface Rows {
   groups: Group[];
   /** Lifts in order of first appearance: key and name (the first set's), and each one's groups in date order. */
   keys: string[]; names: string[]; liftGroups: number[][];
-  fx: Flat; logW: Float64Array; r: Float64Array; k: Float64Array; kind: Uint8Array; atTarget: Uint8Array; unsure: Uint8Array; light: Uint8Array; liftOf: Int32Array;
+  fx: Flat; logW: Float64Array; r: Float64Array; k: Float64Array; kind: Uint8Array; atTarget: Uint8Array; unsure: Uint8Array; light: Uint8Array; form: Uint8Array; liftOf: Int32Array;
   clock: Uint8Array; late: Uint8Array; gapPrev: Float64Array;
 }
 interface Joined {
@@ -272,20 +291,20 @@ interface Joined {
   keys: string[]; names: string[]; groups: Group[];
   cap: number;
   nS: Float64Array; nC: Float64Array; nY: Float64Array; w: Float64Array; logW: Float64Array; eS: Float64Array; eC: Float64Array;
-  r: Float64Array; k: Float64Array; kind: Uint8Array; atTarget: Uint8Array; unsure: Uint8Array; light: Uint8Array; liftOf: Int32Array;
+  r: Float64Array; k: Float64Array; kind: Uint8Array; atTarget: Uint8Array; unsure: Uint8Array; light: Uint8Array; form: Uint8Array; liftOf: Int32Array;
   clock: Uint8Array; late: Uint8Array; gapPrev: Float64Array;
 }
 // One log at a time (the profile on screen); another log's fit replaces it.
 let JOINED: Joined | null = null;
 const ROW_F64 = ['nS', 'nC', 'nY', 'w', 'logW', 'r', 'k', 'gapPrev'] as const;
-const ROW_U8 = ['kind', 'atTarget', 'unsure', 'light', 'clock', 'late'] as const;
+const ROW_U8 = ['kind', 'atTarget', 'unsure', 'light', 'form', 'clock', 'late'] as const;
 
 function emptyJoined(cap: number): Joined {
   return {
     blocks: [], rowAt: [0], groupAt: [0], liftsAt: [0], keys: [], names: [], groups: [], cap,
     nS: new Float64Array(cap), nC: new Float64Array(cap), nY: new Float64Array(cap), w: new Float64Array(cap), logW: new Float64Array(cap),
     eS: new Float64Array(cap * NT), eC: new Float64Array(cap * NT), r: new Float64Array(cap), k: new Float64Array(cap),
-    kind: new Uint8Array(cap), atTarget: new Uint8Array(cap), unsure: new Uint8Array(cap), light: new Uint8Array(cap), liftOf: new Int32Array(cap),
+    kind: new Uint8Array(cap), atTarget: new Uint8Array(cap), unsure: new Uint8Array(cap), light: new Uint8Array(cap), form: new Uint8Array(cap), liftOf: new Int32Array(cap),
     clock: new Uint8Array(cap), late: new Uint8Array(cap), gapPrev: new Float64Array(cap),
   };
 }
@@ -335,7 +354,7 @@ function rowsOf(blocks: readonly Block[]): Rows {
   return {
     N, G, groups: J.groups, keys: J.keys, names: J.names, liftGroups,
     fx: { nS: view(J.nS), nC: view(J.nC), nY: view(J.nY), w: view(J.w), eS: view(J.eS, N * NT), eC: view(J.eC, N * NT) },
-    logW: view(J.logW), r: view(J.r), k: view(J.k), kind: view(J.kind), atTarget: view(J.atTarget), unsure: view(J.unsure), light: view(J.light), liftOf: view(J.liftOf),
+    logW: view(J.logW), r: view(J.r), k: view(J.k), kind: view(J.kind), atTarget: view(J.atTarget), unsure: view(J.unsure), light: view(J.light), form: view(J.form), liftOf: view(J.liftOf),
     clock: view(J.clock), late: view(J.late), gapPrev: view(J.gapPrev),
   };
 }
@@ -504,7 +523,7 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean; 
   const sessions = days.map((d, i) => blockOf(dates[i], d, gap));
 
   // Lifts and groups (lift × session), rows by session then lift (rowsOf: only blocks after a change are copied).
-  const { N, G, groups, names: liftNames, liftGroups, fx, logW, r: rr, k: kk, kind, atTarget, unsure, light, liftOf, clock, late, gapPrev } = rowsOf(sessions);
+  const { N, G, groups, names: liftNames, liftGroups, fx, logW, r: rr, k: kk, kind, atTarget, unsure, light, form, liftOf, clock, late, gapPrev } = rowsOf(sessions);
   const L = liftNames.length;
   // Without censoring (the negative control), a set stopped at its target reads as if it went to the usual RIR.
   // A set lighter than the lift's top that day (a ramp or back-off set) without RIR or a target was stopped by choice: its
@@ -545,6 +564,7 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean; 
         case K_HABIT: y[i] = r + h; v[i] = habitVar; sB[i] = hb; sH[i] = 1; break;
         case K_BOUND: isBound[i] = 1; lo[i] = r + k; y[i] = r + k + h; v[i] = habitVar; break;
       }
+      if (form[i] === 2) { y[i] += GOOD_FORM_REPS; if (isBound[i]) lo[i] += GOOD_FORM_REPS; }
     }
   };
   read();
@@ -568,7 +588,7 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean; 
   const hasPred = new Uint8Array(G);
   const delta = new Float64Array(N), pred = new Float64Array(N), W = new Float64Array(N), yy = new Float64Array(N);
   const siteV = new Float64Array(N).fill(Infinity);
-  const wk: Work = { y, v, lo, isBound, delta, pred, W, yy, siteV };
+  const wk: Work = { y, v, lo, isBound, delta, pred, W, yy, siteV, form };
   // Per group, each level pass: the session's implied ln E, its variance and reps scale, and whether it has any; and how its
   // ln E moves with b and with the habit (sens: in, per session; LOO prediction's; smoothed).
   const zG = new Float64Array(G), vG = new Float64Array(G), uG = new Float64Array(G), okG = new Uint8Array(G);
@@ -647,6 +667,8 @@ export function fitCore(entries: readonly SetEntry[], opts: { censor?: boolean; 
  * weight and reading (a bound's from its expectation-propagation site). */
 interface Work {
   y: Float64Array; v: Float64Array; lo: Float64Array; isBound: Uint8Array;
+  /** Each set's form tag (Block.form): a Form fail's reading carries FORM_FAIL_WEIGHT in the level filter. */
+  form: Uint8Array;
   delta: Float64Array; pred: Float64Array; W: Float64Array; yy: Float64Array; siteV: Float64Array;
 }
 
@@ -662,7 +684,7 @@ function deltaPass(fx: Flat, liftOf: Int32Array, aLift: Float64Array, kT: number
  * sensitivity to b and to the habit (sB, sH per set: how its reading moves with each), for test sets to learn them by. */
 function levelPass(groups: Group[], wk: Work, kappa: Float64Array, logW: Float64Array, noise2: number,
   zG: Float64Array, vG: Float64Array, uG: Float64Array, okG: Uint8Array, sB: Float64Array, sH: Float64Array, sens: Sens): void {
-  const { y, v, isBound, delta, yy, siteV } = wk;
+  const { y, v, isBound, delta, yy, siteV, form } = wk;
   okG.fill(0);
   for (let g = 0; g < groups.length; g++) {
     const { o0, o1, lift } = groups[g];
@@ -671,7 +693,7 @@ function levelPass(groups: Group[], wk: Work, kappa: Float64Array, logW: Float64
       // A bound reads as its site from the last round (none in the first: it says nothing until there's a prediction).
       if (isBound[i] && !(siteV[i] < 1e6)) continue;
       const c = Math.max(0.5, (isBound[i] ? yy[i] : y[i]) + delta[i]);
-      const ve = (isBound[i] ? siteV[i] : v[i]) + noise2;
+      const ve = ((isBound[i] ? siteV[i] : v[i]) + noise2) / (form[i] === 1 ? FORM_FAIL_WEIGHT : 1);
       const lv = ve / (kappa[lift] + c) ** 2;
       const z = logW[i] + Math.log1p(c / kappa[lift]);
       sw += 1 / lv; sz += z / lv; su += (c / (kappa[lift] + c)) / lv;

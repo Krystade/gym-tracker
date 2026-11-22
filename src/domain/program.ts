@@ -4,7 +4,7 @@ import { liftKey, localDate } from './ids';
 import { defaultSettings, isWorking } from './progression';
 import { daySets, perLog, sameExercise } from './stats';
 import { addDays } from './analytics';
-import type { SetEntry } from './types';
+import { hurts, type SetEntry } from './types';
 import { PROGRAM_LIFTS } from './catalog';
 import { CARDIO_TARGETS, cardioSlots, cardioTierOf, pickMachine, weeklyCardioMinutes } from './cardio';
 import { weekStart } from './analytics';
@@ -68,7 +68,7 @@ function exerciseScores(entries: SetEntry[], today: string): Map<string, number>
     for (const e of entries) {
       if (e.flags.includes('warmup')) continue;
       let v = e.date >= yearAgo ? 1 : 0.25;
-      if (e.flags.includes('pain') && e.date >= painSince) v -= 10;
+      if (hurts(e) && e.date >= painSince) v -= 10;
       score.set(e.exercise, (score.get(e.exercise) ?? 0) + v);
     }
     byDay.set(today, score);

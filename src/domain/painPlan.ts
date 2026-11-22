@@ -2,7 +2,7 @@ import { addDays } from './analytics';
 import { likelyRegion, loadsRegion } from './care';
 import { painRisk, zoneOf, type Zone } from './learn/pain';
 import { daySets, liftSets, sameExercise } from './stats';
-import type { Morning, Region, SetEntry } from './types';
+import { hurts, type Morning, type Region, type SetEntry } from './types';
 
 // Item 08: what pain allows, on top of the pain-monitoring zones (learn/pain zoneOf, a) and the learned risk of pain (learn/pain,
 // b). Not medical advice: these rules describe patterns and training options; they never diagnose (care.ts).
@@ -45,7 +45,7 @@ export interface PainGate {
 }
 
 const regionOf = (e: SetEntry): Region => e.painRegion ?? likelyRegion(e.exercise);
-const unknownOf = (sets: readonly SetEntry[], z: Zone) => !sets.some((e) => e.flags.includes('pain') && e.painSeverity === z);
+const unknownOf = (sets: readonly SetEntry[], z: Zone) => !sets.some((e) => hurts(e) && e.painSeverity === z);
 
 /** The lift's sets on its last day before `date`, in log order; empty with none. */
 function lastDay(entries: readonly SetEntry[], exercise: string, date: string): SetEntry[] {
@@ -61,7 +61,7 @@ function lastDay(entries: readonly SetEntry[], exercise: string, date: string): 
 export function morningOf(sets: readonly SetEntry[]): Exclude<Morning, 'skipped'> | null {
   let best: Exclude<Morning, 'skipped'> | null = null;
   for (const e of sets) {
-    const m = e.flags.includes('pain') ? e.morning : undefined;
+    const m = hurts(e) ? e.morning : undefined;
     if (!m || m === 'skipped') continue;
     if (!best || STEP[m] > STEP[best]) best = m;
   }
@@ -78,7 +78,7 @@ const STEP: Record<Exclude<Morning, 'skipped'>, number> = { settled: -1, sore: 1
 export function painLevel(sets: readonly SetEntry[]): { level: number; zone: Zone; known: boolean; morning: Exclude<Morning, 'skipped'> | null } {
   const zone = zoneOf(sets), morning = morningOf(sets);
   if (!zone) return { level: 0, zone, known: true, morning };
-  const known = morning != null || sets.some((e) => e.flags.includes('pain') && e.painSeverity === zone);
+  const known = morning != null || sets.some((e) => hurts(e) && e.painSeverity === zone);
   return { level: 2 * zone + (morning ? STEP[morning] : 0), zone, known, morning };
 }
 
@@ -97,7 +97,7 @@ export function spillOver(entries: readonly SetEntry[], exercise: string, date: 
   let best: SetEntry | null = null;
   for (let k = SETTLE_DAYS; k >= 0; k--) {
     for (const e of daySets(entries, addDays(date, -k))) {
-      if (!e.flags.includes('pain') || (e.painSeverity ?? 2) < 2 || e.morning === 'settled' || sameExercise(e.exercise, exercise) || !loadsRegion(exercise, regionOf(e))) continue;
+      if (!hurts(e) || (e.painSeverity ?? 2) < 2 || e.morning === 'settled' || sameExercise(e.exercise, exercise) || !loadsRegion(exercise, regionOf(e))) continue;
       best = e;
     }
   }
@@ -118,7 +118,7 @@ export function regionRising(entries: readonly SetEntry[], region: Region, date:
   for (let k = 1; k <= 2 * WEEK; k++) {
     const byLift = new Map<string, SetEntry[]>();
     for (const e of daySets(entries, addDays(date, -k))) {
-      if (!e.flags.includes('pain') || regionOf(e) !== region) continue;
+      if (!hurts(e) || regionOf(e) !== region) continue;
       const l = byLift.get(e.exercise.toLowerCase());
       if (l) l.push(e); else byLift.set(e.exercise.toLowerCase(), [e]);
     }
@@ -147,7 +147,7 @@ export function painGate(entries: readonly SetEntry[], exercise: string, date: s
   const now = painLevel(sets);
   const z = now.zone;
   if (z === 0 || (z === 1 && now.morning !== 'sore' && now.morning !== 'worse')) return spillOver(entries, exercise, date);
-  const first = sets.find((e) => e.flags.includes('pain') && (e.painSeverity ?? 2) === z)!;
+  const first = sets.find((e) => hurts(e) && (e.painSeverity ?? 2) === z)!;
   const top = topOf(sets);
   const base = { zone: z, region: regionOf(first), from: first.exercise, date: first.date, spill: false, unknown: unknownOf(sets, z), top };
   if (z === 3) return { ...base, kind: 'ease', why: 'sharp' };
@@ -197,7 +197,7 @@ export function painToday(entries: readonly SetEntry[], exercise: string, date: 
   const today = liftSets(entries, exercise).filter((e) => e.date === date);
   const z = zoneOf(today);
   if (!z) return null;
-  return { zone: z, region: regionOf(today.find((e) => e.flags.includes('pain') && (e.painSeverity ?? 2) === z)!) };
+  return { zone: z, region: regionOf(today.find((e) => hurts(e) && (e.painSeverity ?? 2) === z)!) };
 }
 
 /** (c) How many of the lift's latest sessions the prompt counts, for its words only. */
@@ -211,7 +211,7 @@ export function persistentPain(entries: readonly SetEntry[], exercise: string, d
   const risk = painRisk(entries, exercise, date);
   if (!(risk.p >= 0.5)) return null;
   const days = [...new Set(liftSets(entries, exercise).filter((e) => e.date <= date).map((e) => e.date))].sort().slice(-SHOWN);
-  const hurt = days.filter((d) => liftSets(entries, exercise).some((e) => e.date === d && e.flags.includes('pain'))).length;
+  const hurt = days.filter((d) => liftSets(entries, exercise).some((e) => e.date === d && hurts(e))).length;
   // Only a lift that hurt lately itself: with no pain of its own the risk is its family's or the prior's (½ on an empty log).
   return hurt ? { p: risk.p, hurt, of: days.length } : null;
 }
@@ -227,7 +227,7 @@ const NHS_DAYS = 14;
 export function lingering(entries: readonly SetEntry[], today: string): { region: Region; since: string; weeks: number }[] {
   const by = new Map<Region, Set<string>>();
   for (const e of entries) {
-    if (!e.flags.includes('pain') || e.date > today) continue;
+    if (!hurts(e) || e.date > today) continue;
     const r = regionOf(e);
     let d = by.get(r); if (!d) by.set(r, d = new Set()); d.add(e.date);
   }
@@ -246,6 +246,6 @@ export function lingering(entries: readonly SetEntry[], today: string): { region
 
 /** Whether a session of a lift was shaped by pain, so it says nothing of a plateau: it hurt, or the gate held or eased it. */
 export function painShaped(entries: readonly SetEntry[], exercise: string, date: string): boolean {
-  return liftSets(entries, exercise).some((e) => e.date === date && e.flags.includes('pain')) || painGate(entries, exercise, date) != null;
+  return liftSets(entries, exercise).some((e) => e.date === date && hurts(e)) || painGate(entries, exercise, date) != null;
 }
 

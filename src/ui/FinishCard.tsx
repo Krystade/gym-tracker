@@ -3,7 +3,7 @@ import { addDays } from '../domain/analytics';
 import type { BodyDay } from '../domain/body';
 import { isHoldLift } from '../domain/care';
 import { finishSummary, nextUp } from '../domain/finish';
-import { fmtSet, fmtWeight } from '../domain/format';
+import { fmtSet, fmtWeight, plural } from '../domain/format';
 import { volumeAdvice } from '../domain/learn/volume';
 import type { DayPlan, Program } from '../domain/program';
 import type { Profile } from '../domain/profile';
@@ -17,6 +17,9 @@ import { Icon } from './icons';
 import { closest, highest, unlockedOn } from '../domain/achievements';
 import { useAchievements, useAchOpen } from '../state/useAchievements';
 import { NextRow, UnlockRow } from './AchievementsSheet';
+import { earned, earnedOn, INCOME, type DayEarned } from '../domain/buddies/points';
+import { trainingOf } from '../domain/buddies/stats';
+import { walletOf, type Ledger } from '../domain/buddies/gacha';
 
 // The plan, turned into the day's summary once it's done (owner, 2026-10-20): on Finish, by itself once the session has gone
 // quiet, or as everything planned is done. A card in the plan's place on Today, never over anything (the phone is his alone,
@@ -47,10 +50,51 @@ export function LastWorkoutLine({ entries, date, today, profile, onOpen }: { ent
   );
 }
 
-/** `how`: closed by Finish or by going quiet, or (null) only the plan done. `planName`: the day's (Day A, Quick). `onMore`: "Add more". */
-export function FinishCard({ entries, date, today, profile, program, plans, planName, how, body, settings, owner, onMore }: {
+/**
+ * What the workout paid into Gym Buddies (owner, 2026-11-21): the day's part of what the Buddies tab counts (buddies/points
+ * earnedOn, `earned` itself a day apart, so the two never disagree), line by line, its tickets by where they came from, how far the
+ * next session ticket is, and a way to spend them. `wallet`: what's left to spend now, once the buddies' spends are read.
+ */
+function PointsEarned({ pay, wallet, onOpen }: { pay: DayEarned; wallet: { points: number; tickets: number } | null; onOpen?: () => void }) {
+  const p = pay.parts;
+  const rows: [string, number][] = [
+    [plural(p.sets / INCOME.set, 'set'), p.sets], ['Cardio', p.cardio], ['Session', p.sessions], ['Goal week hit', p.goalWeeks], ['Achievements', p.awards],
+  ];
+  const tickets: [string, number][] = [['goal week', p.goalWeekTickets], [`${INCOME.sessionsPerTicket} sessions`, p.sessionTickets], ['achievements', p.awardTickets]];
+  const into = INCOME.sessionsPerTicket - pay.toTicket;
+  return (
+    <section className="finish-pts" aria-label="Points earned">
+      <dl className="finish-pts-rows">
+        {rows.filter(([, n]) => n > 0).map(([what, n]) => <div key={what}><dt>{what}</dt><dd>+{n}</dd></div>)}
+      </dl>
+      {pay.tickets > 0 && (
+        <p className="finish-tickets" aria-label={`${plural(pay.tickets, 'ticket')} earned`}>
+          <span>Tickets</span>
+          {tickets.filter(([, n]) => n > 0).map(([what, n]) => <span key={what} className="pts-ticket">+{n} {what}</span>)}
+        </p>
+      )}
+      {/* A row the weekly rings can join later (owner: a later stage), the next session ticket's progress for now. */}
+      <div className="finish-pts-next">
+        <div className="finish-ticket-bar" role="progressbar" aria-label="Session ticket progress" aria-valuemin={0} aria-valuemax={INCOME.sessionsPerTicket} aria-valuenow={into}>
+          <i style={{ width: `${(100 * into) / INCOME.sessionsPerTicket}%` }} />
+        </div>
+        <p className="muted small">{plural(pay.toTicket, 'session')} to your next session ticket</p>
+      </div>
+      {onOpen && <button type="button" className="wide finish-buddies" onClick={onOpen}>
+        Open Buddies{wallet ? ` · ${wallet.tickets > 0 ? plural(wallet.tickets, 'ticket') : `${wallet.points.toLocaleString('en-US')} pts`}` : ''}
+      </button>}
+    </section>
+  );
+}
+
+/**
+ * `how`: closed by Finish or by going quiet, or (null) only the plan done. `planName`: the day's (Day A, Quick). `onMore`: "Add more".
+ * `buddies`: Gym Buddies' start and spends, for what the day paid (none until read); `onOpenBuddies`: the summary's button.
+ */
+export function FinishCard({ entries, date, today, profile, program, plans, planName, how, body, settings, owner, onMore, buddies, onOpenBuddies }: {
   entries: SetEntry[]; date: string; today: string; profile: Profile; program: Program | null; plans: DayPlan[]; planName?: string;
   how: 'finish' | 'auto' | null; body: readonly BodyDay[]; settings: SettingsStore; owner: string; onMore?: () => void;
+  buddies?: { start: string; ledger: Ledger | null } | null; onOpenBuddies?: () => void;
 }) {
   const s = useMemo(() => finishSummary(entries, date, profile), [entries, date, profile]);
   const up = useMemo(() => nextUp(entries, program, plans, date, zone()), [entries, program, plans, date]);
@@ -71,8 +115,13 @@ export function FinishCard({ entries, date, today, profile, program, plans, plan
 
   // The day's achievements, the highest level of each, and the closest next one (plan §6). A tap opens its levels on Stats.
   const ach = useAchievements(entries, today), openAch = useAchOpen();
-  const earned = useMemo(() => (ach ? highest(unlockedOn(ach, date)) : []), [ach, date]);
+  const unlocked = useMemo(() => (ach ? highest(unlockedOn(ach, date)) : []), [ach, date]);
   const closer = useMemo(() => (ach ? closest(ach, 1)[0] : undefined), [ach]);
+  // What the day paid, and what's left to spend (the Buddies tab's own sums: domain/buddies/points).
+  const start = buddies?.start, ledger = buddies?.ledger ?? null;
+  const training = useMemo(() => (start ? trainingOf(entries, { start, today, profile }) : null), [entries, start, today, profile]);
+  const pay = useMemo(() => (training ? earnedOn(training, ach, date) : null), [training, ach, date]);
+  const wallet = useMemo(() => (training && ledger ? walletOf(earned(training, ach), ledger) : null), [training, ach, ledger]);
 
   const title = `${how ? 'Workout done' : 'Plan done'}${planName ? ` · ${planName}` : ''}`;
   const next = [up.day, up.inDays != null && when(date, up.inDays, today)].filter(Boolean).join(' · ');
@@ -80,6 +129,7 @@ export function FinishCard({ entries, date, today, profile, program, plans, plan
     <section className="card finish-card" aria-label="Workout summary">
       <div className="finish-head">
         <h2><Icon name="check" size={20} sw={2.5} />{title}</h2>
+        {pay && pay.points > 0 && <span className="pts-pill" aria-label={`${pay.points} points earned`}>+{pay.points} pts</span>}
       </div>
       {how === 'auto' && <p className="muted small finish-why">Closed after a quiet spell. Log a set to pick it back up.</p>}
       <dl className="finish-stats">
@@ -92,10 +142,11 @@ export function FinishCard({ entries, date, today, profile, program, plans, plan
           {s.prs.map((p) => <li key={p.exercise}><span className="tag pr-tag">PR</span><b>{p.exercise}</b><span className="nw">{fmtSet(p.set)}</span></li>)}
         </ul>
       )}
-      {earned.length > 0 && (
+      {pay && (pay.points > 0 || pay.tickets > 0) && <PointsEarned pay={pay} wallet={wallet} onOpen={onOpenBuddies} />}
+      {unlocked.length > 0 && (
         <section aria-label="Achievements today">
           <h3 className="finish-sub">Achievements {date === today ? 'today' : 'that day'}</h3>
-          {earned.map((u) => <UnlockRow key={`${u.id}:${u.level}:${u.lift ?? ''}`} u={u} onOpen={openAch} />)}
+          {unlocked.map((u) => <UnlockRow key={`${u.id}:${u.level}:${u.lift ?? ''}`} u={u} onOpen={openAch} />)}
         </section>
       )}
       {closer && (

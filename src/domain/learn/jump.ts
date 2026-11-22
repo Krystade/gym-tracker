@@ -1,6 +1,6 @@
 import { liftKey } from '../ids';
 import { exerciseNames, perLog, sessionsFor, learnable } from '../stats';
-import type { SetEntry } from '../types';
+import { hurts, type SetEntry } from '../types';
 import { fatigueOf, type Core } from './capacity';
 import { truncBelow } from './num';
 import { pool } from './pool';
@@ -36,7 +36,7 @@ export interface Drop {
   n: number; all: number;
 }
 
-const ok = (e: SetEntry) => !e.flags.some((f) => f === 'warmup' || f === 'partial' || f === 'pain' || f === 'bodyweight' || f === 'hold' || f === 'cardio')
+const ok = (e: SetEntry) => !hurts(e) && !e.flags.some((f) => f === 'warmup' || f === 'partial' || f === 'bodyweight' || f === 'hold' || f === 'cardio')
   && e.reps != null && e.reps > 0 && e.reps <= 20 && e.weight > 0;
 const days = (a: string, b: string) => (Date.parse(b) - Date.parse(a)) / 864e5;
 

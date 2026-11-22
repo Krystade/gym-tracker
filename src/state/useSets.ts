@@ -6,6 +6,7 @@ import { canonicalName } from '../domain/stats';
 import { diffSets } from '../domain/csv';
 import { importOverlap } from '../domain/duplicates';
 import type { SetEntry } from '../domain/types';
+import { asBuiltIns } from '../domain/tags';
 
 // Other open copies of the app (a Safari tab beside the installed app) hear about each change and re-read.
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('gym-tracker-sets') : null;
@@ -20,7 +21,8 @@ export function useSets() {
   ref.current = entries;
 
   const reload = useCallback(async () => {
-    try { setEntries(await db.getAllSets()); setError(null); }
+    // Own tags that are built-ins now (Form fail, Full stack…) read as those built-ins (domain/tags asBuiltIns); stored as they were.
+    try { setEntries((await db.getAllSets()).map(asBuiltIns)); setError(null); }
     catch (e) { setError(`Could not read saved sets: ${String(e)}`); }
     finally { setLoading(false); }
   }, []);

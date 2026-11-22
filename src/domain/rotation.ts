@@ -97,7 +97,7 @@ export interface Stall { since: string; sessions: number; weeks: number; last: s
  * progression reads them: warm-ups and partials are left out, and a session of only those isn't a session here; test sets count.
  * A session pain shaped (it hurt, or the pain gate held or eased it: item 08) isn't counted among those with nothing better: its
  * sets are lower bounds, or the app held it on purpose, so it says nothing of a plateau (c: it can only withhold a stall). It still
- * counts as progress when it beat the sessions before it. A light week's session (item 06: its sets all light) isn't a session here:
+ * counts as progress when it beat the sessions before it; so does one with a No spot set. A light week's session (item 06: its sets all light) isn't a session here:
  * stopped short on purpose, it neither progressed nor stalled.
  */
 export function sinceProgress(entries: SetEntry[], exercise: string, today: string): { since: string; sessions: number; last: string } | null {
@@ -111,7 +111,8 @@ export function sinceProgress(entries: SetEntry[], exercise: string, today: stri
     const before = ss.slice(Math.max(0, i - LOOKBACK), i).filter((b) => days(b.date, x.date) <= WINDOW_DAYS).map((b) => b.sets);
     if (run0[i] < REACCLIMATION || progressed(x.sets, before)) last = i;
   });
-  const n = ss.slice(last + 1).filter((x) => !painShaped(entries, exercise, x.date)).length;
+  // A session with a No spot set (owner, 2026-11-21: never read as lower strength) isn't one with nothing better either.
+  const n = ss.slice(last + 1).filter((x) => !painShaped(entries, exercise, x.date) && !x.sets.some((e) => e.flags.includes('no_spot'))).length;
   return n ? { since: ss[last].date, sessions: n, last: ss[ss.length - 1].date } : null;
 }
 

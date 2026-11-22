@@ -18,6 +18,8 @@ export interface Suggestion {
   perSet?: number[]; why?: string;
   /** The top of the range progression works to (the learned one where it moved it, else the lift's own); absent with no history. */
   top?: number;
+  /** Full stack last time (progression fullStack): no weight to go up to, so a set's reps may go past the top. */
+  stacked?: true;
   /** The inputs that made it, a line each, for the card's "Why this weight" (progression Target.parts), and the sets' own line. */
   parts: TargetPart[];
 }
@@ -63,11 +65,11 @@ const warmAlready = (entries: SetEntry[], exercise: string, date: string) =>
 
 /**
  * What to do next time: weight and reps from double progression, sets from the program or last session. Ignores `date`'s own sets.
- * `light`: a light week is on (item 06): its target, and its sets (half).
+ * `light`: a light week is on (item 06): its target, and its sets (half). `gym`: where it's done today, when known (Full stack).
  */
-export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null, light = false): Suggestion {
+export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned: number | null, light = false, gym?: string): Suggestion {
   entries = learnable(entries); // the log without sets marked not used (stats.learnable)
-  const t = nextTarget(entries, exercise, st, date, planned, light);
+  const t = nextTarget(entries, exercise, st, date, planned, light, undefined, gym);
   // Sets as in the last session of working sets: a test counts toward the weight, not the set count.
   const training = (e: SetEntry) => isWorking(e) && !isTest(e);
   const last = sessionsFor(entries, exercise).find((x) => x.date < date && !(x.sets.some(isTest) && !x.sets.some(training)));
@@ -101,7 +103,7 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
     : `Same weight; beat last time with ${t.reps}${unit}+ on every set.`;
   // One target a set: the plan's count, or last time's; a set past last time's aims at the last one's number.
   const perSet = t.perSet && Array.from({ length: clamped }, (_, i) => t.perSet![Math.min(i, t.perSet!.length - 1)]);
-  return { unit, weight: t.weight, reps: perSet ? Math.min(...perSet) : t.reps, repMax: st.repMax, top, sets: clamped, setsFrom, kind: t.kind, reason,
+  return { unit, weight: t.weight, reps: perSet ? Math.min(...perSet) : t.reps, repMax: st.repMax, top, ...(t.parts.some((p) => p.key === 'stack') && { stacked: true as const }), sets: clamped, setsFrom, kind: t.kind, reason,
     warmups: warmAlready(entries, exercise, date) ? [] : warmups(t.weight, exercise), ...(perSet && { perSet, why: t.why }),
     parts: t.kind === 'light' ? t.parts : [...t.parts, setsPart] };
 }
@@ -162,7 +164,8 @@ export function nextSet(entries: readonly SetEntry[], exercise: string, date: st
   const extra = i >= s.sets;
   const aimRir = s.kind === 'light' ? LIGHT.rir : TARGET_RULES.plusOneRir;
   const rir = s.unit || last.rir == null ? null : Math.min(4, Math.max(0, last.rir));
-  const top = s.top ?? s.repMax;
+  // Full stack: the weight can't go up, so nothing caps the reps (owner, 2026-11-21).
+  const top = s.stacked ? Infinity : s.top ?? s.repMax;
   const raised = rir != null && rir > aimRir ? Math.max(1, Math.round(last.reps + rir - d - aimRir)) : base;
   // A set already at or past the top isn't raised further: the rule above, as it was.
   if (raised > base && base < top) {

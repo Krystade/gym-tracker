@@ -5,7 +5,7 @@ import { resolveLift } from '../lifts';
 import type { Muscle } from '../muscles';
 import { cycleDone, nextDay, type DayPlan, type Program, type Slot } from '../program';
 import { perLog, learnable } from '../stats';
-import type { SetEntry } from '../types';
+import { hurts, type SetEntry } from '../types';
 import { aheadVar, READY, type Core, type Est } from './capacity';
 import { BREAK_DAYS, lightWeek, systemic, type Systemic } from './deload';
 import { coreBefore, logBefore } from './index';
@@ -409,7 +409,7 @@ export interface ReadinessModel {
 
 const isLiftSlot = (s: Slot) => s.minutes == null && s.sets > 0 && !isCardio(s.exercise);
 /** The first date he flagged pain (null: never): before it, learn/pain's risk is its prior alone (see the header). */
-const firstPain = perLog((entries) => { let d: string | null = null; for (const e of entries) if (e.flags.includes('pain') && (!d || e.date < d)) d = e.date; return d; });
+const firstPain = perLog((entries) => { let d: string | null = null; for (const e of entries) if (hurts(e) && (!d || e.date < d)) d = e.date; return d; });
 
 /**
  * The model behind the number, for `today` (the log before today: what is logged today is the session being judged, not a

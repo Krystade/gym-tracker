@@ -3,7 +3,7 @@ import { isCardio, isCardioEntry } from '../cardio';
 import { likelyRegion } from '../care';
 import { liftKey } from '../ids';
 import { byOrderDone, perLog, learnable } from '../stats';
-import type { SetEntry } from '../types';
+import { hurts, type SetEntry } from '../types';
 import { dayOf } from './capacity';
 import { logBefore } from './index';
 import { betaCdf } from './num';
@@ -42,7 +42,7 @@ import { betaCdf } from './num';
 export type Zone = 0 | 1 | 2 | 3;
 export function zoneOf(sets: readonly SetEntry[]): Zone {
   let z = 0;
-  for (const e of sets) if (e.flags.includes('pain')) z = Math.max(z, e.painSeverity ?? 2);
+  for (const e of sets) if (hurts(e)) z = Math.max(z, e.painSeverity ?? 2);
   return z as Zone;
 }
 
@@ -100,7 +100,7 @@ function eventsOf(entries: readonly SetEntry[], upTo = Infinity): { ev: Event[];
       }
       let x = at.get(l);
       if (!x) { x = { lift: l, region: regionOf[l], day, y: 0 }; at.set(l, x); ev.push(x); }
-      if (e.flags.includes('pain')) {
+      if (hurts(e)) {
         x.y = 1;
         const y = e.morning ? morningY(e) : null;
         if (y != null) answers.set(l, Math.max(answers.get(l) ?? 0, y));
@@ -268,5 +268,5 @@ export function painRisk(entries: readonly SetEntry[], exercise: string, date: s
   if (!fit) { if (fits.size > 8) fits.clear(); fits.set(date, fit = fitPain(log, dayOf(date))); }
   return fit.risk(exercise, date);
 }
-const answered = perLog((entries) => entries.some((e) => e.flags.includes('pain') && e.morning != null && e.morning !== 'skipped'));
+const answered = perLog((entries) => entries.some((e) => hurts(e) && e.morning != null && e.morning !== 'skipped'));
 const fitsAt = perLog(() => new Map<string, PainFit>());

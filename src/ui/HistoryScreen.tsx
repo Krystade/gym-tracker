@@ -185,7 +185,7 @@ const Day = memo(function Day({ s, open, today, prs, supersetsOn, onOpen, onMenu
             <b>{name}</b>
             {with_ && <span className="superset-mark"><Icon name="switch" size={14} sw={2} />Superset with {andList(with_)}</span>}
             <span className="muted">
-              {working.map((x, j) => <Fragment key={x.id}>{j > 0 && ', '}<span className="nw">{fmtSet(x)}{prs.has(x.id) && <>{' '}<span className="tag pr-tag">PR</span></>}{x.flags.includes('pain') && <>{' '}<span className="pain-mark">pain</span></>}{x.tags?.map((t) => <Fragment key={t}>{' '}<span className="tag own">{t}</span></Fragment>)}</span></Fragment>)}
+              {working.map((x, j) => <Fragment key={x.id}>{j > 0 && ', '}<span className="nw">{fmtSet(x)}{prs.has(x.id) && <>{' '}<span className="tag pr-tag">PR</span></>}{x.flags.includes('pain') && <>{' '}<span className={x.painSeverity === 0 ? 'pain-mark tingle' : 'pain-mark'}>{x.painSeverity === 0 ? 'tingle' : 'pain'}</span></>}{x.tags?.map((t) => <Fragment key={t}>{' '}<span className="tag own">{t}</span></Fragment>)}</span></Fragment>)}
               {warm > 0 && `${working.length ? ' + ' : ''}${plural(warm, 'warm-up')}`}
             </span>
             {sets.filter((x) => x.note).map((x) => <span key={x.id} className="muted">“{x.note}”</span>)}

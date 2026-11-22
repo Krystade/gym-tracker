@@ -86,7 +86,7 @@ function pairRows(x: SetEntry[], y: SetEntry[]): [SetEntry, SetEntry][] {
 }
 
 /** How much a copy says beyond weight×reps: its flags (warm-up, unsure, 2×pulley…), note, RIR, pain and tags. */
-const detail = (e: SetEntry) => e.flags.length + (e.note?.trim() ? 1 : 0) + (e.rir != null ? 1 : 0) + (e.painRegion ? 1 : 0) + (e.painSeverity ? 1 : 0) + (e.tags?.length ?? 0);
+const detail = (e: SetEntry) => e.flags.length + (e.note?.trim() ? 1 : 0) + (e.rir != null ? 1 : 0) + (e.painRegion ? 1 : 0) + (e.painSeverity != null ? 1 : 0) + (e.tags?.length ?? 0);
 
 /**
  * Of two copies of one set, the one to keep (negative: `a`): one changed by hand since, then the one with more detail, then
