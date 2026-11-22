@@ -57,7 +57,7 @@ export function DigestBody({ d }: { d: Digest }) {
 }
 
 /** What a digest was last worked out from, kept by the component showing it. */
-export interface KeptDigest { week?: string; past?: SetEntry[]; goal?: number; base?: Digest; profile?: Profile; d?: Digest }
+export interface KeptDigest { week?: string; past?: SetEntry[]; goal?: string; base?: Digest; profile?: Profile; d?: Digest }
 
 /**
  * `week`'s digest, worked out from the whole log (every set's PRs, two years of weeks for the streak) again only when a set
@@ -69,7 +69,9 @@ export function keptDigest(k: KeptDigest, entries: SetEntry[], profile: Profile,
   // The same sets as last time, in a new log array (useSets keeps every set it didn't change).
   const same = k.week === week && k.past?.length === xs.length && xs.every((e, i) => e === k.past![i]);
   // Of the profile, only the goal reads the whole log: the streak counts the weeks that met it.
-  if (!same || k.goal !== profile.weeklyGoal) Object.assign(k, { week, past: xs, goal: profile.weeklyGoal, base: weekDigest(xs, profile, week), d: undefined });
+  // The goals: the sessions goal, and a hand-set sets goal (a default one follows the log, which `same` already covers).
+  const goal = `${profile.weeklyGoal}:${profile.setGoal ?? ''}`;
+  if (!same || k.goal !== goal) Object.assign(k, { week, past: xs, goal, base: weekDigest(xs, profile, week), d: undefined });
   if (!k.d || k.profile !== profile) {
     const under = weekDigest(k.past!.filter((e) => e.date >= week), profile, week).under;
     Object.assign(k, { profile, d: { ...k.base!, goal: profile.weeklyGoal, under } });

@@ -30,6 +30,19 @@ export const MAX_SETS_PER_DAY = 4;
 const UNIT = 2;
 const TIER_WEIGHT: Record<Tier, number> = { 1: 4, 2: 3, 3: 2, 4: 1 };
 
+/**
+ * Which muscle gets the next pair (owner, 2026-11-21): the most priority-weighted goals met per set, so the cheapest to finish
+ * first. `cost`: the sets still needed to reach `goal` from `have`, in whole pairs; the score is the priority's weight per set
+ * of that, so a muscle 2 sets from its minimum goes before one 6 sets from it, at any fraction done. A goal of 0, or one met,
+ * scores 0: nothing to do. Ties go to the one furthest behind as a fraction of its goal (`behind`), weighted the same.
+ */
+export function fillScore(tier: Tier, goal: number, have: number): number {
+  const rem = goal - have;
+  if (!(goal > 0) || rem <= 1e-9) return 0;
+  return TIER_WEIGHT[tier] / (Math.ceil(rem / UNIT - 1e-9) * UNIT);
+}
+const behind = (tier: Tier, goal: number, have: number): number => (goal > 0 ? (TIER_WEIGHT[tier] * Math.max(0, goal - have)) / goal : 0);
+
 /** Catalog lifts per muscle, most suitable first: the fallback when the history has no lift for it that this gym can do. All train the muscle directly, except Face Pull for Traps. */
 export const PREFERENCE: Record<Muscle, string[]> = {
   Chest: ['Machine Chest Press', 'Flat DB Press', 'Bench Press', 'Incline DB Press', 'Smith Flat Press', 'Push-up'],
@@ -133,13 +146,11 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   // Worth a warning only for priority 1–2: a gym that can't train a priority 3–4 muscle is no news.
   const unavailable = missing.filter((m) => profile.tiers[m] <= 2);
 
-  // Greedy, a pair of sets at a time: the muscle furthest below its tier's lower target *as a fraction of it*,
-  // weighted by tier, goes next; once every lower target is met, the same toward the upper targets. Using the
-  // fraction (not the raw gap) keeps priority 1's big targets from starving every other tier.
-  const score = (m: Muscle, bound: number) => {
-    const goal = goals(m)[bound];
-    return goal > 0 ? (TIER_WEIGHT[profile.tiers[m]] * (goal - achieved[m])) / goal : 0;
-  };
+  // Greedy, a pair of sets at a time (owner, 2026-11-21): phase 1 fills the minimums, the muscle cheapest to finish (weighted by
+  // priority: fillScore) first, a minimum of 0 already done; once every minimum is met, phase 2 fills toward the maximums the
+  // same way. A pair counts for every muscle its lift trains (a press's triceps too).
+  const score = (m: Muscle, bound: number) => fillScore(profile.tiers[m], goals(m)[bound], achieved[m]);
+  const lag = (m: Muscle, bound: number) => behind(profile.tiers[m], goals(m)[bound], achieved[m]);
   // Whole pairs per day, so an odd sets-per-session never pushes a day over it.
   const dayCap = Math.floor(perSession / UNIT) * UNIT;
   // Dedicated sets for priority 3–4 muscles are capped at a share of the week while any priority 1–2 muscle is still short.
@@ -164,7 +175,7 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
     const open = MUSCLES.filter((m) => !saturated.has(m));
     // Over the low-priority budget, priority 3–4 muscles wait — re-checked every pair, so they come back once priorities are covered.
     const capped = low + UNIT > lowBudget && prioritiesShort();
-    const below = (bound: number) => open.filter((m) => score(m, bound) > 0 && !(capped && isLow(m))).sort((a, b) => score(b, bound) - score(a, bound));
+    const below = (bound: number) => open.filter((m) => score(m, bound) > 0 && !(capped && isLow(m))).sort((a, b) => score(b, bound) - score(a, bound) || lag(b, bound) - lag(a, bound));
     // Toward the ranges, the muscles not held first, each to its top; then the held ones.
     const fill = (keep: boolean) => (bound: number) => below(bound).find((x) => held.has(x) === keep);
     const m = below(0)[0] ?? below(1)[0] ?? fill(false)(2) ?? fill(false)(3) ?? fill(true)(2) ?? fill(true)(3);
@@ -327,27 +338,30 @@ export function planToRecord(p: Program, plans: DayPlan[], entries: SetEntry[], 
 }
 
 /**
- * A one-off day that fits the time you have: a pair of sets at a time to the muscle furthest behind its weekly target
- * over the last 7 days (as a fraction, weighted by priority, like the builder), ties to whatever was trained longest ago.
- * The day's own sets don't count, so the plan holds while you work through it. `fits`: whether the slots fit the time.
+ * A one-off day that fits the time you have: a pair of sets at a time, against the calendar week so far (Monday on, the day's own
+ * sets left out so the plan holds while you work through it), as the builder fills (owner, 2026-11-21): the minimums first, the
+ * muscle cheapest to finish by priority first (fillScore), then toward the maximums the same way; ties to the one furthest behind,
+ * then whatever was trained longest ago. As in the builder, priority 3–4 muscles get at most the profile's low share of the day's
+ * sets while a priority 1–2 muscle is still below its maximum. `fits`: whether the slots fit the time.
  */
 export function quickDay(profile: Profile, entries: SetEntry[], date: string, fits: (slots: Slot[]) => boolean, ctx: BuildContext = {}): Slot[] {
-  const weekAgo = addDays(date, -7);
+  const monday = weekStart(date);
   const achieved = zero();
   const last = new Map<Muscle, string>();
   for (const e of entries) {
     if (e.date >= date || !isWorking(e)) continue;
     for (const [m, f] of Object.entries(muscleVector(e.exercise) ?? {}) as [Muscle, number][]) {
-      if (e.date >= weekAgo) achieved[m] += f;
+      if (e.date >= monday) achieved[m] += f;
       if (f > 0 && e.date > (last.get(m) ?? '')) last.set(m, e.date);
     }
   }
   const cands = new Map<Muscle, string[]>(MUSCLES.map((m) => [m, candidates(m, entries, date, ctx)]));
   const done = new Set<Muscle>(MUSCLES.filter((m) => !cands.get(m)!.length));
-  const score = (m: Muscle, bound: 0 | 1) => {
-    const goal = profile.targets[profile.tiers[m]][bound];
-    return goal > 0 ? (TIER_WEIGHT[profile.tiers[m]] * (goal - achieved[m])) / goal : 0;
-  };
+  const boundOf = (m: Muscle, bound: 0 | 1) => profile.targets[profile.tiers[m]][bound];
+  const score = (m: Muscle, bound: 0 | 1) => fillScore(profile.tiers[m], boundOf(m, bound), achieved[m]);
+  const lag = (m: Muscle, bound: 0 | 1) => behind(profile.tiers[m], boundOf(m, bound), achieved[m]);
+  const isLow = (m: Muscle) => profile.tiers[m] >= 3, share = profile.lowShare ?? DEFAULT_LOW_SHARE;
+  let low = 0, total = 0;
   const day = new Map<string, number>();
   // Cardio at priority 1–2 that's behind for the week: its shortfall, 10–20 minutes, if it fits.
   const tier = cardioTierOf(profile), short = CARDIO_TARGETS[tier][0] - weeklyCardioMinutes(entries.filter((e) => e.date < date), weekStart(date));
@@ -358,14 +372,16 @@ export function quickDay(profile: Profile, entries: SetEntry[], date: string, fi
   const slots = () => [...lifts(), ...cardio];
   for (;;) {
     const open = MUSCLES.filter((m) => !done.has(m));
-    const below = (bound: 0 | 1) => open.filter((m) => score(m, bound) > 0)
-      .sort((a, b) => score(b, bound) - score(a, bound) || (last.get(a) ?? '').localeCompare(last.get(b) ?? ''));
+    const capped = low + UNIT > share * (total + UNIT) && open.some((m) => !isLow(m) && score(m, 1) > 0);
+    const below = (bound: 0 | 1) => open.filter((m) => score(m, bound) > 0 && !(capped && isLow(m)))
+      .sort((a, b) => score(b, bound) - score(a, bound) || lag(b, bound) - lag(a, bound) || (last.get(a) ?? '').localeCompare(last.get(b) ?? ''));
     const m = below(0)[0] ?? below(1)[0];
     if (!m) break;
     const ex = cands.get(m)!.find((c) => (day.get(c) ?? 0) + UNIT <= MAX_SETS_PER_DAY);
     if (!ex) { done.add(m); continue; }
     day.set(ex, (day.get(ex) ?? 0) + UNIT);
     if (!fits(slots())) { day.set(ex, day.get(ex)! - UNIT); if (!day.get(ex)) day.delete(ex); break; }
+    total += UNIT; if (isLow(m)) low += UNIT;
     for (const [mm, f] of Object.entries(muscleVector(ex) ?? {}) as [Muscle, number][]) achieved[mm] += f * UNIT;
   }
   return [...lifts().sort((a, b) => bestTier(a.exercise, profile) - bestTier(b.exercise, profile) || b.sets - a.sets), ...cardio];

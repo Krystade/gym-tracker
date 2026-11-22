@@ -60,6 +60,8 @@ import { photoDaySnoozed, photoEvery, snoozePhotoDay } from '../state/photoDay';
 import { deloadSnoozed, endLight, lightOn, snoozeDeload, startLight, tappedLight } from '../state/lightWeek';
 import { DeloadPrompt, LightWeekLine } from './DeloadPrompt';
 import { ReadyCard, WeekCard } from './ReadyTile';
+import { goalsFor, weekCount } from '../domain/weekGoal';
+import { WeekRings } from './WeekRings';
 import { readyMorning, readyNow, stripView, suggestedDay, type ReadyInput } from './readyView';
 import { PastDay, PlannedDay } from './DayReview';
 import { restDatesOf } from '../push/activity';
@@ -139,6 +141,8 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     const mins = usualMinutes(before as SetEntry[], today);
     return quickDay(profile, before as SetEntry[], today, (sl) => size.seconds(sl) <= mins * 60, gymCtx);
   }, [programs.program, isToday0, before, today, profile, gymCtx]);
+  // The week's rings (owner, 2026-11-21): the viewed day's calendar week against both goals (domain/weekGoal).
+  const week = useMemo(() => ({ goals: goalsFor(profile, store.entries)(date), count: weekCount(store.entries, date) }), [profile, store.entries, date]);
   const readyIn: ReadyInput = useMemo(() => ({ entries: store.entries, body: body.days, program: programs.program, plans: programs.plans, profile, quick: quickForReady, today, tz: ZONE, tapped }),
     [store.entries, body.days, programs.program, programs.plans, profile, quickForReady, today, owner, deloadTaps]); // `tapped` changes only with a tap
   const morning = useMemo(() => (isToday0 ? readyMorning(readyIn) : null), [isToday0, readyIn]);
@@ -416,9 +420,12 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       goTo(n); setSwapFor(null);
     }} />;
 
+  // A tall lead buddy hangs into the title's right end (TodayLead): the rings go up beside the day arrows instead.
+  const up = !!lead && !!onOpenBuddies && leadFit(lead.def, lead.held).tall;
   return (
     <div ref={outer}><div ref={inner}>
-      <div className="today-head">
+      <div className={`today-head has-rings${up ? ' rings-up' : ''}`}>
+        <WeekRings count={week.count} goals={week.goals} className="today-rings" />
         <div className="day-switch" data-tour="day">
           <button className="mini" aria-label="Previous day" onClick={() => onDay(addDays(date, -1))}><Icon name="chev-left" size={28} sw={2} /></button>
           <h1>{fmtDay(date, today)}</h1>
@@ -507,9 +514,15 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
  * stays in the room the lead has (BOX.today, up to the status backdrop): the sprite gives up the height the item rises above it,
  * and one too tall to sit on the slot's floor hangs that much lower from the top, so nothing covers the arrows or the status bar.
  */
-function TodayLead({ def, name, held, onOpen }: { def: BuddyDef; name: string; held?: string; onOpen: () => void }) {
+/** How the lead buddy sits in the header: its room, the rise its held item needs, and whether it's tall (hangs from the top into the title's right end). */
+function leadFit(def: BuddyDef, held?: string) {
   const room = [BOX.today[0], BOX.today[1] - heldRise(def, 3, BOX.today, held)] as const, rise = heldRise(def, 3, room, held);
   const tall = drawnSize(def, 3, room)[1] + rise > 60;
+  return { room, rise, tall };
+}
+
+function TodayLead({ def, name, held, onOpen }: { def: BuddyDef; name: string; held?: string; onOpen: () => void }) {
+  const { room, rise, tall } = leadFit(def, held);
   return (
     <button className="today-buddy" aria-label={`${name}, your lead buddy: open Buddies`} onClick={onOpen} style={{ '--rise': `${rise}px` } as CSSProperties}>
       <BuddySprite def={def} scale={3} box={room} held={held} className={tall ? 'tall' : undefined} />

@@ -31,10 +31,13 @@ function cable(exercise: string, from: number, start: number): SetEntry[] {
 
 interface Scenario { log: SetEntry[]; exercise: string; date: string; saved?: ExerciseSettings; goal?: TrainingGoal; hold?: boolean; planned?: number | null; light?: boolean }
 const B = 'Bench Press', C = 'Cable Curl', PD = 'Cable Pushdown', PU = 'Pull-Up';
-const NEXT = day(120);
+// 6 days after the last session: under a layoff (progression LAYOFF_AVERAGE_DAYS), which has its own scenario.
+const NEXT = day(110);
 const SC: Record<string, Scenario> = {
   // No RIR logged: last time's reps again (owner, 2026-10-28), and targets hit say nothing.
   normal: { exercise: B, date: NEXT, log: [...sess(day(100), B, 135, [9, 9, 8]), ...sess(day(104), B, 135, [10, 10, 9], aimed(135, 9))] },
+  // 16 days away (owner, 2026-11-21): each set at last time's average.
+  layoff: { exercise: B, date: day(120), log: [...sess(day(100), B, 135, [9, 9, 8]), ...sess(day(104), B, 135, [10, 10, 9], aimed(135, 9))] },
   // Missed three times running: targets no longer move the reps (owner, 2026-10-28), so no line for them.
   stall: { exercise: B, date: NEXT, log: [...sess(day(96), B, 135, [10, 9, 8], aimed(135, 10)), ...sess(day(100), B, 135, [10, 10, 9], aimed(135, 10)), ...sess(day(104), B, 135, [10, 9, 9], aimed(135, 10))] },
   // Range topped two sessions running: up a learned rung (cable steps), each set less the learned drop.
@@ -72,6 +75,7 @@ const shown = (r: ReturnType<typeof sug>) => JSON.stringify([r.kind, r.weight, r
 describe('Why this weight: each target’s lines are the inputs its branch read', () => {
   const want: Record<string, TargetInput[]> = {
     normal: ['last', 'progress', 'goal', 'sets'],
+    layoff: ['last', 'progress', 'goal', 'layoff', 'sets'],
     stall: ['last', 'progress', 'goal', 'sets'],
     jump: ['last', 'progress', 'range', 'step', 'drop', 'sets'],
     hold: ['last', 'pain', 'sets'],

@@ -27,6 +27,7 @@ import { weightSummary, type BodyDay } from '../domain/body';
 import type { SetEntry } from '../domain/types';
 import { highest, unlockedOn, type Achievements } from '../domain/achievements';
 import { streak } from '../domain/analytics';
+import { goalsFor } from '../domain/weekGoal';
 import { getPref, setPref } from '../state/prefs';
 import { activeProfileDb } from '../db/db';
 import { StatsSheet } from './StatsSheet';
@@ -492,23 +493,25 @@ function work(entries: SetEntry[], profile: Profile, today: string, range: Range
 
 // ---- The hero: this week against the goal ----
 
-export function useWeek(entries: SetEntry[], profile: Profile, today: string) {
+/** `who`: a friend's week, read against their sessions goal alone (their sets goal isn't known here). */
+export function useWeek(entries: SetEntry[], profile: Profile, today: string, who?: string) {
   return useMemo(() => {
     const goal = profile.weeklyGoal;
     const w = goalWeek(entries, today, goal);
     const from = weekStart(today);
     const dates = [...new Set(entries.filter((e) => e.date >= from && e.date <= today).map((e) => e.date))].sort();
     const segs = dates.map((d) => dayKinds(entries.filter((e) => e.date === d)).kinds[0] ?? null);
-    const st = streak(weeklySummary(entries, 104, today), goal);
+    // Goal weeks: the sessions goal or, for your own, the sets goal met (domain/goalHit).
+    const st = streak(weeklySummary(entries, 104, today), who ? goal : goalsFor(profile, entries));
     const kinds = prKinds(entries);
     const prs = entries.filter((e) => kinds.has(e.id) && e.date >= from && e.date <= today).length;
     return { w, goal, segs, sets: weekSets(entries, today), prs, st, cardio: Math.round(thisWeekCardio(entries, today)), trainedToday: dates.includes(today) };
-  }, [entries, profile.weeklyGoal, today]);
+  }, [entries, profile, today, who]);
 }
 
 /** The week's one full-width tile: a ring of its sessions out of the goal, sets, PRs, the streak, cardio, and what's left. */
 export function WeekHero({ entries, profile, today, who, onOpen }: { entries: SetEntry[]; profile: Profile; today: string; who?: string; onOpen: () => void }) {
-  const v = useWeek(entries, profile, today);
+  const v = useWeek(entries, profile, today, who);
   const diff = v.sets.sets - v.sets.before;
   const n = streakNudge({ sessions: v.w.sessions, goal: v.goal, streak: v.st.current, today, trainedToday: v.trainedToday }, whoseOf(who));
   return (
@@ -532,8 +535,8 @@ export function WeekHero({ entries, profile, today, who, onOpen }: { entries: Se
 }
 
 /** This week in full, the program's last 4 weeks, and last week's digest. */
-export function WeekSheet({ entries, profile, today, program }: { entries: SetEntry[]; profile: Profile; today: string; who?: string; program: { done: number; planned: number } | null }) {
-  const v = useWeek(entries, profile, today);
+export function WeekSheet({ entries, profile, today, who, program }: { entries: SetEntry[]; profile: Profile; today: string; who?: string; program: { done: number; planned: number } | null }) {
+  const v = useWeek(entries, profile, today, who);
   const diff = v.sets.sets - v.sets.before;
   const dow = new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' });
   return (<>

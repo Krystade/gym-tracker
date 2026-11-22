@@ -597,6 +597,14 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
    into the title's right end, which the date never reaches. */
 .today-buddy .bu-sprite { position: absolute; right: 0; bottom: 0; }
 .today-buddy .bu-sprite.tall { bottom: auto; top: calc(-12px + var(--rise, 0px)); }
+/* The week's rings (owner 2026-11-21, mock-up A): beside the date on the title's row, at its right end; the date gives them room
+   and ellipses before it runs under them. A tall lead buddy hangs into that end (TodayScreen leadFit): then they go up onto the
+   arrows' row, just right of the arrows, clear of the widest buddy (BOX.today, 160px from the right). */
+.today-head.has-rings { position: relative; }
+.today-head > .today-rings { position: absolute; top: 50px; right: 0; z-index: 1; }
+.today-head.has-rings:not(.rings-up) .day-switch h1 { padding-right: 96px; }
+.today-head.rings-up > .today-rings { top: 3px; right: auto; left: 84px; }
+.goal-row.sets-goal { margin-top: 16px; }
 /* "at Garage ›" under the day: quiet, a full-width 44px tap target pulled up into the head's gap. */
 .gym-line { width: 100%; justify-content: flex-start; margin: -12px 0 8px; padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--fs-sub); font-weight: 400; gap: 4px; }
 .gym-line > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1816,3 +1824,15 @@ button.wide.finish-buddies { margin: 4px 0 0; background: var(--accent); color: 
 @media (prefers-reduced-motion: reduce) {
   .pts-rise { animation: pts-fade 1.2s linear both; transform: none; }
 }
+
+/* Weekly rings (WeekRings): a ring never squashes: square, its own size, never shrunk by what's beside it. */
+.week-rings { display: inline-flex; flex: none; gap: 6px; align-items: center; }
+.week-ring { position: relative; flex: none; aspect-ratio: 1; display: grid; place-items: center; }
+.week-ring svg { position: absolute; inset: 0; }
+.week-ring-n { position: relative; font-size: 10px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--text); white-space: nowrap; }
+.week-ring-n i { font-style: normal; font-weight: 600; color: var(--text-2); }
+.week-ring.met .week-ring-n { color: var(--ring); }
+.finish-week { display: flex; align-items: center; gap: 12px; }
+.finish-week .week-ring-n { font-size: 12px; }
+.finish-week-t { display: grid; gap: 6px; min-width: 0; flex: 1; }
+.finish-week-t p { margin: 0; }

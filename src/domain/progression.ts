@@ -180,7 +180,7 @@ export interface Target {
 export type Evidence = { ev: 'a'; cite: string } | { ev: 'b'; method: string } | { ev: 'c'; note: string };
 /** Which input a line is. */
 export type TargetInput = 'last' | 'seed' | 'test' | 'range' | 'goal' | 'progress' | 'hits' | 'rir' | 'step' | 'drop' | 'fit'
-  | 'pain' | 'light' | 'plan' | 'sets' | 'bodyweight' | 'new' | 'stack';
+  | 'pain' | 'light' | 'plan' | 'sets' | 'bodyweight' | 'new' | 'stack' | 'layoff';
 /** One input to a target: `what` it is (and the `date` it's from), its `value` here, and its evidence. */
 export interface TargetPart { key: TargetInput; what: string; value: string; evidence: Evidence; date?: string }
 
@@ -371,6 +371,22 @@ export function repStep(last: SetEntry[], max: number, plusOneRir = TARGET_RULES
   const parts: TargetPart[] = up.length ? [{ key: 'rir', what: 'Reps in reserve you logged', value: `${plusOneRir}+ on set ${up.join(', ')}: +1 there, the rest as last time`,
     evidence: { ev: 'b', method: `your log, replayed: last time’s reps foretold yours best; +1 only where you left ${plusOneRir} or more` } }] : [];
   return { aimed, rule, parts };
+}
+
+/**
+ * Days away from a lift after which each set aims at last time's average reps (owner, 2026-11-21). After 15 days or more the
+ * order the sets fell in last time says little about today: on his log, replayed (scripts/backtest, r66), last time's average
+ * missed by 1.57 reps a set there against 1.72 for last time's same set. Under it, repStep as before.
+ */
+export const LAYOFF_AVERAGE_DAYS = 15;
+/** After a layoff: every set at last time's average reps (rounded), never past `max`; no +1 for reps in reserve. */
+export function layoffStep(last: SetEntry[], max: number, away: number): { aimed: number[]; rule: string; parts: TargetPart[] } {
+  const mean = last.reduce((a, x) => a + (x.reps as number), 0) / Math.max(1, last.length);
+  const each = Math.max(1, Math.min(max, Math.round(mean)));
+  const rule = `${away} days away: each set at last time’s average`;
+  const parts: TargetPart[] = [{ key: 'layoff', what: `${away} days since last time`, value: `each set at last time’s average, ${Math.round(mean * 10) / 10} reps`,
+    evidence: { ev: 'b', method: `your log, replayed: after ${LAYOFF_AVERAGE_DAYS}+ days away, last time’s average foretold your sets better than last time’s same set` } }];
+  return { aimed: last.map(() => each), rule, parts };
 }
 
 /**
@@ -609,7 +625,11 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   const capless = top === 0 && !unit;
   // Full stack: the reps go on past the range (owner, 2026-11-21), since the weight can't.
   const uncapped = capless || stacked;
-  const rep = unit ? holdStep(before.slice(Math.max(0, at)), atTop, repMax) : repStep(atTop.map(unspotted), uncapped ? Infinity : repMax, rules.plusOneRir);
+  // Days since the lift was last done (any session of it): 15+ and each set aims at last time's average (layoffStep).
+  const away = Math.round((Date.parse(`${date}T12:00:00Z`) - Date.parse(`${before[0].date}T12:00:00Z`)) / 864e5);
+  const rep = unit ? holdStep(before.slice(Math.max(0, at)), atTop, repMax)
+    : away >= LAYOFF_AVERAGE_DAYS ? layoffStep(atTop.map(unspotted), uncapped ? Infinity : repMax, away)
+    : repStep(atTop.map(unspotted), uncapped ? Infinity : repMax, rules.plusOneRir);
   const { aimed, rule } = rep;
   // A plan with more sets than last time: the extra sets aim at the last one's number.
   const perSet = extend(aimed);

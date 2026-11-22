@@ -20,6 +20,8 @@ import { NextRow, UnlockRow } from './AchievementsSheet';
 import { earned, earnedOn, INCOME, type DayEarned } from '../domain/buddies/points';
 import { trainingOf } from '../domain/buddies/stats';
 import { walletOf, type Ledger } from '../domain/buddies/gacha';
+import { goalsFor, weekCount, type WeekCount, type WeekGoals } from '../domain/weekGoal';
+import { WeekRings, weekWords } from './WeekRings';
 
 // The plan, turned into the day's summary once it's done (owner, 2026-10-20): on Finish, by itself once the session has gone
 // quiet, or as everything planned is done. A card in the plan's place on Today, never over anything (the phone is his alone,
@@ -55,7 +57,7 @@ export function LastWorkoutLine({ entries, date, today, profile, onOpen }: { ent
  * earnedOn, `earned` itself a day apart, so the two never disagree), line by line, its tickets by where they came from, how far the
  * next session ticket is, and a way to spend them. `wallet`: what's left to spend now, once the buddies' spends are read.
  */
-function PointsEarned({ pay, wallet, onOpen }: { pay: DayEarned; wallet: { points: number; tickets: number } | null; onOpen?: () => void }) {
+function PointsEarned({ pay, wallet, week, onOpen }: { pay: DayEarned; wallet: { points: number; tickets: number } | null; week: { count: WeekCount; goals: WeekGoals }; onOpen?: () => void }) {
   const p = pay.parts;
   const rows: [string, number][] = [
     [plural(p.sets / INCOME.set, 'set'), p.sets], ['Cardio', p.cardio], ['Session', p.sessions], ['Goal week hit', p.goalWeeks], ['Achievements', p.awards],
@@ -73,12 +75,16 @@ function PointsEarned({ pay, wallet, onOpen }: { pay: DayEarned; wallet: { point
           {tickets.filter(([, n]) => n > 0).map(([what, n]) => <span key={what} className="pts-ticket">+{n} {what}</span>)}
         </p>
       )}
-      {/* A row the weekly rings can join later (owner: a later stage), the next session ticket's progress for now. */}
-      <div className="finish-pts-next">
-        <div className="finish-ticket-bar" role="progressbar" aria-label="Session ticket progress" aria-valuemin={0} aria-valuemax={INCOME.sessionsPerTicket} aria-valuenow={into}>
-          <i style={{ width: `${(100 * into) / INCOME.sessionsPerTicket}%` }} />
+      {/* The week's rings (owner, 2026-11-21) beside the next session ticket's progress: the week so far, both goals. */}
+      <div className="finish-pts-next finish-week" role="group" aria-label="This week">
+        <WeekRings count={week.count} goals={week.goals} size={46} />
+        <div className="finish-week-t">
+          <p className="small finish-week-words">{weekWords(week.count, week.goals)}</p>
+          <div className="finish-ticket-bar" role="progressbar" aria-label="Session ticket progress" aria-valuemin={0} aria-valuemax={INCOME.sessionsPerTicket} aria-valuenow={into}>
+            <i style={{ width: `${(100 * into) / INCOME.sessionsPerTicket}%` }} />
+          </div>
+          <p className="muted small">{plural(pay.toTicket, 'session')} to your next session ticket</p>
         </div>
-        <p className="muted small">{plural(pay.toTicket, 'session')} to your next session ticket</p>
       </div>
       {onOpen && <button type="button" className="wide finish-buddies" onClick={onOpen}>
         Open Buddies{wallet ? ` · ${wallet.tickets > 0 ? plural(wallet.tickets, 'ticket') : `${wallet.points.toLocaleString('en-US')} pts`}` : ''}
@@ -122,6 +128,8 @@ export function FinishCard({ entries, date, today, profile, program, plans, plan
   const training = useMemo(() => (start ? trainingOf(entries, { start, today, profile }) : null), [entries, start, today, profile]);
   const pay = useMemo(() => (training ? earnedOn(training, ach, date) : null), [training, ach, date]);
   const wallet = useMemo(() => (training && ledger ? walletOf(earned(training, ach), ledger) : null), [training, ach, ledger]);
+  // The week up to this day, against both goals (domain/weekGoal), for the rings.
+  const week = useMemo(() => ({ goals: goalsFor(profile, entries)(date), count: weekCount(entries, date, date) }), [profile, entries, date]);
 
   const title = `${how ? 'Workout done' : 'Plan done'}${planName ? ` · ${planName}` : ''}`;
   const next = [up.day, up.inDays != null && when(date, up.inDays, today)].filter(Boolean).join(' · ');
@@ -142,7 +150,7 @@ export function FinishCard({ entries, date, today, profile, program, plans, plan
           {s.prs.map((p) => <li key={p.exercise}><span className="tag pr-tag">PR</span><b>{p.exercise}</b><span className="nw">{fmtSet(p.set)}</span></li>)}
         </ul>
       )}
-      {pay && (pay.points > 0 || pay.tickets > 0) && <PointsEarned pay={pay} wallet={wallet} onOpen={onOpenBuddies} />}
+      {pay && (pay.points > 0 || pay.tickets > 0) && <PointsEarned pay={pay} wallet={wallet} week={week} onOpen={onOpenBuddies} />}
       {unlocked.length > 0 && (
         <section aria-label="Achievements today">
           <h3 className="finish-sub">Achievements {date === today ? 'today' : 'that day'}</h3>

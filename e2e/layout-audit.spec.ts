@@ -1629,7 +1629,7 @@ test('Today’s folded cards: one layout for every state, and a last set’s unl
   await check(page, info, found, 'today-folded-unlock');
   // A long name with no planned count, and a bodyweight lift (added first: the picker takes Today's place, and a card folded by
   // hand opens again when it comes back); the plan's second lift part done, its third opened unstarted; all folded by hand.
-  const extra = [['Single Arm Cable Lateral Raise Behind Back', '22.5', '15'], ['Pull-up', '0', '12']] as const;
+  const extra = [['Single Arm Cable Lateral Raise Behind Back', '22.5', '15'], ['Push-up', '0', '12']] as const;
   for (const [lift, w, r] of extra) {
     const card = await addCard(page, lift);
     await logSet(page, card, `${PRE}T18:50:00`, w, r);

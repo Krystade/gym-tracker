@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { CARDIO_TARGETS, cardioTierOf, thisWeekCardio } from '../domain/cardio';
 import { MUSCLES } from '../domain/muscles';
 import { goalOf, type Profile, type Tier, type TrainingGoal } from '../domain/profile';
@@ -7,6 +7,7 @@ import { activeProfileDb } from '../db/db';
 import type { FittedProfileStore } from '../state/useFittedProfile';
 import { Input } from './Field';
 import { GoalSuggestion, PrioritySuggestion } from './TargetSuggestions';
+import { goalsFor, SET_GOAL_MAX } from '../domain/weekGoal';
 
 // Muscle priorities and the training goal: settings, opened from More (and from Stats and Program). Owner, 2026-10-20: the
 // priorities list doesn't belong on Stats. The sessions-a-week goal is its own screen on More (owner, 2026-10-21: it drives
@@ -66,7 +67,37 @@ export function WeeklyGoal({ profile, entries, today }: { profile: FittedProfile
       </label>
       <p className="muted small">1 to 7. It sets Today’s week plan, your ring on Stats and Friends, Compare’s Goal and the reminder’s first days, and how many sessions the priorities’ weekly sets are spread over.</p>
       <GoalSuggestion owner={owner} entries={entries} profile={p} today={today} onAccept={(n) => { setGoal(String(n)); void profile.save({ ...p, weeklyGoal: n }); }} />
+      <SetGoal profile={profile} entries={entries} today={today} />
     </section>
+  );
+}
+
+/**
+ * The sets-a-week goal (owner, 2026-11-21), beside the sessions goal: either met makes the week a goal week. Empty, the default:
+ * the muscles' weekly minimums added up (domain/weekGoal), shown as the field's placeholder and in words.
+ */
+function SetGoal({ profile, entries, today }: { profile: FittedProfileStore; entries: SetEntry[]; today: string }) {
+  const p = profile.profile;
+  const [text, setText] = useState(p.setGoal != null ? String(p.setGoal) : '');
+  const auto = useMemo(() => goalsFor({ ...p, setGoal: undefined }, entries)(today).sets ?? 0, [p, entries, today]);
+  const save = (setGoal: number | undefined) => void profile.save({ ...p, setGoal });
+  return (
+    <>
+      <label className="goal-row sets-goal">Sets per week goal
+        <Input aria-label="Sets per week goal" inputMode="numeric" value={text} placeholder={String(auto)}
+          onChange={(e) => {
+            setText(e.target.value);
+            const n = Number(e.target.value);
+            if (e.target.value.trim() === '') save(undefined);
+            else if (Number.isInteger(n) && n >= 1 && n <= SET_GOAL_MAX) save(n);
+          }} />
+      </label>
+      <p className="muted small">{p.setGoal != null
+        ? <>Yours. The default is {auto}: your muscles’ weekly minimums added up.</>
+        : <>{auto}: your muscles’ weekly minimums added up, as your priorities fit this week.</>}
+        {' '}Sets as Stats counts them, a muscle trained directly 1, helping ½. A week counts as a goal week once either goal is met: it pays the goal week’s points and ticket and keeps your streak.</p>
+      {p.setGoal != null && <button type="button" className="mini" onClick={() => { setText(''); save(undefined); }}>Use the default, {auto}</button>}
+    </>
   );
 }
 

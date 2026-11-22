@@ -14,6 +14,7 @@ import { addedLoad, bodyShare } from './learn/bodyweight';
 import { rate, rateBand, trend, type BodyDay } from './body';
 import { framingOf, POSES, SHOTS, type PhotoMeta } from './photos';
 import { effective, togetherSteps, TOGETHER_IDS, type Seen, type TogetherCtx } from './together';
+import { goalsFor, goalWeekDays, sessionGoalOf } from './weekGoal';
 
 // Achievements (.superpowers/redesign/achievements/plan.md): facts about a log, never stored as earned. Like records
 // (domain/records), each is worked out from the sets, the stored profile and the day plans, so an edit, a delete, a rename or a
@@ -68,7 +69,7 @@ const L = (...xs: [Tier, number][]): Level[] => xs.map(([tier, at]) => ({ tier, 
 export const DEFS: readonly Def[] = [
   // Showing up
   { id: 'sessions', group: 'showing', title: 'Sessions', unit: 'sessions', how: 'Days with a working lift set', levels: L(['starter', 1], ['bronze', 10], ['silver', 50], ['gold', 150], ['platinum', 500]) },
-  { id: 'goal-weeks', group: 'showing', title: 'Goal weeks', unit: 'weeks', how: 'Weeks you met your own weekly goal. Any weeks: they don’t need to be in a row', levels: L(['starter', 1], ['bronze', 4], ['silver', 12], ['gold', 40], ['platinum', 100]) },
+  { id: 'goal-weeks', group: 'showing', title: 'Goal weeks', unit: 'weeks', how: 'Weeks you met your own weekly goal: its sessions or its sets. Any weeks: they don’t need to be in a row', levels: L(['starter', 1], ['bronze', 4], ['silver', 12], ['gold', 40], ['platinum', 100]) },
   { id: 'best-run', group: 'showing', title: 'Best run', unit: 'weeks in a row', how: 'Your longest run of goal weeks. A best ever: a missed week never takes it away', levels: L(['bronze', 4], ['silver', 12], ['gold', 26], ['platinum', 52]) },
   { id: 'comeback', group: 'showing', title: 'Back at it', unit: 'times', how: 'A session after 14 days or more away', levels: L(['bronze', 1]), repeat: true },
   { id: 'plan-days', group: 'showing', title: 'Plan done', unit: 'days', how: 'Days you did every lift of the day’s plan, all its sets', levels: L(['bronze', 5], ['silver', 25], ['gold', 100], ['platinum', 300]), needs: 'program' },
@@ -138,7 +139,7 @@ const chrono = (a: SetEntry, b: SetEntry) => (a.date < b.date ? -1 : a.date > b.
 export const lifted = (e: SetEntry) => !e.flags.includes('warmup') && !isCardioEntry(e);
 /** A set that may count for strength: lifted, reps done, not a hold, and neither a set that hurt (a tingle is no pain: types.hurts) nor a light-week set. */
 const earns = (e: SetEntry) => lifted(e) && e.reps != null && e.reps >= 1 && !hurts(e) && !e.flags.some((f) => f === 'partial' || f === 'hold' || f === 'light');
-const goalOf = (p: Context['profile']) => Math.min(7, Math.max(1, Math.round(p.weeklyGoal) || 2));
+const goalOf = (p: Context['profile']) => sessionGoalOf(p);
 
 /** A value that only goes up, as dated steps: the day it first reached each value (and, for Together, who with). */
 export type Steps = { date: string; value: number; lift?: string; with?: string[]; gym?: string }[];
@@ -152,12 +153,11 @@ function cumulative(dates: readonly string[]): Steps {
   return [...dates].sort().map((date, i) => ({ date, value: i + 1 }));
 }
 
-/** Each week that met the goal: its Monday, and the day the goal-th session made it. */
-function goalWeekDays(sessions: readonly string[], goal: number): { week: string; date: string }[] {
-  const byWeek = new Map<string, string[]>();
-  for (const d of sessions) { const w = weekStart(d); (byWeek.get(w) ?? byWeek.set(w, []).get(w)!).push(d); }
-  return [...byWeek].filter(([, ds]) => ds.length >= goal).map(([week, ds]) => ({ week, date: ds[goal - 1] })).sort((a, b) => a.week.localeCompare(b.week));
-}
+/**
+ * Each goal week from `since` on (domain/weekGoal: its sessions goal or its sets goal met, owner 2026-11-21): its Monday, and the
+ * day it was met. `all`: the whole log, which the sets goal's fit reads before `since`; `post`: the sets that count.
+ */
+const goalWeeksOf = (all: readonly SetEntry[], post: readonly SetEntry[], profile: Profile) => goalWeekDays(post, goalsFor(profile, all));
 
 function bestRun(met: readonly { week: string; date: string }[]): Steps {
   const out: Steps = [];
@@ -542,11 +542,11 @@ export interface Achievements {
 /** The families Gym Buddies grows stats from (domain/buddies/stats): familySteps' own, without the costly rest. */
 export function buddySteps(entries: readonly SetEntry[], ctx: Pick<Context, 'since' | 'today' | 'profile'>): Record<'sessions' | 'goal-weeks' | 'prs' | 'moved-up', Steps> {
   const { since, today } = ctx;
-  const post = entries.filter((e) => e.date <= today && e.date >= since);
+  const all = entries.filter((e) => e.date <= today), post = all.filter((e) => e.date >= since);
   const sessions = sessionDays(post);
   return {
     'sessions': cumulative(sessions),
-    'goal-weeks': cumulative(goalWeekDays(sessions, goalOf(ctx.profile)).map((m) => m.date)),
+    'goal-weeks': cumulative(goalWeeksOf(all, post, ctx.profile).map((m) => m.date)),
     'prs': prSteps(entries, since, today),
     'moved-up': movedUpSteps(entries, since, today),
   };
@@ -559,7 +559,7 @@ export function familySteps(entries: readonly SetEntry[], ctx: Context): Record<
   // Only sets on or after `since` count (owner, 2026-10-21). The whole log is read only where it is the bar (see the head).
   const post = all.filter((e) => e.date >= since);
   const sessions = sessionDays(post);
-  const met = goalWeekDays(sessions, goalOf(ctx.profile));
+  const met = goalWeeksOf(all, post, ctx.profile);
   const weeks = weekDays(post);
   const fit = fitter(all, ctx);
   const seen = togetherOf(entries, ctx), tog = seen ? togetherSteps(seen) : null;

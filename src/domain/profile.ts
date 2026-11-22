@@ -9,7 +9,12 @@ export interface Profile { key: 'profile'; tiers: Record<Muscle, Tier>; weeklyGo
    * Location for Together (owner 2026-10-29): set while it's on, the random key friends' phones pair with theirs for place codes
    * (domain/place). Friends read it with the rest of the profile; unset, off.
    */
-  placeKey?: string }
+  placeKey?: string;
+  /**
+   * The sets-a-week goal set by hand (More › Weekly goal, owner 2026-11-21): fractional muscle-sets, 1 to 400. Unset: the muscles'
+   * weekly minimums added up (domain/weekGoal). Either goal met makes the week a goal week.
+   */
+  setGoal?: number }
 /** Share of weekly sets the builder may spend on priority 3–4 muscles while priority 1–2 still need sets. */
 export const DEFAULT_LOW_SHARE = 0.2;
 
@@ -46,7 +51,7 @@ const isTier = (n: unknown): n is Tier => n === 1 || n === 2 || n === 3 || n ===
 export function parseProfileJson(text: string): { profile: Profile } | { error: string } {
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return { error: 'Not valid JSON' }; }
-  const o = raw as { type?: unknown; tiers?: Record<string, unknown>; weeklyGoal?: unknown; targets?: Record<string, unknown>; lowShare?: unknown; cardioTier?: unknown; goal?: unknown };
+  const o = raw as { type?: unknown; tiers?: Record<string, unknown>; weeklyGoal?: unknown; targets?: Record<string, unknown>; lowShare?: unknown; cardioTier?: unknown; goal?: unknown; setGoal?: unknown };
   if (o?.type !== 'gym-tracker-profile') return { error: 'Not a gym-tracker profile file' };
   const p = defaultProfile();
   for (const [m, t] of Object.entries(o.tiers ?? {})) {
@@ -70,6 +75,10 @@ export function parseProfileJson(text: string): { profile: Profile } | { error: 
   if (o.goal != null) {
     if (o.goal !== 'size' && o.goal !== 'strength') return { error: 'goal must be size or strength' };
     p.goal = o.goal;
+  }
+  if (o.setGoal != null) {
+    if (typeof o.setGoal !== 'number' || !Number.isInteger(o.setGoal) || o.setGoal < 1 || o.setGoal > 400) return { error: 'setGoal must be 1-400' };
+    p.setGoal = o.setGoal;
   }
   if (o.cardioTier != null) {
     if (!isTier(o.cardioTier)) return { error: 'cardioTier must be 1-4' };

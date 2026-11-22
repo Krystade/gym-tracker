@@ -1,6 +1,7 @@
 import { isCardioEntry } from './cardio';
 import { muscleVector, MUSCLES, type Muscle } from './muscles';
 import type { SetEntry } from './types';
+import { goalWeekHit, type WeekGoals } from './goalHit';
 
 const toDate = (d: string) => { const [y, m, day] = d.split('-').map(Number); return new Date(Date.UTC(y, m - 1, day)); };
 const fromDate = (d: Date) => d.toISOString().slice(0, 10);
@@ -110,31 +111,45 @@ export function weeklyMuscleSets(entries: SetEntry[], week: string): { sets: Rec
 /**
  * `sessions`: days with a working lift set, the days the weekly goal and streak count. `cardioDays`: days with cardio and no
  * working lift set, shown beside the sessions but never toward the goal (round 7's decision). Crew counts both (domain/crew).
+ * `muscleSets`: the week's fractional muscle-sets (each muscle's day capped, as weeklyMuscleSets counts), what the sets goal reads.
  */
-export interface WeekSummary { week: string; sessions: number; cardioDays: number; sets: number; tonnage: number }
+export interface WeekSummary { week: string; sessions: number; cardioDays: number; sets: number; tonnage: number; muscleSets: number }
 
 export function weeklySummary(entries: SetEntry[], weeks: number, today: string): WeekSummary[] {
   const last = weekStart(today);
-  const out: WeekSummary[] = Array.from({ length: weeks }, (_, i) => ({ week: addDays(last, -7 * (weeks - 1 - i)), sessions: 0, cardioDays: 0, sets: 0, tonnage: 0 }));
+  const out: WeekSummary[] = Array.from({ length: weeks }, (_, i) => ({ week: addDays(last, -7 * (weeks - 1 - i)), sessions: 0, cardioDays: 0, sets: 0, tonnage: 0, muscleSets: 0 }));
   const idx = new Map(out.map((w, i) => [w.week, i]));
   const lift = new Set<string>(), cardio = new Set<string>();
+  const perDay = new Map<string, Record<Muscle, number>>();
   for (const e of entries) {
     const i = idx.get(weekStart(e.date));
     if (i == null) continue;
     const w = out[i];
     if (isCardioEntry(e)) cardio.add(e.date);
-    else if (!e.flags.includes('warmup')) { w.sets += 1; lift.add(e.date); }
+    else if (!e.flags.includes('warmup')) {
+      w.sets += 1; lift.add(e.date);
+      const v = muscleVector(e.exercise);
+      if (v) { const d = perDay.get(e.date) ?? perDay.set(e.date, zero()).get(e.date)!; for (const [m, f] of Object.entries(v) as [Muscle, number][]) d[m] += f; }
+    }
     if (e.weight > 0 && e.reps != null && !e.flags.includes('hold')) w.tonnage += e.weight * e.reps;
   }
+  for (const [d, x] of perDay) out[idx.get(weekStart(d))!].muscleSets += MUSCLES.reduce((a, m) => a + Math.min(x[m], SESSION_CAP), 0);
   for (const d of lift) out[idx.get(weekStart(d))!].sessions += 1;
   for (const d of cardio) if (!lift.has(d)) out[idx.get(weekStart(d))!].cardioDays += 1;
   return out;
 }
 
-/** Weeks in a row meeting the sessions goal. The in-progress week only counts once it is met; it never breaks a run. */
-export function streak(summaries: WeekSummary[], goal: number): { current: number; best: number; thisWeekMet: boolean } {
-  const thisWeekMet = (summaries.at(-1)?.sessions ?? 0) >= goal;
-  const met = [...summaries.slice(0, -1).map((w) => w.sessions >= goal), ...(thisWeekMet ? [true] : [])];
+/**
+ * Weeks in a row that were goal weeks (domain/goalHit: the sessions goal or the sets goal met). `goal`: the sessions goal alone
+ * (a friend's), or each week's goals (domain/weekGoal goalsFor). The in-progress week only counts once it is met; it never
+ * breaks a run.
+ */
+export function streak(summaries: WeekSummary[], goal: number | ((week: string) => WeekGoals)): { current: number; best: number; thisWeekMet: boolean } {
+  const goals = typeof goal === 'number' ? () => ({ sessions: goal }) : goal;
+  const hit = (w: WeekSummary) => goalWeekHit({ sessions: w.sessions, sets: w.muscleSets }, goals(w.week));
+  const last = summaries.at(-1);
+  const thisWeekMet = !!last && hit(last);
+  const met = [...summaries.slice(0, -1).map(hit), ...(thisWeekMet ? [true] : [])];
   let best = 0, run = 0;
   for (const m of met) { run = m ? run + 1 : 0; best = Math.max(best, run); }
   return { current: run, best, thisWeekMet };

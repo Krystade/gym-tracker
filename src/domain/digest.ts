@@ -5,6 +5,7 @@ import type { Profile } from './profile';
 import { prIds } from './records';
 import { liftKey, normalizeName } from './ids';
 import type { SetEntry } from './types';
+import { goalsFor } from './weekGoal';
 
 // The weekly digest: one week looked back on, on Today and Stats. Nothing new is stored; it reads the same counts as
 // Stats (weeklySummary), the same PR rule as the badge and the recap (records), and the same muscle sets as the bars.
@@ -54,7 +55,7 @@ export function weekDigest(entries: SetEntry[], profile: Profile, week: string):
   return {
     week, end,
     sessions: cur.sessions, goal: profile.weeklyGoal, cardioDays: cur.cardioDays,
-    streak: streak(weeklySummary(entries, 104, end), profile.weeklyGoal).current,
+    streak: streak(weeklySummary(entries, 104, end), goalsFor(profile, entries)).current,
     sets: cur.sets, prs: prsIn(week), cardioMinutes: weeklyCardioMinutes(entries, week),
     lifts: [...lifts.values()].sort((a, b) => Number(a.cardio) - Number(b.cardio) || b.sets - a.sets || b.prs - a.prs || a.exercise.localeCompare(b.exercise)),
     under,

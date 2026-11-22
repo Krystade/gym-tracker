@@ -379,10 +379,14 @@ describe('learned steps, drops and ranges (items 01–03, 2026-10-20)', () => {
   it('raises the top of the range when this lift’s jumps cost more than the range is wide', () => {
     // DB curls in 5s whose increases cost 7 reps: 10–15 can't absorb that, so build to 17 first.
     const db = [...lift('Incline DB Curl', 20, 6, 7, 0, 5), ...topped('Incline DB Curl', 35)];
-    const t = nextTarget(db, 'Incline DB Curl', C, next)!;
+    // Two days on (not a layoff: layoffStep), so the sets keep last time's shape.
+    const soon = new Date(Date.parse(dayAfter) + 2 * 864e5).toISOString().slice(0, 10);
+    const t = nextTarget(db, 'Incline DB Curl', C, soon)!;
     expect(t.kind).toBe('reps');
     expect(t.range).toMatchObject({ repMin: 10, repMax: 17, how: 'top' });
     expect(t.perSet).toEqual([15, 15, 14]); // no RIR logged: as last time
+    // A year on, each set at last time's average (14.7: 15 a set).
+    expect(nextTarget(db, 'Incline DB Curl', C, next)!.perSet).toEqual([15, 15, 15]);
     expect(t.why).toContain('to 17 before going up');
     // At 17s it goes up, and lands inside the range.
     const built = [...db, ...['2026-05-29', '2026-05-30'].flatMap((d, k) => [17, 17, 16].map((r, i) => s(d, 200 + 3 * k + i, 35, r, { exercise: 'Incline DB Curl' })))];
@@ -397,5 +401,29 @@ describe('learned steps, drops and ranges (items 01–03, 2026-10-20)', () => {
     // Today: a 62.5 session that dropped 9 reps.
     const today = [6, 6].map((r, i) => s(next, 300 + i, 62.5, r, { exercise: 'Cable Curl' }));
     expect(nextTarget([...log, ...today], 'Cable Curl', C, next)).toEqual(before);
+  });
+});
+
+// Owner, 2026-11-21 (r66 backtest: 15+ days away, last time's average missed by 1.57 reps a set, its same set by 1.72).
+describe('per-set targets after a layoff (owner, 2026-11-21)', () => {
+  const last = [s('2026-01-01', 1, 30, 11, { rir: 2 }), s('2026-01-01', 2, 30, 9), s('2026-01-01', 3, 30, 7)];
+  it('under 15 days: the per-set rule as before (last time’s same set, +1 where 2+ were in reserve)', () => {
+    const t = nextTarget(last, 'Curl', S, '2026-01-15')!;
+    expect(t).toMatchObject({ kind: 'reps', weight: 30 });
+    expect(t.perSet).toEqual([12, 9, 7]);
+    expect(t.parts!.some((p) => p.key === 'layoff')).toBe(false);
+  });
+  it('15 days or more: every set at last time’s average, no +1', () => {
+    const t = nextTarget(last, 'Curl', S, '2026-01-16')!;
+    expect(t).toMatchObject({ kind: 'reps', weight: 30, reps: 9 });
+    expect(t.perSet).toEqual([9, 9, 9]);
+    expect(t.why).toContain('15 days away');
+    expect(t.parts!.find((p) => p.key === 'layoff')?.value).toContain('9 reps');
+  });
+  it('rounds the average and never aims past the range’s top', () => {
+    const hi = [s('2026-01-01', 1, 30, 13), s('2026-01-01', 2, 30, 13), s('2026-01-01', 3, 30, 12)];
+    expect(nextTarget(hi, 'Curl', S, '2026-02-01')!.perSet).toEqual([12, 12, 12]);
+    const mid = [s('2026-01-01', 1, 30, 11), s('2026-01-01', 2, 30, 10), s('2026-01-01', 3, 30, 8)];
+    expect(nextTarget(mid, 'Curl', S, '2026-02-01')!.perSet).toEqual([10, 10, 10]);
   });
 });

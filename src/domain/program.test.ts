@@ -30,12 +30,14 @@ describe('buildProgram', () => {
       expect(CATALOG).toContain(slot.exercise);
     }
   });
-  it('puts priority muscles first and gives them the volume', () => {
+  it('puts priority muscles first and finishes their minimums one by one (owner, 2026-11-21)', () => {
+    // 28 sets for three minimums of 12: two finished beat three part-done.
     const p = buildProgram(withTiers({ Biceps: 1, Triceps: 1, Abs: 1 }, 4), [], { days: 2, perSession: 14 }, NOW);
     const first = muscleVector(p.days[0].slots[0].exercise)!;
     expect(['Biceps', 'Triceps', 'Abs'].some((m) => first[m as Muscle] === 1)).toBe(true);
     const v = programVolume(p);
-    for (const m of ['Biceps', 'Triceps', 'Abs'] as Muscle[]) expect(v[m]).toBeGreaterThanOrEqual(8);
+    expect((['Biceps', 'Triceps', 'Abs'] as Muscle[]).filter((m) => v[m] >= 12)).toHaveLength(2);
+    expect(v.Biceps + v.Triceps + v.Abs).toBeGreaterThanOrEqual(26);
     expect(v.Quads).toBeLessThan(v.Biceps);
   });
   it('still trains lower tiers a little, and never programs a 1-set slot', () => {
@@ -43,7 +45,9 @@ describe('buildProgram', () => {
     const p = buildProgram(withTiers(tiers, 4), [], { days: 2, perSession: 14 }, NOW);
     const v = programVolume(p);
     expect(v.Chest + v.Lats + v['Mid-Back']).toBeGreaterThanOrEqual(2);
-    expect(v['Side Delts']).toBeGreaterThanOrEqual(4);
+    // Priority 3 within its low share (20 % of 28), the priority 1 minimums finished with the rest.
+    expect(v.Chest + v['Front Delts'] + v.Lats + v['Mid-Back'] + v.Traps + v.Erectors).toBeLessThanOrEqual(8);
+    expect((['Biceps', 'Triceps', 'Abs'] as Muscle[]).filter((m) => v[m] >= 12)).toHaveLength(2);
     for (const slot of p.days.flatMap((d) => d.slots)) expect(slot.sets).toBeGreaterThanOrEqual(2);
   });
   it('honours 3 days of 10', () => {
@@ -462,7 +466,10 @@ describe('round 28: the aim orders the fill, the session size sets the total', (
   it('the aims still go first: a session too small for more gets the aims before any range', () => {
     const p = buildProgram({ ...prof, lowShare: 0.1 }, [], { days: 2, perSession: 8, aims }, NOW);
     const v = programVolume(p);
-    for (const m of ['Biceps', 'Abs'] as Muscle[]) expect(v[m], m).toBeGreaterThanOrEqual(4);
+    // 16 sets: the cheapest aims finished first (the three priority 2s at 4 and Biceps at 6), no direct pair past an aim.
+    const met = (['Biceps', 'Abs', 'Chest', 'Side Delts', 'Mid-Back'] as Muscle[]).filter((m) => v[m] >= aims[m]![0]);
+    expect(met).toHaveLength(4);
+    for (const m of ['Chest', 'Side Delts', 'Mid-Back'] as Muscle[]) expect(v[m], m).toBe(4);
   });
   it('the extra sets go toward each range by priority, never past a range’s top', () => {
     const p = buildProgram({ ...prof, lowShare: 0.1 }, [], { days: 3, perSession: 20, aims }, NOW);

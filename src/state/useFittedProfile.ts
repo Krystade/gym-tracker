@@ -13,7 +13,8 @@ export function useFittedProfile(raw: ProfileStore, program: Program | null, ent
   const budget = useMemo(() => weeklyBudget(raw.profile, program, entries, today), [raw.profile, program, entries, today]);
   const yieldPerSet = useMemo(() => setYield(entries, today), [entries, today]);
   const fit = useMemo(() => fitTargets(raw.profile, budget, yieldPerSet), [raw.profile, budget, yieldPerSet]);
-  const profile = useMemo<Profile>(() => ({ ...raw.profile, targets: fit.targets }), [raw.profile, fit]);
+  // `custom` kept beside the fitted targets, so fitting this profile again reads the same (domain/weekGoal's sets goal does).
+  const profile = useMemo<Profile>(() => ({ ...raw.profile, targets: fit.targets, custom: fit.custom }), [raw.profile, fit]);
   const save = useCallback((p: Profile) => raw.save({ ...p, targets: raw.profile.targets, custom: customTiers(raw.profile) }), [raw]);
   /** A hand-set range for one priority, or null to let it fit the week again. */
   const setTarget = useCallback((t: Tier, range: [number, number] | null) => {

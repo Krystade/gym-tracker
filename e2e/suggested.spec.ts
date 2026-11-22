@@ -58,8 +58,11 @@ test('no program: Today suggests a session from what the week is behind on; a ta
   expect(names.length).toBeGreaterThan(1);
   // The week trained chest, back and arms: it's behind on everything else (delts, legs, core), and suggests none of its lifts.
   for (const done of ['Bench Press', 'Lat Pulldown', 'Cable Curl', 'Cable Pushdown']) expect(names).not.toContain(done);
-  expect(names).toContain('Leg Press');
-  await expect(rows.first()).toContainText(/0\/2 · \d+–\d+ reps/);
+  // The cheapest minimums first (owner, 2026-11-21): the muscles the week half-trained lead, and legs still get a lift.
+  expect(names.some((n) => /Leg|Squat|Lunge/.test(n)), names.join(', ')).toBe(true);
+  // Sets go in pairs; a muscle close to its minimum can take two pairs in one lift.
+  await expect(rows.first()).toContainText(/0\/[24] · \d+–\d+ reps/);
+  const planned = (await rows.first().textContent())!.match(/0\/(\d)/)![1];
   await fits(page);
   await page.screenshot({ path: `${SHOTS}/1-suggested.png` });
 
@@ -76,7 +79,7 @@ test('no program: Today suggests a session from what the week is behind on; a ta
   await lift.getByRole('textbox', { name: 'Weight' }).fill('100');
   await lift.getByRole('textbox', { name: 'Reps' }).fill('10');
   await lift.getByRole('button', { name: /^Add set/ }).click();
-  await expect(rows.first()).toContainText('1/2');
+  await expect(rows.first()).toContainText(`1/${planned}`);
   expect(await rows.locator('b').allTextContents()).toEqual(names);
   await card.scrollIntoViewIfNeeded();
   await fits(page);
