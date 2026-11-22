@@ -5,9 +5,10 @@ import { ACCESSORY, BUDDY, type Banner, type Rarity } from '../../domain/buddies
 import { BOX, BuddySprite } from './BuddySprite';
 import { AccIcon, accName, SLOT_NAME } from './Worn';
 
-// A pull's show (owner 2026-11-15: the gambling up front, "juice up the reveal"): a pixel capsule drops in, shakes and charges,
-// its light climbing the rarities one by one up to what it holds (grey, green, blue, purple, orange), then bursts in a ring and
-// a spray of pixels, and what was in it lands with a bounce. The rarer, the longer: a rare charges for about a second, an epic
+// A pull's show (owner 2026-11-15: the gambling up front, "juice up the reveal"): a pixel egg (a buddy) or treasure chest (an
+// accessory) drops in, shakes and charges, its light climbing the rarities one by one up to what it holds (grey, green, blue,
+// purple, orange), then the egg's top cracks off or the chest's lid creaks up in a burst of a ring and a spray of pixels, and
+// what was in it lands with a bounce. The rarer, the longer: a rare charges for about a second, an epic
 // or a legendary longer still and opens with a flash and turning light rays. New or a duplicate, said plainly ("NEW!", or
 // "×3 · +8 back"). A tap anywhere skips to what landed; a 10-pull shows each in turn (a tap for the next, or Skip all), then all
 // ten. Transform and opacity only (aimed at 60 fps on a 13 mini); under reduced motion it's a short fade to the result.
@@ -39,35 +40,50 @@ export function beats(r: Rarity, quick = false): { drop: number; charge: number;
   return { drop, charge, tiers, burst: drop + charge, land: drop + charge + 170 };
 }
 
-/** The capsule: 16 × 16 pixels, an outline, a top in the light's colour, a white bottom, a dark band and its button. */
-type Px = 'o' | 't' | 'h' | 's' | 'b' | 'k' | 'w' | 'd';
-const SPANS: readonly [number, number][] = [[5, 10], [3, 12], [2, 13], [1, 14], [1, 14], [0, 15], [0, 15], [0, 15], [0, 15], [0, 15], [0, 15], [1, 14], [1, 14], [2, 13], [3, 12], [5, 10]];
-const inside = (x: number, y: number) => y >= 0 && y < 16 && x >= SPANS[y][0] && x <= SPANS[y][1];
-function pixel(x: number, y: number): Px | null {
-  if (!inside(x, y)) return null;
-  if (!inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1)) return 'o';
-  if (x >= 6 && x <= 9 && y >= 6 && y <= 9) return x >= 7 && x <= 8 && y >= 7 && y <= 8 ? 'k' : 'o';
-  if (y === 7 || y === 8) return 'b';
-  if (y < 7) return (y === 2 && (x === 4 || x === 5)) || (y === 3 && x === 3) || (y === 4 && x === 2) ? 'h' : y === 6 || (x >= 12 && y >= 3) ? 's' : 't';
-  return y >= 13 || (x >= 12 && y >= 11) ? 'd' : 'w';
-}
-/** Each half's pixels as runs (x, y, width, kind), worked out once. */
-const HALF = [[0, 8], [8, 16]].map(([y0, y1]) => {
-  const runs: [number, number, number, Px][] = [];
-  for (let y = y0; y < y1; y++) for (let x = 0; x < 16; x++) {
-    const k = pixel(x, y);
-    if (!k) continue;
-    const last = runs.at(-1);
+/** What a pull comes in (owner 2026-11-21: the old ball read as a Pokéball): a buddy in a mystery egg, its spots in the light's
+ *  colour; an accessory in a treasure chest, the gem on its lock in the light's colour. 16 × 16 pixels, written top-down and
+ *  sat on the floor; the part that comes off (the egg's top, along a zigzag crack; the chest's lid) drawn apart from the rest
+ *  so it moves on its own. o outline, w white, h highlight, g grey, y/Y gold, b/B wood, a the light's colour (A darker). */
+type Vessel = 'egg' | 'chest';
+const VESSEL: Record<Vessel, { grid: readonly string[]; top: (r: number, c: number) => boolean }> = {
+  egg: {
+    grid: ['', '......oooo......', '.....owwwwo.....', '....owwwwwwo....', '...owhwwaawwo...', '..ohwwwaawwwwo..', '..owwwwwwwwwwo..', '.owwaawwwwwwwwo.', '.owaaaawwwwaawo.', '.owwaawwwwaaaao.', '.owwwwwwwwwaawo.', '.owwwwaawwwwwgo.', '..owwaaaawwwgo..', '..oggwaawwwggo..', '...ooggggggoo...', '.....oooooo.....'],
+    top: (r, c) => r < 8 + ((c >> 1) % 2),
+  },
+  chest: {
+    grid: ['', '', '..oooooooooooo..', '.obbbbbbbbbbbbo.', 'obBbbbbbbbbbbBbo', 'obBbbbbbbbbbbBbo', 'oyYyyyyaayyyyYyo', 'oooooooaaooooooo', 'obBbbbboobbbbBbo', 'obBbbbbbbbbbbBbo', 'oyYyyyyyyyyyyYyo', 'obBbbbbbbbbbbBbo', 'obBbbbbbbbbbbBbo', 'oBBBBBBBBBBBBBBo', 'oooooooooooooooo'],
+    top: (r) => r < 7,
+  },
+};
+/** A pixel's class: the lower-case letter, a capital its darker shade ("px-B" would be the same rule as "px-b" to a reader). */
+const pxClass = (k: string) => (k === k.toLowerCase() ? `px-${k}` : `px-${k.toLowerCase()} dk`);
+/** Each vessel's two parts (what comes off, then the rest) as runs (x, y, width, kind), worked out once. */
+const PARTS = Object.fromEntries((Object.keys(VESSEL) as Vessel[]).map((id) => {
+  const { grid, top } = VESSEL[id], pad = 16 - grid.length, parts: [number, number, number, string][][] = [[], []];
+  grid.forEach((row, r) => [...row].forEach((k, x) => {
+    if (k === '.') return;
+    const runs = parts[top(r, x) ? 0 : 1], y = r + pad, last = runs.at(-1);
     if (last && last[1] === y && last[3] === k && last[0] + last[2] === x) last[2]++; else runs.push([x, y, 1, k]);
-  }
-  return runs;
-});
-const Capsule = () => (
-  <span className="ps-capsule" aria-hidden="true">
-    {HALF.map((runs, i) => (
-      <svg key={i} className={i ? 'ps-half bottom' : 'ps-half top'} viewBox={`0 ${i * 8} 16 8`} shapeRendering="crispEdges">
-        {runs.map(([x, y, w, k]) => <rect key={`${x}.${y}`} className={`px-${k}`} x={x} y={y} width={w} height={1} />)}
-      </svg>
+  }));
+  return [id, parts];
+})) as Record<Vessel, [number, number, number, string][][]>;
+/** Which a pull comes in: its own banner's (a 10-pull is all one banner, but each is shown by its own). */
+const vesselOf = (s: Pick<Spend, 'banner'>, fallback: Banner): Vessel => ((s.banner ?? fallback) === 'acc' ? 'chest' : 'egg');
+/** The egg or the chest. The chest stays on after it opens, dimmed behind what it held: dimmed over a solid backing of its own
+ *  shape in the stage's black, so it reads as a dark chest and not as a see-through one with the rays across it. */
+const Container = ({ kind }: { kind: Vessel }) => (
+  <span className={`ps-vessel ${kind}`} data-vessel={kind} aria-hidden="true">
+    {PARTS[kind].map((runs, i) => (
+      <span key={i} className={i ? 'ps-part rest' : 'ps-part off'}>
+        {kind === 'chest' && (
+          <svg className="ps-back" viewBox="0 0 16 16" shapeRendering="crispEdges">
+            {runs.map(([x, y, w]) => <rect key={`${x}.${y}`} x={x} y={y} width={w} height={1} />)}
+          </svg>
+        )}
+        <svg className="ps-ink" viewBox="0 0 16 16" shapeRendering="crispEdges">
+          {runs.map(([x, y, w, k]) => <rect key={`${x}.${y}`} className={pxClass(k)} x={x} y={y} width={w} height={1} />)}
+        </svg>
+      </span>
     ))}
   </span>
 );
@@ -197,7 +213,7 @@ export function PullShow({ show, names, onClose, onOpen, again }: {
             {bits.slice(0, 6 + 4 * s.rarity).map((x, i) => <i key={i} style={{ '--dx': `${Math.round(x.dx * 0.8)}px`, '--dy': `${Math.round(x.dy * 0.8)}px`, animationDelay: `${(i * 97) % 620}ms` } as CSSProperties} />)}
           </span>
         )}
-        <span className="ps-cap"><span className="ps-shake"><Capsule /></span></span>
+        <span className="ps-cap"><span className="ps-shake"><Container kind={vesselOf(s, show.banner)} /></span></span>
         <span className="ps-bits">
           {bits.map((x, i) => <i key={i} className={`tone${x.tone}`} style={{ '--dx': `${x.dx}px`, '--dy': `${x.dy}px`, width: x.size, height: x.size, animationDelay: `${x.delay}ms` } as CSSProperties} />)}
         </span>

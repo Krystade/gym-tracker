@@ -5,12 +5,14 @@ import { notched } from './layout';
 import { iso } from './seed';
 import { ledgerOf, MULTI, pull, PULL, starter } from '../src/domain/buddies/gacha';
 import { FRAMES } from '../src/domain/buddies/anchors';
-import { BUDDIES, BUDDY, defaultName, type Rarity } from '../src/domain/buddies/roster';
+import { BUDDIES, BUDDY, defaultName, type Banner, type Rarity } from '../src/domain/buddies/roster';
 
 // Pulls up front (owner 2026-11-15): the ticket and each banner's pull, ten pulls and pity on the Buddies tab, and a pull's show
 // (ui/buddies/PullShow). A 10-pull spends tickets first, then points, shows each in turn, then all ten with what came back; a
 // single pull's show is long for a legendary and a tap skips to it; a duplicate says so. On the 13 mini, notch and home
-// indicator included. The roll is forced only by handing the app a chosen random seed (its one call for a 32-bit seed).
+// indicator included. A buddy comes in a mystery egg and an accessory in a treasure chest (owner 2026-11-21), the egg's spots
+// and the chest's lock gem in the light's colour as it climbs; the egg's top cracks off, the chest's lid stays part-open.
+// The roll is forced only by handing the app a chosen random seed (its one call for a 32-bit seed).
 
 const SHOTS = 'screenshots/buddies';
 mkdirSync(SHOTS, { recursive: true });
@@ -21,10 +23,11 @@ const points = async (page: Page) => Number((await page.locator('.bu-wallet').te
 const tickets = async (page: Page) => Number((await page.locator('.bu-tix').getAttribute('aria-label'))!.match(/^\d+/)?.[0] ?? 0);
 const banner = (page: Page, name: 'Buddies' | 'Accessories') => page.getByRole('region', { name: `${name} banner` });
 
-/** A seed whose single pull on the buddy banner, from a fresh pity, lands as `want` says (searched here, as the app rolls). */
-function seedFor(want: (got: string, rarity: Rarity) => boolean): number {
+/** A seed whose single pull on a banner (the buddies' unless said), from a fresh pity, lands as `want` says (searched here, as
+ *  the app rolls). */
+function seedFor(want: (got: string, rarity: Rarity) => boolean, on: Banner = 'buddy'): number {
   const l = ledgerOf([]);
-  for (let seed = 1; seed < 5_000_000; seed++) { const s = pull(l, 'buddy', 'pull', seed, 1, '2026-11-01'); if (want(s.got!, s.rarity)) return seed; }
+  for (let seed = 1; seed < 5_000_000; seed++) { const s = pull(l, on, 'pull', seed, 1, '2026-11-01'); if (want(s.got!, s.rarity)) return seed; }
   throw new Error('no seed');
 }
 
@@ -77,6 +80,8 @@ test('ten pulls: tickets first then points, said on the button; each in turn, th
   const show = page.getByRole('dialog', { name: `Your ${MULTI} pulls` });
   await expect(show).toBeVisible();
   await expect(show.locator('.ps-count')).toHaveText(`1 of ${MULTI}`);
+  await expect(show.locator('[data-vessel="egg"]')).toBeVisible(); // a buddy banner's: each in an egg, never a chest
+  await expect(show.locator('[data-vessel="chest"]')).toHaveCount(0);
   // A tap skips the first's animation; once it has landed a tap goes on to the next.
   await show.click();
   await expect(show).toHaveAttribute('data-phase', 'land');
@@ -84,6 +89,7 @@ test('ten pulls: tickets first then points, said on the button; each in turn, th
   await show.click();
   await expect(show.locator('.ps-count')).toHaveText(`2 of ${MULTI}`);
   await expect(show).not.toHaveAttribute('data-phase', 'land');
+  await expect(show.locator('[data-vessel="egg"]')).toBeVisible();
   await show.getByRole('button', { name: 'Skip all' }).click();
 
   const all = page.getByRole('dialog', { name: `Your ${MULTI} pulls: all ${MULTI}` });
@@ -121,16 +127,29 @@ test('one pull: a legendary charges long and a tap skips straight to it; a dupli
   await banner(page, 'Buddies').getByRole('button', { name: /^Pull with ticket/ }).click();
   const show = page.getByRole('dialog', { name: 'Your pull' });
   await expect(show).toBeVisible();
+  await expect(show.locator('[data-vessel="egg"]')).toBeVisible();
+  await expect(show.locator('[data-vessel="chest"]')).toHaveCount(0);
   await page.waitForTimeout(1800);
   await expect(show).toHaveAttribute('data-phase', 'charge');
+  // The spots are the light's colour as it climbs (epic's purple by now), and orange at the last step before the burst.
   await page.screenshot({ path: `${SHOTS}/legendary-charge.png` });
+  const spots = show.locator('.egg .px-a').first();
+  await expect(show).toHaveClass(/\bt[34]\b/);
+  await expect(spots).toHaveCSS('fill', /^rgb\((176, 124, 255|255, 143, 61)\)$/);
+  await expect(show).toHaveClass(/\bt4\b/, { timeout: 1000 });
+  await expect(spots).toHaveCSS('fill', 'rgb(255, 143, 61)');
   await expect(show).toHaveAttribute('data-phase', 'burst', { timeout: 2000 });
-  await page.waitForTimeout(260);
+  await page.waitForTimeout(90);
+  await page.screenshot({ path: `${SHOTS}/legendary-crack.png` }); // the top just cracked off along the zigzag
+  await page.waitForTimeout(120);
   await page.screenshot({ path: `${SHOTS}/legendary-burst.png` });
   await expect(show).toHaveAttribute('data-phase', 'land');
   await expect(show.getByRole('status')).toContainText('Legendary buddy');
   await expect(show.getByRole('status').getByText('NEW!', { exact: true })).toBeVisible();
   await page.waitForTimeout(1000);
+  // Cracked open: the top flown off and gone, the rest dropped away, what it held in their place.
+  await expect(show.locator('.egg .ps-part.off')).toHaveCSS('opacity', '0');
+  await expect(show.locator('.egg .ps-part.rest')).toHaveCSS('opacity', '0');
   await page.screenshot({ path: `${SHOTS}/legendary-landed.png` });
   await show.getByRole('button', { name: 'Done' }).click();
   await expect(show).toHaveCount(0);
@@ -183,4 +202,35 @@ test('one pull: a legendary charges long and a tap skips straight to it; a dupli
   }
   await page.getByRole('button', { name: defaultName(tallId), exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${SHOTS}/collection-counts.png` });
+});
+
+test('an accessory pull comes in a treasure chest: its gem climbs to the rarity, the lid creaks up and stays part-open', async ({ page }) => {
+  test.setTimeout(90_000);
+  await setUp(page);
+  const epic = seedFor((_, r) => r === 3, 'acc');
+  await page.evaluate((x) => { (window as unknown as { __seed: number }).__seed = x; }, epic);
+  await banner(page, 'Accessories').getByRole('button', { name: /^Pull with ticket/ }).click();
+  const show = page.getByRole('dialog', { name: 'Your pull' });
+  await expect(show.locator('[data-vessel="chest"]')).toBeVisible();
+  await expect(show.locator('[data-vessel="egg"]')).toHaveCount(0);
+  const lid = show.locator('.chest .ps-part.off'), gem = show.locator('.chest .px-a').first();
+  // Grey at the drop, purple by the burst; the lid shut till then.
+  await expect(gem).toHaveCSS('fill', 'rgb(154, 164, 178)');
+  await expect(lid).toHaveCSS('transform', 'none');
+  await expect(show).toHaveAttribute('data-phase', 'burst', { timeout: 3000 });
+  await expect(gem).toHaveCSS('fill', 'rgb(176, 124, 255)');
+  await page.waitForTimeout(470); // the lid up and settling, the light pouring out, the chest not yet dimmed
+  await page.screenshot({ path: `${SHOTS}/chest-epic-open.png` });
+  await expect(show).toHaveAttribute('data-phase', 'land');
+  await expect(show.getByRole('status')).toContainText(/^Epic /);
+  await page.waitForTimeout(1300);
+  // Settled part-open (up and tipped back, not flown off), and the chest dimmed behind what it held.
+  const m = (await lid.evaluate((el) => getComputedStyle(el).transform)).match(/^matrix\(([^)]+)\)$/)![1].split(',').map(Number);
+  expect(m[5]).toBeLessThan(-20); // up
+  expect(m[1]).toBeLessThan(-0.1); // tipped back
+  await expect(lid).toHaveCSS('opacity', '1');
+  expect(Number(await show.locator('.chest .ps-part.rest .ps-ink').evaluate((el) => getComputedStyle(el).opacity))).toBeLessThan(0.5);
+  await page.screenshot({ path: `${SHOTS}/chest-epic-landed.png` });
+  await show.getByRole('button', { name: 'Done' }).click();
+  await expect(show).toHaveCount(0);
 });

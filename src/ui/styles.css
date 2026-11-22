@@ -1609,8 +1609,9 @@ h1 + .card > h2#notify-h { position: absolute; width: 1px; height: 1px; padding:
   padding: calc(var(--sat) + 8px) calc(16px + var(--sar)) calc(var(--sab) + 16px) calc(16px + var(--sal));
   background: var(--ps-bg); color: var(--text);
 }
-.ps.t0 { --cap: #9aa4b2; --cap-d: #6f7784; } .ps.t1 { --cap: #4cc38a; --cap-d: #2f8c60; } .ps.t2 { --cap: #4c9bff; --cap-d: #2f6cc4; }
-.ps.t3 { --cap: #b07cff; --cap-d: #7d50c8; } .ps.t4 { --cap: #ff8f3d; --cap-d: #c9601c; }
+/* The light's colour as the charge climbs, and that colour darkened (× 0.62) for the vessel's shaded pixels. */
+.ps.t0 { --cap: #9aa4b2; --cap-d: #5f666e; } .ps.t1 { --cap: #4cc38a; --cap-d: #2f7956; } .ps.t2 { --cap: #4c9bff; --cap-d: #2f609e; }
+.ps.t3 { --cap: #b07cff; --cap-d: #6d4d9e; } .ps.t4 { --cap: #ff8f3d; --cap-d: #9e5926; }
 .ps-top { position: relative; z-index: 3; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-height: 44px; }
 .ps-count { margin-right: auto; color: var(--text-2); font-weight: 700; font-variant-numeric: tabular-nums; }
 .ps-skip { border-radius: var(--r-pill); background: #1b1c20; color: var(--text-2); font-weight: 600; }
@@ -1626,12 +1627,15 @@ h1 + .card > h2#notify-h { position: absolute; width: 1px; height: 1px; padding:
 @keyframes ps-breathe { from { transform: scale(0.84); } to { transform: scale(1.04); } }
 .p-drop .ps-glow.on { animation: ps-glow-in 380ms var(--out) both; }
 @keyframes ps-glow-in { from { opacity: 0; transform: scale(0.4); } }
-/* The capsule: drops in on a spring, shakes as it charges (harder the rarer), swells, then its halves fly apart. */
-.ps-cap, .ps-shake, .ps-capsule { display: block; }
-.ps-capsule { width: 128px; }
-.ps-half { display: block; width: 128px; height: 64px; }
-.px-o { fill: #111216; } .px-t { fill: var(--cap); } .px-s { fill: var(--cap-d); } .px-h { fill: #fff; }
-.px-b { fill: #2a2c35; } .px-k { fill: #fff; } .px-w { fill: #e9ecf2; } .px-d { fill: #b3b9c8; }
+/* The egg or chest: drops in on a spring, shakes as it charges (harder the rarer), swells, then opens its own way. Two layers
+   of one 16 × 16 grid, each turning about the grid's centre, as the owner's chosen mock-up (2026-11-21) moved them. */
+.ps-cap, .ps-shake, .ps-vessel { display: block; }
+.ps-vessel { position: relative; width: 128px; height: 128px; }
+.ps-part, .ps-part > svg { position: absolute; inset: 0; display: block; width: 128px; height: 128px; }
+.ps-back { fill: var(--ps-bg); }
+.px-o { fill: #1d1b26; } .px-w { fill: #f3f1f7; } .px-h { fill: #fff; } .px-g { fill: #a3a7b5; } .px-g.dk { fill: #5d6172; }
+.px-y { fill: #f1c04a; } .px-y.dk { fill: #b98426; } .px-b { fill: #a8703f; } .px-b.dk { fill: #6f4423; }
+.px-a { fill: var(--cap); } .px-a.dk { fill: var(--cap-d); }
 .p-drop .ps-cap { animation: ps-drop 400ms var(--spring) both; }
 @keyframes ps-drop { from { transform: translateY(-460px); } }
 .p-charge .ps-cap { animation: ps-swell var(--charge) cubic-bezier(0.55, 0, 0.9, 0.5) both; }
@@ -1643,10 +1647,22 @@ h1 + .card > h2#notify-h { position: absolute; width: 1px; height: 1px; padding:
 :is(.r3, .r4).p-charge .ps-shake { animation: ps-shake-hard 105ms linear infinite; }
 @keyframes ps-shake { 25% { transform: translateX(-2px) rotate(-6deg); } 75% { transform: translateX(2px) rotate(6deg); } }
 @keyframes ps-shake-hard { 20% { transform: translate(-4px, 1px) rotate(-9deg); } 40% { transform: translate(3px, -2px) rotate(6deg); } 60% { transform: translate(-3px, 0) rotate(-6deg); } 80% { transform: translate(4px, -1px) rotate(9deg); } }
-:is(.p-burst, .p-land) .ps-half.top { animation: ps-top-off 560ms var(--out) forwards; }
-:is(.p-burst, .p-land) .ps-half.bottom { animation: ps-bottom-off 560ms var(--out) forwards; }
-@keyframes ps-top-off { 60% { opacity: 1; } to { opacity: 0; transform: translate(-46px, -150px) rotate(-38deg); } }
-@keyframes ps-bottom-off { 60% { opacity: 1; } to { opacity: 0; transform: translate(34px, 120px) rotate(24deg); } }
+/* The egg: its top cracks off along the zigzag, up and turning (further for an epic or better); the rest drops away. */
+:is(.p-burst, .p-land) .egg .ps-part.off { animation: ps-egg-top 620ms cubic-bezier(0.2, 0.8, 0.4, 1) forwards; }
+:is(.r3, .r4):is(.p-burst, .p-land) .egg .ps-part.off { animation-name: ps-egg-top-far; }
+:is(.p-burst, .p-land) .egg .ps-part.rest { animation: ps-egg-rest 520ms 80ms ease forwards; }
+@keyframes ps-egg-top { to { opacity: 0; transform: translate(-8px, -90px) rotate(-38deg); } }
+@keyframes ps-egg-top-far { to { opacity: 0; transform: translate(-14px, -90px) rotate(-38deg); } }
+@keyframes ps-egg-rest { to { opacity: 0; transform: translateY(14px) scale(0.96); } }
+/* The chest: the lid creaks up past open, settles part-open as the light pours out, and the chest dims behind what it held. */
+:is(.p-burst, .p-land) .chest .ps-part.off { animation: ps-lid 560ms forwards; }
+:is(.p-burst, .p-land) .chest .ps-ink { animation: ps-chest-dim 1200ms forwards; }
+@keyframes ps-lid {
+  from { transform: none; animation-timing-function: cubic-bezier(0.3, 1.3, 0.5, 1); }
+  55% { transform: translate(-4px, -40px) rotate(-18deg); animation-timing-function: ease-in-out; }
+  to { transform: translate(-3px, -34px) rotate(-14deg); }
+}
+@keyframes ps-chest-dim { 70% { opacity: 1; } to { opacity: 0.35; } }
 /* The burst: a ring (two for an epic or better), a spray of square pixels, a flash, and turning rays behind. */
 .ps-ring { width: 150px; height: 150px; border-radius: 50%; border: 6px solid var(--r); opacity: 0; }
 .ps-ring.two { border-width: 3px; border-color: #fff; }
