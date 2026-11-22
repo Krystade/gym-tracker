@@ -35,7 +35,18 @@ test('the test prompt shows on Today’s card; “Set up the test” logs a test
   await expect(prompt).toHaveText(/^Time for a test: \d+ lb for as many good reps as you can \(about \d+\), with Test ticked\./);
   const lb = Number((await prompt.innerText()).match(/test: (\d+) lb/)![1]);
   const reps = Number((await prompt.innerText()).match(/about (\d+)/)![1]);
-  await card.scrollIntoViewIfNeeded();
+  // Its "Test due" pill beside the name, on the name's line; a tap brings the note into view.
+  const badge = card.locator('.card-head').getByRole('button', { name: 'Test due' });
+  await expect(badge).toBeVisible();
+  const name = (await card.locator('.card-head > .link').boundingBox())!, pill = (await badge.boundingBox())!;
+  expect(pill.height).toBeGreaterThanOrEqual(44);
+  expect(Math.abs(pill.y + pill.height / 2 - (name.y + name.height / 2))).toBeLessThan(6);
+  expect(pill.x).toBeGreaterThan(name.x + name.width - 1);
+  await card.locator('.card-head').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${SHOTS}/0-card-head.png` });
+  await badge.click();
+  await expect(prompt).toBeInViewport();
+  await expect(prompt).toBeFocused();
   await page.screenshot({ path: `${SHOTS}/1-card-prompt.png` });
 
   await prompt.getByRole('button', { name: 'Set up the test' }).click();
@@ -52,6 +63,7 @@ test('the test prompt shows on Today’s card; “Set up the test” logs a test
   await expect(row).toHaveCount(1);
   await expect(row).toContainText('test');
   await expect(prompt).toHaveCount(0);
+  await expect(badge).toHaveCount(0);
   // The form is a plain one again: Test not ticked.
   await card.getByRole('button', { name: /^Details/ }).click();
   await expect(card.getByRole('group', { name: 'Flags' }).getByRole('button', { name: 'Test', exact: true })).toHaveAttribute('aria-pressed', 'false');
@@ -64,12 +76,15 @@ test('“Not now” on the card quiets it there and on the lift’s page, after 
   let card = await benchCard(page);
   const prompt = () => page.locator('[data-card="bench press"]').getByRole('group', { name: 'Time for a test' });
   await expect(prompt()).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Test due' })).toBeVisible();
   await prompt().getByRole('button', { name: 'Not now' }).click();
   await expect(prompt()).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Test due' })).toHaveCount(0);
   await page.reload();
   card = await benchCard(page);
   await expect(card.getByRole('button', { name: /^Add set/ })).toBeVisible(); // loaded: a missing prompt isn't a slow render
   await expect(prompt()).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Test due' })).toHaveCount(0);
   await card.getByRole('button', { name: 'Bench Press', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Bench Press', level: 1 })).toBeVisible();
   await expect(page.getByText('Time for a test')).toHaveCount(0);

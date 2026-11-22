@@ -173,6 +173,16 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   const formKey = `${exercise}@${date}`;
   /** The new-set form starts over, from the test's numbers or back from them: what was typed in it goes. */
   const setUpTest = (on: boolean) => { clearDraft(activeProfileDb(), formKey); setTesting(on); };
+  // Its "Test due" pill beside the name (owner, 2026-11-21): a tap brings the note into view, opening the card (or leaving an
+  // edit) first where that hides it. A new request each tap.
+  const testDueNow = !!due && !snoozedTest;
+  const testNote = useRef<HTMLDivElement>(null);
+  const [seekTest, setSeekTest] = useState(0);
+  useEffect(() => {
+    if (!seekTest) return;
+    testNote.current?.scrollIntoView({ block: 'center' });
+    testNote.current?.focus({ preventScroll: true });
+  }, [seekTest]);
   const initial: Omit<SetFormValue, 'weight'> & { weight: number | null } = testing && due ? { weight: due.weight, reps: due.reps, flags: [...pulley, 'test'] }
     : next ? { weight: next.weight, reps: next.reps, flags: pulley }
     : target ? { weight: target.weight, reps: aim(0, target.weight) ?? target.reps, flags: pulley }
@@ -262,7 +272,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     const offer = on ? [...left.filter((x) => sameExercise(x, on)), ...left.filter((x) => !sameExercise(x, on))] : left;
     return (
       <section className="card folded" data-card={exercise.toLowerCase()} onClickCapture={onTouch}>
-        <FoldLine name={exercise} done={complete} count={foldText} pr={today.some((x) => prs.has(x.id))} best={top ? fmtSet(top) : null} onClick={unfold} />
+        <FoldLine name={exercise} done={complete} count={foldText} pr={today.some((x) => prs.has(x.id))} best={top ? fmtSet(top) : null} test={testDueNow}
+          onClick={() => { unfold(); if (testDueNow) setSeekTest((n) => n + 1); }} />
         {pr && <p role="status" className="pr">{pr}</p>}
         <AchLines us={ach.lines} onOpen={openAch} />
         {justDone && onGo && left.length > 0 && (
@@ -279,6 +290,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     <section ref={box} className="card" data-card={exercise.toLowerCase()} onClickCapture={onTouch}>
       <header className="card-head">
         <button className="link" onClick={() => onOpen(exercise)}>{exercise}</button>
+        {testDueNow && <button type="button" className="test-badge" onClick={() => { setEditing(null); setSeekTest((n) => n + 1); }}><span className="tag test-tag">Test due</span></button>}
         {/* Every open card folds from its head (owner, 2026-10-19: a card could only be closed by finishing it). */}
         <button type="button" className="mini icon card-fold" aria-expanded="true" aria-label={`Fold ${exercise}`} onClick={() => { setEditing(null); setShut(true); }}>
           <Icon name="chev-down" size={22} sw={2} />
@@ -321,7 +333,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
         </p>
       )}
       {due && !snoozedTest && !editing && (
-        <div className="card-test" role="group" aria-label="Time for a test">
+        <div ref={testNote} tabIndex={-1} className="card-test" role="group" aria-label="Time for a test">
           <p><b>Time for a test:</b> {due.body ? <><b>bodyweight</b> for as many good reps as you can (about {due.reps})</>
             : due.jump ? <>this first set at <b>{fmtWeight(due.weight)} lb</b>, as many good reps as you can</>
             : <><b>{fmtWeight(due.weight)} lb</b> for as many good reps as you can (about {due.reps})</>}, with <b>Test</b> ticked.</p>

@@ -498,7 +498,8 @@ li.set-row { display: flex; align-items: center; gap: 8px; }
 .next-set { font-size: var(--fs-body); font-weight: 600; font-variant-numeric: tabular-nums; margin: 8px 0 4px; }
 .next-set-label { color: var(--accent-text); }
 .tag.est { font-style: italic; }
-.tag.pr-tag { color: var(--accent); font-weight: 700; }
+.tag.pr-tag, .tag.test-tag { color: var(--accent); font-weight: 700; }
+.fold-name .test-tag { white-space: nowrap; vertical-align: 1px; }
 .summary-lifts { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
 .summary-lifts li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
 .summary-lifts .up { color: var(--ok); }
@@ -577,6 +578,9 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 .card-test { margin: 8px 0 4px; padding: 10px 12px; border-radius: var(--r-md, 12px); background: var(--fill); display: grid; gap: 6px; }
 .card-test p { margin: 0; font-size: var(--fs-sub); line-height: 1.35; }
 .card-test p > b:first-child { color: var(--accent-text); }
+/* "Test due" beside the lift's name: the PR pill's look, in a 44px tap that brings the note up. */
+.card-head .test-badge { align-self: center; min-height: 44px; margin: 0 auto 0 -4px; padding: 0 4px; background: none; border-radius: var(--r-pill); }
+.card-test:focus { outline: none; }
 .card-test-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .card-test .mini.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; border-radius: var(--r-pill); }
 .card-test .mini:not(.primary) { border-radius: var(--r-pill); color: var(--accent-text); }

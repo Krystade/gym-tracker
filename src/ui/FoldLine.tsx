@@ -5,11 +5,14 @@ import { Icon } from './icons';
  * and PR. The status glyph on the left (a tick done, a ring not), the name on the first line with all its width, under it the
  * count and the PR chip, the best set at its right; the chevron at the right edge, centred down the line.
  */
-export function FoldLine({ name, done, count, pr, best, onClick }: { name: string; done: boolean; count: string; pr: boolean; best: string | null; onClick: () => void }) {
+export function FoldLine({ name, done, count, pr, best, onClick, test = false }: { name: string; done: boolean; count: string; pr: boolean; best: string | null; onClick: () => void;
+  /** A test is due on the lift (item 05): its pill beside the name; the tap that opens the card shows the note. */
+  test?: boolean }) {
   return (
     <button className="fold-line" aria-expanded="false" aria-label={`Show ${name}`} onClick={onClick}>
       <span className={done ? 'fold-check' : 'fold-check todo'} aria-hidden="true">{done && <Icon name="check" size={16} sw={2.5} />}</span>
-      <b className="fold-name">{name}</b>
+      {/* On the name's line: the count's line has no room for it at 320px. */}
+      <b className="fold-name">{name}{test && <> <span className="tag test-tag">Test due</span></>}</b>
       <span className="fold-meta">
         <span className={done ? 'ok' : 'muted'}>{count}</span>
         {pr && <span className="tag pr-tag">PR</span>}
