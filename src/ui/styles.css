@@ -91,9 +91,12 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
 .rest-progress { position: absolute; left: 0; top: -1px; height: 2px; width: calc(var(--p, 0) * 100%); background: var(--accent); }
 .rest-timer .rest-main { flex: 1; min-width: 0; display: flex; justify-content: flex-start; align-items: center; gap: 10px; min-height: 48px; padding: 0 4px 0 8px; text-align: left; font-weight: 400; }
 .rest-timer .rest-main .ic { color: var(--accent-text); }
-.rest-timer .rest-main b { font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.rest-words { display: grid; gap: 0; line-height: 1.2; min-width: 0; }
+/* The time never gives up width (owner, 2026-11-21: squeezed, "0:40" ran into "Rest"): the words beside it take what's left. */
+.rest-timer .rest-main b { flex: none; white-space: nowrap; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.rest-words { flex: 1; display: grid; gap: 0; line-height: 1.2; min-width: 0; }
 .rest-words > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The line under "Rest" wraps to a second line rather than cut ("Set 2 next" beside a 12:34). */
+.rest-words > span + span { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .rest-words > span:first-child { font-weight: 600; }
 /* −30 s and +30 s: 44px taps, narrow enough that the time and its words keep their room at 375px. */
 .rest-timer .mini:not(.icon) { border-radius: var(--r-pill); color: var(--accent-text); padding: 0 10px; white-space: nowrap; flex: none; }
@@ -113,6 +116,23 @@ button + p, .form-actions + p, .photo-add + p, p.warn { margin-top: 10px; }
 .rest-timer.has-next { flex-wrap: wrap; row-gap: 0; }
 .rest-next { flex: 1 0 100%; order: 1; margin: -2px 0 4px; padding: 0 0 0 8px; line-height: 1.3; overflow-wrap: anywhere; }
 .rest-next b { font-weight: 600; }
+.rest-no-alert { order: 2; }
+/* The rest's end, with the app open: a banner under the notch, over everything (sheets, a pull's show), as iOS shows a
+   notification; a tap goes to the lift, a swipe up puts it away. */
+.rest-banner {
+  position: fixed; z-index: 50; top: calc(var(--sat) + 8px); left: calc(8px + var(--sal)); right: calc(8px + var(--sar)); max-width: 480px; margin: 0 auto;
+  touch-action: none; animation: rest-banner-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+.rest-banner > button {
+  display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%; min-height: 64px; padding: 10px 16px 10px 12px; text-align: left;
+  background: var(--surface-2); color: var(--text); border-radius: var(--r-lg); box-shadow: 0 12px 40px rgb(0 0 0 / 0.6), 0 0 0 1px var(--hairline);
+}
+.rest-banner-ic { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); }
+.rest-banner-words { display: grid; min-width: 0; line-height: 1.25; }
+.rest-banner-words b { font-weight: 600; }
+.rest-banner-words span { color: var(--text-2); font-size: var(--fs-sub); overflow-wrap: anywhere; }
+@keyframes rest-banner-in { from { translate: 0 calc(-100% - var(--sat) - 16px); } }
+@media (prefers-reduced-motion: reduce) { .rest-banner { animation: none; } }
 /* The "?": the bar's leading glyph, a 44px tap round it that reaches into the bar's padding and the gap. */
 .rest-why-btn { flex: none; display: grid; place-items: center; width: 44px; min-height: 44px; margin: 0 -8px; padding: 0; background: none; color: var(--accent-text); border-radius: var(--r-pill); }
 .rest-why-btn[aria-expanded='true'] { background: var(--fill); }
@@ -553,6 +573,13 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 .note-card > span:first-child { color: var(--accent-text); font-weight: 600; }
 .test-due { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .test-due span { align-self: stretch; }
+/* The same, compact on Today's card, above the form it sets up. */
+.card-test { margin: 8px 0 4px; padding: 10px 12px; border-radius: var(--r-md, 12px); background: var(--fill); display: grid; gap: 6px; }
+.card-test p { margin: 0; font-size: var(--fs-sub); line-height: 1.35; }
+.card-test p > b:first-child { color: var(--accent-text); }
+.card-test-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.card-test .mini.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; border-radius: var(--r-pill); }
+.card-test .mini:not(.primary) { border-radius: var(--r-pill); color: var(--accent-text); }
 
 /* Program */
 /* Today's header: the day arrows on a nav row, the date as the large title under them. Program left the header for the plan's

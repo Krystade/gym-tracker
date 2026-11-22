@@ -1,5 +1,6 @@
 import { isHold, isHoldLift } from './care';
-import { defaultSettings, isTest, isWorking, nextTarget, rangePart, type ExerciseSettings, type Target, type TargetPart } from './progression';
+import { defaultSettings, isTest, isWorking, nextTarget, rangePart, TARGET_RULES, type ExerciseSettings, type Target, type TargetPart } from './progression';
+import { LIGHT } from './learn/deload';
 import type { DayPlan, Program } from './program';
 import { daySets, sameExercise, sessionsFor, learnable } from './stats';
 import type { SetEntry } from './types';
@@ -15,6 +16,8 @@ export interface Suggestion {
   unit: '' | ' s';
   /** Same weight, more reps: each set's own target, one per set (`reps` is the lowest), and the rule in a few words. */
   perSet?: number[]; why?: string;
+  /** The top of the range progression works to (the learned one where it moved it, else the lift's own); absent with no history. */
+  top?: number;
   /** The inputs that made it, a line each, for the card's "Why this weight" (progression Target.parts), and the sets' own line. */
   parts: TargetPart[];
 }
@@ -98,7 +101,7 @@ export function suggest(entries: SetEntry[], exercise: string, st: ExerciseSetti
     : `Same weight; beat last time with ${t.reps}${unit}+ on every set.`;
   // One target a set: the plan's count, or last time's; a set past last time's aims at the last one's number.
   const perSet = t.perSet && Array.from({ length: clamped }, (_, i) => t.perSet![Math.min(i, t.perSet!.length - 1)]);
-  return { unit, weight: t.weight, reps: perSet ? Math.min(...perSet) : t.reps, repMax: st.repMax, sets: clamped, setsFrom, kind: t.kind, reason,
+  return { unit, weight: t.weight, reps: perSet ? Math.min(...perSet) : t.reps, repMax: st.repMax, top, sets: clamped, setsFrom, kind: t.kind, reason,
     warmups: warmAlready(entries, exercise, date) ? [] : warmups(t.weight, exercise), ...(perSet && { perSet, why: t.why }),
     parts: t.kind === 'light' ? t.parts : [...t.parts, setsPart] };
 }
@@ -137,6 +140,12 @@ export interface NextSet { weight: number; reps: number; extra: boolean; learned
  * in case I want to do more than planned"): its weight, its reps less the learned within-session drop (setDrop); without one,
  * less the step the day's targets take between those sets; without those, the same reps. `done`: today's sets of the lift, in
  * the order done. A test is strength, not a set to aim from, and not one of the sets planned. Null before a training set.
+ *
+ * Reps in reserve (owner, 2026-11-21: 130 × 10 at 4+ in reserve, then "9"; it should be about 12): the last set's reps and
+ * its logged RIR ("4+" counted as 4) are what it could have done; less the drop, that's the next set's; and the aim leaves the
+ * reserve the targets aim for (TARGET_RULES.plusOneRir, 2; a light week's LIGHT.rir, 3). Only a reserve past the aim raises
+ * the set, so 0–2 in reserve is the rule above unchanged; and a raise never takes it past the range's top (more reps there are
+ * the next weight's job: the weight itself goes up only by the session rules). No RIR logged, or a hold: the rule above.
  */
 export function nextSet(entries: readonly SetEntry[], exercise: string, date: string, s: Suggestion, done: readonly SetEntry[]): NextSet | null {
   entries = learnable(entries); // the log without sets marked not used (stats.learnable)
@@ -144,12 +153,29 @@ export function nextSet(entries: readonly SetEntry[], exercise: string, date: st
   const last = training.findLast((x) => x.loggedAt) ?? training.at(-1);
   if (!last || last.reps == null) return null;
   const learned = s.unit ? null : setDrop(entries, exercise, date, working.length);
-  const i = training.length, plan = s.perSet && s.weight === last.weight && i < s.perSet.length ? Math.max(0, s.perSet[i - 1] - s.perSet[i]) : 0;
+  const sameWeight = !!s.perSet && s.weight === last.weight;
+  const i = training.length, plan = sameWeight && i < s.perSet!.length ? Math.max(0, s.perSet![i - 1] - s.perSet![i]) : 0;
   const d = learned ?? plan;
   // The number the note says: last set's less the drop (a hold of 47 s again is 47 s, not 45).
-  const reps = Math.max(1, Math.round(last.reps - d));
+  const base = Math.max(1, Math.round(last.reps - d));
   const half = Math.round(d * 2) / 2;
+  const extra = i >= s.sets;
+  const aimRir = s.kind === 'light' ? LIGHT.rir : TARGET_RULES.plusOneRir;
+  const rir = s.unit || last.rir == null ? null : Math.min(4, Math.max(0, last.rir));
+  const top = s.top ?? s.repMax;
+  const raised = rir != null && rir > aimRir ? Math.max(1, Math.round(last.reps + rir - d - aimRir)) : base;
+  // A set already at or past the top isn't raised further: the rule above, as it was.
+  if (raised > base && base < top) {
+    const capped = raised > top;
+    const reps = capped ? top : raised;
+    const held = `${last.reps} with ${rir! >= 4 ? '4+' : rir} in reserve last set`;
+    const dropBy = learned != null ? (half > 0 ? `, less about ${half} as your sets drop` : '') : plan > 0 ? `, less ${plan} as today’s targets step down` : '';
+    const planned = sameWeight && !extra ? s.perSet![Math.min(i, s.perSet!.length - 1)] : null;
+    const why = capped ? `${held}: ${reps}, the top of your range; past it the weight goes up instead`
+      : `${held}${dropBy}: about ${reps}, leaving ${aimRir}` + (planned === reps ? `, as today’s plan has` : '');
+    return { weight: last.weight, reps, extra, learned: learned != null, why };
+  }
   const why = learned != null ? (half > 0 ? `${last.reps}${s.unit} less about ${half}: your sets drop that much` : `${last.reps}${s.unit} again: your sets hold`)
     : plan > 0 ? `${last.reps}${s.unit} less ${plan}, as today’s targets step down` : `${last.reps}${s.unit} again, as your last set`;
-  return { weight: last.weight, reps, extra: i >= s.sets, learned: learned != null, why };
+  return { weight: last.weight, reps: base, extra, learned: learned != null, why };
 }

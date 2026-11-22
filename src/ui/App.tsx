@@ -43,6 +43,8 @@ import { PasteScreen } from './PasteScreen';
 import { ProgramScreen } from './ProgramScreen';
 import { localDate } from '../domain/ids';
 import { TodayScreen } from './TodayScreen';
+import { askForLift, RestBanner } from './RestTimer';
+import { closeSheets } from './useSheet';
 import { LogScreen, isLogView, type LogView } from './LogScreen';
 import { BuddiesScreen, heldOf, nameOf } from './BuddiesScreen';
 import { useBuddies } from '../state/useBuddies';
@@ -195,6 +197,8 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
       {thread && me && <ThreadSheet key={thread.uid} me={me} friend={thread} gyms={gyms} onClose={() => setThread(null)} onChanged={bumpNews}
         onViewLog={(f) => { setThread(null); nav.view(f); }} />}
       {tour && <Walkthrough onClose={() => setTour(false)} />}
+      {/* The rest's end, over any screen: a tap closes what's open and goes to the lift's card on Today. */}
+      <RestBanner onGo={(lift) => { closeSheets(); setThread(null); setViewing(null); setComparing(false); closeAll(); setTab('today'); askForLift(lift); }} />
       <nav className="tabs" aria-label="Sections">
         {TABS.map(([t, label]) => (
           <button key={t} data-tour={t} aria-current={current(t) ? 'page' : undefined} onClick={() => { setTab(t); setViewing(null); setComparing(false); if (t === 'today') setLogDay(null); closeAll(); }}>

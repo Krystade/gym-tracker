@@ -16,6 +16,11 @@ const SLOP = 8; // px before a touch is a drag at all, so a tap stays a tap
 /** A drag that starts here is the field's (the caret, a selection, a slider), never the sheet's. */
 const OWN = 'input, textarea, select, [contenteditable]:not([contenteditable=false])';
 
+/** Every open sheet's close, so something outside them (the rest banner's tap) can close them all. */
+const closers = new Set<{ current: () => void }>();
+/** Closes every open sheet, as its own close would (a swipe down, its Done). */
+export const closeSheets = () => { for (const c of [...closers]) c.current(); };
+
 let open = 0, keptY = 0, drift = false, from: { x: number; y: number } | null = null;
 const overflows = (o: string) => o === 'auto' || o === 'scroll';
 /** Something from `el` up (short of the page itself) can scroll the way a finger moved by dx, dy from where it went down. */
@@ -79,6 +84,7 @@ export function useSheet<T extends HTMLElement>(onClose: () => void): RefObject<
   const ref = useRef<T>(null);
   const close = useRef(onClose);
   close.current = onClose;
+  useEffect(() => { closers.add(close); return () => { closers.delete(close); }; }, []);
   useEffect(() => {
     const el = ref.current;
     lock();

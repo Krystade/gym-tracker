@@ -32,6 +32,9 @@ import { useCardFold } from '../state/cardFold';
 import { AchLines } from './AchievementsSheet';
 import { WhyWeightSheet } from './WhyWeight';
 import { useAchLines, useAchOpen } from '../state/useAchievements';
+import { testDue } from '../domain/estimators';
+import { clearDraft } from '../state/drafts';
+import { activeProfileDb } from '../db/db';
 
 const TARGET_LEAD: Partial<Record<string, string>> = { increase: 'Go up: ', test: 'From your test: ', carry: 'Estimate: ', hold: 'Hold: ', ease: 'Lighter: ', light: 'Light week: ' };
 /** A target as its card's line says it: kind, each set's reps or sets × reps, and the load ("Go up: 3 × 8+ · 140 lb"). */
@@ -158,8 +161,20 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   const next = nextSet(store.entries, exercise, date, sug, today);
   /** The next set as it would be with `v` just saved (the log here doesn't have it yet). */
   const nextAfter = (v: SetFormValue) => (v.flags.includes('warmup') || v.flags.includes('test') ? undefined
-    : nextSet(store.entries, exercise, date, sug, [...today, { id: '', date, seq: Date.now(), exercise, setNo: 0, weight: v.weight, reps: v.reps, flags: v.flags, source: 'app', loggedAt: new Date().toISOString() }]));
-  const initial: Omit<SetFormValue, 'weight'> & { weight: number | null } = next ? { weight: next.weight, reps: next.reps, flags: pulley }
+    : nextSet(store.entries, exercise, date, sug, [...today, { id: '', date, seq: Date.now(), exercise, setNo: 0, weight: v.weight, reps: v.reps, rir: v.rir, flags: v.flags, source: 'app', loggedAt: new Date().toISOString() }]));
+  // Item 05 where he logs (owner, 2026-11-21: "Time for a test" was only on the lift's own page, which he never saw): the same
+  // rule (testDue, today's target only before the day's first set, as there), the same 14-day "Not now", and a tap that sets up
+  // the form for it: the test's weight and reps with Test ticked. Today only: a past day's card is for sets already done.
+  const due = hold || date !== realToday ? null : testDue(store.entries, exercise, date, st, training.length ? null : sug);
+  const snoozedTest = !!st.testSnoozedUntil && date < st.testSnoozedUntil;
+  const [testing, setTesting] = useState(false);
+  // The test logged (or no longer due): back to the plain form.
+  if (testing && (!due || snoozedTest)) setTesting(false);
+  const formKey = `${exercise}@${date}`;
+  /** The new-set form starts over, from the test's numbers or back from them: what was typed in it goes. */
+  const setUpTest = (on: boolean) => { clearDraft(activeProfileDb(), formKey); setTesting(on); };
+  const initial: Omit<SetFormValue, 'weight'> & { weight: number | null } = testing && due ? { weight: due.weight, reps: due.reps, flags: [...pulley, 'test'] }
+    : next ? { weight: next.weight, reps: next.reps, flags: pulley }
     : target ? { weight: target.weight, reps: aim(0, target.weight) ?? target.reps, flags: pulley }
     : { weight: hold || gearOf(exercise) === 'no equipment' ? 0 : null, reps: st.repMin, flags: [] };
 
@@ -305,6 +320,18 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
           <span className="target-warm muted">{next.why}</span>
         </p>
       )}
+      {due && !snoozedTest && !editing && (
+        <div className="card-test" role="group" aria-label="Time for a test">
+          <p><b>Time for a test:</b> {due.body ? <><b>bodyweight</b> for as many good reps as you can (about {due.reps})</>
+            : due.jump ? <>this first set at <b>{fmtWeight(due.weight)} lb</b>, as many good reps as you can</>
+            : <><b>{fmtWeight(due.weight)} lb</b> for as many good reps as you can (about {due.reps})</>}, with <b>Test</b> ticked.</p>
+          <div className="card-test-actions">
+            <button type="button" className="mini" onClick={() => void settings.save({ ...settings.get(exercise, hold), testSnoozedUntil: addDays(date, 14) })}>Not now</button>
+            {testing ? <button type="button" className="mini" onClick={() => setUpTest(false)}>Not a test</button>
+              : <button type="button" className="mini primary" onClick={() => setUpTest(true)}>Set up the test</button>}
+          </div>
+        </div>
+      )}
       {gone && <p className="undo-note" role="status">Set {gone.no} deleted. <button className="mini" onClick={async () => { if (await store.restore(gone.set)) setGone(null); }}>Undo</button></p>}
       {pr && <p role="status" className="pr">{pr}</p>}
       <AchLines us={ach.lines} onOpen={openAch} />
@@ -349,7 +376,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
           }} />
         </div>
       ) : (
-        <SetForm key="new" exercise={exercise} plates={plates} hold={hold} initial={initial} submitLabel={who ? `Add set · ${who}` : 'Add set'} onSubmit={addSet} keepDraft day={date} heaviest={heaviest} weightStep={weightStep}
+        <SetForm key={testing ? 'test' : 'new'} exercise={exercise} plates={plates} hold={hold} initial={initial} submitLabel={who ? `Add set · ${who}` : 'Add set'} onSubmit={addSet} keepDraft day={date} heaviest={heaviest} weightStep={weightStep}
           nextReps={(v) => nextAfter(v)?.reps}
           tagPrefs={settings.tags} onTagPrefs={settings.saveTags}
           when={{ suggest: suggestWhen, always: date < realToday, max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined }} />

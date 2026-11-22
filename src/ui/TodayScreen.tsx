@@ -23,7 +23,7 @@ import { isHoldLift, swapSuggestions } from '../domain/care';
 import { dayRestDelta, inPlanOrder, leftToDo, plannedNames, planSlots, TodayPlan, todayPlanFor } from './TodayPlan';
 import { DELTA } from '../domain/learn/rest';
 import { WeighIn } from './WeighIn';
-import { closeTimers, currentRest, offerFinish, RestTimer, revertSwitch } from './RestTimer';
+import { closeTimers, currentRest, offerFinish, RestTimer, revertSwitch, takeLiftAsk, useLiftAsk } from './RestTimer';
 import { FinishCard, LastWorkoutLine } from './FinishCard';
 import { sessionClose, showSummary } from '../domain/finish';
 import { quietAfter } from '../domain/learn/session';
@@ -300,6 +300,15 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     const form = card.querySelector<HTMLElement>('.set-form'), bar = document.querySelector('.rest-timer');
     if (form && bar && form.getBoundingClientRect().bottom > bar.getBoundingClientRect().top) form.scrollIntoView({ block: 'nearest' });
   }, [switchTo]);
+  // The rest banner tapped (on any screen): that lift's card comes up the same way, opened (and added, should it be the plan's
+  // next lift without a card yet). Taken once.
+  const ask = useLiftAsk();
+  useEffect(() => {
+    if (!ask) return;
+    takeLiftAsk();
+    goTo(ask.lift);
+    setSwitchTo({ to: ask.lift });
+  }, [ask]);
 
   // A card folding shrinks the page; near the bottom the browser then clamps the scroll and the page jumps. The screen
   // keeps the tallest height it has had, letting the extra go once it is below the viewport, where losing it moves nothing.

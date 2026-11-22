@@ -1,9 +1,10 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import type { RestPart } from '../domain/timing';
 import { restAlertState, restPush, subscribeRestAlert } from '../push/client';
 import { PUSH_ON } from '../push/config';
 import { Icon } from './icons';
-import { NEXT } from '../domain/upNext';
+import { NEXT, PLAN_DONE } from '../domain/upNext';
 
 // One rest at a time, kept outside the screens so leaving Today and coming back doesn't lose it. `card`: the lift's card.
 // `label`: what the lock-screen alert says ("Bench Press · set 4 next"), where push notifications are on.
@@ -184,7 +185,7 @@ export function RestTimer() {
     const el = bar.current, root = document.documentElement;
     if (el) root.style.setProperty('--rest-h', `${el.offsetHeight + 8}px`);
     else root.style.removeProperty('--rest-h');
-  }, [gone, finishing, row]);
+  }, [gone, finishing, row, alert]);
   useLayoutEffect(() => () => { document.documentElement.style.removeProperty('--rest-h'); }, []);
   // A new rest: the form just used stays clear of the bar.
   useEffect(() => {
@@ -204,10 +205,12 @@ export function RestTimer() {
   );
   if (gone) return null;
   const what = r?.full ? 'Switch' : 'Rest';
-  // Under the time: this lift's next set ("Set 3 next") or "Plan done", unless the lock-screen alert couldn't be set.
-  const sub = PUSH_ON && left > 0 && alert === 'failed' ? 'No lock-screen alert' : then;
+  // Under the time: this lift's next set ("Set 3 next") or "Plan done". The lock-screen alert that couldn't be set has a line of
+  // its own under the bar (owner, 2026-11-21: beside the time at 375px it was cut to "No lock-scr…").
+  const sub = then;
+  const noAlert = PUSH_ON && left > 0 && alert === 'failed';
   return (
-    <div ref={bar} className={`rest-timer${left > 0 ? '' : ' done'}${row ? ' has-next' : ''}`} role="timer" aria-label={what}>
+    <div ref={bar} className={`rest-timer${left > 0 ? '' : ' done'}${row || noAlert ? ' has-next' : ''}`} role="timer" aria-label={what}>
       {left > 0 && r?.total && <i className="rest-progress" aria-hidden="true" style={{ '--p': Math.min(1, (r.until - now) / r.total) } as CSSProperties} />}
       <div className="rest-main">
         {/* The "?" stands where the bar's glyph was: there's no room at 375px for both and the words. */}
@@ -228,6 +231,7 @@ export function RestTimer() {
       <button type="button" className="mini icon" aria-label="Close rest timer" onClick={() => setRest(null)}><Icon name="close" /></button>
       {/* Another lift next: a line of its own the width of the bar, as its name won't fit beside the time and buttons. */}
       {row && <p className="rest-next small"><span className="muted">Next</span> <b>{row}</b></p>}
+      {noAlert && <p className="rest-next rest-no-alert small muted">No lock-screen alert: keep the app open to see the end</p>}
       {why && lines && (
         <div className="rest-why" id={whyId} role="dialog" aria-label={`Why this ${what.toLowerCase()}`}>
           <div className="rest-why-head">
@@ -248,3 +252,101 @@ export function RestTimer() {
     </div>
   );
 }
+
+/**
+ * What the banner at a rest's end says (owner, 2026-11-21: "Rest's up — <lift> set N"): `title`, the rest or switch over; `detail`,
+ * the set it leads to (this lift's next set, the plan's next lift, the superset's other lift), from the rest's label; `to`, the
+ * lift a tap goes to on Today (the card the rest belongs to, when the label names none).
+ */
+export function restEnd(r: Pick<Rest, 'label' | 'card' | 'full'>): { title: string; detail?: string; to: string } {
+  const title = r.full ? 'Time to switch' : 'Rest’s up';
+  const label = r.label ?? '';
+  const m = / · set (\d+) next$/.exec(label);
+  if (m) { const lift = label.slice(0, m.index); return { title, detail: `${lift} · set ${m[1]}`, to: lift }; }
+  if (label.startsWith('Switch to ')) { const lift = label.slice('Switch to '.length); return { title, detail: lift, to: lift }; }
+  if (label.startsWith(NEXT)) { const lift = label.slice(NEXT.length); return { title, detail: lift, to: lift }; }
+  return { title, detail: label && label !== PLAN_DONE ? label : undefined, to: r.card };
+}
+
+/** How long the banner stays up untouched. */
+const BANNER_FOR = 6_000;
+/** A rest whose end the page only saw this late (it was hidden, its timer held back) has no banner: the lock-screen alert had it. */
+const LATE = 2_000;
+/** The rest bar can be seen: on the page, and not under a sheet or anything else (what's at its middle is the bar). */
+function barInView(): boolean {
+  const el = document.querySelector('.rest-timer');
+  if (!el) return false;
+  const b = el.getBoundingClientRect();
+  if (!b.width || !b.height) return false;
+  const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+  return !!hit && el.contains(hit);
+}
+
+/**
+ * The rest's end with the app on screen (owner, 2026-11-21): a banner at the top, under the notch, over every screen, tab and
+ * sheet, saying what's next; a tap goes to that lift on Today (`onGo`), a swipe up puts it away, and it goes by itself after
+ * about 6 s. A buzz where the phone can (navigator.vibrate; never a sound: logging happens with music on). Where the rest bar
+ * itself is in view it already says "Rest done", so there's no banner on top of it, only the buzz.
+ */
+export function RestBanner({ onGo }: { onGo: (lift: string) => void }) {
+  const r = useSyncExternalStore(subscribe, () => rest);
+  const [shown, setShown] = useState<{ at: number; title: string; detail?: string; to: string } | null>(null);
+  useEffect(() => {
+    if (!r) return;
+    const fire = () => {
+      if (document.visibilityState === 'hidden' || Date.now() > r.until + LATE) return;
+      try { navigator.vibrate?.([180, 90, 180]); } catch { /* not here */ }
+      if (barInView()) return;
+      setShown({ at: r.until, ...restEnd(r) });
+    };
+    const id = window.setTimeout(fire, Math.max(0, r.until - Date.now()));
+    return () => clearTimeout(id);
+  }, [r]);
+  useEffect(() => {
+    if (!shown) return;
+    const id = window.setTimeout(() => setShown(null), BANNER_FOR);
+    return () => clearTimeout(id);
+  }, [shown]);
+  // A swipe up from it: the finger's start, and how far up it has gone (the banner follows it).
+  const from = useRef<number | null>(null);
+  const [dy, setDy] = useState(0);
+  const dragged = useRef(false);
+  if (!shown) return null;
+  const end = (y: number | null) => {
+    const d = from.current == null || y == null ? 0 : y - from.current;
+    from.current = null;
+    setDy(0);
+    if (d < -24) { setShown(null); return true; }
+    return Math.abs(d) > 8; // a drag, not a tap
+  };
+  return createPortal(
+    <div className="rest-banner" role="alert" style={dy < 0 ? { translate: `0 ${dy}px` } : undefined}
+      onPointerDown={(e) => { from.current = e.clientY; dragged.current = false; }}
+      onPointerMove={(e) => {
+        if (from.current == null) return;
+        const d = e.clientY - from.current;
+        // Once it's a drag, the banner keeps the finger even past the screen's top (a tap stays the button's: not captured).
+        if (Math.abs(d) > 8 && !e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.setPointerCapture(e.pointerId);
+        setDy(Math.min(0, d));
+      }}
+      onPointerUp={(e) => { dragged.current = end(e.clientY); }}
+      onPointerCancel={() => end(null)}>
+      <button type="button" aria-label={`${shown.title}${shown.detail ? ` — ${shown.detail}` : ''}: go to it`}
+        onClick={() => { if (dragged.current) return; setShown(null); onGo(shown.to); }}>
+        <span className="rest-banner-ic"><Icon name={shown.title === 'Rest’s up' ? 'timer' : 'switch'} size={22} sw={2} /></span>
+        <span className="rest-banner-words"><b>{shown.title}</b>{shown.detail && <span>{shown.detail}</span>}</span>
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
+// A tap on the banner asks Today for a lift's card: Today, mounted or about to be, takes the request once.
+let liftAsk: { lift: string; at: number } | null = null;
+const askSubs = new Set<() => void>();
+/** Asks Today to bring up `lift`'s card (the banner's tap). */
+export const askForLift = (lift: string) => { liftAsk = { lift, at: Date.now() }; for (const f of askSubs) f(); };
+/** The lift asked for, until taken. */
+export const useLiftAsk = () => useSyncExternalStore((f) => { askSubs.add(f); return () => { askSubs.delete(f); }; }, () => liftAsk);
+/** Today has brought it up. */
+export const takeLiftAsk = () => { liftAsk = null; for (const f of askSubs) f(); };
