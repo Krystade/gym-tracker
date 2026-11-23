@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import type { PairPlan } from '../domain/supersetPlan';
 import type { SetEntry } from '../domain/types';
 import { defaultSettings, isTraining } from '../domain/progression';
 import { nextDay, type DayPlan, type Program, type Slot } from '../domain/program';
@@ -81,7 +82,9 @@ export function dayRestDelta(program: Program, plan: DayPlan, entries: SetEntry[
 }
 
 /** `buildQuick`: a one-off day of lifts that fits, for the Quick chip. `restDelta`: the day's (dayRestDelta). */
-export function TodayPlan({ program, plan, entries, past, open, onToggle, onEdit, onChange, onOpen, onSwap, buildQuick, loadFor, rangeFor, keptRest, restDelta: delta = DELTA }: {
+export function TodayPlan({ program, plan, entries, past, open, onToggle, onEdit, onChange, onOpen, onSwap, buildQuick, loadFor, rangeFor, keptRest, restDelta: delta = DELTA, pairs = [], onSwapPair, onPairNotToday }: {
+  /** Suggested supersets among today's lifts (domain/supersetPlan pairsFor), with Swap order and Not today. */
+  pairs?: readonly PairPlan[]; onSwapPair?: (p: PairPlan) => void; onPairNotToday?: (p: PairPlan) => void;
   program: Program; plan: DayPlan; entries: SetEntry[]; past?: boolean; open: boolean; onToggle: () => void;
   /** The program's editor (IA A1: Edit on the plan's header, in place of the Today header's Program button). */
   onEdit?: () => void;
@@ -141,6 +144,56 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onEdit
   // Lift sets, as the Program screen counts a day (a cardio slot is minutes, not sets); how many are done once he's started.
   const liftSets = live.reduce((n, s) => n + (s.minutes == null ? s.sets : 0), 0);
   const liftDone = live.reduce((n, s) => n + (s.minutes == null ? Math.min(s.sets, doneOf(plan.swaps[s.exercise] ?? s.exercise)) : 0), 0);
+  /** One planned lift's row; `n`: its place inside a superset's bracket. */
+  const row = (slot: Slot, n?: number) => {
+    const skipped = plan.skips.includes(slot.exercise);
+    const target = plan.swaps[slot.exercise] ?? slot.exercise;
+    const done = doneOf(target);
+    return (
+      <li key={slot.exercise} className={skipped ? 'skipped' : done >= slot.sets ? 'done' : ''} data-state={!skipped && done > 0 && done < slot.sets ? 'going' : undefined}>
+        <button className="plan-name" data-exercise={target} disabled={skipped} onClick={() => { onChange(plan); onOpen(target); }}>
+          <span className="slot-glyph" aria-hidden="true">{!skipped && done >= slot.sets && <Icon name="check" size={16} sw={2.75} />}</span>
+          <b>{n != null && <span className="ss-n">{n} · </span>}{target}</b>
+          {target !== slot.exercise && <span className="muted small">for {slot.exercise}</span>}
+          {/* The count rides under the name, so the name gets the width it needs. */}
+          <span className="muted small"><span className="plan-count">{skipped ? 'Skipped' : `${done}/${slot.sets}`}</span> · {slot.minutes != null
+            ? cardioTarget(entries, target, slot.minutes, plan.date).text
+            : <>{range(slot, target)}{!skipped && loadFor && <span className="plan-load">{fmtLoad(loadFor(target, slot.sets))}</span>}</>}</span>
+        </button>
+        <button type="button" onClick={() => onChange({ ...plan, skips: skipped ? plan.skips.filter((x) => x !== slot.exercise) : [...plan.skips, slot.exercise] })}>
+          {skipped ? 'Undo' : 'Skip'}
+        </button>
+        {skipped ? <span aria-hidden="true" /> : <button type="button" onClick={() => onSwap(slot.exercise)}>Swap</button>}
+      </li>
+    );
+  };
+  // Suggested supersets (owner, 2026-11-22, option A): a pair's lifts together under one bracket, in today's order, where the
+  // first of them sits in the plan; "saves ~N min" only when his own timed supersets back it.
+  const slotOf = (name: string) => day.slots.find((s) => !plan.skips.includes(s.exercise) && sameExercise(plan.swaps[s.exercise] ?? s.exercise, name));
+  const rows = () => {
+    const placed = new Set<string>(), out: ReactNode[] = [];
+    for (const slot of day.slots) {
+      const target = plan.swaps[slot.exercise] ?? slot.exercise;
+      const p = plan.skips.includes(slot.exercise) ? undefined : pairs.find((x) => x.lifts.some((l) => sameExercise(l, target)));
+      const both = p && p.lifts.map(slotOf);
+      if (!p || !both || both.some((x) => !x)) { out.push(row(slot)); continue; }
+      if (placed.has(p.id)) continue;
+      placed.add(p.id);
+      const first = p.lifts[0];
+      out.push(
+        <li key={`ss:${p.id}`} className="plan-superset" aria-label={`Superset: ${p.lifts.join(' then ')}`}>
+          <span className="ss-tag">Superset{p.saves != null && ` · saves ~${p.saves} min`}</span>
+          <ol className="plan-slots">{both.map((s, i) => row(s!, i + 1))}</ol>
+          <p className="ss-note">
+            <span>{p.why === 'effect' ? `${first} first: about ${Math.round(p.effect! * 10) / 10} reps a set better for you` : `${p.lastFirst} went first last time`}</span>
+            {onSwapPair && <button type="button" className="mini" onClick={() => onSwapPair(p)}>Swap order</button>}
+            {onPairNotToday && <button type="button" className="mini" onClick={() => onPairNotToday(p)}>Not today</button>}
+          </p>
+        </li>,
+      );
+    }
+    return out;
+  };
   return (
     <section className="card plan" aria-label={title}>
       <div className="plan-head">
@@ -177,28 +230,7 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onEdit
         </div>
       )}
       <ol className="plan-slots" aria-label="Planned exercises">
-        {day.slots.map((slot) => {
-          const skipped = plan.skips.includes(slot.exercise);
-          const target = plan.swaps[slot.exercise] ?? slot.exercise;
-          const done = doneOf(target);
-          return (
-            <li key={slot.exercise} className={skipped ? 'skipped' : done >= slot.sets ? 'done' : ''} data-state={!skipped && done > 0 && done < slot.sets ? 'going' : undefined}>
-              <button className="plan-name" data-exercise={target} disabled={skipped} onClick={() => { onChange(plan); onOpen(target); }}>
-                <span className="slot-glyph" aria-hidden="true">{!skipped && done >= slot.sets && <Icon name="check" size={16} sw={2.75} />}</span>
-                <b>{target}</b>
-                {target !== slot.exercise && <span className="muted small">for {slot.exercise}</span>}
-                {/* The count rides under the name, so the name gets the width it needs. */}
-                <span className="muted small"><span className="plan-count">{skipped ? 'Skipped' : `${done}/${slot.sets}`}</span> · {slot.minutes != null
-                  ? cardioTarget(entries, target, slot.minutes, plan.date).text
-                  : <>{range(slot, target)}{!skipped && loadFor && <span className="plan-load">{fmtLoad(loadFor(target, slot.sets))}</span>}</>}</span>
-              </button>
-              <button type="button" onClick={() => onChange({ ...plan, skips: skipped ? plan.skips.filter((x) => x !== slot.exercise) : [...plan.skips, slot.exercise] })}>
-                {skipped ? 'Undo' : 'Skip'}
-              </button>
-              {skipped ? <span aria-hidden="true" /> : <button type="button" onClick={() => onSwap(slot.exercise)}>Swap</button>}
-            </li>
-          );
-        })}
+        {rows()}
       </ol>
       </>)}
     </section>

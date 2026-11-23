@@ -5,7 +5,7 @@ import { planToRecord, quickDay } from '../domain/program';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import type { ProgramStore } from '../state/useProgram';
-import { dayOrder, exerciseNames, sameExercise } from '../domain/stats';
+import { dayOrder, doneAt, exerciseNames, sameExercise } from '../domain/stats';
 import { fmtDay, plural } from '../domain/format';
 import { ExerciseCard } from './ExerciseCard';
 import { SwipeRemove } from './SwipeRemove';
@@ -13,7 +13,7 @@ import { SessionSummary } from './SessionSummary';
 import { Energy } from './Energy';
 import { CycleRow } from './Cycle';
 import { plannedMinutes, plannedSets, suggest } from '../domain/suggest';
-import { isWorking, nextTarget } from '../domain/progression';
+import { isWorking, nextTarget, settingsKey } from '../domain/progression';
 import { activeProfileDb } from '../db/db';
 import { getDraft, saveDraft } from '../state/drafts';
 
@@ -44,8 +44,10 @@ import { BOX, BuddySprite, drawnSize, heldRise } from './buddies/BuddySprite';
 import type { BuddyDef } from '../domain/buddies/roster';
 import type { Ledger } from '../domain/buddies/gacha';
 import { hurts, type SetEntry } from '../domain/types';
-import { switchFor, type RestPart } from '../domain/timing';
+import { paces, setWork, setWorks, switchFor, type RestPart } from '../domain/timing';
 import { lastSupersets, restsOf, supersets, switchesOf, timedWorking, type Superset } from '../domain/superset';
+import { pairHistory, pairId, pairsFor, type PairPlan } from '../domain/supersetPlan';
+import { setSupersetOrder, supersetOrder } from '../state/supersetOrder';
 import { gapModel } from '../domain/learn/switch';
 import { allNotSupersets, markNotSuperset, notSupersets } from '../state/notSuperset';
 import { carryOver, flatFor, rotation, type Carry, type Rotation } from '../domain/rotation';
@@ -276,7 +278,21 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   const session = [...cards, ...(programs.program && plan ? plannedNames(programs.program, plan).filter((n) => plannedSets(programs.program, plan, n) != null) : [])].join('\n');
   const last = useMemo(() => lastSupersets(store.entries, date, model, { lifts: session.split('\n'), dismissedOn: (d) => notSupersets(owner, d) }),
     [store.entries, date, model, owner, session]);
-  const groupsIn = (entries: SetEntry[]) => supersets(entries, date, model, { dismissed: notSuper, planned: (ex) => plannedSets(programs.program, plan, ex), carried: last });
+  // Suggested supersets (owner, 2026-11-22): today's planned lifts he has done as a pair at this gym, low overlap, grouped in
+  // the plan (domain/supersetPlan). Swap order and Not today hold for the day; a suggested pair starts today's groups in its order.
+  const [pairTaps, setPairTaps] = useState(0);
+  const gymName = gyms.active?.name;
+  const pairHist = useMemo(() => pairHistory(store.entries, date, model, gymName), [store.entries, date, model, gymName]);
+  const planLifts = programs.program && plan ? planSlots(programs.program, plan).filter((s) => s.minutes == null) : [];
+  const planKey = planLifts.map((s) => `${s.exercise}:${s.sets}`).join('|');
+  const pace = useMemo(() => paces(store.entries), [store.entries]);
+  const pairs = useMemo(() => pairsFor(planLifts.map((s) => s.exercise), pairHist, {
+    sets: (x) => planLifts.find((s) => sameExercise(s.exercise, x))?.sets ?? 3, straight: (x) => pace.perSet.get(settingsKey(x)),
+    swapped: supersetOrder(owner, date), skip: new Set(notSuper.filter((k) => k.length === 2).map((k) => pairId(k[0], k[1]))),
+  }), [planKey, pairHist, pace, owner, date, notSuper, pairTaps]); // eslint-disable-line react-hooks/exhaustive-deps
+  const suggestedCarry = pairs.map((p) => ({ lifts: [...p.lifts], keys: p.lifts.map(settingsKey) }));
+  const groupsIn = (entries: SetEntry[]) => supersets(entries, date, model, { dismissed: notSuper, planned: (ex) => plannedSets(programs.program, plan, ex),
+    carried: [...suggestedCarry, ...last.filter((c) => !suggestedCarry.some((s) => s.keys.some((k) => c.keys.includes(k))))] });
   const groups = groupsIn(store.entries);
   const groupOf = (n: string) => groups.find((g) => g.live && g.lifts.some((x) => sameExercise(x, n)));
   // After the set `id`, inside a group with a lift still to go in the round: that lift, and the switch to it (timing.switchFor),
@@ -286,7 +302,9 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     const from = entries.find((e) => e.id === id);
     if (!g || !to || !from) return undefined;
     const day = timedWorking(entries, date);
-    return { to, ...switchFor(model, from.exercise, to, { rests: restsOf(day), switches: switchesOf(day, g.keys, g.after) }) };
+    // The partner's set itself: his median for it once timed (timing.setWork), else 4 s a rep of its last set today.
+    const reps = day.findLast((e) => sameExercise(e.exercise, to))?.reps;
+    return { to, ...switchFor(model, from.exercise, to, { rests: restsOf(day), switches: switchesOf(day, g.keys, g.after) }, setWork(setWorks(entries), to, reps)) };
   };
   // After the set `id`, when it ended a round of a group: the group's lifts, for whichever starts the next round.
   const roundAfter = (entries: SetEntry[], id: string): readonly string[] | undefined => {
@@ -294,18 +312,24 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     return g && g.after.get(id) === null ? g.lifts : undefined;
   };
   const dismiss = (g: Superset) => { markNotSuperset(owner, date, g.keys); setNotSuper(notSupersets(owner, date)); revertSwitch(); };
+  const pairActs = {
+    swap: (p: PairPlan) => { setSupersetOrder(owner, date, p.id, settingsKey(p.lifts[1])); setPairTaps((n) => n + 1); },
+    notToday: (p: PairPlan) => { markNotSuperset(owner, date, p.keys); setNotSuper(notSupersets(owner, date)); },
+  };
   // After a set with another lift to go in the round, that lift's card comes up, ready for its set. A new request each time,
   // so the same lift comes up again; not cleared after, which would render Today again.
-  const [switchTo, setSwitchTo] = useState<{ to: string } | null>(null);
+  // `partner`: a superset's switch (not the rest banner's tap): the partner's card is outlined until a set lands on it.
+  const [switchTo, setSwitchTo] = useState<{ to: string; partner?: number } | null>(null);
   useEffect(() => {
     if (!switchTo) return;
     const card = document.querySelector<HTMLElement>(`[data-card="${CSS.escape(switchTo.to.toLowerCase())}"]`);
     if (!card) return;
     card.scrollIntoView({ block: 'start' });
     card.querySelector<HTMLElement>('.card-head .link')?.focus({ preventScroll: true });
-    // Its form stays clear of the timer's bar.
-    const form = card.querySelector<HTMLElement>('.set-form'), bar = document.querySelector('.rest-timer');
-    if (form && bar && form.getBoundingClientRect().bottom > bar.getBoundingClientRect().top) form.scrollIntoView({ block: 'nearest' });
+    // Its form stays clear of the timer's bar and the tab bar (a tall card's form can start below them): its Add set on screen.
+    const form = card.querySelector<HTMLElement>('.set-form'), bar = document.querySelector('.rest-timer'), tabs = document.querySelector('nav.tabs');
+    const floor = Math.min(innerHeight, bar?.getBoundingClientRect().top ?? Infinity, tabs?.getBoundingClientRect().top ?? Infinity);
+    if (form && form.getBoundingClientRect().bottom > floor) form.scrollIntoView({ block: 'nearest' });
   }, [switchTo]);
   // The rest banner tapped (on any screen): that lift's card comes up the same way, opened (and added, should it be the plan's
   // next lift without a card yet). Taken once.
@@ -458,7 +482,8 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
       {programs.program && plan && hasPlan && !summary && (
         <TodayPlan program={programs.program} plan={plan} entries={store.entries} past={date < today} open={open} onToggle={() => setPlanOpen(!open)} onEdit={onOpenProgram}
           buildQuick={(fits) => quickDay(profile, store.entries, date, fits, available ? { available, include: gyms.active!.include } : {})}
-          onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} loadFor={loadFor} rangeFor={settings.get} keptRest={(ex) => settings.get(ex).rest} restDelta={restDelta} />
+          onChange={(p) => void programs.savePlan(p)} onOpen={goTo} onSwap={setSwapFor} loadFor={loadFor} rangeFor={settings.get} keptRest={(ex) => settings.get(ex).rest} restDelta={restDelta}
+          pairs={date === today ? pairs : []} onSwapPair={pairActs.swap} onPairNotToday={pairActs.notToday} />
       )}
       {/* No program: where the plan goes, the way to build one (the header's Program button moved to the plan). */}
       {!programs.program && date === today && (
@@ -494,7 +519,8 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
         swappedFrom={plan ? Object.entries(plan.swaps).find(([, to]) => sameExercise(to, n))?.[0] : undefined}
         openReq={openReq && sameExercise(openReq.to, n) ? openReq : null}
         supersetWith={groupOf(n)?.lifts.filter((x) => !sameExercise(x, n))} onNotSuperset={() => { const g = groupOf(n); if (g) dismiss(g); }}
-        switchAfter={switchAfter} roundAfter={roundAfter} plannedOf={(ex) => plannedSets(programs.program, plan, ex)} onSwitch={(to) => setSwitchTo({ to })} aside={asideFor(n)} restDelta={restDelta} light={!!light}
+        switchAfter={switchAfter} roundAfter={roundAfter} plannedOf={(ex) => plannedSets(programs.program, plan, ex)} onSwitch={(to) => { addCard(to); setSwitchTo({ to, partner: Date.now() }); }}
+        partnerReady={!!switchTo?.partner && sameExercise(switchTo.to, n) && !store.entries.some((e) => e.date === date && sameExercise(e.exercise, n) && doneAt(e) >= switchTo.partner!)} aside={asideFor(n)} restDelta={restDelta} light={!!light}
         completesPlan={completesPlan} onPlanDone={onPlanDone} onTouch={() => touch(n)}
         onLiftAfter={(after) => onLift({ exercise: n, entries: after, date, planned: (ex) => plannedSets(programs.program, plan, ex), lifts: cards, touched: (l) => touched.current.get(l.toLowerCase()) })} /></SwipeRemove>)}
       {removed && (

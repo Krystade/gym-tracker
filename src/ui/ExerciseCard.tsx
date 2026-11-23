@@ -14,7 +14,7 @@ import { SetRowContent } from './SetRow';
 import { nextSet, suggest } from '../domain/suggest';
 import { Icon } from './icons';
 import { fmtLoad, fmtRamp } from './SuggestionCard';
-import { hhmm, paces, restFor, suggestTime, type RestPart } from '../domain/timing';
+import { hhmm, paces, restFor, shorterRest, suggestTime, type RestPart } from '../domain/timing';
 import { kneeAfter } from '../domain/learn/rest';
 import { andList } from '../domain/superset';
 import { upNext } from '../domain/upNext';
@@ -62,7 +62,7 @@ export function ExerciseCard({ plannedMinutes, ...p }: CardProps) {
 }
 
 function LiftCard({ exercise, date, today: realToday = date, store, settings, onOpen, plannedSets = null, gym, plates = PLATE_SIZES, openReq = null, who, swappedFrom, left = [], onGo,
-  supersetWith, onNotSuperset, switchAfter, roundAfter, onSwitch, aside, restDelta, light = false, completesPlan, onPlanDone, plannedOf, onLiftAfter, onTouch, onRemove }: {
+  supersetWith, onNotSuperset, partnerReady = false, switchAfter, roundAfter, onSwitch, aside, restDelta, light = false, completesPlan, onPlanDone, plannedOf, onLiftAfter, onTouch, onRemove }: {
   exercise: string; date: string; today?: string; store: SetsStore; settings: SettingsStore; onOpen: (name: string) => void; plannedSets?: number | null; gym?: string;
   /** The plate sizes at this gym, for the per-side line. */
   plates?: readonly number[];
@@ -76,6 +76,8 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   left?: string[]; onGo?: (exercise: string) => void;
   /** The other lifts of its superset today, and the tap that says it isn't one. */
   supersetWith?: string[]; onNotSuperset?: () => void;
+  /** A superset's partner just switched to (owner, 2026-11-22, the mockup's option A): outlined, its next set filled in, until a set lands here. */
+  partnerReady?: boolean;
   /** With the log as it is after the set `id`: the superset's next lift to switch to, null for its full rest, undefined if in none. */
   switchAfter?: (entries: SetEntry[], id: string) => { to: string; seconds: number; parts: RestPart[] } | null | undefined;
   /** With the log as it is after the set `id`: when that set ended a superset's round, the superset's lifts in order. */
@@ -217,7 +219,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
       // The rest for this set: the lift's base (his setting, his knee once his sets show it, else research) and its effort
       // (domain/timing restFor). The knee reads the log as it was before this set (the core as of the days before is cached
       // for that array) and the day's sets so far with this one.
-      const full = restFor(e, { kept: st.rest, knee: kneeAfter(store.entries, e, restDelta) });
+      const full = restFor(e, { kept: st.rest, knee: kneeAfter(store.entries, e, restDelta), usual: shorterRest(pace, exercise) });
       // ±30 s on the timer moves the lift's base rest by as much, from now on; a warm-up's rest moves nothing.
       const keep = full.why.warmup ? undefined : (chosen: number) => {
         const s = settingsNow.current;
@@ -253,8 +255,11 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   const [usedReq, setUsedReq] = useState<object | null>(null);
   const folded = shut ?? complete;
   // Open: a finished card stays open; one not finished goes back to automatic, so its last set folds it.
-  const unfold = () => setShut(complete ? false : null);
-  if (openReq && openReq !== usedReq) { setUsedReq(openReq); if (folded) unfold(); }
+  // Opening the card (a tap on its folded line, or the plan sending you here) starts its set's own timer (SetForm setTimer).
+  // `opened`: when (epoch ms), so a form that mounts with the card's opening starts from it.
+  const [opened, setOpened] = useState(0);
+  const unfold = () => { setShut(complete ? false : null); setOpened(Date.now()); };
+  if (openReq && openReq !== usedReq) { setUsedReq(openReq); if (folded) unfold(); else setOpened(Date.now()); }
   // Finished while on screen: this card is where you are, so it offers what's left.
   const wasFolded = useRef(folded);
   const [justDone, setJustDone] = useState(false);
@@ -297,7 +302,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
   }
 
   return (
-    <section ref={box} className="card" data-card={exercise.toLowerCase()} onClickCapture={onTouch}>
+    <section ref={box} className={partnerReady ? 'card partner-ready' : 'card'} data-card={exercise.toLowerCase()} data-partner={partnerReady || undefined} onClickCapture={onTouch}>
       <header className="card-head">
         <button className="link" onClick={() => onOpen(exercise)}>{exercise}</button>
         {testDueNow && <button type="button" className="test-badge" onClick={() => { setEditing(null); setSeekTest((n) => n + 1); }}><span className="tag test-tag">Test due</span></button>}
@@ -401,7 +406,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
         </div>
       ) : (
         <SetForm key={testing ? 'test' : 'new'} exercise={exercise} plates={plates} hold={hold} initial={initial} submitLabel={who ? `Add set · ${who}` : 'Add set'} onSubmit={addSet} keepDraft day={date} heaviest={heaviest} weightStep={weightStep}
-          nextReps={(v) => nextAfter(v)?.reps}
+          nextReps={(v) => nextAfter(v)?.reps} setTimer={date === realToday && !testing} startSignal={opened}
           tagPrefs={settings.tags} onTagPrefs={settings.saveTags}
           when={{ suggest: suggestWhen, always: date < realToday, max: date === localDate(new Date()) ? () => hhmm(new Date()) : undefined }} />
       )}
