@@ -32,7 +32,7 @@ import { useCardFold } from '../state/cardFold';
 import { AchLines } from './AchievementsSheet';
 import { WhyWeightSheet } from './WhyWeight';
 import { useAchLines, useAchOpen } from '../state/useAchievements';
-import { testDue } from '../domain/estimators';
+import { testDue, testWhy } from '../domain/estimators';
 import { clearDraft } from '../state/drafts';
 import { activeProfileDb } from '../db/db';
 import { setPoints } from '../domain/buddies/points';
@@ -354,6 +354,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
           <p><b>Time for a test:</b> {due.body ? <><b>bodyweight</b> for as many good reps as you can (about {due.reps})</>
             : due.jump ? <>this first set at <b>{fmtWeight(due.weight)} lb</b>, as many good reps as you can</>
             : <><b>{fmtWeight(due.weight)} lb</b> for as many good reps as you can (about {due.reps})</>}, with <b>Test</b> ticked.</p>
+          <p className="muted small card-test-why">{testWhy(due)}</p>
           <div className="card-test-actions">
             <button type="button" className="mini" onClick={() => void settings.save({ ...settings.get(exercise, hold), testSnoozedUntil: addDays(date, 14) })}>Not now</button>
             {testing ? <button type="button" className="mini" onClick={() => setUpTest(false)}>Not a test</button>

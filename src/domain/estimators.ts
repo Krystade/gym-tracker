@@ -1,14 +1,10 @@
-import { lightWeek } from './learn/deload';
 import { addDays } from './analytics';
 import { isHoldLift } from './care';
 import { liftKey } from './ids';
-import { coreBefore, logBefore, testSd } from './learn';
+import { coreBefore, testSd } from './learn';
 import { floorRung, ladderOf, nextRung } from './learn/ladder';
 import { bodyRepsSeries, bodyStrengthOf, levelSeries, strengthOf, weightFor, type BodyStrength, type Strength } from './learn/strength';
-import { REACCLIMATION, runIndex } from './learn/trend';
 import { dayOf, MAX_REPS } from './learn/capacity';
-import { painRisk, zoneOf } from './learn/pain';
-import { painGate } from './painPlan';
 import { liftSets, type SeriesPoint, learnable } from './stats';
 import type { SetEntry } from './types';
 import { isCardio } from './cardio';
@@ -76,92 +72,48 @@ export function strengthSeries(entries: readonly SetEntry[], exercise: string, d
 export const TEST_REPS = 10;
 
 /**
- * Item 08 (b): how much more uncertain a lift must be for a test to pay, given the chance p that it hurts (learn/pain). A set
- * that hurts is pain-limited, a lower bound that reads nothing of the level (learn/capacity), so the expected variance after a
- * test is p·u² + (1 − p)·u²σ²/(u² + σ²); it is at most half of u² only when u > σ/√(1 − 2p). p = 0 is the plain rule; at p ≥ ½
- * (hurting the likelier outcome) no test can pay. p is for the lift's session, a floor for a set to failure.
+ * Item 05, as a cadence (owner, 2026-11-22): a lift's test is due every TEST_EVERY_DAYS, counted from its last test, or from its
+ * first session when it has never been tested. Nothing else holds it back: not pain, not a light week, not a lift's first 2
+ * sessions (a tap on "Not now" puts it off 2 weeks). One test a day at most (a: sets to failure need longer recovery, Morán-Navarro
+ * 2017), and only where the app can say what to lift: a level to read the weight from (learn/strength), never a hold or cardio.
+ * `weight`: the loadable weight for TEST_REPS to failure; `jump`: today's target is an increase, and its first set at the new
+ * weight is the test (no extra set). `u`: the lift's uncertainty (its level's SD on the day, grown by drift and layoffs, with the
+ * systematic SD only tests fix: learn/strength), and `after`: u once the test is in (u·σ/√(u² + σ²), σ: what one test reads the
+ * level to, learn testSd). `body` (item 14, a bodyweight lift): the test is a set at bodyweight (`weight` 0) to failure, and its
+ * uncertainty in reps. `since`: the day the cadence counts from, `tested` whether that was a test, `days` how long ago it was.
  */
-export const painFactor = (p: number): number => (p < 0.5 ? 1 / Math.sqrt(1 - 2 * p) : Infinity);
+export interface TestDue {
+  weight: number; reps: number; u: number; after: number; jump: boolean; body?: { u: number; after: number };
+  since: string; tested: boolean; days: number;
+}
+/** A test every this many days (owner, 2026-11-21: 4 weeks, down from 6; 2026-11-22: a plain cadence). */
+export const TEST_EVERY_DAYS = 28;
 
-/**
- * Item 05: a test is due when it would at least halve what the app doesn't know: the lift's uncertainty u (its level's SD on the
- * day, grown by drift and layoffs, with the systematic SD only tests fix: learn/strength) is above what one test reads the level
- * to (σ_test: learn testSd), raised for the chance the test hurts (painFactor). `weight`: the loadable weight for TEST_REPS to failure; `jump`: today's target is an increase, and
- * its first set at the new weight is the test (no extra set). `after`: u once the test is in (u·σ/√(u² + σ²)).
- * `body` (item 14, a bodyweight lift): the test is a set at bodyweight (`weight` 0) to failure, and its uncertainty in reps.
- */
-export interface TestDue { weight: number; reps: number; u: number; after: number; jump: boolean; body?: { u: number; after: number } }
-/** `st`: the lift's settings (a typed increment wins over the learned ladder); `target`: today's target, when known. */
+/** `st`: the lift's settings (a typed increment wins over the learned ladder); `target`: today's target, when known. `every`: days between tests. */
 export function testDue(entries: readonly SetEntry[], exercise: string, today: string, st?: { increment: number },
-  target?: { kind: string; weight: number | null } | null, cooldownDays = TEST_COOLDOWN_DAYS): TestDue | null {
+  target?: { kind: string; weight: number | null } | null, every = TEST_EVERY_DAYS): TestDue | null {
   entries = learnable(entries); // the log without sets marked not used (stats.learnable)
-  const due = dueOn(entries, exercise, today, st, target);
-  return due && !(cooldownDays > 0 && cooling(entries, exercise, today, st, cooldownDays)) ? due : null;
-}
-
-/**
- * At most one test prompt per lift per this many days (owner, 2026-10-28: on his log it fired on 242 lift-days for 1 test; owner,
- * 2026-11-21: 4 weeks, down from 6). A default: `testDue` takes another, for a learned one later.
- */
-export const TEST_COOLDOWN_DAYS = 28;
-
-/**
- * Item 05's cooldown: the lift had a test in the last TEST_COOLDOWN_DAYS (4 weeks), or the prompt was already due on one of its
- * sessions in them. Read off the log alone (nothing to store, the same on every phone, and a replay gives the same days): walking the lift's
- * sessions oldest first since its last test, a session prompts when the rule called it due (as it stood that day, from the log
- * before it) and no session in the cooldown before it prompted. The walk starts at most 3 cooldowns back, which bounds its cost.
- */
-function cooling(entries: readonly SetEntry[], exercise: string, today: string, st: { increment: number } | undefined, days: number): boolean {
-  const mine = liftSets(entries, exercise).filter((e) => e.date < today && e.reps != null && !e.flags.includes('warmup'));
-  const lastTest = mine.filter((e) => e.flags.includes('test')).map((e) => e.date).sort().at(-1);
-  const t = dayOf(today), from = addDays(today, -3 * days);
-  if (lastTest && t - dayOf(lastTest) < days) return true;
-  let prompted: number | null = null;
-  for (const d of [...new Set(mine.map((e) => e.date))].sort()) {
-    if (d <= (lastTest ?? '') || d < from || (prompted != null && dayOf(d) - prompted < days)) continue;
-    if (dueOn(logBefore(entries, d), exercise, d, st, null)) prompted = dayOf(d);
-  }
-  return prompted != null && t - prompted < days;
-}
-
-/** Item 05's rule on `today`, without the cooldown (see `testDue`). */
-function dueOn(entries: readonly SetEntry[], exercise: string, today: string, st?: { increment: number },
-  target?: { kind: string; weight: number | null } | null): TestDue | null {
   if (isCardio(exercise) || isHoldLift(exercise, entries)) return null;
-  // (a) One failure set a day: sets to failure need longer recovery (Morán-Navarro 2017), so not two tests in a workout.
   if (entries.some((e) => e.date === today && e.flags.includes('test'))) return null;
-  // Item 06 (a: Bell 2025): no test in a light week, which is for shedding fatigue, not for a max effort.
-  if (target?.kind === 'light' || lightWeek(entries, today)) return null;
-  // Item 08 (a): not while pain holds or eases the lift (moderate or worse last time, or in a region it loads within 3 days:
-  // painPlan), nor once it has hurt today.
-  if (painGate(entries, exercise, today) || zoneOf(liftSets(entries, exercise).filter((e) => e.date === today)) > 0) return null;
-  // Owner rule: not in a lift's first 2 sessions, nor the first 2 after a layoff (learn/trend): today counts as one.
-  const days = [...new Set(liftSets(entries, exercise).filter((e) => e.date < today && e.reps != null && !e.flags.includes('warmup')).map((e) => e.date))].sort().map(dayOf);
-  if (runIndex([...days, dayOf(today)]).at(-1)! < REACCLIMATION) return null;
+  const when = testClock(entries, exercise, today);
+  if (!when) return null;
+  const days = dayOf(today) - dayOf(when.since);
+  if (days < every) return null;
   const core = coreBefore(entries, addDays(today, 1));
   if (!core) return null;
-  const k = painFactor(painRisk(entries, exercise, today).p);
+  const clock = { since: when.since, tested: when.tested, days };
   // Item 14: a bodyweight lift has one load, its share of the body, so its test is a set at bodyweight to failure: about the reps
-  // its level leaves fresh, when that is a set the core reads (1 to MAX_REPS), and when it at least halves the uncertainty as above.
+  // its level leaves fresh, when that is a set the core reads (1 to MAX_REPS).
   const b = bodyStrengthOf(core, exercise, today);
   if (b) {
     const reps = Math.round(b.reps);
     if (reps < 1 || reps > MAX_REPS) return null;
     const sb = testSd(core, liftKey(exercise), reps);
-    if (!(b.u > sb * k)) return null;
     const after = b.u * sb / Math.hypot(b.u, sb), perU = b.repsSd / b.u;
-    return { weight: 0, reps, u: b.u, after, jump: false, body: { u: b.repsSd, after: after * perU } };
+    return { weight: 0, reps, u: b.u, after, jump: false, body: { u: b.repsSd, after: after * perU }, ...clock };
   }
   const s = strengthOf(core, exercise, today);
   if (!s) return null;
-  const sigma = testSd(core, liftKey(exercise), TEST_REPS);
-  if (!(s.u > sigma * k)) return null;
-  const after = s.u * sigma / Math.hypot(s.u, sigma);
-  // Today's increase is a test if it reads the level at least as well: the same test, without an extra set.
-  if (target?.kind === 'increase' && target.weight != null && target.weight > 0) {
-    const reps = Math.round(s.kappa * (s.e1rm / target.weight - 1));
-    if (reps >= 1 && s.u > testSd(core, liftKey(exercise), reps) * k) return { weight: target.weight, reps, u: s.u, after, jump: true };
-  }
   // The loadable weight either side of the one for TEST_REPS (the learned ladder; a typed increment wins), whichever reads the
   // level more precisely at the reps it should take.
   const want = weightFor(s, TEST_REPS);
@@ -170,8 +122,32 @@ function dueOn(entries: readonly SetEntry[], exercise: string, today: string, st
   const lo = lad ? floorRung(lad, want) : Math.floor(want / inc + 1e-9) * inc;
   const hi = lad ? nextRung(lad, lo) : lo + inc;
   const repsAt = (w: number) => Math.round(s.kappa * (s.e1rm / w - 1));
-  const sdAt = (w: number) => (w > 0 && repsAt(w) >= 1 ? testSd(core, liftKey(exercise), repsAt(w)) : Infinity);
+  const sdAt = (w: number) => (w > 0 && repsAt(w) >= 1 && repsAt(w) <= MAX_REPS ? testSd(core, liftKey(exercise), repsAt(w)) : Infinity);
   const weight = sdAt(hi) < sdAt(lo) ? hi : lo;
   if (!Number.isFinite(sdAt(weight))) return null;
-  return { weight, reps: repsAt(weight), u: s.u, after, jump: false };
+  const sigma = sdAt(weight), after = s.u * sigma / Math.hypot(s.u, sigma);
+  // Today's increase is the test when it at least halves what the app doesn't know (u above what it reads the level to, as item
+  // 05 first had it): the same test, without an extra set.
+  if (target?.kind === 'increase' && target.weight != null && target.weight > 0 && s.u > sdAt(target.weight)) {
+    const jsd = sdAt(target.weight);
+    return { weight: target.weight, reps: repsAt(target.weight), u: s.u, after: s.u * jsd / Math.hypot(s.u, jsd), jump: true, ...clock };
+  }
+  return { weight, reps: repsAt(weight), u: s.u, after, jump: false, ...clock };
+}
+
+/** Why it's due, said plainly (owner, 2026-11-22): the cadence, and where it counts from. */
+export function testWhy(d: Pick<TestDue, 'tested' | 'days'>): string {
+  const w = Math.floor(d.days / 7), ago = `${w} week${w === 1 ? '' : 's'} ago`;
+  return `A test every ${TEST_EVERY_DAYS / 7} weeks, whatever the week: ${d.tested ? `your last was ${ago}` : `you started this lift ${ago} and haven’t tested it yet`}.`;
+}
+
+/** The day a lift's test cadence counts from: its last test, else its first session (a working set with reps); null: never done. */
+function testClock(entries: readonly SetEntry[], exercise: string, today: string): { since: string; tested: boolean } | null {
+  let first: string | null = null, last: string | null = null;
+  for (const e of liftSets(entries, exercise)) {
+    if (e.date > today || e.reps == null || e.flags.includes('warmup')) continue;
+    if (first == null || e.date < first) first = e.date;
+    if (e.flags.includes('test') && (last == null || e.date > last)) last = e.date;
+  }
+  return last ? { since: last, tested: true } : first ? { since: first, tested: false } : null;
 }

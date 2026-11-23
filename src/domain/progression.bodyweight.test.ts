@@ -112,23 +112,23 @@ describe('nextTarget for a bodyweight lift (item 14)', () => {
 });
 
 describe('testDue for a bodyweight lift (item 14)', () => {
-  it('is a set at bodyweight to failure, at about the reps its level leaves fresh, in reps uncertainty, once its level is stale', () => {
+  it('is a set at bodyweight to failure, at about the reps its level leaves fresh, in reps uncertainty, on the same 4 weeks', () => {
     for (let seed = 1; seed <= 4; seed++) {
       const sim = bodyLog(seed, { sessions: 30, order: 'mixed' });
+      const first = sim.entries.filter((e) => e.exercise === DIPS).map((e) => e.date).sort()[0];
       const today = addDays(sim.entries.at(-1)!.date, 3);
-      // Sets near failure at bodyweight every session: the level is known better than a test would read it.
-      expect(testDue(sim.entries, DIPS, today), `seed ${seed}`).toBeNull();
-      // Weight added from the fifth session on: nothing reads the bodyweight level since, so it drifts out of date.
-      const cut = [...new Set(sim.entries.map((e) => e.date))][4];
-      const entries = sim.entries.map((e) => (e.exercise === DIPS && e.date >= cut ? { ...e, weight: 25, flags: [], reps: Math.max(1, (e.reps as number) - 6) } : e));
-      const d = testDue(entries, DIPS, today, undefined, null, 0)!; // the rule itself, without its cooldown
+      const d = testDue(sim.entries, DIPS, today, undefined, null, 0)!; // any day: the shape of the test itself
       expect(d, `seed ${seed}`).not.toBeNull();
-      const b = bodyStrengthOf(coreBefore(entries, addDays(today, 1))!, DIPS, today)!;
-      expect(d).toMatchObject({ weight: 0, reps: Math.round(b.reps), u: b.u, jump: false });
+      const b = bodyStrengthOf(coreBefore(sim.entries, addDays(today, 1))!, DIPS, today)!;
+      expect(d).toMatchObject({ weight: 0, reps: Math.round(b.reps), u: b.u, jump: false, since: first, tested: false });
       expect(d.reps).toBeGreaterThanOrEqual(1);
-      expect(d.after).toBeLessThan(d.u / Math.SQRT2 + 1e-12); // at least halves the variance
+      expect(d.after).toBeLessThan(d.u);
       expect(d.body!.u).toBeCloseTo(b.repsSd, 9);
       expect(d.body!.after / d.body!.u).toBeCloseTo(d.after / d.u, 9);
+      // On the cadence: due once 4 weeks are up since its first session, not before.
+      const at = (k: number) => testDue(sim.entries.filter((e) => e.date < addDays(first, k)), DIPS, addDays(first, k));
+      expect(at(27), `seed ${seed}`).toBeNull();
+      expect(at(28), `seed ${seed}`).not.toBeNull();
     }
   });
 });

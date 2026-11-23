@@ -18,7 +18,7 @@ import { weightTones } from './body/regions';
 import { MuscleSheet } from './StatsTiles';
 import { resolveLift } from '../domain/lifts';
 import { nearestLifts, searchLifts } from '../domain/search';
-import { bodyRepsPoints, bodyStrength, strength, strengthSeries, testDue } from '../domain/estimators';
+import { bodyRepsPoints, bodyStrength, strength, strengthSeries, testDue, testWhy } from '../domain/estimators';
 import { bodyShare } from '../domain/learn/bodyweight';
 import { weightFor } from '../domain/learn/strength';
 import { localDate } from '../domain/ids';
@@ -285,7 +285,7 @@ const repsU = (x: number) => (x < 10 ? String(Math.round(x * 10) / 10) : String(
 function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack, onRenamed, onDay, readOnly, bodyDays, profile }: Parameters<typeof ExerciseScreen>[0]) {
   const [muscle, setMuscle] = useState<Muscle | null>(null);
   const hold = isHoldLift(name, store.entries);
-  // Item 06: in a light week, "Next time" is its target, and no test is due.
+  // Item 06: in a light week, "Next time" is its target (a test still comes due on its 4 weeks: estimators testDue).
   const [owner] = useState(activeProfileDb);
   const light = !readOnly && !!lightOn(owner, store.entries, date); // a friend's page isn't under this phone's tap
   const { s: sug, trainedToday } = nextTime(store.entries, name, settings.get(name, hold), date, plannedSets(programs.program, todayPlanFor(programs, store.entries, date), name), light);
@@ -365,7 +365,7 @@ function LiftScreen({ name, store, settings, gyms, programs, date, onLog, onBack
         <p className="card note-card test-due">
           <span>Time for a test: {due.body ? <><b>bodyweight</b> for as many good reps as you can (about {due.reps})</>
             : due.jump ? <>make today’s first set at <b>{fmtWeight(due.weight)} lb</b> as many good reps as you can</> : <><b>{fmtWeight(due.weight)} lb</b> for as many good reps as you can (about {due.reps})</>}, and tick <b>Test</b>.
-            It takes your estimate from {due.body ? `±${repsU(due.body.u)} reps to ±${repsU(due.body.after)} reps` : `±${pct(due.u)}% to ±${pct(due.after)}%`}.</span>
+            {' '}{testWhy(due)} It takes your estimate from {due.body ? `±${repsU(due.body.u)} reps to ±${repsU(due.body.after)} reps` : `±${pct(due.u)}% to ±${pct(due.after)}%`}.</span>
           <button className="mini" onClick={() => void settings.save({ ...settings.get(name, hold), testSnoozedUntil: addDays(today, 14) })}>Not now</button>
         </p>
       )}

@@ -1521,8 +1521,8 @@ test('Prompts: pain that keeps coming back, sharp pain, a variation for a stalle
     ...rows('2026-09-08', 'Bench Press', ['185x8', '185x8', '185x8']), ...rows('2026-09-15', 'Bench Press', ['185x9', '185x8', '185x8']),
     ...rows('2026-09-22', 'Bench Press', ['185x9', '185x8', '185x8']), ...rows('2026-09-29', 'Bench Press', ['185x9', '185x8', '185x7']),
     ...rows('2026-10-06', 'Bench Press', ['185x8', '185x8', '185x8']),
-    // Two sessions, and today the third: the first a test can be due on, so its one prompt in 6 weeks is today's (2026-10-28).
-    '2026-10-08,Dumbbell Bench Press,,1,85,8,,,,sample,,', '2026-10-11,Dumbbell Bench Press,,1,90,8,,,,sample,,',
+    // Two sessions, the first 4 weeks before today and never tested: a test is due (every 4 weeks, owner 2026-11-22).
+    '2026-09-15,Dumbbell Bench Press,,1,85,8,,,,sample,,', '2026-10-11,Dumbbell Bench Press,,1,90,8,,,,sample,,',
   ].join('\n');
   await notched(page);
   await page.clock.install({ time: new Date('2026-10-14T18:00:00') });

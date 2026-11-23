@@ -1,18 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { oneRm, painFactor, strength, testDue as dueWithCooldown, TEST_COOLDOWN_DAYS, TEST_REPS, weightForReps } from './estimators';
-import { painRisk } from './learn/pain';
-import { painGate } from './painPlan';
-import { likelyRegion } from './care';
+import { oneRm, strength, testDue, testWhy, TEST_EVERY_DAYS, TEST_REPS, weightForReps } from './estimators';
 import { simulate, SIM_LIFTS } from './learn/coreSim.sample';
-import { coreBefore, learn, testSd } from './learn';
+import { coreBefore, learn } from './learn';
 import { strengthOf } from './learn/strength';
 import { learnable } from './stats';
 import { liftKey } from './ids';
 import { addDays } from './analytics';
-
-/** Item 05's rule itself, without its cooldown (below). */
-const testDue = (...a: Parameters<typeof dueWithCooldown>) => dueWithCooldown(a[0], a[1], a[2], a[3], a[4], 0);
 
 describe('oneRm', () => {
   it('matches Epley and the weight-dependent formula', () => {
@@ -115,124 +109,74 @@ describe('strength: the level on a day, and how sure it is', () => {
   });
 });
 
-describe('testDue: when a test would at least halve what the app doesn’t know (item 05)', () => {
-  // Two days after the log's last day: a fresh session, the third or later of every lift's run.
-  const due = (entries: SetEntry[]) => {
-    const today = addDays(lastDate(entries), 2);
-    return SIM_LIFTS.filter((l) => testDue(entries, l.name, today));
-  };
-  it('due on most lifts before any test; after tests (35 % of sessions), on few', () => {
-    let before = 0, after = 0;
-    for (let seed = 1; seed <= 3; seed++) {
-      before += due(simulate(seed, { sessions: 120, pLog: 0.5 }).entries).length;
-      after += due(simulate(seed, { sessions: 120, pLog: 0.5, testFrac: 0.35 }).entries).length;
-    }
-    expect(before).toBeGreaterThanOrEqual(0.7 * 30);
-    expect(after).toBeLessThanOrEqual(0.2 * 30);
+describe('testDue: a test every 4 weeks, from the last one or from the lift’s first session (item 05, owner 2026-11-22)', () => {
+  const sim = simulate(1, { sessions: 120, pLog: 0.5 }).entries;
+  const l = SIM_LIFTS[0].name;
+  const mine = sim.filter((e) => e.exercise === l);
+  const first = mine.map((e) => e.date).sort()[0];
+  const before = (d: string) => sim.filter((e) => e.date < d);
+  const one = (date: string, exercise: string, flags: SetEntry['flags'], over: Partial<SetEntry> = {}): SetEntry => ({ id: `x|${date}|${exercise}|${flags.join()}|${over.painSeverity}`, date, seq: 1e6, exercise, setNo: 9, weight: 10, reps: 5, flags, source: 't', ...over });
+
+  it('never tested: due 28 days after its first session, not a day before, and says where it counts from', () => {
+    expect(TEST_EVERY_DAYS).toBe(28);
+    expect(testDue(before(addDays(first, 27)), l, addDays(first, 27))).toBeNull();
+    const d = testDue(before(addDays(first, 28)), l, addDays(first, 28))!;
+    expect(d).toMatchObject({ since: first, tested: false, days: 28 });
+    expect(testDue(before(addDays(first, 40)), l, addDays(first, 40))).toMatchObject({ since: first, days: 40 });
   });
-  it('is due exactly when the uncertainty is above what one test reads the level to (raised for the chance it hurts), and the weight is for about 10 reps', () => {
-    const { entries } = simulate(5, { sessions: 120, pLog: 0.5 });
-    const today = addDays(lastDate(entries), 2);
-    const core = learn(entries).core;
-    for (const l of SIM_LIFTS) {
-      const s = strength(entries, l.name, today)!;
-      const d = testDue(entries, l.name, today);
-      expect(!!d, l.name).toBe(s.u > testSd(core, liftKey(l.name), TEST_REPS) * painFactor(painRisk(entries, l.name, today).p));
-      if (!d) continue;
-      expect(Math.abs(d.reps - TEST_REPS), l.name).toBeLessThanOrEqual(5);
-      expect(d.after).toBeLessThan(d.u / Math.SQRT2 + 1e-12);
+  it('tested: due 28 days after the last test, whatever came between', () => {
+    const t = addDays(first, 50);
+    const log = [...before(t), { ...mine.find((e) => e.date < t && !e.flags.includes('warmup'))!, id: 'tst', date: t, flags: ['test' as const] }];
+    for (const k of [1, 10, 27]) expect(testDue(log, l, addDays(t, k)), `day ${k}`).toBeNull();
+    expect(testDue(log, l, addDays(t, 28))).toMatchObject({ since: t, tested: true, days: 28 });
+  });
+  it('the weight is for about 10 reps, and the test narrows what the app knows', () => {
+    const today = addDays(lastDate(sim), 2);
+    for (const x of SIM_LIFTS) {
+      const d = testDue(sim, x.name, today)!;
+      expect(d, x.name).not.toBeNull();
+      expect(Math.abs(d.reps - TEST_REPS), x.name).toBeLessThanOrEqual(5);
+      expect(d.after).toBeLessThan(d.u);
       expect(d.jump).toBe(false);
     }
   });
-  it('today’s increase is the test: its first set at the new weight, no extra set', () => {
-    const { entries } = simulate(1, { sessions: 120, pLog: 0.5 });
-    const today = addDays(lastDate(entries), 2);
-    const l = SIM_LIFTS.find((x) => testDue(entries, x.name, today))!;
-    const plain = testDue(entries, l.name, today)!;
-    const jump = testDue(entries, l.name, today, undefined, { kind: 'increase', weight: plain.weight + 5 })!;
-    expect(jump).toMatchObject({ jump: true, weight: plain.weight + 5 });
-    expect(testDue(entries, l.name, today, undefined, { kind: 'reps', weight: plain.weight + 5 })).toEqual(plain);
+  it('not held back by pain, a light week or a lift’s first 2 sessions', () => {
+    const today = addDays(lastDate(sim), 2);
+    const lastS = lastDate(mine);
+    expect(testDue(sim, l, today)).not.toBeNull();
+    // Moderate, unknown or sharp pain last time (the pain plan holds or eases it), or pain earlier today: still due.
+    for (const sev of [1, 2, 3, undefined] as const) expect(testDue([...sim, one(lastS, l, ['pain'], sev ? { painSeverity: sev } : {})], l, today), `sev ${sev}`).not.toBeNull();
+    expect(testDue([...sim, one(today, l, ['pain', 'warmup'], { painSeverity: 3 })], l, today)).not.toBeNull();
+    // A light week, by today's target.
+    expect(testDue(sim, l, today, undefined, { kind: 'light', weight: 100 })).not.toBeNull();
+    // 50 days off: the first session back is due (the old rule waited for the third).
+    expect(testDue(sim, l, addDays(today, 50))).not.toBeNull();
   });
-  it('never while pain holds or eases the lift, or once it has hurt today; mild pain last time stops nothing by itself (item 08, a)', () => {
-    const { entries } = simulate(1, { sessions: 120, pLog: 0.5 });
-    const today = addDays(lastDate(entries), 2);
-    const l = SIM_LIFTS.find((x) => testDue(entries, x.name, today))!.name;
-    const one = (date: string, exercise: string, flags: SetEntry['flags'], over: Partial<SetEntry> = {}): SetEntry => ({ id: `x|${date}|${exercise}|${flags.join()}|${over.painSeverity}`, date, seq: 1e6, exercise, setNo: 9, weight: 10, reps: 5, flags, source: 't', ...over });
-    const lastS = lastDate(entries.filter((x) => x.exercise === l));
-    // Moderate, unknown or sharp on its last session: held or eased, so no test (and its severity is what the gate reads).
-    for (const sev of [2, 3, undefined] as const) expect(testDue([...entries, one(lastS, l, ['pain'], sev ? { painSeverity: sev } : {})], l, today), `sev ${sev}`).toBeNull();
-    // Mild: the test is weighed by the chance it hurts, as any test is.
-    const mild = [...entries, one(lastS, l, ['pain'], { painSeverity: 1 })];
-    const s = strength(mild, l, today)!;
-    expect(!!testDue(mild, l, today)).toBe(s.u > testSd(learn(mild).core, liftKey(l), TEST_REPS) * painFactor(painRisk(mild, l, today).p));
-    // Hurt earlier today, at any severity.
-    expect(testDue([...entries, one(today, l, ['pain', 'warmup'], { painSeverity: 1 })], l, today)).toBeNull();
-    // Another lift loading the same region hurt (moderate) two days ago: held, so no test; mild there, no hold.
-    const near = SIM_LIFTS.find((x) => x.name !== l && likelyRegion(x.name) === likelyRegion(l));
-    if (near) {
-      expect(testDue([...entries, one(addDays(today, -2), near.name, ['pain'], { painSeverity: 2 })], l, today)).toBeNull();
-      expect(painGate([...entries, one(addDays(today, -2), near.name, ['pain'], { painSeverity: 1 })], l, today)).toBeNull();
-    }
+  it('one test a day: a test logged today on another lift holds this one to another day', () => {
+    const today = addDays(lastDate(sim), 2);
     const other = SIM_LIFTS.find((x) => x.name !== l)!.name;
-    expect(testDue([...entries, one(today, other, ['test'])], l, today)).toBeNull();
-    expect(testDue([...entries, one(addDays(today, -1), other, ['test'])], l, today)).not.toBeNull();
-    // 50 days off: today is the first session back, then the second; the third may test.
-    const later = addDays(today, 50);
-    const lastL = lastDate(entries.filter((x) => x.exercise === l));
-    const back = (n: number) => entries.filter((e) => e.exercise === l && e.date === lastL)
-      .flatMap((e) => Array.from({ length: n }, (_, k) => ({ ...e, id: `${e.id}|b${k}`, loggedAt: undefined, date: addDays(later, k * 3) })));
-    expect(testDue(entries, l, later)).toBeNull();
-    expect(testDue([...entries, ...back(1)], l, addDays(later, 3))).toBeNull();
-    expect(testDue([...entries, ...back(2)], l, addDays(later, 6))).not.toBeNull();
+    expect(testDue([...sim, one(today, other, ['test'])], l, today)).toBeNull();
+    expect(testDue([...sim, one(addDays(today, -1), other, ['test'])], l, today)).not.toBeNull();
   });
-  it('never once hurting is the likelier outcome (item 08, b): a test that hurts reads nothing', () => {
-    const { entries } = simulate(1, { sessions: 120, pLog: 0.5 });
-    const today = addDays(lastDate(entries), 2);
-    const l = SIM_LIFTS.find((x) => testDue(entries, x.name, today))!.name;
-    // Mild pain on each of its last six sessions: acceptable (a), so nothing holds it, but it keeps coming back (b).
-    const days = [...new Set(entries.filter((e) => e.exercise === l).map((e) => e.date))].sort();
-    const hurt = new Set(days.slice(-6));
-    const sore = entries.map((e) => (e.exercise === l && hurt.has(e.date) && e.setNo === 1 ? { ...e, id: `${e.id}|p`, flags: [...e.flags, 'pain' as const], painSeverity: 1 as const } : e));
-    expect(painGate(sore, l, today)).toBeNull();
-    expect(painRisk(sore, l, today).p).toBeGreaterThanOrEqual(0.5);
-    expect(testDue(sore, l, today)).toBeNull();
-    expect(painFactor(0)).toBe(1);
-    expect(painFactor(0.375)).toBeCloseTo(2, 12);
-    expect(painFactor(0.5)).toBe(Infinity);
-    expect(painFactor(0.55)).toBe(Infinity);
+  it('today’s increase is the test: its first set at the new weight, no extra set', () => {
+    const today = addDays(lastDate(sim), 2);
+    const plain = testDue(sim, l, today)!;
+    const jump = testDue(sim, l, today, undefined, { kind: 'increase', weight: plain.weight + 5 })!;
+    expect(jump).toMatchObject({ jump: true, weight: plain.weight + 5, since: plain.since });
+    expect(testDue(sim, l, today, undefined, { kind: 'reps', weight: plain.weight + 5 })).toEqual(plain);
   });
-  it('never for a hold or cardio', () => {
-    const plank: SetEntry[] = [0, 1, 2, 3].map((i) => ({ id: `h${i}`, date: `2026-09-0${i + 1}`, seq: i, exercise: 'Plank', setNo: 1, weight: 0, reps: 60, flags: ['hold'], source: 't' }));
+  it('the cadence is a setting: a shorter one comes sooner', () => {
+    expect(testDue(before(addDays(first, 14)), l, addDays(first, 14))).toBeNull();
+    expect(testDue(before(addDays(first, 14)), l, addDays(first, 14), undefined, null, 14)).not.toBeNull();
+  });
+  it('says why plainly', () => {
+    expect(testWhy({ tested: true, days: 37 })).toBe('A test every 4 weeks, whatever the week: your last was 5 weeks ago.');
+    expect(testWhy({ tested: false, days: 28 })).toBe('A test every 4 weeks, whatever the week: you started this lift 4 weeks ago and haven’t tested it yet.');
+  });
+  it('never for a hold, cardio or a lift never done', () => {
+    const plank: SetEntry[] = [0, 1, 2, 3].map((i) => ({ id: `h${i}`, date: `2026-08-0${i + 1}`, seq: i, exercise: 'Plank', setNo: 1, weight: 0, reps: 60, flags: ['hold'], source: 't' }));
     expect(testDue(plank, 'Plank', '2026-09-20')).toBeNull();
     expect(testDue([], 'Treadmill', '2026-09-20')).toBeNull();
-  });
-});
-
-describe('testDue’s cooldown: at most one prompt per lift per 4 weeks (owner, 2026-10-28; 4 weeks from 6: owner, 2026-11-21)', () => {
-  const sim = simulate(1, { sessions: 120, pLog: 0.5 }).entries;
-  const l = SIM_LIFTS[0].name;
-  const days = [...new Set(sim.filter((e) => e.exercise === l).map((e) => e.date))].sort();
-  const before = (d: string) => sim.filter((e) => e.date < d);
-  /** The lift's sessions the rule calls due, as it stood each day. */
-  const ruled = days.filter((d) => testDue(before(d), l, d));
-  const day = (d: string) => Math.round((Date.parse(d) - Date.parse(ruled[0])) / 864e5);
-  it('the first due session prompts; the next ones within 4 weeks don’t, though the rule still calls them due; the first after does', () => {
-    expect(TEST_COOLDOWN_DAYS).toBe(28);
-    expect(ruled.length).toBeGreaterThan(4);
-    expect(dueWithCooldown(before(ruled[0]), l, ruled[0])).not.toBeNull();
-    const within = ruled.filter((d) => day(d) > 0 && day(d) < 28);
-    expect(within.length).toBeGreaterThan(0);
-    for (const d of within) expect(dueWithCooldown(before(d), l, d), d).toBeNull();
-    const next = ruled.find((d) => day(d) >= 28)!;
-    expect(dueWithCooldown(before(next), l, next)).not.toBeNull();
-  });
-  it('the cooldown is a slot: a shorter one lets a later session prompt', () => {
-    const d = ruled.find((x) => day(x) >= 14 && day(x) < 28)!;
-    expect(dueWithCooldown(before(d), l, d, undefined, null, 14)).not.toBeNull();
-  });
-  it('a test on the lift in the last 4 weeks holds it off too', () => {
-    const next = ruled.find((d) => day(d) >= 28)!;
-    const t = before(next).filter((e) => e.exercise === l).at(-1)!;
-    expect(dueWithCooldown([...before(next), { ...t, id: 'tst', flags: ['test'] }], l, next)).toBeNull();
+    expect(testDue(sim, 'Cable Fly', addDays(lastDate(sim), 2))).toBeNull();
   });
 });

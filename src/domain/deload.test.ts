@@ -76,15 +76,14 @@ describe('a light week’s sessions are not progressed from', () => {
 });
 
 describe('tests and rotation in a light week or a suggested deload', () => {
-  it('no test is due in a light week (by its target, or by the log’s light sets)', () => {
-    // Three weeks since the last session: the level has drifted enough for a test to be due.
+  it('a test still comes due in a light week (by its target, or by the log’s light sets): it keeps its 4 weeks (owner, 2026-11-22)', () => {
     const sim = deloadLog(2, SIM_LIFTS, { weeks: 6 });
     const d = simDay(6 * 7 + 20);
     const due = testDue(sim, 'Bench Press', d);
     expect(due).not.toBeNull();
-    expect(testDue(sim, 'Bench Press', d, undefined, { kind: 'light', weight: 100 })).toBeNull();
+    expect(testDue(sim, 'Bench Press', d, undefined, { kind: 'light', weight: 100 })).toEqual(due);
     const lit = [...sim, { ...set(simDay(6 * 7 + 18), 1, 100, 8, true), exercise: 'Leg Press', id: 'lp' }];
-    expect(testDue(lit, 'Bench Press', d)).toBeNull();
+    expect(testDue(lit, 'Bench Press', d)).not.toBeNull();
   });
   it('a stalled lift’s rotation waits while a deload is suggested, and is offered without one (pair)', () => {
     const sim = deloadLog(3, SIM_LIFTS, { weeks: 12, progress: 0, shift: (w) => (w === 11 ? -0.06 : 0) });

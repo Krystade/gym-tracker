@@ -10,7 +10,7 @@ test.use({ serviceWorkers: 'block' });
 
 const HEADER = 'date,exercise,as_written,set,weight_lb,reps,rir,flags,note,source';
 const day = (i: number) => new Date(Date.UTC(2026, 7, 19 + i * 3)).toISOString().slice(0, 10); // Aug 19, every 3 days
-/** Synthetic history (as e2e/exercise): 7 sessions of one working set, the weight rising; the 8th session, on Sep 9, is due a test. */
+/** Synthetic history (as e2e/exercise): 7 sessions of one working set, the weight rising; Sep 16, 4 weeks after the first, is due a test. */
 async function seed(page: Page) {
   const rows = Array.from({ length: 7 }, (_, i) => `${day(i)},Bench Press,,1,${135 + 5 * i},8,,,,sample`);
   await goto(page, 'Backup');
@@ -26,13 +26,15 @@ async function benchCard(page: Page) {
 }
 
 test('the test prompt shows on Today’s card; “Set up the test” logs a test, and the prompt goes', async ({ page }) => {
-  await page.clock.install({ time: new Date('2026-09-09T18:00:00') });
+  await page.clock.install({ time: new Date('2026-09-16T18:00:00') });
   await page.goto('/');
   await seed(page);
   const card = await benchCard(page);
   const prompt = card.getByRole('group', { name: 'Time for a test' });
   await expect(prompt).toBeVisible();
   await expect(prompt).toHaveText(/^Time for a test: \d+ lb for as many good reps as you can \(about \d+\), with Test ticked\./);
+  // Why, plainly (owner, 2026-11-22): the cadence and where it counts from.
+  await expect(prompt.locator('.card-test-why')).toHaveText('A test every 4 weeks, whatever the week: you started this lift 4 weeks ago and haven’t tested it yet.');
   const lb = Number((await prompt.innerText()).match(/test: (\d+) lb/)![1]);
   const reps = Number((await prompt.innerText()).match(/about (\d+)/)![1]);
   // Its "Test due" pill beside the name, on the name's line; a tap brings the note into view.
@@ -70,7 +72,7 @@ test('the test prompt shows on Today’s card; “Set up the test” logs a test
 });
 
 test('“Not now” on the card quiets it there and on the lift’s page, after a reload too', async ({ page }) => {
-  await page.clock.install({ time: new Date('2026-09-09T18:00:00') });
+  await page.clock.install({ time: new Date('2026-09-16T18:00:00') });
   await page.goto('/');
   await seed(page);
   let card = await benchCard(page);

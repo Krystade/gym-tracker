@@ -28,12 +28,11 @@ import { kneeAfter } from '../src/domain/learn/rest';
 import { gapModel } from '../src/domain/learn/switch';
 import { supersets } from '../src/domain/superset';
 import { paceBefore } from '../src/domain/learn/session';
-import { painFactor, testDue, TEST_REPS } from '../src/domain/estimators';
+import { testDue, TEST_EVERY_DAYS } from '../src/domain/estimators';
 import { painRisk } from '../src/domain/learn/pain';
-import { painGate } from '../src/domain/painPlan';
-import { lightWeek, systemic } from '../src/domain/learn/deload';
-import { runIndex, REACCLIMATION, flatness } from '../src/domain/learn/trend';
-import { testSd, dayOf } from '../src/domain/learn';
+import { systemic } from '../src/domain/learn/deload';
+import { flatness } from '../src/domain/learn/trend';
+import { dayOf } from '../src/domain/learn';
 import { volumeAdvice } from '../src/domain/learn/volume';
 import { defaultProfile } from '../src/domain/profile';
 import { readinessModel } from '../src/domain/learn/readiness';
@@ -473,22 +472,18 @@ for (const D of dates) {
   const lifts = [...new Set(log.filter((e) => e.date === D && isWorking(e) && !cardio(e)).map((e) => e.exercise))];
   for (const L of lifts) {
     testChecked++;
+    // The cadence (estimators testDue): every TEST_EVERY_DAYS from the last test, else from the lift's first session.
     const why = (() => {
       if (isHoldLift(L, before)) return 'a hold';
-      if (lightWeek(before, D)) return 'light week';
-      if (painGate(before, L, D)) return 'pain holds the lift';
-      const days = [...new Set(before.filter((e) => liftKey(e.exercise) === liftKey(L) && e.reps != null && !e.flags.includes('warmup')).map((e) => e.date))].sort().map(dayOf);
-      if (runIndex([...days, dayOf(D)]).at(-1)! < REACCLIMATION) return 'first 2 sessions (or after a 6-week layoff)';
-      const core = coreBefore(before, addDays(D, 1));
-      if (!core) return 'no core';
-      const s = strengthOf(core, L, D);
-      if (!s) return 'no level (bodyweight/no load)';
-      const sigma = testSd(core, liftKey(L), TEST_REPS), kf = painFactor(painRisk(before, L, D).p);
-      if (!(s.u > sigma)) return 'level already known well enough';
-      if (!(s.u > sigma * kf)) return 'pain risk raised the bar';
+      if (before.some((e) => e.date === D && e.flags.includes('test'))) return 'a test already today';
+      const mine = before.filter((e) => liftKey(e.exercise) === liftKey(L) && e.reps != null && !e.flags.includes('warmup'));
+      const tested = mine.filter((e) => e.flags.includes('test')).map((e) => e.date).sort().at(-1);
+      const since = tested ?? mine.map((e) => e.date).sort()[0];
+      if (!since) return 'first session';
+      if (dayOf(D) - dayOf(since) < TEST_EVERY_DAYS) return tested ? 'under 4 weeks since its test' : 'under 4 weeks since it started';
       let t: Target | null = null;
       try { t = nextTarget(before, L, defaultSettings(L), D, null); } catch { /* none */ }
-      return testDue(before, L, D, { increment: 5 }, t) ? 'FIRED' : 'cooldown (28 d)';
+      return testDue(before, L, D, { increment: 5 }, t) ? 'FIRED' : 'no level to read a weight from';
     })();
     testCounts[why] = (testCounts[why] ?? 0) + 1;
     if (why === 'FIRED') fired[D.slice(0, 7)] = (fired[D.slice(0, 7)] ?? 0) + 1;
