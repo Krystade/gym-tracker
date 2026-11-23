@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { start, stop } from './perfClock.sample';
 import { addDays } from './analytics';
 import {
   axisTicks, firsts, heatStep, MAX_FIRSTS, MAX_LIFTS, parseSummary, PERSON_COLOURS, personColours, POINTS, ranked, ranks, samples, sharedLifts, spread,
@@ -112,9 +113,9 @@ describe('summarize: what your phone publishes', () => {
     for (let d = addDays(TODAY, -3 * 365), k = 0; d <= TODAY; d = addDays(d, 1), k++) {
       if (k % 7 === 1 || k % 7 === 3 || k % 7 === 5 || k % 7 === 6) for (let j = 0; j < 6; j++) for (let i = 0; i < 4; i++) big.push(set(names[(k + j) % names.length], d, 50 + (k / 10) + j * 10));
     }
-    const t = performance.now();
+    const t = start(); // idle ms (domain/perfClock.sample)
     summarize(big, TODAY, 4);
-    expect(performance.now() - t).toBeLessThan(1500);
+    expect(stop(t)).toBeLessThan(1500);
     expect(big.length).toBeGreaterThan(14_000);
   });
 });

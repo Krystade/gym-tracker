@@ -61,7 +61,10 @@ const MAX_TIMES = 100_000;
 /** When a set was done, in epoch ms: NaN without a time (pasted, imported without times, untimed late sets). */
 export function doneAt(e: SetEntry): number {
   const s = e.loggedAt;
-  if (!s) return NaN;
+  return s ? timeOf(s) : NaN;
+}
+/** An ISO time in epoch ms (NaN: not a time), each distinct string parsed once (see TIMES). */
+export function timeOf(s: string): number {
   let t = TIMES.get(s);
   if (t === undefined) {
     t = Date.parse(s);

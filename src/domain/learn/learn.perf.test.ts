@@ -19,10 +19,14 @@ import { simulateRecovery } from './recoverySim.sample';
 import { readiness } from './readiness';
 import { readinessPlanned } from './schedule';
 import type { Program } from '../program';
+import { start, stop } from '../perfClock.sample';
 
 // Shared CI runners are 2-4x slower than a desktop and vary run to run, so wall-clock budgets there catch only an
 // order-of-magnitude regression. Locally (and on the phone's terms) the budgets stand as written.
 const SLACK = process.env.CI ? 4 : 1;
+
+// Every run is timed in idle milliseconds (domain/perfClock.sample): its wall time over how much busier the machine was beside
+// it than idle, so the full suite running beside this file doesn't fail a budget the code still meets alone.
 
 // Phone budget (00-core §1.3): with 5 years of training (1,000 sessions, ~4 a week: ~14k sets) a refit after one more set stays
 // under 50 ms on an iPhone 13 mini. The new set rebuilds only today's session block and copies only its rows (learn/capacity);
@@ -44,9 +48,9 @@ it('refits 5 years of synthetic training in under 50 ms after one more set', () 
   const times: number[] = [];
   for (let k = 0; k < 9; k++) {
     const next = addSet();
-    const t = performance.now();
+    const t = start();
     learn(next);
-    times.push(performance.now() - t);
+    times.push(stop(t));
   }
   times.sort((a, b) => a - b);
   expect(log.length).toBeGreaterThan(12000);
@@ -62,9 +66,9 @@ it('fits 5 years of pain history in under 25 ms', () => {
   const times: number[] = [];
   for (let k = 0; k < 9; k++) {
     const next = [...log];
-    const t = performance.now();
+    const t = start();
     painFit(next).risk('Bench Press', '2031-01-01');
-    times.push(performance.now() - t);
+    times.push(stop(t));
   }
   times.sort((a, b) => a - b);
   expect(painFit(log).sessions).toBeGreaterThan(4000);
@@ -81,9 +85,9 @@ it('fits 5 years of timed sessions in under 50 ms', () => {
   const times: number[] = [];
   for (let k = 0; k < 9; k++) {
     const next = [...entries];
-    const t = performance.now();
+    const t = start();
     paceFit(next)!.forecast([{ exercise: 'Bench Press' }, { exercise: 'Bench Press' }], { date: '2031-01-01' });
-    times.push(performance.now() - t);
+    times.push(stop(t));
   }
   times.sort((a, b) => a - b);
   expect(paceFit(entries)!.gaps).toBeGreaterThan(11000);
@@ -107,9 +111,9 @@ it('a set logged today re-reads only today for the plan’s length and his pace'
   const times: number[] = [];
   for (let i = 1; i < 9; i++) {
     const next = addSet(i);
-    const t = performance.now();
+    const t = start();
     sessionLengths(next, date, slots);
-    times.push(performance.now() - t);
+    times.push(stop(t));
   }
   times.sort((a, b) => a - b);
   expect(sessionLengths(log, date, slots).pace).not.toBeNull();
@@ -136,13 +140,13 @@ it('the knee after a set, and the day’s δ, stay cheap as today’s sets are l
   const knee: number[] = [], delta: number[] = [];
   for (let i = 1; i < 12; i++) {
     const before = [...log], e = add(i), after = [...log];
-    let t = performance.now();
+    let t = start();
     const k = kneeAfter(before, e);
-    knee.push(performance.now() - t);
+    knee.push(stop(t));
     expect(k?.use).toBe(true);
-    t = performance.now();
+    t = start();
     expect(restDelta(after, date, slots, 30)).toBeGreaterThan(DELTA);
-    delta.push(performance.now() - t);
+    delta.push(stop(t));
   }
   knee.sort((a, b) => a - b); delta.sort((a, b) => a - b);
   expect(knee[0], `knee per set (ms): ${knee.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5 * SLACK);
@@ -167,9 +171,9 @@ it('the deload check stays cheap as today’s sets are logged', () => {
   const times: number[] = [];
   for (let k = 0; k < 9; k++) {
     const next = add();
-    const t = performance.now();
+    const t = start();
     const s = systemic(next, body, date);
-    times.push(performance.now() - t);
+    times.push(stop(t));
     expect(s).not.toBeNull();
   }
   times.sort((a, b) => a - b);
@@ -192,9 +196,9 @@ it('the volume steps stay cheap after a set is logged', () => {
   let asked = 0;
   for (let k = 0; k < 9; k++) {
     const next = add();
-    const t = performance.now();
+    const t = start();
     const a = volumeAdvice(next, [], profile, date)!;
-    times.push(performance.now() - t);
+    times.push(stop(t));
     asked = a.muscles.filter((x) => x.kind === 'raise' || x.kind === 'hold').length;
   }
   times.sort((a, b) => a - b);
@@ -205,7 +209,8 @@ it('the volume steps stay cheap after a set is logged', () => {
 // Item 16's reminder fit (learn/remind) reads only the days before today, so it refits once a day (or after an edit to a past
 // day), 3 s after the log changes, off any tap's path; a set logged today reuses it. 5 years of timed sessions (1,000, each with
 // a first-entry time): the prequential kernel score is pairs × half-lives, ~50 ms on desktop Node. Gated at 100 ms: twice the
-// phone's per-set budget, once a day. Best of several, each a new day (so a real refit).
+// phone's per-set budget, once a day. Best of several, each a new day (so a real refit). The reuse re-reads each day's first time
+// (~3 ms on desktop Node, each instant parsed and placed in the zone once: learn/remind wallClock).
 it('fits 5 years of reminder history in under 100 ms, once a day; a set logged today reuses it in under 5 ms', () => {
   const { entries } = paceLog(3, { sessions: 1000, breaks: 0.02 });
   const last = entries.reduce((d, e) => (e.date > d ? e.date : d), '');
@@ -213,9 +218,9 @@ it('fits 5 years of reminder history in under 100 ms, once a day; a set logged t
   const times: number[] = [];
   for (let k = 0; k < 7; k++) {
     const next = [...entries];
-    const t = performance.now();
+    const t = start();
     fitReminder(next, addDays(last, 10 + k), 'UTC');
-    times.push(performance.now() - t);
+    times.push(stop(t));
   }
   times.sort((a, b) => a - b);
   const today = addDays(last, 10);
@@ -226,9 +231,9 @@ it('fits 5 years of reminder history in under 100 ms, once a day; a set logged t
   for (let k = 0; k < 9; k++) {
     log.push({ ...log[0], id: `remind${k}`, date: today, seq: 1e7 + k, loggedAt: `${today}T18:0${k}:00.000Z` });
     const next = [...log];
-    const t = performance.now();
+    const t = start();
     fitReminder(next, today, 'UTC');
-    per.push(performance.now() - t);
+    per.push(stop(t));
   }
   per.sort((a, b) => a - b);
   expect(per[0], `per set (ms): ${per.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5 * SLACK);
@@ -244,9 +249,9 @@ it('fits 5 years of supersets in under 150 ms, once a day; a set logged today re
   const times: number[] = [];
   for (let k = 0; k < 5; k++) {
     const next = [...log];
-    const t = performance.now();
+    const t = start();
     gapModel(next, addDays(last, 10 + k));
-    times.push(performance.now() - t);
+    times.push(stop(t));
   }
   times.sort((a, b) => a - b);
   const today = addDays(last, 10), m = gapModel(log, today);
@@ -258,9 +263,9 @@ it('fits 5 years of supersets in under 150 ms, once a day; a set logged today re
   for (let k = 0; k < 9; k++) {
     day.push({ ...log[0], id: `gap${k}`, date: today, seq: 1e7 + k, loggedAt: `${today}T18:0${k}:00.000Z` });
     const next = [...day];
-    const t = performance.now();
+    const t = start();
     expect(gapModel(next, today)).toBe(m);
-    per.push(performance.now() - t);
+    per.push(stop(t));
   }
   per.sort((a, b) => a - b);
   expect(per[0], `per set (ms): ${per.map((t) => t.toFixed(1)).join(', ')}`).toBeLessThan(5 * SLACK);
@@ -273,9 +278,9 @@ it('refits per-muscle recovery on 2k sets in under 20 ms after one more set', ()
   const times: number[] = [];
   for (let k = 0; k < 7; k++) {
     const next = [...entries, { ...last, id: `rec${k}`, seq: last.seq + 1 + k, setNo: last.setNo + 1 + k }];
-    const t = performance.now();
+    const t = start();
     fitRecovery(next, core, today, 'UTC').freshBy('Chest');
-    times.push(performance.now() - t);
+    times.push(stop(t));
   }
   times.sort((a, b) => a - b);
   expect(entries.length).toBeGreaterThan(2000);
@@ -300,9 +305,9 @@ it('re-reads the day’s readiness on 2k sets in under 25 ms after one more set 
   const times: number[] = [];
   for (let k = 0; k < 7; k++) {
     const next = [...entries, { ...last, id: `rdy${k}`, date: today, seq: last.seq + 1 + k, setNo: last.setNo + 1 + k, loggedAt: undefined }];
-    const t = performance.now();
+    const t = start();
     const r = at(next);
-    times.push(performance.now() - t);
+    times.push(stop(t));
     expect(r.candidates.length).toBe(4);
   }
   times.sort((a, b) => a - b);
@@ -330,9 +335,9 @@ it('plans the week (128 patterns, a 4-day program) with the day’s readiness on
   const times: number[] = [];
   for (let k = 0; k < 7; k++) {
     const next = [...entries];
-    const t = performance.now();
+    const t = start();
     const r = at(next);
-    times.push(performance.now() - t);
+    times.push(stop(t));
     expect(r.plan!.patterns).toBe(128);
     expect(r.plan!.days.filter((d) => d.train).length).toBe(3);
   }

@@ -1,5 +1,5 @@
 import { addDays, weekStart } from '../analytics';
-import { perLog, learnable } from '../stats';
+import { perLog, learnable, timeOf } from '../stats';
 import type { SetEntry } from '../types';
 import { dayOf } from './capacity';
 import { betaCdf, normCdf, normPdf } from './num';
@@ -73,7 +73,17 @@ const silverman = (sd: number, iqr: number, n: number) => {
 const fmt = new Map<string, Intl.DateTimeFormat>();
 /** The local date and minutes after its midnight of an ISO instant in zone `tz` (DST-safe: the zone's own wall clock). */
 export function wallClock(iso: string, tz: string): { date: string; min: number } | null {
-  const ms = Date.parse(iso);
+  // Each instant read once a zone (a set logged today re-reads every day's first time: startsOf), bounded as stats' TIMES.
+  const key = `${tz}|${iso}`;
+  if (WALL.has(key)) return WALL.get(key)!;
+  const w = wallClockOf(iso, tz);
+  if (WALL.size >= 50_000) WALL.clear();
+  WALL.set(key, w);
+  return w;
+}
+const WALL = new Map<string, { date: string; min: number } | null>();
+function wallClockOf(iso: string, tz: string): { date: string; min: number } | null {
+  const ms = timeOf(iso);
   if (!Number.isFinite(ms)) return null;
   let f = fmt.get(tz);
   if (!f) fmt.set(tz, (f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })));
@@ -93,7 +103,7 @@ export function startsOf(entries: readonly SetEntry[], today: string, tz: string
     const iso = e.enteredAt ?? e.loggedAt;
     const prev = first.get(e.date);
     if (!iso) { if (prev === undefined) first.set(e.date, null); continue; }
-    const t = Date.parse(iso);
+    const t = timeOf(iso);
     if (!Number.isFinite(t)) { if (prev === undefined) first.set(e.date, null); continue; }
     if (!prev || t < prev.t) first.set(e.date, { t, iso });
   }

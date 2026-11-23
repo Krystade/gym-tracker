@@ -16,9 +16,17 @@ const unevenCards = (page: Page) => page.evaluate(() => [...document.querySelect
   return Math.abs(top - bottom) > 2 ? [`${c.className} "${(c.textContent ?? '').trim().slice(0, 24)}": ${Math.round(top)} top, ${Math.round(bottom)} bottom`] : [];
 }));
 
+/**
+ * The space between two blocks, both read in one layout. Two boundingBox() calls are two moments: under load the set just added
+ * was still growing its card between them (its unlock lines land after the save, ~146px), so the button was read 146px lower
+ * than the card above it and the gap came out 162 (2026-11-22, 1 in 48 at 12 workers).
+ */
 const gap = async (page: Page, above: string, below: string) => {
-  const a = (await page.locator(above).first().boundingBox())!, b = (await page.locator(below).first().boundingBox())!;
-  return Math.round(b.y - (a.y + a.height));
+  const a = page.locator(above).first(), b = page.locator(below).first();
+  await a.waitFor(); await b.waitFor();
+  const [ra, rb] = await Promise.all([a.elementHandle(), b.elementHandle()])
+    .then(([x, y]) => page.evaluate(([p, q]) => [p!.getBoundingClientRect().bottom, q!.getBoundingClientRect().top], [x, y] as const));
+  return Math.round(rb - ra);
 };
 
 test('Today: the energy row and the date arrows have room, and the button under the log sits 16px below it', async ({ page }) => {

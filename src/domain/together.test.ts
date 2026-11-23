@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { start, stop } from './perfClock.sample';
 import { addDays, weekStart } from './analytics';
 import { achievements, shareOf, unlocksOf, unlockText, DEF, type Context } from './achievements';
 import { summarize } from './compare';
@@ -402,9 +403,9 @@ describe('Together’s cost', () => {
     const ledger: Ledger = Object.fromEntries(fs.map((f) => [f.uid, { day: new Set(days), tog: new Set(days), week: new Map() }]));
     const c = ctx(fs, { since: addDays(TODAY, -300) }, ledger);
     achievements(mine, c); // warm
-    const t = performance.now();
+    const t = start(); // idle ms (domain/perfClock.sample)
     const a = achievements(mine, { ...c });
-    expect(performance.now() - t).toBeLessThan(150);
+    expect(stop(t)).toBeLessThan(150);
     expect(a.unlocks.some((u) => u.id === 'gym-crew')).toBe(true); // it did the work
   });
 });

@@ -3,6 +3,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { readFileSync } from 'node:fs';
+import { configDefaults } from 'vitest/config';
+
+/** Test files with wall-clock budgets (see test.projects). */
+const TIMED = ['src/domain/learn/learn.perf.test.ts', 'src/domain/achievements.test.ts', 'src/domain/compare.test.ts', 'src/domain/together.test.ts'];
 
 const BUILD_ID = process.env.GITHUB_SHA?.slice(0, 7) ?? `dev-${Date.now().toString(36)}`;
 const BUILT_AT = new Date().toISOString();
@@ -62,6 +66,12 @@ export default defineConfig({
   server: { host: true, port: 5190 },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    // The files that time the code against a budget run on their own, one at a time, once every other file is done: beside the
+    // whole suite (a worker on every core) their wall-clock timings came out 1.2 to 8 times what they are alone (2026-11-22).
+    // What's left of a busy machine (an e2e run beside it, a CI runner) is allowed for by domain/perfClock.sample.
+    projects: [
+      { extends: true, test: { name: 'unit', include: ['src/**/*.test.ts'], exclude: [...configDefaults.exclude, ...TIMED] } },
+      { extends: true, test: { name: 'timed', include: TIMED, fileParallelism: false, sequence: { groupOrder: 1 } } },
+    ],
   },
 });
