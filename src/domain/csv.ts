@@ -5,7 +5,7 @@ import { parseTags } from './tags';
 
 export const CSV_HEADER = ['date', 'exercise', 'as_written', 'set', 'weight_lb', 'reps', 'rir', 'flags', 'note', 'source', 'pain_region', 'pain_severity',
   'logged_at', 'target_weight_lb', 'target_reps', 'target_sets', 'gym', 'entered_at',
-  'duration_s', 'distance_mi', 'incline_pct', 'level', 'floors', 'cardio_aim', 'tags', 'edited_at', 'morning', 'morning_note', 'not_used', 'hold_s'] as const;
+  'duration_s', 'distance_mi', 'incline_pct', 'level', 'floors', 'cardio_aim', 'tags', 'edited_at', 'morning', 'morning_note', 'not_used', 'hold_s', 'work_s'] as const;
 const REQUIRED = ['date', 'exercise', 'set', 'weight_lb', 'reps'];
 
 export interface CsvError { row: number; message: string }
@@ -25,7 +25,7 @@ export function toCsv(entries: SetEntry[]): string {
         ...[e.cardio?.seconds, e.cardio?.miles, e.cardio?.incline, e.cardio?.level, e.cardio?.floors, e.cardio?.aim].map((v) => (v == null ? '' : String(v))), (e.tags ?? []).join(';'),
         e.editedAt != null ? new Date(e.editedAt).toISOString() : '', e.morning ?? '', e.morningNote ?? '', e.excluded ? 'yes' : '',
         // A hold's seconds (round 32): in reps too, so an older build reads the set as it always did.
-        e.flags.includes('hold') && e.reps != null ? String(e.reps) : ''].map(esc).join(','),
+        e.flags.includes('hold') && e.reps != null ? String(e.reps) : '', e.workS != null ? String(e.workS) : ''].map(esc).join(','),
     );
   }
   return lines.join('\r\n') + '\r\n';
@@ -117,6 +117,9 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
     const morningNote = col(r, 'morning_note');
     // Not used for learning or records (SetEntry.excluded): older files have no such column.
     const notUsed = /^(yes|true|1)$/i.test(col(r, 'not_used').trim());
+    // A set's own time, start to save (SetEntry.workS): older files have no such column.
+    const workRaw = col(r, 'work_s').trim(), workS = workRaw === '' ? undefined : num(workRaw);
+    if (workS === null || (workS !== undefined && !(workS > 0))) return fail(`Bad work_s "${workRaw}"`);
     // Cardio: a flagged row needs a duration; the other numbers are optional. Older files have none of these columns.
     const cn = (name: string) => num(col(r, name));
     const isCardioRow = flagParts.includes('cardio');
@@ -152,6 +155,7 @@ export function parseCsv(text: string, defaultSource = 'import'): { entries: Set
       ...(morning && isMorning(morning) && { morning }),
       ...(morningNote !== '' && { morningNote }),
       ...(notUsed && { excluded: true as const }),
+      ...(workS !== undefined && { workS }),
     });
   });
   return { entries, errors };

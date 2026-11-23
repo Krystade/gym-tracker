@@ -7,6 +7,8 @@ export interface NewSetInput { date: string; exercise: string; weight: number; r
   at?: Date | null;
   cardio?: CardioData;
   tags?: string[];
+  /** The set's own time, start to save (SetEntry.workS): a live lift set only. */
+  workS?: number;
 }
 
 /** partial and bodyweight follow from the numbers, so an edit that fills in reps or adds weight clears them. A set with help (a
@@ -45,5 +47,6 @@ export function buildNamedSet(sameDay: readonly SetEntry[], input: NewSetInput, 
     ...(input.gym && { gym: input.gym }),
     ...(input.cardio && { cardio: input.cardio }),
     ...(input.tags?.length && { tags: input.tags }),
+    ...(input.workS != null && !late && !flags.includes('cardio') && !flags.includes('hold') && input.workS > 0 && { workS: input.workS }),
   };
 }

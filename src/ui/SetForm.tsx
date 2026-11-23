@@ -16,7 +16,9 @@ import { bodyShare } from '../domain/learn/bodyweight';
 import { fmtWeight } from '../domain/format';
 import { fmtClock } from '../domain/cardio';
 
-export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: Severity; at?: string | null; tags?: string[] }
+export interface SetFormValue { weight: number; reps: number | null; rir?: number; flags: Flag[]; note?: string; painRegion?: Region; painSeverity?: Severity; at?: string | null; tags?: string[];
+  /** The set's own time, start to save (SetEntry.workS): only when its start was seen (setTimer). */
+  workS?: number }
 /** The pain scale (owner, 2026-11-21): Tingle first, below Mild, logged and tracked but no pain to any plan (types.hurts). */
 const SEVERITY: [Severity, string][] = [[0, 'Tingle'], [1, 'Mild'], [2, 'Moderate'], [3, 'Sharp']];
 const cap = (r: string) => r[0].toUpperCase() + r.slice(1);
@@ -28,7 +30,13 @@ interface Draft { weight: string; reps: string; rir?: number; flags: Flag[]; not
  * `when`: the set may have been done earlier — `always` shows the time field (a past day), otherwise "Did this earlier?" opens it.
  * `suggest` is asked when the field opens, so it reflects the clock then. An empty field means unknown.
  */
-export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day, hold: holdLift, heaviest = 0, tagPrefs, onTagPrefs, nextReps, weightStep = 5, plates = PLATE_SIZES }: {
+export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, onCancel, keepDraft = false, when, day, hold: holdLift, heaviest = 0, tagPrefs, onTagPrefs, nextReps, weightStep = 5, plates = PLATE_SIZES, setTimer, startSignal = 0 }: {
+  /**
+   * Times the set itself (owner, 2026-11-22): a set starts when its reps are tapped, Start is tapped, or its card opens
+   * (`startSignal`: when it opened, epoch ms; a form mounting within 2 s of it starts from then); its save records start to save
+   * (workS). Only on a live lift set (not a hold, not a late one).
+   */
+  setTimer?: boolean; startSignal?: number;
   /** The plate sizes at this gym, for the per-side line. */
   plates?: readonly number[];
   /** An empty weight (null) is for a lift with nothing to suggest from. */
@@ -132,6 +140,13 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
     const t = setInterval(() => setReps(String(held(startedAt))), 250);
     return () => clearInterval(t);
   }, [startedAt]);
+  // The set's own timer (setTimer): when it started. Its running time ticks in SetClock alone, so the form doesn't re-render.
+  const timesSet = !!setTimer && !hold;
+  const [setFrom, setSetFrom] = useState<number | null>(() => (timesSet && startSignal > 0 && Date.now() - startSignal < 2000 ? startSignal : null));
+  /** Starts the set, unless it's already started: a second tap on reps doesn't move the start. */
+  const beginSet = () => { if (timesSet) setSetFrom((f) => f ?? Date.now()); };
+  const seenSignal = useRef(startSignal);
+  useEffect(() => { if (startSignal !== seenSignal.current) { seenSignal.current = startSignal; if (timesSet) setSetFrom((f) => f ?? startSignal); } });
   const startStop = () => {
     dirty.current = true;
     if (startedAt == null) { setReps('0'); setStartedAt(Date.now()); return; }
@@ -148,6 +163,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
         weight: w, reps: r, rir: rir ?? (flags.includes('test') ? 0 : undefined), flags: derivedFlags(withHold, w, r), note: note.trim() || undefined,
         painRegion: pain ? region : undefined, painSeverity: pain ? severity : undefined, tags: tags.length ? tags : undefined,
         ...(whenOpen && { at: time || null }),
+        ...(timesSet && setFrom != null && !whenOpen && { workS: Math.max(1, Math.round((Date.now() - setFrom) / 1000)) }),
       };
       const typed = edits.current;
       const ok = await onSubmit(value);
@@ -159,6 +175,7 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       if (ok && keepDraft && fresh) { clearDraft(owner.profile, draftKey); dirty.current = false; }
       // A warm-up or a test doesn't move the next set: back to what the card suggested before it (the next set, else the target).
       if (ok && keepDraft && fresh && (flags.includes('warmup') || flags.includes('test'))) { setWeight(initial.weight == null ? '' : String(initial.weight)); setReps(initial.reps == null ? '' : String(initial.reps)); }
+      if (ok) setSetFrom(null);
       if (ok) { setLoud(false); setAsked(null); setNote(''); setFlags((f) => f.filter((x) => x === 'double_pulley')); setTags([]); setEditTags(false); setRir(undefined); setRegion(likelyRegion(exercise)); setSeverity(1); setMoreOpen(false); }
     } finally { busy.current = false; }
   }
@@ -174,7 +191,8 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
     <form className="set-form" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       <div className="steppers">
         <Stepper label="Weight" value={weight} onChange={(v) => { setLoud(true); touch(setWeight)(v); }} step={weightStep} mode="decimal" min={body ? -Infinity : 0} />
-        <Stepper label={unit} value={reps} onChange={touch(setReps)} step={hold ? 5 : 1} mode="numeric" />
+        {/* A tap on the reps (the field or its ±) starts the set's own timer. */}
+        <div className="reps-stepper" onPointerDownCapture={beginSet} onFocusCapture={beginSet}><Stepper label={unit} value={reps} onChange={touch(setReps)} step={hold ? 5 : 1} mode="numeric" /></div>
       </div>
       {!problem && fmtPerSide(w, exercise, plates) && <p className="small muted plates" aria-label="Per side">{fmtPerSide(w, exercise, plates)}</p>}
       {!problem && body && w !== 0 && <p className="small muted plates" aria-label="Load">{w < 0 ? `BW − ${fmtWeight(-w)} lb: help` : `BW + ${fmtWeight(w)} lb`}</p>}
@@ -194,6 +212,9 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       {whenField}
       <div className="form-actions">
         {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
+        {timesSet && (setFrom == null
+          ? <button type="button" className="set-start" onClick={beginSet}><Icon name="timer" size={18} sw={2} />Start</button>
+          : <SetClock from={setFrom} onRestart={() => setSetFrom(Date.now())} />)}
         <button type="submit" className="primary" disabled={!valid || timing}>{submitLabel}</button>
       </div>
       <button type="button" className="chip more" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>{moreOpen || !moreHint ? 'Details' : `Details · ${moreHint}`}<Icon name="chev-down" size={18} sw={2} className="chev" /></button>
@@ -228,5 +249,17 @@ export function SetForm({ exercise, initial, submitLabel, onSubmit, onDelete, on
       {/* Out of the Cancel/Save row, so a reach for Save can't delete; Undo still brings it back. */}
       {onDelete && <button type="button" className="mini danger form-delete" onClick={onDelete}>Delete</button>}
     </form>
+  );
+}
+
+/** The set's running time on its Start button, re-rendering itself each second (not the form around it). */
+function SetClock({ from, onRestart }: { from: number; onRestart: () => void }) {
+  const [, tick] = useState(0);
+  useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t); }, [from]);
+  const t = fmtClock(Math.floor((Date.now() - from) / 1000));
+  return (
+    <button type="button" className="set-start on" aria-label={`Set started ${t} ago: tap to start again`} onClick={onRestart}>
+      <Icon name="timer" size={18} sw={2} /><b>{t}</b>
+    </button>
   );
 }

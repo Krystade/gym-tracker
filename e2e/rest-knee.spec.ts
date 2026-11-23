@@ -66,14 +66,14 @@ test('his own knee, once in use, is the rest, and the “?” says it was learne
   await page.screenshot({ path: `${SHOTS}/2-learned-rir0-375.png` });
 });
 
-test('timed sets that point below every rest he has timed leave the research default, and the “?” says why', async ({ page }) => {
+test('timed sets that point below every rest he has timed: his usual rest, shortened (round 68: 0.8 of 6:20, at most 5:00), and the “?” says why', async ({ page }) => {
   await logBench(page, 'rest-long.sample.csv', '2024-03-30', 410);
   const timer = page.getByRole('timer', { name: 'Rest' }), time = timer.locator('.rest-main b');
   const why = page.getByRole('dialog', { name: 'Why this rest' });
-  await expect(time).toHaveText('3:00');
-  await timer.getByRole('button', { name: 'Why this rest is 3:00' }).click();
+  await expect(time).toHaveText('5:00');
+  await timer.getByRole('button', { name: 'Why this rest is 5:00' }).click();
   await expect(why.locator('li')).toHaveText([
-    'Research defaultbig lift · your sets point to under 3:06, shorter than the rests you’ve timed3:00',
+    'Your usual, shortenedusual 6:20 · shorter than your usual: costs about 0.3 reps, saves ~3 min a session5:00',
   ]);
   await page.screenshot({ path: `${SHOTS}/3-default-375.png` });
 });

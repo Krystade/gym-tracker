@@ -70,6 +70,12 @@ export interface SetEntry {
   loc?: string;
   /** A cardio machine session: weight 0, reps null, the `cardio` flag. */
   cardio?: CardioData;
+  /**
+   * How long the set itself took, s (owner, 2026-11-22): from the set's start (its card opened, its reps field tapped, or Start
+   * tapped) to its save, on a set logged live. Never on a hold or cardio, whose seconds are the set itself (reps, cardio.seconds).
+   * What timing learns a lift's set time from (timing.setWork); absent when no start was seen.
+   */
+  workS?: number;
   /** The person's own tags (see domain/tags): plain labels, shown with the set; nothing counts them. */
   tags?: string[];
   /**

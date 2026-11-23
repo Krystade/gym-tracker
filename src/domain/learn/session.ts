@@ -4,7 +4,7 @@ import { liftFactsVersion } from '../lifts';
 import { isWorking, settingsKey } from '../progression';
 import { byOrderDone, doneAt, perLog, sameExercise, learnable } from '../stats';
 import { supersets, type GapModel, type Superset } from '../superset';
-import { isIsolation, planSeconds, REST_MAX_S, SET_WORK, stepsLeft, stepsOf, type KneeAt, type PlanSlot, type Step } from '../timing';
+import { isIsolation, planSeconds, REST_MAX_S, SET_WORK, setWork, setWorks, stepsLeft, stepsOf, type KneeAt, type PlanSlot, type Step } from '../timing';
 import type { SetEntry } from '../types';
 import { dayOf } from './capacity';
 import { logBefore } from './index';
@@ -595,7 +595,8 @@ export function sizing(entries: readonly SetEntry[], date: string, o: { warmups?
   const fit = paceBefore(entries, date);
   const warmups = o.warmups ?? (() => 0);
   if (fit) return { by: 'pace', seconds: (slots) => (slots.length ? fit.forecast(stepsOf(slots, warmups), { date }).seconds : 0) };
-  return { by: 'plan', seconds: (slots) => planSeconds(stepsOf(slots, warmups), { kept: o.kept, knee: o.knee }) };
+  const works = setWorks(entries);
+  return { by: 'plan', seconds: (slots) => planSeconds(stepsOf(slots, warmups), { kept: o.kept, knee: o.knee, work: (ex) => setWork(works, ex).seconds }) };
 }
 
 /** Owner, 2026-10-20: when the plan's length and his pace differ by more than this (s), both are shown. */
@@ -623,7 +624,8 @@ export function sessionLengths(entries: readonly SetEntry[], date: string, slots
   const fit = paceBefore(entries, date);
   const warmups = o.warmups ?? (() => 0);
   const all = stepsOf(slots, warmups);
-  const plan = planSeconds(all, { kept: o.kept, overhead: fit?.overhead ?? 0, knee: kneePlan(entries, date, o.delta ?? DELTA) ?? undefined });
+  const works = setWorks(entries);
+  const plan = planSeconds(all, { kept: o.kept, overhead: fit?.overhead ?? 0, knee: kneePlan(entries, date, o.delta ?? DELTA) ?? undefined, work: (ex) => setWork(works, ex).seconds });
   const day = o.fresh ? [] : entries.filter((e) => e.date === date);
   const timed = day.filter((e) => e.loggedAt).sort(byOrderDone);
   const first = timed[0] ?? null;

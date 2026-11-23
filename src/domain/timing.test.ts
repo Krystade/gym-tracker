@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PACE, planSeconds, restFor, paces, switchFor, perSessionForMinutes, perSetSeconds, restAfter, restSeconds, sessionDay, sessionMinutes, SET_WORK, stepsLeft, stepsOf, suggestTime, usualMinutes } from './timing';
+import { DEFAULT_PACE, planSeconds, restFor, paces, switchFor, perSessionForMinutes, perSetSeconds, restAfter, restSeconds, sessionDay, setWork, setWorks, shorterRest, SHORTER, SHORTER_FLOOR, sessionMinutes, SET_WORK, stepsLeft, stepsOf, suggestTime, usualMinutes } from './timing';
 import { coldGaps, gapModel } from './learn/switch';
 import { supersets } from './superset';
 import type { SetEntry } from './types';
@@ -297,7 +297,7 @@ describe('why a rest is its length: restFor’s and switchFor’s parts, line by
   it('a superset’s switch: his (else the trials’), less the set, never under 0', () => {
     const A = 'Cable Curl', B = 'Cable Pushdown';
     expect(switchFor(coldGaps(), A, B)).toEqual({ seconds: 5, parts: [
-      { what: 'Switch in trials', s: 45, note: 'trials go straight on, set included' }, { what: 'Less the set itself', s: -40, add: true }] });
+      { what: 'Switch in trials', s: 45, note: 'trials go straight on, set included' }, { what: 'Less the set itself', s: -40, add: true, note: 'about 4 s a rep' }] });
     // His pair, 1:15 a switch: his line, from how many.
     const round = (d: string, g: number) => [0, g, g + 150, 2 * g + 150].map((s, i) => ({ ...at(d, '18:00', i % 2 ? B : A), loggedAt: new Date(Date.parse(`${d}T18:00:00`) + s * 1000).toISOString() }));
     const days = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08'];
@@ -311,5 +311,59 @@ describe('why a rest is its length: restFor’s and switchFor’s parts, line by
     expect(sum(quick)).toBe(0);
     // Another pair of his: like his other switches.
     expect(switchFor(gapModel(days.flatMap((d) => round(d, 75)), '2026-10-09'), A, 'Face Pull').parts[0].note).toBe('like your other switches, set included');
+  });
+});
+
+describe('the timer starts shorter than his usual rest (owner, 2026-11-22: backtest round 2 §F)', () => {
+  // A lift's sets `gap` seconds apart, `k` of them, on one timed day.
+  const spaced = (exercise: string, gap: number, k = 5, date = '2026-11-02') =>
+    Array.from({ length: k }, (_, i) => ({ ...at(date, '18:00', exercise), loggedAt: new Date(Date.parse(`${date}T18:00:00`) + i * gap * 1000).toISOString() }));
+  it('his isolation median 3.9 min starts at about 3¼, his compound 6.3 at 5:00', () => {
+    const p = paces([...spaced('Cable Curl', 234), ...spaced('Leg Press', 378, 5, '2026-11-03')]);
+    expect(shorterRest(p, 'Cable Curl')).toEqual({ seconds: 185, usual: 234 }); // 187 s to 5 s: 3:05, about the backtest's 3¼
+    expect(Math.abs(234 * SHORTER - 195)).toBeLessThan(10); // within 10 s of 3¼ min
+    expect(shorterRest(p, 'Leg Press')).toEqual({ seconds: 300, usual: 378 });
+  });
+  it('a lift without three gaps of its own uses its class’s; nothing timed in the class: none, the 2:00 / 3:00 default', () => {
+    const p = paces(spaced('Cable Curl', 240));
+    expect(shorterRest(p, 'DB Lateral Raise')).toEqual({ seconds: 190, usual: 240 });
+    expect(shorterRest(p, 'Leg Press')).toBeNull();
+    expect(restFor(set('Leg Press', 200, 8), { usual: shorterRest(p, 'Leg Press') }).seconds).toBe(180);
+  });
+  it('never under its floor: 1:30 isolation, 2:30 compound', () => {
+    const p = paces([...spaced('Cable Curl', 60), ...spaced('Leg Press', 120, 5, '2026-11-03')]);
+    expect(shorterRest(p, 'Cable Curl')!.seconds).toBe(SHORTER_FLOOR.isolation);
+    expect(shorterRest(p, 'Leg Press')!.seconds).toBe(SHORTER_FLOOR.compound);
+  });
+  it('the timer: his setting still wins; else the shortened usual, with its cost and gain in the why', () => {
+    const p = paces(spaced('Cable Curl', 240));
+    const r = restFor(set('Cable Curl', 30, 12), { usual: shorterRest(p, 'Cable Curl') });
+    expect(r.seconds).toBe(190);
+    expect(r.why.from).toBe('usual');
+    expect(r.parts[0]).toEqual({ what: 'Your usual, shortened', s: 190, note: 'usual 4:00 · shorter than your usual: costs about 0.3 reps, saves ~3 min a session' });
+    expect(restFor(set('Cable Curl', 30, 12), { kept: 150, usual: shorterRest(p, 'Cable Curl') }).seconds).toBe(150);
+  });
+});
+
+describe('a set’s own time (owner, 2026-11-22): his median once 5 sets are timed, else 4 s a rep', () => {
+  const timedSet = (i: number, workS: number, exercise = 'Cable Curl', over: Partial<SetEntry> = {}): SetEntry => ({ ...at('2026-11-02', '18:00', exercise), id: `w${i}`, workS, ...over });
+  it('4 s a rep until 5 of the lift’s sets are timed, then his median', () => {
+    const four = [30, 32, 34, 36].map((w, i) => timedSet(i, w));
+    expect(setWork(setWorks(four), 'Cable Curl', 12)).toEqual({ seconds: 48, learned: 0 });
+    expect(setWork(setWorks(four), 'Cable Curl')).toEqual({ seconds: 40, learned: 0 });
+    const five = [...four, timedSet(9, 60)];
+    expect(setWork(setWorks(five), 'Cable Curl', 12)).toEqual({ seconds: 34, learned: 5 });
+    expect(setWork(setWorks(five), 'Leg Press', 8)).toEqual({ seconds: 32, learned: 0 });
+  });
+  it('a start tapped after the set (under 5 s), a card left open (over 5 min) and warm-ups are not his set time', () => {
+    const log = [2, 400, 31, 33, 35, 37].map((w, i) => timedSet(i, w)).concat(timedSet(20, 30, 'Cable Curl', { flags: ['warmup'] }));
+    expect(setWorks(log).get('cable curl')).toEqual({ median: 34, n: 4 });
+  });
+  it('the switch takes off his set time, and the plan adds it per set', () => {
+    const lines = switchFor(coldGaps(), 'Cable Curl', 'Cable Pushdown', {}, { seconds: 30, learned: 6 });
+    expect(lines.parts[1]).toEqual({ what: 'Less the set itself', s: -30, add: true, note: 'your median, 6 timed' });
+    expect(lines.seconds).toBe(15);
+    const steps = [{ exercise: 'Cable Curl' }, { exercise: 'Cable Curl' }];
+    expect(planSeconds(steps, { work: () => 25 }) - planSeconds(steps)).toBe(2 * (25 - SET_WORK));
   });
 });

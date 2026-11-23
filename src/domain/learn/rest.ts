@@ -2,7 +2,7 @@ import { isCardio, isCardioEntry } from '../cardio';
 import { liftKey } from '../ids';
 import { liftFactsVersion, resolveLift } from '../lifts';
 import { byOrderDone, doneAt, learnable } from '../stats';
-import { planSeconds, REST_MAX_S, REST_MIN_S, REST_STEP, SET_WORK, stepsOf, type KneeAt, type KneeRest, type PlanSlot, type Prior } from '../timing';
+import { planSeconds, REST_MAX_S, REST_MIN_S, REST_STEP, SET_WORK, setWork, setWorks, stepsOf, type KneeAt, type KneeRest, type PlanSlot, type Prior } from '../timing';
 import type { SetEntry } from '../types';
 import { aheadVar, dayOf, RHOS, TAUS, type Core } from './capacity';
 import { learn, logBefore } from './index';
@@ -260,7 +260,8 @@ export function restDelta(entries: readonly SetEntry[], date: string, slots: rea
   entries = learnable(entries); // the log without sets marked not used (stats.learnable)
   if (!kneePlan(entries, date)) return DELTA;
   const steps = stepsOf(slots, o.warmups);
-  const len = (delta: number) => planSeconds(steps, { kept: o.kept, overhead: o.overhead, knee: kneePlan(entries, date, delta) ?? undefined });
+  const works = setWorks(entries), work = (ex: string) => setWork(works, ex).seconds;
+  const len = (delta: number) => planSeconds(steps, { kept: o.kept, overhead: o.overhead, knee: kneePlan(entries, date, delta) ?? undefined, work });
   const budget = minutes * 60;
   if (!(budget > 0) || len(DELTA) <= budget) return DELTA;
   // ln δ from DELTA up to e^12 ≈ 160 000 × DELTA (numerics: past any fatigue the grid allows, so every knee is 0); bisected.

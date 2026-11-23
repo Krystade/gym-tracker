@@ -145,7 +145,7 @@ export function PaceBars({ pace, plan, w, h = 24 }: { pace: number; plan: number
   );
 }
 
-const FROM: Record<NextSession['rests'][number]['from'], string> = { kept: 'setting', knee: 'learned', default: 'default' };
+const FROM: Record<NextSession['rests'][number]['from'], string> = { kept: 'setting', knee: 'learned', usual: 'your usual, shortened', default: 'default' };
 export function ForecastSheet({ n, today, whose }: { n: NextSession; today: string; whose: string }) {
   const when = n.date === today ? 'today' : new Date(`${n.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long' });
   const d = toMin(n.pace.seconds) - toMin(n.plan);
