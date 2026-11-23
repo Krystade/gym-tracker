@@ -319,7 +319,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .fold-check { grid-column: 1; grid-row: 1 / span 2; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--ok); color: var(--bg); }
 .fold-check.todo { background: none; box-shadow: inset 0 0 0 2px var(--text-3); }
 .fold-name { grid-column: 2; grid-row: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
-.fold-meta { grid-column: 2; grid-row: 2; display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-sub); font-weight: 400; }
+/* The count, PR and points pill from the left, the best set at the right; at 320 px with all of them the best set takes a line of
+   its own under them, still against the chevron's column (owner, 2026-11-22: the pill kept on the folded line). */
+.fold-meta { grid-column: 2; grid-row: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-width: 0; font-size: var(--fs-sub); font-weight: 400; }
 .fold-meta .ok { font-weight: 500; }
 .fold-meta > * { flex: none; }
 .fold-best { margin-left: auto; font-variant-numeric: tabular-nums; }
@@ -603,18 +605,19 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
 /* An older character may be bigger (owner 2026-11-06: a bit of oversize is the joke; BuddySprite BOX.today): it grows from the
    slot's bottom right, left over the arrows' empty row and up to the status backdrop, and one taller than that hangs from there
    into the title's right end, which the date never reaches. */
-.today-buddy .bu-sprite { position: absolute; right: 0; bottom: 0; }
+.today-buddy .bu-sprite { position: absolute; right: 0; bottom: var(--drop, 0px); }
 .today-buddy .bu-sprite.tall { bottom: auto; top: calc(-12px + var(--rise, 0px)); }
 /* The week's rings (owner 2026-11-21, mock-up A): beside the date on the title's row, at its right end; the date gives them room
    and ellipses before it runs under them. A tall lead buddy hangs into that end (TodayScreen leadFit): then they go up onto the
    arrows' row, just right of the arrows, clear of the widest buddy (BOX.today, 160px from the right). */
 .today-head.has-rings { position: relative; }
-.today-head > .today-rings { position: absolute; top: 47px; right: -3px; z-index: 1; }
-/* A tap on the rings opens the week (owner, 2026-11-22): a bare button, the rings its face, 44px tall. */
-button.today-rings { display: inline-flex; align-items: center; min-height: 44px; padding: 3px; margin: 0; border: 0; border-radius: 22px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.today-head > .today-rings { position: absolute; top: 48px; right: -3px; z-index: 1; }
+/* A tap on the rings opens the week (owner, 2026-11-22): a bare button, the rings its face, 44px tall. Its box starts where the
+   lead's slot ends (48px down), the rings 2px into it at the 50px they always sat at, so nothing the lead holds lies over it. */
+button.today-rings { display: inline-flex; align-items: center; min-height: 44px; padding: 2px 3px 4px; margin: 0; border: 0; border-radius: 22px; background: none; color: inherit; font: inherit; cursor: pointer; }
 button.today-rings:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .today-head.has-rings:not(.rings-up) .day-switch h1 { padding-right: 96px; }
-.today-head.rings-up > .today-rings { top: 0; right: auto; left: 81px; }
+.today-head.rings-up > .today-rings { top: 1px; right: auto; left: 81px; }
 .goal-row.sets-goal { margin-top: 16px; }
 /* "at Garage ›" under the day: quiet, a full-width 44px tap target pulled up into the head's gap. */
 .gym-line { width: 100%; justify-content: flex-start; margin: -12px 0 8px; padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--fs-sub); font-weight: 400; gap: 4px; }

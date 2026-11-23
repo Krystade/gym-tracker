@@ -40,7 +40,7 @@ import { SuggestedToday } from './SuggestedToday';
 import { ProgramUpdateCard, useProgramUpdate } from './ProgramUpdate';
 import type { Program } from '../domain/program';
 import { Icon } from './icons';
-import { BOX, BuddySprite, drawnSize, heldRise } from './buddies/BuddySprite';
+import { BOX, BuddySprite, drawnSize, heldDrop, heldRise } from './buddies/BuddySprite';
 import type { BuddyDef } from '../domain/buddies/roster';
 import type { Ledger } from '../domain/buddies/gacha';
 import { hurts, type SetEntry } from '../domain/types';
@@ -552,18 +552,21 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
  * The lead beside the day, holding what its card does (ui/buddies/BuddySprite: placed, guessed, else on the anchor). What it holds
  * stays in the room the lead has (BOX.today, up to the status backdrop): the sprite gives up the height the item rises above it,
  * and one too tall to sit on the slot's floor hangs that much lower from the top, so nothing covers the arrows or the status bar.
+ * An item held low, below its feet, lifts it off the slot's floor by as much, so it never hangs onto the week rings' button under
+ * the slot; when that lift would take it past the room's top, it counts as tall (the rings go up).
  */
-/** How the lead buddy sits in the header: its room, the rise its held item needs, and whether it's tall (hangs from the top into the title's right end). */
+/** How the lead buddy sits in the header: its room, the rise its held item needs, the lift one held low needs, and whether it's tall (hangs from the top into the title's right end). */
 function leadFit(def: BuddyDef, held?: string) {
   const room = [BOX.today[0], BOX.today[1] - heldRise(def, 3, BOX.today, held)] as const, rise = heldRise(def, 3, room, held);
-  const tall = drawnSize(def, 3, room)[1] + rise > 60;
-  return { room, rise, tall };
+  const drop = heldDrop(def, 3, room, held), size = drawnSize(def, 3, room)[1];
+  const tall = size + rise + drop > 60;
+  return { room, rise, drop: tall ? 0 : drop, tall };
 }
 
 function TodayLead({ def, name, held, onOpen }: { def: BuddyDef; name: string; held?: string; onOpen: () => void }) {
-  const { room, rise, tall } = leadFit(def, held);
+  const { room, rise, drop, tall } = leadFit(def, held);
   return (
-    <button className="today-buddy" aria-label={`${name}, your lead buddy: open Buddies`} onClick={onOpen} style={{ '--rise': `${rise}px` } as CSSProperties}>
+    <button className="today-buddy" aria-label={`${name}, your lead buddy: open Buddies`} onClick={onOpen} style={{ '--rise': `${rise}px`, '--drop': `${drop}px` } as CSSProperties}>
       <BuddySprite def={def} scale={3} box={room} held={held} className={tall ? 'tall' : undefined} />
     </button>
   );

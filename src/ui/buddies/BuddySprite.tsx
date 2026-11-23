@@ -133,16 +133,28 @@ export function heldPlace(def: BuddyDef, scale: number, box: readonly [number, n
   }
   return { style: st, width: st.width, height: st.height, placed: !!wear };
 }
-/** How far above the sprite's top its held item reaches over all its frames or poses, tilt included (css px; 0 when it doesn't). */
-export function heldRise(def: BuddyDef, scale: number, box: readonly [number, number] | undefined, item: string | null | undefined): number {
-  if (!item || !HELD[item]) return 0;
-  let top = 0;
+/** The highest and lowest its held item reaches over all its frames or poses, tilt included (css px from the sprite's top). */
+function heldSpan(def: BuddyDef, scale: number, box: readonly [number, number] | undefined, item: string): [number, number] {
+  let top = Infinity, bottom = -Infinity;
   for (let on = 0; on < (def.art ? def.art.n : def.poses.length); on++) {
     const { style: st } = heldPlace(def, scale, box, item, on);
     const [ox, oy] = st.transformOrigin ? st.transformOrigin.split(' ').map(parseFloat) : [0, 0];
-    const r = /rotate\((-?[\d.]+)deg\)/.exec(st.transform ?? '')?.[1], a = ((r ? Number(r) : 0) * Math.PI) / 180;
-    for (const [x, y] of [[0, 0], [st.width, 0], [0, st.height], [st.width, st.height]])
-      top = Math.min(top, st.top + oy + (x - ox) * Math.sin(a) + (y - oy) * Math.cos(a));
+    const r = /rotate((-?[d.]+)deg)/.exec(st.transform ?? '')?.[1], a = ((r ? Number(r) : 0) * Math.PI) / 180;
+    for (const [x, y] of [[0, 0], [st.width, 0], [0, st.height], [st.width, st.height]]) {
+      const at = st.top + oy + (x - ox) * Math.sin(a) + (y - oy) * Math.cos(a);
+      top = Math.min(top, at); bottom = Math.max(bottom, at);
+    }
   }
-  return Math.ceil(-top);
+  return [top, bottom];
+}
+/** How far above the sprite's top its held item reaches over all its frames or poses, tilt included (css px; 0 when it doesn't). */
+export function heldRise(def: BuddyDef, scale: number, box: readonly [number, number] | undefined, item: string | null | undefined): number {
+  if (!item || !HELD[item]) return 0;
+  return Math.max(0, Math.ceil(-heldSpan(def, scale, box, item)[0]));
+}
+/** How far below the sprite's feet (its drawn height) its held item hangs over all its frames or poses, tilt included (css px; 0
+ *  when it doesn't): a sword held low, say. */
+export function heldDrop(def: BuddyDef, scale: number, box: readonly [number, number] | undefined, item: string | null | undefined): number {
+  if (!item || !HELD[item]) return 0;
+  return Math.max(0, Math.ceil(heldSpan(def, scale, box, item)[1] - drawnSize(def, scale, box)[1]));
 }
