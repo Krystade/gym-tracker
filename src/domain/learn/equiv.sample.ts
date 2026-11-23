@@ -1,8 +1,7 @@
 import type { SetEntry } from '../types';
 import type { Core } from './capacity';
-import { simulate, SIM_LIFTS } from './coreSim.sample';
+import { simulate } from './coreSim.sample';
 import { rng } from './num';
-import type { Pace } from './pace';
 
 // Synthetic logs and a numeric digest of what the learning core fits to them, for the equivalence test (capacity.equiv.test)
 // and its golden values (capacity.golden: recorded from the stage-1 implementation, e9402be). Synthetic only; no personal data.
@@ -47,8 +46,8 @@ export const SCENARIOS: Record<string, () => { log: SetEntry[]; censor?: boolean
 
 const sum = (xs: Iterable<number>) => { let s = 0; for (const x of xs) s += x; return s; };
 
-/** Every number the fit reports, condensed: the person level, the grid's weights, each lift, the features, and the pace. */
-export function digest(c: Core, p: Pace | null): number[] {
+/** Every number the fit reports, condensed: the person level, the grid's weights, each lift and the features. */
+export function digest(c: Core): number[] {
   const est = (e: { mean: number; sd: number }) => [e.mean, e.sd];
   const out = [
     c.sets, c.obs, c.sessions, c.timed, ...est(c.aSame), ...est(c.aCross), ...est(c.gamma), ...est(c.tau), c.tau.lo, c.tau.hi,
@@ -63,10 +62,5 @@ export function digest(c: Core, p: Pace | null): number[] {
   }
   const f = [...c.features.values()];
   out.push(f.length, sum(f.map((x) => x.nS)), sum(f.map((x) => x.nC)), sum(f.map((x) => x.nY)), sum(f.map((x) => sum(x.eS))), sum(f.map((x) => sum(x.eC))));
-  if (!p) out.push(-1);
-  else {
-    out.push(p.gap, p.logSd, p.n);
-    for (const name of [...SIM_LIFTS.map((l) => l.name), 'Mystery Lift']) { const q = p.lift(name); out.push(q.gap, q.sd, q.n); }
-  }
   return out;
 }

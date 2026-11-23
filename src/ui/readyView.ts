@@ -88,6 +88,22 @@ export function tileSession(r: Planned): { name: string; ready: SessionReady } |
   return r.best ? { name: r.best.name, ready: r.best } : null;
 }
 
+/**
+ * (owner, 2026-11-22, backtest round 2 §C) A lift's P(full strength) under which a muscle is short of fresh enough to say so: he
+ * is almost always fully recovered by it (median 1.00), and even a real effect would move a set by about a tenth of a rep there.
+ */
+export const SHORT_OF_FRESH = 0.85;
+/**
+ * Whether the tile (its number and verdict) is shown: only when a muscle is short of fresh (a lift of the session it reads, or
+ * of any session it weighed, under SHORT_OF_FRESH), or on a reminder: a rest day (the planner's call) or a deload or light
+ * week's "go light". Readiness is still computed either way: the week plan, the suggested day and the reminders run on it.
+ */
+export function readyShown(r: Planned): boolean {
+  if (r.verdict.kind === 'rest' || (r.verdict.kind === 'light' && r.verdict.why !== 'goal-met')) return true;
+  const short = (lifts: readonly { pFull: number }[] | undefined) => !!lifts?.some((l) => l.pFull < SHORT_OF_FRESH);
+  return short(tileSession(r)?.ready.lifts) || r.candidates.some((c) => short(c.lifts));
+}
+
 export const shownNumber = (n: number | null): string | null => (n == null ? null : n < 1 ? '<1' : String(Math.round(n)));
 
 export function tileView(r: Planned): TileView {

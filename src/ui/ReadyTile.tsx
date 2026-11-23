@@ -12,7 +12,7 @@ import { BodyMap } from './body/BodyMap';
 import { recoveryTone, recoveryTones, TONE_WORD } from './body/regions';
 import type { Muscle } from '../domain/muscles';
 import { WeighIn } from './WeighIn';
-import { readyNow, stripView, tileView, whyView, type Planned, type ReadyInput, type StripDay, type StripView, type TileView, type WhyView } from './readyView';
+import { readyNow, readyShown, stripView, tileView, whyView, type Planned, type ReadyInput, type StripDay, type StripView, type TileView, type WhyView } from './readyView';
 import './ready.css';
 
 /**
@@ -57,12 +57,14 @@ export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpe
   const r = useMemo(() => (live ? readyNow(input) : morning), [live, input, morning]);
   const t = tileView(r);
   const strip = stripView(r, input.entries);
+  // Owner, 2026-11-22: the number and verdict only when a muscle is short of fresh (readyShown); the check-in stays.
+  const shown = readyShown(r);
   if (!open) {
     const energy = body.days.find((d) => d.date === input.today)?.energy;
     return (
       <section className="ready-card folded" aria-label="Ready">
         <button type="button" className="ready-fold" aria-expanded={false} onClick={() => setOpen(true)}>
-          {t.number != null && <b className="ready-n-sm">{t.number}</b>}
+          {shown && t.number != null && <b className="ready-n-sm">{t.number}</b>}
           <span className="ready-fold-t">Ready{energy != null ? <span> · Energy {energy}</span> : null}</span>
           <Icon name="chev-down" size={18} sw={2} />
         </button>
@@ -71,14 +73,15 @@ export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpe
   }
   return (
     <>
-      <section className="ready-card" aria-label="Ready" data-kind={t.kind}>
-        <ReadyTile t={t} onWhy={() => setWhy(true)} onFold={worked ? () => setOpen(false) : undefined}
-          week={strip && weekRow ? <WeekToggle s={strip} open={weekOpen} onToggle={() => setWeekOpen(!weekOpen)} /> : undefined} />
+      <section className="ready-card" aria-label="Ready" data-kind={shown ? t.kind : undefined} data-tile={shown ? undefined : 'hidden'}>
+        {shown && <ReadyTile t={t} onWhy={() => setWhy(true)} onFold={worked ? () => setOpen(false) : undefined}
+          week={strip && weekRow ? <WeekToggle s={strip} open={weekOpen} onToggle={() => setWeekOpen(!weekOpen)} /> : undefined} />}
         <div className="ready-checkin">
           <Energy body={body} date={input.today} />
           <CycleRow date={input.today} />
           <WeighIn body={body} date={input.today} row />
-          {strip && weekRow && <WeekRow s={strip} onPick={onPickDay} open={weekOpen} />}
+          {/* Without the tile, the Week row carries its own toggle. */}
+          {strip && weekRow && <WeekRow s={strip} onPick={onPickDay} open={shown ? weekOpen : undefined} />}
         </div>
       </section>
       {strip && !weekRow && <WeekStrip s={strip} />}

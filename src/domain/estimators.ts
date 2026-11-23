@@ -72,16 +72,6 @@ export function strengthSeries(entries: readonly SetEntry[], exercise: string, d
   return pts.length ? pts.map((p) => ({ date: p.date, e1rm: p.e1rm, pr: false })) : null;
 }
 
-/**
- * Item 04: the e1RM from sets before `beforeDate`: the learning core's level at the lift's latest session (every set, its RIR or the
- * habit, its session fatigue put back; test sets calibrate the RIR bias), not the best Epley reading of recent sets.
- */
-export function calibratedE1rm(entries: readonly SetEntry[], exercise: string, beforeDate = '9999-12-31'): number | null {
-  entries = learnable(entries); // the log without sets marked not used (stats.learnable)
-  const core = coreBefore(entries, beforeDate);
-  return core && (strengthOf(core, exercise, beforeDate)?.e1rm ?? null);
-}
-
 /** (a) The reps a test reads the level best at: the RIR error model (04 §3: 0.5 reps, +0.3 per rep past 10) over κ + reps is least at 10. */
 export const TEST_REPS = 10;
 

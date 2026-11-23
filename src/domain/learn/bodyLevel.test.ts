@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from '../types';
 import { addDays } from '../analytics';
-import { aheadVar, e1rmAdjusted, fitCore, type Core, type LiftCore } from './capacity';
+import { aheadVar, fitCore, type Core, type LiftCore } from './capacity';
 import { bodyRepsSeries, bodyStrengthOf, levelSeries, strengthOf } from './strength';
 import { bodyLog, type BodySimOptions } from './bodySim.sample';
 
@@ -105,7 +105,6 @@ describe('learn/capacity: a bodyweight lift’s level (item 14)', () => {
     const last = bodyLift(c).level.at(-1)!;
     expect(strengthOf(c, DIPS, last.date)).toBeNull();
     expect(levelSeries(c, DIPS)).toEqual([]);
-    expect(e1rmAdjusted(c, sim.entries.find((e) => e.exercise === DIPS && e.weight === 0)!)).toBeNull();
     expect(strengthOf(c, 'Bench Press', last.date)).not.toBeNull(); // a loaded lift beside it: lb as before
     expect(bodyStrengthOf(c, 'Bench Press', last.date)).toBeNull();
     const now = bodyStrengthOf(c, DIPS, last.date)!, later = bodyStrengthOf(c, DIPS, addDays(last.date, 70))!;

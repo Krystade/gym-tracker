@@ -3,7 +3,6 @@ import type { SetEntry } from '../types';
 import { fitCore } from './capacity';
 import { GOLDEN } from './capacity.golden';
 import { digest, SCENARIOS } from './equiv.sample';
-import { paceOf } from './pace';
 
 // The session-block fit (stage 1b) against the stage-1 implementation it replaced (e9402be): the same numbers, to 1e-9 relative,
 // on every synthetic scenario, whether the fit starts cold or reuses cached sessions and rows from earlier fits. Stage 3's
@@ -21,7 +20,7 @@ function worst(a: number[], b: number[]): { at: number; d: number } {
 }
 const cold = (es: readonly SetEntry[]) => es.map((e) => structuredClone(e));
 const check = (name: string, log: readonly SetEntry[], censor?: boolean) => {
-  const w = worst(digest(fitCore(log, { censor, learnBias: false, light: false }), paceOf(log)), GOLDEN[name]);
+  const w = worst(digest(fitCore(log, { censor, learnBias: false, light: false })), GOLDEN[name]);
   expect(w.d, `${name}: digest[${w.at}]`).toBeLessThanOrEqual(1e-9);
 };
 
@@ -31,7 +30,7 @@ describe('learn/capacity: the same fit as stage 1 (e9402be)', () => {
     const { log } = SCENARIOS.fiveYears();
     fitCore(log.slice(0, 2000));
     const longer = log.slice(0, 6000);
-    const numbers = (es: readonly SetEntry[]) => digest(fitCore(es, { learnBias: false, light: false }), null);
+    const numbers = (es: readonly SetEntry[]) => digest(fitCore(es, { learnBias: false, light: false }));
     const grown = numbers(longer);
     expect(worst(grown, numbers(cold(longer))).d).toBe(0);
     check('fiveYears', log);

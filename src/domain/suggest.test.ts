@@ -153,7 +153,7 @@ describe('nextSet (item 11: owner, 2026-10-23)', () => {
   });
 });
 
-describe('nextSet reads the RIR logged on the last set (owner, 2026-11-21)', () => {
+describe('nextSet reads the RIR logged on the last set (owner, 2026-11-21; backtest, 2026-11-22)', () => {
   const ROW = { key: 'seated cable row', repMin: 8, repMax: 15, increment: 5 };
   const day = '2026-11-21';
   const r = (date: string, reps: number, rir?: number): SetEntry => ({ ...s(date, 'Seated Cable Row', 130, reps), ...(rir != null && { rir }) });
@@ -161,44 +161,46 @@ describe('nextSet reads the RIR logged on the last set (owner, 2026-11-21)', () 
   const before = [r('2026-11-17', 10), r('2026-11-17', 10), r('2026-11-17', 10), r('2026-11-17', 10)];
   const at = (log: SetEntry[], today: SetEntry[], st: typeof ROW = ROW) =>
     nextSet([...log, ...today], 'Seated Cable Row', day, suggest([...log, ...today], 'Seated Cable Row', st, day, 4), today)!;
-  it('130 × 10 at 4+ in reserve: about 12, leaving 2 (not 9)', () => {
+  it('130 × 10 at 4+ in reserve: 11, one more (not 12: the full raise ran 0.4 reps high)', () => {
     expect(suggest(before, 'Seated Cable Row', ROW, day, 4).perSet).toEqual([10, 10, 10, 10]);
     const n = at(before, [r(day, 10, 4)]);
-    expect(n).toMatchObject({ weight: 130, reps: 12, extra: false });
-    expect(n.why).toBe('10 with 4+ in reserve last set: about 12, leaving 2');
-    // 3 in reserve: one over the aim, so one more.
-    expect(at(before, [r(day, 10, 3)])).toMatchObject({ reps: 11, why: '10 with 3 in reserve last set: about 11, leaving 2' });
+    expect(n).toMatchObject({ weight: 130, reps: 11, extra: false });
+    expect(n.why).toBe('10 with 4+ in reserve last set, so one more: 11');
+    // A logged 6 in reserve still counts as 4+: one more, not four.
+    expect(at(before, [r(day, 10, 6)])).toMatchObject({ reps: 11 });
   });
-  it('with a learned drop, the drop comes off what the reserve adds', () => {
+  it('3 in reserve no longer raises: the rule as without RIR', () => {
+    expect(at(before, [r(day, 10, 3)])).toMatchObject({ reps: 10, why: '10 again, as your last set' });
+  });
+  it('with a learned drop, the one rep goes on top of the drop', () => {
     // Eight sessions of 12, 10, 8: his sets drop about 2.
     const days = ['2026-10-01', '2026-10-04', '2026-10-08', '2026-10-11', '2026-10-15', '2026-10-18', '2026-10-22', '2026-10-25'];
     const log = days.flatMap((d) => [r(d, 12), r(d, 10), r(d, 8)]);
     const d = setDrop(log, 'Seated Cable Row', day, 1)!;
     expect(d).toBeGreaterThan(1.5);
     const n = at(log, [r(day, 10, 4)]);
-    expect(n.reps).toBe(Math.round(10 + 4 - d - 2));
-    expect(n).toMatchObject({ learned: true, why: expect.stringMatching(/^10 with 4\+ in reserve last set, less about [\d.]+ as your sets drop: about \d+, leaving 2(, as today’s plan has)?$/) });
+    expect(n.reps).toBe(Math.round(10 - d) + 1);
+    expect(n).toMatchObject({ learned: true, why: expect.stringMatching(/^10 with 4\+ in reserve last set, less about [\d.]+ as your sets drop, so one more: about \d+(, as today’s plan has)?$/) });
     // At 0 in reserve, the last set less the drop, as before.
     expect(at(log, [r(day, 10, 0)])).toMatchObject({ reps: Math.round(10 - d), why: expect.stringContaining('your sets drop that much') });
   });
-  it('at 0–2 in reserve, the last set less the drop, as without RIR', () => {
-    for (const rir of [0, 1, 2]) expect(at(before, [r(day, 10, rir)])).toMatchObject({ reps: 10, why: '10 again, as your last set' });
+  it('at 0–3 in reserve, the last set less the drop, as without RIR', () => {
+    for (const rir of [0, 1, 2, 3]) expect(at(before, [r(day, 10, rir)])).toMatchObject({ reps: 10, why: '10 again, as your last set' });
   });
   it('no RIR logged: unchanged', () => {
     expect(at(before, [r(day, 10)])).toMatchObject({ reps: 10, why: '10 again, as your last set' });
   });
   it('never raised past the range’s top; a set already there is not raised at all', () => {
     const tight = { ...ROW, repMax: 11 };
-    const n = at(before, [r(day, 10, 4)], tight);
-    expect(n).toMatchObject({ reps: 11, why: '10 with 4+ in reserve last set: 11, the top of your range; past it the weight goes up instead' });
+    expect(at(before, [r(day, 10, 4)], tight)).toMatchObject({ reps: 11, why: '10 with 4+ in reserve last set, so one more: 11' });
     expect(at(before, [r(day, 11, 4)], tight)).toMatchObject({ reps: 11, why: '11 again, as your last set' });
   });
   it('says so when the raised set is the plan’s own number', () => {
-    // Last time 12 · 10 · 12 · 12: the plan's second set is 10, its third 12.
-    const mixed = [r('2026-11-17', 12), r('2026-11-17', 10), r('2026-11-17', 12), r('2026-11-17', 12)];
+    // Last time 11 · 10 · 11 · 11: the plan's second set is 10, its third 11.
+    const mixed = [r('2026-11-17', 11), r('2026-11-17', 10), r('2026-11-17', 11), r('2026-11-17', 11)];
     const p = suggest(mixed, 'Seated Cable Row', ROW, day, 4).perSet!;
     const today = [r(day, p[0]), r(day, 10, 4)];
-    expect(at(mixed, today)).toMatchObject({ reps: 12, why: '10 with 4+ in reserve last set: about 12, leaving 2' + (p[2] === 12 ? ', as today’s plan has' : '') });
-    expect(p[2]).toBe(12);
+    expect(p[2]).toBe(11);
+    expect(at(mixed, today)).toMatchObject({ reps: 11, why: '10 with 4+ in reserve last set, so one more: 11, as today’s plan has' });
   });
 });

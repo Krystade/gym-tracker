@@ -1,6 +1,5 @@
 import { isHold, isHoldLift } from './care';
-import { defaultSettings, isTest, isWorking, nextTarget, rangePart, TARGET_RULES, type ExerciseSettings, type Target, type TargetPart } from './progression';
-import { LIGHT } from './learn/deload';
+import { defaultSettings, isTest, isWorking, nextTarget, rangePart, type ExerciseSettings, type Target, type TargetPart } from './progression';
 import type { DayPlan, Program } from './program';
 import { daySets, sameExercise, sessionsFor, learnable } from './stats';
 import type { SetEntry } from './types';
@@ -135,6 +134,9 @@ export function setDrop(entries: readonly SetEntry[], exercise: string, date: st
   return Math.max(0, l.aSame.mean) * decay(core, n * core.gap);
 }
 
+/** The logged reserve ("4+" is 4) that raises the next set by one. */
+export const RAISE_RIR = 4;
+
 /** The set to do next (item 11): `extra` past the sets planned, `learned` when the drop is his. */
 export interface NextSet { weight: number; reps: number; extra: boolean; learned: boolean; why: string }
 /**
@@ -143,11 +145,11 @@ export interface NextSet { weight: number; reps: number; extra: boolean; learned
  * less the step the day's targets take between those sets; without those, the same reps. `done`: today's sets of the lift, in
  * the order done. A test is strength, not a set to aim from, and not one of the sets planned. Null before a training set.
  *
- * Reps in reserve (owner, 2026-11-21: 130 × 10 at 4+ in reserve, then "9"; it should be about 12): the last set's reps and
- * its logged RIR ("4+" counted as 4) are what it could have done; less the drop, that's the next set's; and the aim leaves the
- * reserve the targets aim for (TARGET_RULES.plusOneRir, 2; a light week's LIGHT.rir, 3). Only a reserve past the aim raises
- * the set, so 0–2 in reserve is the rule above unchanged; and a raise never takes it past the range's top (more reps there are
- * the next weight's job: the weight itself goes up only by the session rules). No RIR logged, or a hold: the rule above.
+ * Reps in reserve (owner, 2026-11-21: 130 × 10 at 4+ in reserve, then "9"; it should be more). The backtest (round 2,
+ * 2026-11-22) found the full raise (reserve less the 2 the targets aim for) put the next set about 0.4 reps too high, and
+ * "+1 only at 4+" tied the best (owner, 2026-11-22): so only a last set logged at 4+ in reserve raises the next one, by one
+ * rep over the rule above, and never past the range's top (more reps there are the next weight's job). 0–3 in reserve, no
+ * RIR logged, or a hold: the rule above unchanged.
  */
 export function nextSet(entries: readonly SetEntry[], exercise: string, date: string, s: Suggestion, done: readonly SetEntry[]): NextSet | null {
   entries = learnable(entries); // the log without sets marked not used (stats.learnable)
@@ -162,20 +164,16 @@ export function nextSet(entries: readonly SetEntry[], exercise: string, date: st
   const base = Math.max(1, Math.round(last.reps - d));
   const half = Math.round(d * 2) / 2;
   const extra = i >= s.sets;
-  const aimRir = s.kind === 'light' ? LIGHT.rir : TARGET_RULES.plusOneRir;
   const rir = s.unit || last.rir == null ? null : Math.min(4, Math.max(0, last.rir));
   // Full stack: the weight can't go up, so nothing caps the reps (owner, 2026-11-21).
   const top = s.stacked ? Infinity : s.top ?? s.repMax;
-  const raised = rir != null && rir > aimRir ? Math.max(1, Math.round(last.reps + rir - d - aimRir)) : base;
-  // A set already at or past the top isn't raised further: the rule above, as it was.
-  if (raised > base && base < top) {
-    const capped = raised > top;
-    const reps = capped ? top : raised;
-    const held = `${last.reps} with ${rir! >= 4 ? '4+' : rir} in reserve last set`;
+  // A set already at or past the top isn't raised: the rule above, as it was.
+  if (rir != null && rir >= RAISE_RIR && base < top) {
+    const reps = base + 1;
     const dropBy = learned != null ? (half > 0 ? `, less about ${half} as your sets drop` : '') : plan > 0 ? `, less ${plan} as today’s targets step down` : '';
     const planned = sameWeight && !extra ? s.perSet![Math.min(i, s.perSet!.length - 1)] : null;
-    const why = capped ? `${held}: ${reps}, the top of your range; past it the weight goes up instead`
-      : `${held}${dropBy}: about ${reps}, leaving ${aimRir}` + (planned === reps ? `, as today’s plan has` : '');
+    const why = `${last.reps} with 4+ in reserve last set${dropBy}, so one more: ${learned != null && half > 0 ? 'about ' : ''}${reps}`
+      + (planned === reps ? ', as today’s plan has' : '');
     return { weight: last.weight, reps, extra, learned: learned != null, why };
   }
   const why = learned != null ? (half > 0 ? `${last.reps}${s.unit} less about ${half}: your sets drop that much` : `${last.reps}${s.unit} again: your sets hold`)

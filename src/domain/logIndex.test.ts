@@ -8,7 +8,7 @@ import { addDays, weekStart } from './analytics';
 import { candidates, nextDay, type DayPlan, type Program } from './program';
 import { prIds } from './records';
 import { prSetIds } from './summary';
-import { calibratedE1rm } from './estimators';
+import { strength } from './estimators';
 import type { SetEntry } from './types';
 
 // The caches behind the whole-log scans (round 14): name keys, parsed times, week starts and muscle vectors by string; lift,
@@ -162,9 +162,9 @@ describe('estimates from the lift index', () => {
   it('a test logged under another spelling is the same lift’s, and moves its level (item 04: every set counts)', () => {
     const E = [set('2026-09-01', 'Bench Press', '18:00', { weight: 150 }), set('2026-09-03', 'Bench Press', '18:00'), set('2026-09-05', 'Bench Press', '18:00')];
     const test = set('2026-09-07', 'bench  press', '18:00', { weight: 50, reps: 1, rir: 0, flags: ['test'] });
-    const before = calibratedE1rm(E, 'Bench Press')!, after = calibratedE1rm([...E, test], 'Bench Press')!;
+    const before = strength(E, 'Bench Press', '2026-09-08')!.e1rm, after = strength([...E, test], 'Bench Press', '2026-09-08')!.e1rm;
     // 50 × 1 to failure reads far below 100–150 × 10: the level moves down toward it, and a spelling apart is no other lift.
     expect(after).toBeLessThan(before);
-    expect(calibratedE1rm([...E, test], 'BENCH PRESS')).toBe(after);
+    expect(strength([...E, test], 'BENCH PRESS', '2026-09-08')!.e1rm).toBe(after);
   });
 });

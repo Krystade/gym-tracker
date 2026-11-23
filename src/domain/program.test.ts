@@ -4,7 +4,7 @@ import type { SetEntry } from './types';
 import { CATALOG, PROGRAM_LIFTS } from './catalog';
 import { MUSCLES, muscleVector, type Muscle } from './muscles';
 import { defaultProfile, LEGACY_TARGETS, type Profile, type Tier } from './profile';
-import { PREFERENCE, addSlot, adherence, buildProgram, programBlock, rebuildLike, volumeDiffers, candidates, cardioSlot, cycleDone, DEFAULT_PICK, nextDay, planToRecord, primaryExercise, programVolume, type DayPlan, type Program } from './program';
+import { PREFERENCE, addSlot, quickDay, adherence, buildProgram, programBlock, rebuildLike, volumeDiffers, candidates, cardioSlot, cycleDone, DEFAULT_PICK, nextDay, planToRecord, primaryExercise, programVolume, type DayPlan, type Program } from './program';
 
 let seq = 0;
 const s = (date: string, exercise: string, reps = 10, over: Partial<SetEntry> = {}): SetEntry => ({
@@ -45,9 +45,11 @@ describe('buildProgram', () => {
     const p = buildProgram(withTiers(tiers, 4), [], { days: 2, perSession: 14 }, NOW);
     const v = programVolume(p);
     expect(v.Chest + v.Lats + v['Mid-Back']).toBeGreaterThanOrEqual(2);
-    // Priority 3 within its low share (20 % of 28), the priority 1 minimums finished with the rest.
+    // Priority 3 within its low share (20 % of 28). The floor (owner, 2026-11-22) gives every priority 1 and 2 muscle a pair
+    // before cheapest-first finishes a minimum, so one priority 1 minimum is finished, not two.
     expect(v.Chest + v['Front Delts'] + v.Lats + v['Mid-Back'] + v.Traps + v.Erectors).toBeLessThanOrEqual(8);
-    expect((['Biceps', 'Triceps', 'Abs'] as Muscle[]).filter((m) => v[m] >= 12)).toHaveLength(2);
+    for (const m of ['Biceps', 'Triceps', 'Abs', 'Side Delts', 'Rear Delts'] as Muscle[]) expect(v[m], m).toBeGreaterThanOrEqual(2);
+    expect((['Biceps', 'Triceps', 'Abs'] as Muscle[]).filter((m) => v[m] >= 12)).toHaveLength(1);
     for (const slot of p.days.flatMap((d) => d.slots)) expect(slot.sets).toBeGreaterThanOrEqual(2);
   });
   it('honours 3 days of 10', () => {
@@ -402,8 +404,9 @@ describe('owner decisions 2026-10-20: plan at the aim, P4 excluded, blocks', () 
     const prof = withTiers({ Chest: 1, Lats: 1, Biceps: 2 }, 3);
     const band = buildProgram(prof, [], { days: 3, perSession: 6 }, NOW);
     const aimed = buildProgram(prof, [], { days: 3, perSession: 6, aims: { Chest: [7, 7], Lats: [7, 7], Biceps: [4, 4] } }, NOW);
+    // 18 sets: the floor (owner, 2026-11-22) puts a pair on muscles still at 0 of their minimum first, so Lats gets 4, not 6.
     expect(sets(aimed, 'Chest')).toBeGreaterThanOrEqual(6);
-    expect(sets(aimed, 'Lats')).toBeGreaterThanOrEqual(6);
+    expect(sets(aimed, 'Lats')).toBeGreaterThanOrEqual(4);
     expect(sets(aimed, 'Biceps')).toBeGreaterThanOrEqual(4);
     // At its range, priority 1's bigger targets take the sets first.
     expect(sets(band, 'Chest') + sets(band, 'Lats')).toBeGreaterThan(sets(aimed, 'Chest') + sets(aimed, 'Lats') - 2);
@@ -466,9 +469,11 @@ describe('round 28: the aim orders the fill, the session size sets the total', (
   it('the aims still go first: a session too small for more gets the aims before any range', () => {
     const p = buildProgram({ ...prof, lowShare: 0.1 }, [], { days: 2, perSession: 8, aims }, NOW);
     const v = programVolume(p);
-    // 16 sets: the cheapest aims finished first (the three priority 2s at 4 and Biceps at 6), no direct pair past an aim.
+    // 16 sets: a pair each first (the floor, owner 2026-11-22), then the cheapest aims finished (the three priority 2s at 4),
+    // no direct pair past an aim.
     const met = (['Biceps', 'Abs', 'Chest', 'Side Delts', 'Mid-Back'] as Muscle[]).filter((m) => v[m] >= aims[m]![0]);
-    expect(met).toHaveLength(4);
+    expect(met).toHaveLength(3);
+    for (const m of ['Biceps', 'Abs'] as Muscle[]) expect(v[m], m).toBeGreaterThanOrEqual(2);
     for (const m of ['Chest', 'Side Delts', 'Mid-Back'] as Muscle[]) expect(v[m], m).toBe(4);
   });
   it('the extra sets go toward each range by priority, never past a range’s top', () => {
@@ -518,3 +523,21 @@ describe('round 31: a held muscle fills its range last', () => {
     expect(direct(p, 'Biceps')).toBe(4);
   });
 });
+
+describe('the floor (owner, 2026-11-22): a muscle at 0 of its minimum gets a pair before cheapest-first goes on', () => {
+  it('the builder: a priority 1 muscle far from its minimum is not starved by ones nearly at theirs', () => {
+    // Lats has a big minimum (priority 1, 12 sets); the priority 2s are cheaper to finish. Two days of 6 used to go elsewhere first.
+    const prof = withTiers({ Lats: 1, Chest: 2, 'Side Delts': 2, Biceps: 2 }, 4);
+    const v = programVolume(buildProgram(prof, [], { days: 1, perSession: 8 }, NOW));
+    for (const m of ['Lats', 'Chest', 'Side Delts', 'Biceps'] as Muscle[]) expect(v[m], m).toBeGreaterThanOrEqual(1);
+  });
+  it('quickDay: a muscle untrained this week gets its pair today when the day fits it, before any minimum is topped up', () => {
+    const prof = withTiers({ Chest: 1, Lats: 1 }, 4);
+    // Chest trained this week (8 of 12), Lats not at all: a 4-set day is Lats's pair first.
+    const mon = '2026-09-28';
+    const log = Array.from({ length: 8 }, () => s(mon, 'Machine Chest Press'));
+    const day = quickDay(prof, log, '2026-09-30', (sl) => sl.reduce((a, x) => a + x.sets, 0) <= 2);
+    expect(day.map((x) => muscleVector(x.exercise)?.Lats)).toEqual([1]);
+  });
+});
+

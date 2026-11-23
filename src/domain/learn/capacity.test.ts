@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from '../types';
 import { setWorksLike } from '../lifts';
-import { liftKey } from '../ids';
-import { e1rm } from '../stats';
-import { B_PRIOR, decay, e1rmAdjusted, fitCore, type Core, type Est } from './capacity';
+import { B_PRIOR, decay, fitCore, type Core, type Est } from './capacity';
 import { SIM_LIFTS, simulate } from './coreSim.sample';
 
 // Recovery of KNOWN parameters from the synthetic lifter (coreSim.sample: the prototype's simulator, ported).
@@ -114,20 +112,6 @@ describe('learn/capacity: synthetic recovery', () => {
     expect(err(false)).toBeLessThan(-0.25);
   });
 
-  it('the fatigue-adjusted e1RM cuts the late-set bias (set 3+ against set 1) by at least half', () => {
-    const late = { raw: [] as number[], adj: [] as number[] }, first = { raw: [] as number[], adj: [] as number[] };
-    for (let seed = 1; seed <= 6; seed++) {
-      const { entries, sets } = simulate(seed, { sessions: 120 });
-      const c = fitCore(entries);
-      for (const e of entries.slice(entries.length >> 1)) {
-        const E = sets.get(e.id)!.E, r = Math.log(e1rm(e)! / E), a = Math.log(e1rmAdjusted(c, e)! / E);
-        if (e.setNo >= 3) { late.raw.push(r); late.adj.push(a); } else if (e.setNo === 1) { first.raw.push(r); first.adj.push(a); }
-      }
-    }
-    const rawGap = mean(late.raw) - mean(first.raw), adjGap = mean(late.adj) - mean(first.adj);
-    expect(rawGap).toBeLessThan(-0.005); // the plain reading does fall on tired sets
-    expect(Math.abs(adjGap)).toBeLessThan(Math.abs(rawGap) / 2);
-  });
 });
 
 describe('learn/capacity: incremental equals batch', () => {
@@ -269,18 +253,6 @@ describe('learn/capacity: test sets teach the RIR bias and the habit (00-core §
     // Every set a test: nothing leans on b or the habit.
     const allTests = entries.map((e) => ({ ...e, rir: 0, flags: ['test' as const] }));
     for (const l of fitCore(allTests).lifts.values()) expect(l.sys).toBeLessThan(1e-9);
-  });
-
-  it("e1rmAdjusted reads a test's RIR as true and an ordinary set's RIR plus the lift's bias", () => {
-    const { entries } = simulate(5, { sessions: 60, pLog: 0.5, testFrac: 0.35, truth });
-    const c = fitCore(entries);
-    const t = entries.find((e) => e.flags.includes('test'))!;
-    const plain = { ...t, flags: [] };
-    expect(c.features.get(t.id)).toBeTruthy();
-    const k = c.lifts.get(liftKey(t.exercise))!;
-    expect(k.bias.mean).toBeGreaterThan(1);
-    // The same set without the flag reads its RIR plus the bias: exactly w·b/κ more.
-    expect(e1rmAdjusted(c, plain)! - e1rmAdjusted(c, t)!).toBeCloseTo(t.weight * k.bias.mean / k.kappa.mean, 6);
   });
 
   it('a fit that reuses cached sessions equals a cold refit with test sets in the log', () => {

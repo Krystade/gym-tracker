@@ -42,6 +42,15 @@ export function fillScore(tier: Tier, goal: number, have: number): number {
   return TIER_WEIGHT[tier] / (Math.ceil(rem / UNIT - 1e-9) * UNIT);
 }
 const behind = (tier: Tier, goal: number, have: number): number => (goal > 0 ? (TIER_WEIGHT[tier] * Math.max(0, goal - have)) / goal : 0);
+/**
+ * The floor (owner, 2026-11-22): a muscle with a minimum that has nothing toward it yet gets its first pair before cheapest-first
+ * goes on, so a muscle far from its minimum is never starved by ones nearly there. Among those, the higher priority first (a
+ * priority 3's small minimum would otherwise be "cheapest" ahead of a priority 1's), then cheapest first as before.
+ */
+const atZero = (goal: number, have: number): boolean => goal > 0 && have <= 1e-9;
+/** The first muscle of `ms` (already in fill order) still at 0 of its minimum, the highest priority first. */
+const floorOf = (ms: readonly Muscle[], tier: (m: Muscle) => Tier, zero: (m: Muscle) => boolean): Muscle | undefined =>
+  ms.filter(zero).sort((a, b) => tier(a) - tier(b))[0];
 
 /** Catalog lifts per muscle, most suitable first: the fallback when the history has no lift for it that this gym can do. All train the muscle directly, except Face Pull for Traps. */
 export const PREFERENCE: Record<Muscle, string[]> = {
@@ -146,8 +155,8 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
   // Worth a warning only for priority 1–2: a gym that can't train a priority 3–4 muscle is no news.
   const unavailable = missing.filter((m) => profile.tiers[m] <= 2);
 
-  // Greedy, a pair of sets at a time (owner, 2026-11-21): phase 1 fills the minimums, the muscle cheapest to finish (weighted by
-  // priority: fillScore) first, a minimum of 0 already done; once every minimum is met, phase 2 fills toward the maximums the
+  // Greedy, a pair of sets at a time (owner, 2026-11-21): phase 1 fills the minimums, a muscle still at 0 of its minimum first
+  // (atZero, owner 2026-11-22), then the muscle cheapest to finish (weighted by priority: fillScore), a minimum of 0 already done; once every minimum is met, phase 2 fills toward the maximums the
   // same way. A pair counts for every muscle its lift trains (a press's triceps too).
   const score = (m: Muscle, bound: number) => fillScore(profile.tiers[m], goals(m)[bound], achieved[m]);
   const lag = (m: Muscle, bound: number) => behind(profile.tiers[m], goals(m)[bound], achieved[m]);
@@ -178,7 +187,7 @@ export function buildProgram(profile: Profile, entries: SetEntry[], opts: { days
     const below = (bound: number) => open.filter((m) => score(m, bound) > 0 && !(capped && isLow(m))).sort((a, b) => score(b, bound) - score(a, bound) || lag(b, bound) - lag(a, bound));
     // Toward the ranges, the muscles not held first, each to its top; then the held ones.
     const fill = (keep: boolean) => (bound: number) => below(bound).find((x) => held.has(x) === keep);
-    const m = below(0)[0] ?? below(1)[0] ?? fill(false)(2) ?? fill(false)(3) ?? fill(true)(2) ?? fill(true)(3);
+    const m = floorOf(below(0), (x) => profile.tiers[x], (x) => atZero(goals(x)[0], achieved[x])) ?? below(0)[0] ?? below(1)[0] ?? fill(false)(2) ?? fill(false)(3) ?? fill(true)(2) ?? fill(true)(3);
     if (!m) break;
     // The pair goes on the day with the fewest sets for m (then the lightest) that has room and a lift for m with room,
     // so each muscle spreads over the days with its best lifts split between them; none means this muscle is done.
@@ -375,7 +384,8 @@ export function quickDay(profile: Profile, entries: SetEntry[], date: string, fi
     const capped = low + UNIT > share * (total + UNIT) && open.some((m) => !isLow(m) && score(m, 1) > 0);
     const below = (bound: 0 | 1) => open.filter((m) => score(m, bound) > 0 && !(capped && isLow(m)))
       .sort((a, b) => score(b, bound) - score(a, bound) || lag(b, bound) - lag(a, bound) || (last.get(a) ?? '').localeCompare(last.get(b) ?? ''));
-    const m = below(0)[0] ?? below(1)[0];
+    // The floor first (atZero): a muscle at 0 of its minimum this week gets a pair today, if the day fits it.
+    const m = floorOf(below(0), (x) => profile.tiers[x], (x) => atZero(boundOf(x, 0), achieved[x])) ?? below(0)[0] ?? below(1)[0];
     if (!m) break;
     const ex = cands.get(m)!.find((c) => (day.get(c) ?? 0) + UNIT <= MAX_SETS_PER_DAY);
     if (!ex) { done.add(m); continue; }

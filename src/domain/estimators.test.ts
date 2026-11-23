@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { calibratedE1rm, oneRm, painFactor, strength, testDue as dueWithCooldown, TEST_COOLDOWN_DAYS, TEST_REPS, weightForReps } from './estimators';
+import { oneRm, painFactor, strength, testDue as dueWithCooldown, TEST_COOLDOWN_DAYS, TEST_REPS, weightForReps } from './estimators';
 import { painRisk } from './learn/pain';
 import { painGate } from './painPlan';
 import { likelyRegion } from './care';
 import { simulate, SIM_LIFTS } from './learn/coreSim.sample';
-import { learn, testSd } from './learn';
+import { coreBefore, learn, testSd } from './learn';
+import { strengthOf } from './learn/strength';
+import { learnable } from './stats';
 import { liftKey } from './ids';
 import { addDays } from './analytics';
 
@@ -47,7 +49,13 @@ describe('oneRm', () => {
 const lastDate = (es: readonly SetEntry[]) => es.reduce((a, e) => (e.date > a ? e.date : a), '');
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
-describe('calibratedE1rm: the learning core’s fatigue-adjusted level (item 04)', () => {
+/** The learned level as of the days before `before` (what calibratedE1rm returned before it went, 2026-11-22: identical to it). */
+const level = (entries: readonly SetEntry[], exercise: string, before = '9999-12-31'): number | null => {
+  const core = coreBefore(learnable(entries), before);
+  return core && (strengthOf(core, exercise, before)?.e1rm ?? null);
+};
+
+describe('the learned level: the learning core’s fatigue-adjusted e1RM (item 04)', () => {
   // Error in logs against the true fresh e1RM at each lift's last session, for the core's level and for the old rule (the best
   // Epley reading of the last 3 sessions). The 1RM extrapolates along the reps–load slope, so it is only as good as κ: with a
   // back-off set (two loads in a day) κ is learned and the error more than halves; without one κ stays on its prior, and the
@@ -60,7 +68,7 @@ describe('calibratedE1rm: the learning core’s fatigue-adjusted level (item 04)
         const mine = entries.filter((e) => e.exercise === l.name);
         const last = lastDate(mine);
         const truthE = sets.get(mine.find((e) => e.date === last)!.id)!.E;
-        neu.push(Math.abs(Math.log(calibratedE1rm(entries, l.name)! / truthE)));
+        neu.push(Math.abs(Math.log(level(entries, l.name)! / truthE)));
         const dates = [...new Set(mine.map((e) => e.date))].sort().slice(-3);
         const epley = Math.max(...mine.filter((e) => dates.includes(e.date)).map((e) => e.weight * (1 + (e.reps as number) / 30)));
         old.push(Math.abs(Math.log(epley / truthE)));
@@ -80,16 +88,16 @@ describe('calibratedE1rm: the learning core’s fatigue-adjusted level (item 04)
   it('is the level of the log before the date: that day and later are left out', () => {
     const { entries } = simulate(2, { sessions: 30 });
     const d = [...new Set(entries.map((e) => e.date))].sort()[20];
-    expect(calibratedE1rm(entries, 'Bench Press', d)).toBe(calibratedE1rm(entries.filter((e) => e.date < d), 'Bench Press'));
-    expect(calibratedE1rm(entries, 'Bench Press', d)).not.toBe(calibratedE1rm(entries, 'Bench Press'));
+    expect(level(entries, 'Bench Press', d)).toBe(level(entries.filter((e) => e.date < d), 'Bench Press'));
+    expect(level(entries, 'Bench Press', d)).not.toBe(level(entries, 'Bench Press'));
     const lv = learn(entries).core.lifts.get(liftKey('Bench Press'))!.level;
-    expect(calibratedE1rm(entries, 'Bench Press')).toBeCloseTo(Math.exp(lv.at(-1)!.x), 9);
+    expect(level(entries, 'Bench Press')).toBeCloseTo(Math.exp(lv.at(-1)!.x), 9);
   });
   it('null for a lift with no level: nothing logged, or bodyweight only', () => {
     const { entries } = simulate(1, { sessions: 10 });
-    expect(calibratedE1rm(entries, 'Squat Jump')).toBeNull();
+    expect(level(entries, 'Squat Jump')).toBeNull();
     const pull: SetEntry[] = [0, 1, 2].map((i) => ({ id: `p${i}`, date: `2026-09-0${i + 1}`, seq: i, exercise: 'Pull-up', setNo: 1, weight: 0, reps: 8, flags: ['bodyweight'], source: 't' }));
-    expect(calibratedE1rm(pull, 'Pull-up')).toBeNull();
+    expect(level(pull, 'Pull-up')).toBeNull();
   });
 });
 

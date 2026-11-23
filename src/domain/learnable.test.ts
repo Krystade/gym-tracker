@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
 import { learnable, e1rmSeries, sessionsByDate } from './stats';
 import { prIds, prKinds, prToast, records } from './records';
-import { calibratedE1rm, strength, strengthSeries } from './estimators';
+import { strength, strengthSeries } from './estimators';
 import { defaultSettings, learnedFor, nextTarget, priorE1rm, rirOffset } from './progression';
 import { setDrop, suggest } from './suggest';
 import { bestSetPoints } from './statsCore';
@@ -35,7 +35,6 @@ const readers: [string, (log: SetEntry[]) => unknown][] = [
   ['prToast', (log) => prToast(log, log[log.length - 1])],
   ['strength', (log) => strength(log, EX, TODAY)],
   ['strengthSeries', (log) => strengthSeries(log, EX, TODAY)],
-  ['calibratedE1rm', (log) => calibratedE1rm(log, EX)],
   ['priorE1rm', (log) => priorE1rm(log, EX, TODAY)],
   ['rirOffset', (log) => rirOffset(log, EX)],
   ['nextTarget', (log) => nextTarget(log, EX, ST, TODAY)],

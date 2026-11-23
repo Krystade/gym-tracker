@@ -134,7 +134,9 @@ test('an unseen past workout is one line under the plan, and opens that day in H
   await expect(past).toHaveCount(0);
 });
 
-test('Why’s body map: recovery today in three steps, the same as each muscle’s Now; a muscle tapped opens its weeks, and Why › comes back', async ({ page }) => {
+// Round 68 (owner, 2026-11-22): Ready's tile shows only when a muscle is short of fresh; this fixture recovers within a day, so the
+// tile and its Why › are hidden. Needs a short-of-fresh fixture, or an owner call on a Why entry while the tile is hidden.
+test.fixme('Why’s body map: recovery today in three steps, the same as each muscle’s Now; a muscle tapped opens its weeks, and Why › comes back', async ({ page }) => {
   test.setTimeout(120_000);
   // Tuesday: the six weeks, and a hard chest day yesterday (ten more sets to failure) on top of Monday's session.
   const TUE = new Date('2026-10-20T17:00:00');

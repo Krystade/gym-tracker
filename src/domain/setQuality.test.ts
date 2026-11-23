@@ -72,7 +72,7 @@ describe('Full stack: no more weight on that lift at that gym', () => {
     const sug = suggest(e, 'Curl', S, '2026-01-08', null);
     expect(sug.stacked).toBe(true);
     const done = [s('2026-01-08', 1, 30, 13, { rir: 4, loggedAt: '2026-01-08T18:00:00.000Z' })];
-    expect(nextSet([...e, ...done], 'Curl', '2026-01-08', sug, done)?.reps).toBe(15);
+    expect(nextSet([...e, ...done], 'Curl', '2026-01-08', sug, done)?.reps).toBe(14); // 13 + 1 for the 4+ in reserve, past the top
   });
   it('a session after it without the tag lets the weight go up again', () => {
     const e = [...topped({}, { flags: ['full_stack'] }), ...[1, 2, 3].map((n) => s('2026-01-08', n, 30, 13, { rir: 1 }))];

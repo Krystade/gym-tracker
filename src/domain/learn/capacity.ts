@@ -447,23 +447,6 @@ export interface Core {
 }
 export interface Features { nS: number; nC: number; nY: number; eS: Float64Array; eC: Float64Array }
 
-/**
- * e1RM from one set with its reps in reserve and its session fatigue put back: w·(1 + (reps + RIR + Δ)/κ). The plain Epley
- * reading (stats.e1rm) takes a tired back-off set at face value; this one reads it as the fresh strength it implies.
- * Null for a set the core does not score (warm-up, bodyweight, hold, over 30 reps), or of a lift read in body mass (no lb).
- */
-export function e1rmAdjusted(core: Core, e: SetEntry): number | null {
-  const f = core.features.get(e.id);
-  if (!f || e.reps == null) return null;
-  const key = liftKey(e.exercise);
-  if (core.lifts.get(key)?.unit === 'body') return null;
-  const kappa = core.lifts.get(key)?.kappa.mean ?? KAPPA_PRIOR.mean;
-  // A test's RIR is taken as true (it is what calibrates b); other logged RIR carries the lift's bias; none, the habit.
-  const b = e.flags.includes('test') ? 0 : core.lifts.get(key)?.bias.mean ?? core.bias.mean;
-  const rir = e.rir != null && e.rir < 4 ? e.rir + b : core.habit.mean;
-  return e.weight * (1 + (e.reps + rir + fatigueOf(core, key, f)) / kappa);
-}
-
 /** K(Δt): how much of a prior set's fatigue is left Δt seconds later, at the fitted (τ, ρ). */
 export const decay = (core: Core, dt: number): number => core.fit.rho + (1 - core.fit.rho) * Math.exp(-Math.max(0, dt) / core.fit.tau);
 

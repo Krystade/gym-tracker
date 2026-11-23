@@ -51,6 +51,8 @@
 .ready-week.bare { margin-top: 2px; padding-top: 2px; border-top: 1px solid var(--hairline); }
 /* A day shown in today's place: the Week row alone, at the top. */
 .week-card .ready-checkin { margin-top: 0; padding-top: 0; border-top: 0; }
+/* Ready's number hidden (round 68, every muscle fresh): the check-in leads the card, with no rule over it. */
+.ready-card[data-tile='hidden'] .ready-checkin { margin-top: 0; padding-top: 0; border-top: 0; }
 .week-card .rw-row { margin-top: 0; border-top: 0; }
 .rw-goal { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sub); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rw-goal .ic { color: var(--text-3); }
