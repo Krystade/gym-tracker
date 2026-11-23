@@ -8,7 +8,7 @@ import { exerciseNames, sameExercise } from '../domain/stats';
 import { usualMinutes } from '../domain/timing';
 import { sessionLengths, sizing } from '../domain/learn/session';
 import { kneePlan } from '../domain/learn/rest';
-import { sizedLength } from './TodayPlan';
+import { planLength } from './TodayPlan';
 import { warmupCount } from '../domain/suggest';
 import { cardioTarget } from '../domain/cardio';
 import { isHoldLift } from '../domain/care';
@@ -62,7 +62,7 @@ export function SuggestedToday({ profile, entries, date, gym, loadFor, onOpen }:
             if (Number.isInteger(n) && n >= 5 && n <= 180) setMins(n);
           }} />
         </label>
-        {L && <p className="muted small suggested-pace" aria-label="Plan length">{sizedLength(L, size.by)}</p>}
+        {L && <p className="muted small suggested-pace" aria-label="Plan length">{planLength(L)}</p>}
         <ol className="suggested-slots" aria-label="Suggested exercises">
           {slots.map((s) => {
             const done = doneOf(s.exercise);

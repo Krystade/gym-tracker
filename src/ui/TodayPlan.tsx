@@ -7,7 +7,7 @@ import { sameExercise } from '../domain/stats';
 import { isHoldLift } from '../domain/care';
 import type { ProgramStore } from '../state/useProgram';
 import { hhmm, usualMinutes } from '../domain/timing';
-import { paceBefore, sessionLengths, sizing, type Forecast, type Lengths, type Sizing } from '../domain/learn/session';
+import { paceBefore, sessionLengths, sizing, type Lengths } from '../domain/learn/session';
 import { DELTA, kneePlan, restDelta } from '../domain/learn/rest';
 import { warmupCount } from '../domain/suggest';
 import { fmtLoad } from './SuggestionCard';
@@ -16,19 +16,19 @@ import { Icon } from './icons';
 import { Input } from './Field';
 
 const toMin = (s: number) => Math.round(s / 60);
-/** His pace for a plan, as shown beside its length: the forecast and its middle 80 %. */
-export const atPace = (f: Forecast) => `at your recent pace ≈ ${toMin(f.seconds)} min (${toMin(f.lo)}–${toMin(f.hi)})`;
 /**
- * The length of a plan built to minutes, saying which number sized it (owner, 2026-10-20): his pace once 2 days are timed (with
- * the timer's rests beside it when over 10 min away), else the timer's rests and that his pace isn't known yet.
+ * A plan's length wherever a plan shows its minutes (Today's plan, a program day, Suggested today), and how a plan built to minutes
+ * is sized (learn/session sizing reads the same pace): his pace's forecast (learn/session) with its middle 80 % once 2 days are
+ * timed, else the timer's rests and that his pace isn't known yet. Owner, 2026-11-22: the timer's rests ran about 24 min short
+ * of what his sessions take, so that number is no plan's length once his pace is known (Stats' Next session still sets them side by side).
  */
-export const sizedLength = (L: Lengths, by: Sizing['by']): string => `≈ ${toMin(sizedSeconds(L, by))} min ${sizedHow(L, by)}`;
-/** The seconds that sized it: his pace's forecast, else the plan's. */
-export const sizedSeconds = (L: Lengths, by: Sizing['by']): number => (by === 'pace' && L.pace ? L.pace.seconds : L.plan);
+export const planSeconds = (L: Lengths): number => (L.pace ? L.pace.seconds : L.plan);
 /** Which number that is, said after it. */
-export const sizedHow = (L: Lengths, by: Sizing['by']): string => by === 'pace' && L.pace
-  ? `at your pace (${toMin(L.pace.lo)}–${toMin(L.pace.hi)})${L.both ? ` · ${toMin(L.plan)} at the timer’s rests` : ''}`
+export const planHow = (L: Lengths): string => L.pace
+  ? `at your pace (${toMin(L.pace.lo)}–${toMin(L.pace.hi)})`
   : 'at the timer’s rests · your pace sizes it after 2 timed days';
+/** Both, as one line. */
+export const planLength = (L: Lengths): string => `≈ ${toMin(planSeconds(L))} min ${planHow(L)}`;
 
 /** Done for the plan: a working set that isn't a test (a max single is strength, not one of the sets), or a cardio bout. */
 const doneEntry = (e: SetEntry) => isTraining(e) || !!e.cardio;
@@ -117,8 +117,6 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onEdit
   const size = useMemo(() => sizing(entries, plan.date, { warmups: warm, kept: keptRest, knee: kneePlan(entries, plan.date) ?? undefined }), [entries, plan.date, warm, keptRest]);
   const pickQuick = (mins: number) => onChange({ ...plan, quick: mins, skips: [], swaps: {},
     slots: buildQuick((slots) => size.seconds(slots) <= mins * 60) });
-  // Built to minutes: a Quick day, or a program day built by minutes.
-  const byMinutes = quick || program.minutes != null;
   // A swapped-in lift's own range (a hold swapped for a lift counts seconds), as its card will show.
   const range = (slot: Slot, target: string) => {
     const hold = isHoldLift(target, entries);
@@ -131,14 +129,14 @@ export function TodayPlan({ program, plan, entries, past, open, onToggle, onEdit
   // The day in sets, for the bar under the header: each planned set a segment, lit once it's done (extra sets don't count).
   const total = live.reduce((n, s) => n + s.sets, 0);
   const setsDone = live.reduce((n, s) => n + Math.min(s.sets, doneOf(plan.swaps[s.exercise] ?? s.exercise)), 0);
-  // The header (IA A1, owner 2026-10-21): "Day B · 14 sets · ≈ 41 min", Edit › beside it. The length is the plan's, sized as
-  // the Program screen says it; what's left to say (his recent pace when over 10 min away, which number sized a minutes plan,
-  // and once started when it ends at his pace) goes on the line under it, inside the toggle so it fills the 44 px tap area.
+  // The header (IA A1, owner 2026-10-21): "Day B · 14 sets · ≈ 41 min", Edit › beside it. The length is at his pace once 2 days
+  // are timed, else the timer's rests (planSeconds); which number it is, with the pace's middle 80 %, and once started when it
+  // ends at his pace, go on the line under it, inside the toggle so it fills the 44 px tap area.
   const length = () => {
     const L = sessionLengths(entries, plan.date, todoOf(program, plan), { warmups: warm, kept: keptRest, delta });
     const when = L.started != null ? `started ${hhmm(new Date(L.started))} · ends ≈ ${hhmm(new Date(L.endsAt!))}` : null;
-    const mins = toMin(byMinutes ? sizedSeconds(L, size.by) : L.plan);
-    const more = [byMinutes ? sizedHow(L, size.by) : L.both ? atPace(L.pace!) : null, when].filter(Boolean);
+    const mins = toMin(planSeconds(L));
+    const more = [planHow(L), when].filter(Boolean);
     return <span className="plan-len" aria-label="Plan length">≈ {mins} min{more.length > 0 && <> <span className="plan-more">{more.map((x, i) => <span key={i}>{i > 0 && ' '}{x}</span>)}</span></>}</span>;
   };
   // Lift sets, as the Program screen counts a day (a cardio slot is minutes, not sets); how many are done once he's started.

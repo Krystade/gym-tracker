@@ -15,7 +15,7 @@ import { PROGRAM_LIFTS } from '../domain/catalog';
 import { DEFAULT_LOW_SHARE, goalOf, type Profile } from '../domain/profile';
 import { GymsScreen } from './GymsScreen';
 import { sessionLengths, sizing } from '../domain/learn/session';
-import { atPace, sizedHow, sizedSeconds } from './TodayPlan';
+import { planHow, planSeconds } from './TodayPlan';
 import { aimsOn, dayEstimate } from './ProgramUpdate';
 import type { BodyDay } from '../domain/body';
 import { activeProfileDb } from '../db/db';
@@ -59,7 +59,7 @@ export function ProgramScreen({ programs, profile, entries, body = [], gyms, uid
       return cache.get(k)!;
     };
   }, [entries, today]);
-  // A day's plan length (the timer's rests, warm-ups, his switch overhead), and his recent pace for it.
+  // A day's length: his pace for it once 2 days are timed, else the timer's rests (warm-ups, his switch overhead): TodayPlan planSeconds.
   const lengths = (day: ProgramDay) => sessionLengths(entries, today, day.slots, { warmups: warm, kept: keptRest, fresh: true });
   // Built by minutes, a day is sized at his own pace once 2 days are timed (owner, 2026-10-20), else at the timer's rests.
   const est = useMemo(() => dayEstimate(entries, today, keptRest), [entries, today, keptRest]);
@@ -156,9 +156,7 @@ export function ProgramScreen({ programs, profile, entries, body = [], gyms, uid
       {p?.cardioUnavailable && <p className="warn small">Cardio has a weekly goal, but no cardio machine is ticked at this gym.</p>}
       {p && p.days.map((day, di) => { const L = lengths(day); return (
         <section className="card" key={day.name}>
-          <h2>{day.name} · {day.slots.reduce((a, x) => a + (x.minutes == null ? x.sets : 0), 0)} sets{p.minutes != null
-            ? <> · ≈ {Math.round(sizedSeconds(L, sizedBy) / 60)} min<span className="muted small day-pace">{sizedHow(L, sizedBy)}</span></>
-            : <> · ≈ {Math.round(L.plan / 60)} min{L.both && <span className="muted small day-pace">{atPace(L.pace!)}</span>}</>}</h2>
+          <h2>{day.name} · {day.slots.reduce((a, x) => a + (x.minutes == null ? x.sets : 0), 0)} sets · ≈ {Math.round(planSeconds(L) / 60)} min<span className="muted small day-pace">{planHow(L)}</span></h2>
           <ol className="prog-slots" aria-label={`${day.name} exercises`}>
             {day.slots.map((slot, si) => slot.minutes != null ? (
               <li key={slot.exercise}>
