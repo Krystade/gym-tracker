@@ -179,6 +179,12 @@ describe('learn/readiness: the week', () => {
     expect(weekOf(es, 2, '2026-03-04')).toMatchObject({ done: 1, needed: 1, met: false }); // pair: one short
     expect(weekOf(es, 2, '2026-03-09')).toMatchObject({ done: 0, needed: 2, daysLeft: 7 }); // a new week
   });
+  it('either goal counts (owner, 2026-11-22): the sets goal met by the days before today meets the week, short of the sessions', () => {
+    expect(weekOf(es, 3, '2026-03-05', 4)).toMatchObject({ done: 2, needed: 0, met: true, tight: false });
+    expect(weekOf(es, 3, '2026-03-05', 400)).toMatchObject({ needed: 1, met: false });
+    expect(weekOf(es, 3, '2026-03-04', 3)).toMatchObject({ done: 1, needed: 0, met: true }); // Monday's 3 sets of curls meet 3
+    expect(weekOf(es, 3, '2026-03-02', 1)).toMatchObject({ done: 0, needed: 3, met: false }); // today's sets aren't counted yet
+  });
 });
 
 describe('learn/readiness: candidates', () => {

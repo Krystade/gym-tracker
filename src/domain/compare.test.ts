@@ -59,6 +59,11 @@ describe('summarize: what your phone publishes', () => {
     const two = summarize(log, TODAY, 2);
     expect(two.r['12w'].met.slice(0, 11)).toBe('1'.repeat(11));
     expect(summarize(log, TODAY, 7).r['12w'].met).toBe('0'.repeat(12));
+    // Either goal counts (owner, 2026-11-22): 7 sessions is never met, a sets goal of 1 every week he lifted; the shape stays.
+    const sets = summarize(log, TODAY, { sessions: 7, sets: 1 });
+    expect(sets.r['12w'].met).toBe(two.r['12w'].met.slice(0, 11) + sets.r['12w'].met.slice(11));
+    expect(sets.r['12w'].met.slice(0, 11)).toBe('1'.repeat(11));
+    expect(sets.goal).toBe(7);
     expect(two.goal).toBe(2);
     expect(summarize(log, TODAY, 0).goal).toBe(2); // no goal set: the app's default
     expect(summarize(log, TODAY, 9).goal).toBe(7);

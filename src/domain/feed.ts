@@ -12,6 +12,7 @@ import { stall, type Stall } from './rotation';
 import { coreBefore } from './learn';
 import { levelSeries } from './learn/strength';
 import type { SetEntry } from './types';
+import { goalHit, goalsAt, weekCount, type GoalHit, type Goals } from './weekGoal';
 
 // Friends as a feed and Stats as answers (round 18): what each person did today, who's training now, each one's week against
 // their own goal, and each one's change against their own start. Nothing here compares one person's loads with another's.
@@ -86,19 +87,21 @@ export function usualSession(sets: readonly SetEntry[], today: string): number {
 
 /**
  * This week against their own goal, counted as their Stats counts it (domain/analytics): days with a working lift set, cardio-only
- * days beside them. `metToday`: today's session is the one that met it.
+ * days beside them. `met`: either goal reached (domain/goalHit: the sessions goal, or the sets goal where it's known), `by`
+ * which. `metToday`: today's session is the one that met it. `goal`: the sessions goal, what the rings count out of.
  */
-export interface GoalWeek { sessions: number; cardioDays: number; goal: number; met: boolean; metToday: boolean }
-export function goalWeek(sets: SetEntry[], today: string, goal: number): GoalWeek {
-  const w = weeklySummary(sets, 1, today)[0];
-  const met = w.sessions >= goal;
+export interface GoalWeek { sessions: number; cardioDays: number; goal: number; met: boolean; by: GoalHit | null; metToday: boolean }
+export function goalWeek(sets: SetEntry[], today: string, goal: Goals): GoalWeek {
+  const w = weeklySummary(sets, 1, today)[0], g = goalsAt(goal)(weekStart(today));
+  const by = goalHit(weekCount(sets, today, today), g), met = by != null;
   const liftedToday = sets.some((e) => e.date === today && isWorking(e));
-  return { sessions: w.sessions, cardioDays: w.cardioDays, goal, met, metToday: met && liftedToday && w.sessions - 1 < goal };
+  const before = weekStart(today) < today && goalHit(weekCount(sets, today, addDays(today, -1)), g) != null;
+  return { sessions: w.sessions, cardioDays: w.cardioDays, goal: g.sessions, met, by, metToday: met && liftedToday && !before };
 }
 
 /** Weeks in a row meeting their goal over the `weeks` read (this one once met); `whole`: the run reaches back past what was read. */
-export function weekStreak(sets: SetEntry[], today: string, goal: number, weeks: number): { current: number; best: number; whole: boolean } {
-  const st = streak(weeklySummary(sets, weeks, today), goal);
+export function weekStreak(sets: SetEntry[], today: string, goal: Goals, weeks: number): { current: number; best: number; whole: boolean } {
+  const st = streak(weeklySummary(sets, weeks, today), goalsAt(goal));
   return { current: st.current, best: st.best, whole: st.current > 0 && st.current >= weeks - (st.thisWeekMet ? 0 : 1) };
 }
 

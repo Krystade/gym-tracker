@@ -4,6 +4,8 @@ import { useSets } from '../state/useSets';
 import { useSettings } from '../state/useSettings';
 import { useProfile } from '../state/useProfile';
 import { goalOf } from '../domain/profile';
+import { goalsFor } from '../domain/weekGoal';
+import { weekStart } from '../domain/analytics';
 import { useProgram } from '../state/useProgram';
 import { useBody } from '../state/useBody';
 import { usePhotos } from '../state/usePhotos';
@@ -274,7 +276,9 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
   const [achAt, setAchAt] = useState<AchAt | null>(null);
   const openAch = useCallback((id?: string, lift?: string) => { setExercise(null); setTab('stats'); setAchAt({ id, lift }); window.scrollTo(0, 0); }, [setExercise, setTab]);
   // Together (plan §10): your friends' windows as Friends keeps them, and the ledger of what they showed. Signed in only.
-  const together = useTogether(uid, store.entries, date, ach.since, rawProfile.profile.weeklyGoal);
+  // The weekly goals, each week's (domain/weekGoal): either met makes a goal week, wherever one is judged (owner, 2026-11-22).
+  const myGoals = useMemo(() => goalsFor(rawProfile.profile, store.entries), [rawProfile.profile, store.entries]);
+  const together = useTogether(uid, store.entries, date, ach.since, myGoals);
   // Location for Together, on in the profile: a visit's first set takes one rough fix, for its codes (state/usePlace).
   usePlace(uid, store, rawProfile.profile.placeKey);
   // Push: the reminder and recap numbers, for the person whose account this is (signed out: this phone's subscription goes).
@@ -284,7 +288,7 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
     const since = ach.since;
     return since ? (es: SetEntry[], d: string) => achievementsOf(es, { profile: rawProfile.profile, today: d, since, program: programs.program, plans: programs.plans, ...(together && { together: together.ctx }) }) : null;
   }, [ach.since, rawProfile.profile, programs.program, programs.plans, together]);
-  usePushSync(store.entries, programs.program, programs.plans, date, cloud.link === null ? false : cloud.mine ? true : null, rawProfile.profile.weeklyGoal, achOf);
+  usePushSync(store.entries, programs.program, programs.plans, date, cloud.link === null ? false : cloud.mine ? true : null, rawProfile.profile.weeklyGoal, achOf, myGoals(weekStart(date)).sets);
   // A record tapped on a lift's screen: History opens at its day.
   const [historyAt, setHistoryAt] = useState<string | null>(null);
   // Past midnight a workout stays on its day until its last set is 3 hours old; "Today" on the banner ends that for the day.
@@ -334,11 +338,11 @@ function PersonScreens({ person, people, gyms, nav }: { person: Person; people: 
           : tab === 'buddies' ? <BuddiesScreen buddies={buddies} entries={store.entries} today={date} profile={rawProfile.profile} />
           : tab === 'friends' && nav.viewing && uid ? <FriendPage key={nav.viewing.uid} uid={uid} friend={nav.viewing} entries={store.entries} today={date} gyms={gyms} news={nav.news} buddies={buddies} profile={rawProfile.profile}
             onBack={nav.unview} onMessage={() => nav.openThread(nav.viewing!)} backLabel={nav.comparing ? 'Compare' : 'Friends'} achAt={nav.viewAt} />
-          : tab === 'friends' && nav.comparing && uid ? <ComparePage uid={uid} myName={person.name} entries={store.entries} today={date} goal={profile.profile.weeklyGoal}
+          : tab === 'friends' && nav.comparing && uid ? <ComparePage uid={uid} myName={person.name} entries={store.entries} today={date} goal={myGoals}
             onBack={nav.uncompare} onView={nav.view} onOpenMine={top(() => { nav.uncompare(); toDays(); })} />
           : tab === 'friends' ? <FriendsScreen cloud={cloud} gyms={gyms} pending={nav.pending} entries={store.entries} status={status} today={date} onPendingDone={nav.clearPending} onView={nav.view}
             news={nav.news} newsRev={nav.newsRev} onChanged={nav.bumpNews} onMessage={nav.openThread}
-            onSignIn={() => toMore('account')} onOpenMine={top(toDays)} myName={person.name} goal={profile.profile.weeklyGoal} onCompare={nav.compare} />
+            onSignIn={() => toMore('account')} onOpenMine={top(toDays)} myName={person.name} goal={myGoals} onCompare={nav.compare} />
           : tab === 'stats' ? <StatsScreen store={store} profile={profile} programs={programs} body={body} today={date} settings={settings} gyms={gyms} onOpenLift={open} onOpenPriorities={top(() => setPrioOpen(true))}
             openAch={achAt} onOpenedAch={() => setAchAt(null)} />
           : <DataScreen store={store} profile={rawProfile} programs={programs} gyms={gyms} photos={photos} backup={backup} cloud={cloud} people={people} onShowWalkthrough={showTour} onOpen={toMore}

@@ -1,6 +1,7 @@
 import { MAX_SHARED, type SharedAch } from './achievements';
 import { parseBud, type SharedBud } from './buddies/share';
-import { addDays, weeklySummary } from './analytics';
+import { addDays, weekStart, weeklySummary } from './analytics';
+import { goalsAt, goalWeekHit, type Goals, type WeekGoals } from './goalHit';
 import { isWorking } from './crew';
 import { e1rmChange, weekStreak } from './feed';
 import { liftKey, normalizeName } from './ids';
@@ -103,9 +104,9 @@ function setsByDay(entries: readonly SetEntry[]): Map<string, number> {
   return out;
 }
 
-function rangeSummary(entries: SetEntry[], range: CompareRange, today: string, goal: number, prDays: readonly string[], perDay: Map<string, number>, firstDay: string | null): RangeSummary {
+function rangeSummary(entries: SetEntry[], range: CompareRange, today: string, goal: (week: string) => WeekGoals, prDays: readonly string[], perDay: Map<string, number>, firstDay: string | null): RangeSummary {
   const from = rangeFrom(range, today), n = rangeDays(range), at = samples(range, today);
-  const met = weeklySummary(entries, rangeWeeks(range), today).map((w) => (w.sessions >= goal ? '1' : '0')).join('');
+  const met = weeklySummary(entries, rangeWeeks(range), today).map((w) => (goalWeekHit({ sessions: w.sessions, sets: w.muscleSets }, goal(w.week)) ? '1' : '0')).join('');
   const prs = at.map((t) => prDays.filter((d) => d >= from && d <= t).length);
   // Their usual: working sets a day over the same span before the range, or as much of it as the log has (two weeks at least).
   let vol: (number | null)[] = [];
@@ -175,16 +176,16 @@ export function firsts(entries: readonly SetEntry[], today: string): First[] {
   return out.sort((a, b) => b.d.localeCompare(a.d) || b.w - a.w || a.n.localeCompare(b.n)).slice(0, MAX_FIRSTS);
 }
 
-/** Your summary, from your whole log, for friends to read. `goal`: your weekly goal (sessions). */
-export function summarize(entries: SetEntry[], today: string, goal: number, ach?: readonly SharedAch[], bud?: SharedBud): Summary {
-  const g = Math.min(7, Math.max(1, Math.round(goal) || 2));
+/** Your summary, from your whole log, for friends to read. `goal`: your weekly goals (either met makes a goal week: domain/goalHit). */
+export function summarize(entries: SetEntry[], today: string, goal: Goals, ach?: readonly SharedAch[], bud?: SharedBud): Summary {
+  const G = goalsAt(goal), g = G(weekStart(today)).sessions;
   const byId = new Map(entries.map((e) => [e.id, e]));
   const prDays = [...prIds(entries)].map((id) => byId.get(id)!.date).filter((d) => d <= today);
   const perDay = setsByDay(entries);
   const firstDay = entries.reduce<string | null>((a, e) => (a == null || e.date < a ? e.date : a), null);
   const weeks = firstDay ? Math.min(1001, Math.ceil((daysBetween(firstDay, today) + 1) / 7) + 1) : 1;
-  const streak = Math.min(1000, weekStreak(entries, today, g, weeks).current);
-  const r = Object.fromEntries(COMPARE_RANGES.map((k) => [k, rangeSummary(entries, k, today, g, prDays, perDay, firstDay)])) as Record<CompareRange, RangeSummary>;
+  const streak = Math.min(1000, weekStreak(entries, today, G, weeks).current);
+  const r = Object.fromEntries(COMPARE_RANGES.map((k) => [k, rangeSummary(entries, k, today, G, prDays, perDay, firstDay)])) as Record<CompareRange, RangeSummary>;
   return { v: 1, day: today, goal: g, streak, r, firsts: firsts(entries, today), ...(ach && { ach: ach.slice(0, MAX_SHARED).map((x) => ({ ...x })) }), ...(bud && { bud }) };
 }
 

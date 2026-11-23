@@ -348,7 +348,7 @@ const restLabel = (r: Omit<RestReason, 'label'>, today: string, by?: string, tra
  */
 export function planWeek(input: PlanInput, model: Pick<ReadinessModel, 'sessionReady' | 'recovery'> = readinessModel(input.entries, input.body, input.today, input.tz)): WeekPlan {
   const { entries, body, today, tz, profile } = input;
-  const week = weekOf(entries, input.weeklyGoal, today);
+  const week = weekOf(entries, input.weeklyGoal, today, input.setGoal);
   const D = week.daysLeft;
   const dates = Array.from({ length: D }, (_, d) => addD(today, d));
 

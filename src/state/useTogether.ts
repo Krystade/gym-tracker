@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Goals } from '../domain/goalHit';
 import { decodeLedger, encodeLedger, hasNew, mergeLedgers, NO_LEDGER, windowPairs, type FriendSide, type Ledger, type TogetherCtx } from '../domain/together';
 import type { SetEntry } from '../domain/types';
 import { useFriendCacheSelect, type CachedSummary, type CachedWindow, type FriendCache } from './friendCache';
@@ -30,14 +31,14 @@ const same = (a: Picked, b: Picked) => a === b || (JSON.stringify(a.friends) ===
 /** A friend's window as Together reads it: their sets, goal and start, and their summary's 52 weeks. */
 export function sideOf(uid: string, w: CachedWindow, s?: CachedSummary): FriendSide {
   const d = s?.doc;
-  return { uid, start: w.win.start ?? null, goal: w.win.goal ?? 2, sets: w.win.sets, from: w.from, met: d ? { day: d.day, met: d.r['1y'].met } : null };
+  return { uid, start: w.win.start ?? null, goal: w.win.goal ?? 2, ...(w.win.setGoal != null && { setGoal: w.win.setGoal }), sets: w.win.sets, from: w.from, met: d ? { day: d.day, met: d.r['1y'].met } : null };
 }
 
 /**
  * Together for the signed-in account (`uid`; none: signed out, or another person's screens). What the windows show that the
  * ledger hasn't is added to it on this phone, off the render, and goes up with the next sync.
  */
-export function useTogether(uid: string | null | undefined, entries: readonly SetEntry[], today: string, since: string | null, goal: number): Together | undefined {
+export function useTogether(uid: string | null | undefined, entries: readonly SetEntry[], today: string, since: string | null, goal: Goals): Together | undefined {
   const db = useDb();
   const picked = useFriendCacheSelect(uid, pick, same);
   const [ledger, setLedger] = useState<{ uid: string; l: Ledger } | null>(null);

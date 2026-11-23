@@ -1,4 +1,5 @@
 import type { SharedBud } from '../domain/buddies/share';
+import type { Goals } from '../domain/goalHit';
 import { BudChip } from './buddies/Shared';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { cloudError, loadCloud } from '../cloud/firebase';
@@ -15,7 +16,7 @@ import { useMinute } from '../state/clock';
 import { crewRange, notePing, peekFriendCache, refreshSummaries, refreshWindow, staleSummaries, staleWindow, useFriendCache, useFriendTags } from '../state/friendCache';
 import { featured, unlocksOf, type Unlock } from '../domain/achievements';
 import { AchChip, type AchAt } from './AchievementsSheet';
-import { togetherDay } from '../domain/together';
+import { friendGoals, togetherDay } from '../domain/together';
 import { useAchSince } from '../state/useAchievements';
 import { sideOf } from '../state/useTogether';
 import { getPref, setPref } from '../state/prefs';
@@ -55,7 +56,7 @@ const goalShare = (p: Person) => (p.week ? Math.min(1, p.week.sessions / Math.ma
 
 export function Feed({ uid, myName, friends, entries, goal, today, status, news, pulled = 0, onOpenFriend, onOpenMine, onInvite, onMessage, onCompare }: {
   uid: string; /** This phone's person, for your avatar. */ myName?: string; friends: Friend[] | null; entries: SetEntry[];
-  /** Your sessions-a-week goal. */ goal: number; today: string; status: StatusStore; news?: FriendNews | null;
+  /** Your weekly goals (either met: domain/goalHit). */ goal: Goals; today: string; status: StatusStore; news?: FriendNews | null;
   /** Moves on each pull-down or Refresh: every line is read again. */ pulled?: number;
   onOpenFriend: (f: Friend, at?: AchAt) => void; onOpenMine: () => void; onInvite: () => void; /** A friend's thread: pings and messages. */ onMessage?: (f: Friend) => void;
   /** Compare: everyone side by side (ui/ComparePage). */ onCompare?: () => void;
@@ -100,7 +101,7 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
   const myPrs = useMemo(() => prIds(entries), [entries]);
   const people = useMemo((): Person[] => {
     const now = Date.now();
-    const build = (base: Omit<Person, 'card' | 'live' | 'week' | 'usual' | 'today' | 'last'>, sets: SetEntry[], prs: Set<string>, g: number | null): Person => {
+    const build = (base: Omit<Person, 'card' | 'live' | 'week' | 'usual' | 'today' | 'last'>, sets: SetEntry[], prs: Set<string>, g: Goals | null): Person => {
       const last = latestSession(sets);
       const day = sets.filter((e) => e.date === today);
       return {
@@ -119,7 +120,7 @@ export function Feed({ uid, myName, friends, entries, goal, today, status, news,
       const met = w ? togetherDay(entries, since, sideOf(f.uid, w, cache?.summaries?.[f.uid]), today) : null;
       const together = met ? `You and @${f.name}${met.gym ? ` at ${met.gym}` : ''}, ${clock(met.from)}–${clock(met.to)}` : undefined;
       return { ...build({ id: f.uid, me: false, friend: f, label: label(f.uid, f.name, f.dn), lead: tags[f.uid] || f.dn, handle: f.dn || f.name, verified: verified[f.uid] != null, status: w?.win.status ?? '', loading: !w && !error, error },
-        sets, w ? friendPrs(w.win) : new Set(), w?.win.goal ?? null), ...(ach?.length && { ach }), ...(together && { together }), ...(sum?.bud && { bud: sum.bud }) };
+        sets, w ? friendPrs(w.win) : new Set(), w ? friendGoals(w.win) : null), ...(ach?.length && { ach }), ...(together && { together }), ...(sum?.bud && { bud: sum.bud }) };
     });
     return [me, ...theirs];
     // `minute`: live and today's cards move on with the clock.

@@ -80,6 +80,8 @@ export function timer(v: unknown): Timer {
 export interface Activity {
   date: string; next: string | null; week: { start: string; sessions: number; sets: number; prs: number; cardio: number; ach?: number };
   goal?: number; remind?: (string | null)[];
+  /** The week met his goal by either measure (sessions or sets: the app's domain/goalHit); only ever true. */
+  met?: true;
   /** Pain days the phone hasn't asked about (item 08): at most two (yesterday and today), each a day, a region and a lift's name. */
   pain?: PainDay[];
   /**
@@ -112,6 +114,7 @@ export function activity(v: unknown): Activity {
   return {
     ...(o.rest != null && { rest: restDates(o.rest) }),
     ...(o.goal != null && { goal: int(o.goal, 1, 7, 'goal') }),
+    ...(o.met != null && (o.met === true ? { met: true as const } : bad('met'))),
     ...(o.remind != null && { remind: Array.isArray(o.remind) && o.remind.length === 7 ? o.remind.map(learned) : bad('remind') }),
     ...(o.pain != null && { pain: painDays(o.pain) }),
     date: date(o.date, 'date'),

@@ -1,4 +1,5 @@
-import { weekStart } from '../analytics';
+import { addDays, weekStart } from '../analytics';
+import { goalHit, weekCount } from '../weekGoal';
 import type { BodyDay } from '../body';
 import { isCardio, isCardioEntry } from '../cardio';
 import { resolveLift } from '../lifts';
@@ -302,11 +303,16 @@ export interface Week {
 /** A set that makes its day one of the week's training days: any lift set but a warm-up (cardio alone doesn't). */
 export const weekDaySet = (e: SetEntry): boolean => !e.flags.includes('warmup') && !isCardioEntry(e);
 
-export function weekOf(entries: readonly SetEntry[], goal: number, today: string): Week {
+/**
+ * `setGoal`: the week's sets goal (domain/weekGoal). Met by the days before today, the week is met however many sessions it has
+ * (owner, 2026-11-22: either goal counts), so none are still needed.
+ */
+export function weekOf(entries: readonly SetEntry[], goal: number, today: string, setGoal?: number): Week {
   const start = weekStart(today);
   const ds = new Set<string>();
   for (const e of entries) if (e.date >= start && e.date < today && weekDaySet(e)) ds.add(e.date);
-  const done = ds.size, needed = Math.max(0, goal - done), daysLeft = 7 - days(start, today);
+  const bySets = setGoal != null && start < today && goalHit({ sessions: 0, sets: weekCount(entries, start, addDays(today, -1)).sets }, { sessions: 8, sets: setGoal }) === 'sets';
+  const done = ds.size, needed = bySets ? 0 : Math.max(0, goal - done), daysLeft = 7 - days(start, today);
   const slack = daysLeft - needed;
   return { goal, done, needed, daysLeft, slack, tight: needed > 0 && slack <= 0, met: goal > 0 && needed === 0 };
 }
@@ -385,6 +391,8 @@ export interface ReadinessInput {
   body: readonly BodyDay[];
   /** The weekly sessions goal (profile.weeklyGoal). */
   weeklyGoal: number;
+  /** This week's sets goal (domain/weekGoal goalsFor): met, the week is met (either goal counts). None: the sessions goal alone. */
+  setGoal?: number;
   program: Program | null;
   plans: readonly DayPlan[];
   /** The quick day's slots (program.quickDay, built by the caller for the time he has); null for none. */
@@ -491,7 +499,7 @@ export function readiness(input: ReadinessInput): Readiness {
   const sinceLast = last ? days(last, today) : null;
   const sys = systemic(entries, body, today, input.tapped);
   const lightOn = !!lightWeek(entries, today, input.tapped);
-  const week = weekOf(entries, input.weeklyGoal, today);
+  const week = weekOf(entries, input.weeklyGoal, today, input.setGoal);
   const verdict = verdictOf({ sinceLast, systemic: sys?.verdict ?? null, lightOn, week, todayInPlan: input.todayInPlan });
   const bestNext = best?.freshBy && best.freshBy > today ? { date: best.freshBy, label: `Best next: ${dayLabel(best.freshBy, today)}` } : null;
 

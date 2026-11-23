@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import type { Goals } from '../domain/goalHit';
 import type { CloudStore } from '../state/useCloud';
 import type { Friend, FriendNews } from '../cloud/friends';
 import type { ThreadWith } from './ThreadSheet';
@@ -31,7 +32,7 @@ export function FriendsScreen({ cloud, gyms, pending, entries, status, today, ne
   cloud: CloudStore; gyms: GymsStore; pending: Invite | null; entries: SetEntry[]; status: StatusStore; today: string;
   /** Requests, gyms and unread messages; `newsRev` moves whenever they're read again. */ news: FriendNews | null; newsRev: Box<number>;
   onPendingDone: () => void; onView: (f: Friend, at?: AchAt) => void; onChanged: () => void; onMessage: (f: ThreadWith) => void; onSignIn: () => void; onOpenMine: () => void;
-  /** This phone's person, for your own avatar. */ myName?: string; /** Your sessions-a-week goal, for your ring. */ goal: number;
+  /** This phone's person, for your own avatar. */ myName?: string; /** Your weekly goals, for your ring (either met: domain/goalHit). */ goal: Goals;
   /** Compare: everyone side by side. */ onCompare?: () => void;
 }) {
   const uid = cloud.link && cloud.mine ? cloud.link.uid : null;

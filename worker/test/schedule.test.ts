@@ -170,3 +170,13 @@ describe('no reminder on a planned rest day (readiness S5, owner Q6)', () => {
     expect(iso(nextRemind(NY, R, undefined, noon, ['2026-11-03']))).toBe('2026-11-02T23:00:00.000Z');
   });
 });
+
+describe('remindToday: either goal (owner, 2026-11-22)', () => {
+  it('the app saying the week met his goal (its sessions or its sets) quiets the reminder with learning on, never with it off', () => {
+    const prefs = { kinds: { remind: true }, reminder: {} }, today = '2026-11-18', week = { start: weekStart(today), sessions: 1 };
+    expect(remindToday(prefs, { date: '2026-11-17', week, goal: 3 }, undefined, today)).toBe(true);
+    expect(remindToday(prefs, { date: '2026-11-17', week, goal: 3, met: true }, undefined, today)).toBe(false);
+    expect(remindToday({ ...prefs, reminder: { learn: false } }, { date: '2026-11-17', week, goal: 3, met: true }, undefined, today)).toBe(true);
+    expect(remindToday(prefs, { date: '2026-11-10', week: { start: weekStart('2026-11-10'), sessions: 1 }, goal: 3, met: true }, undefined, today)).toBe(true); // last week's
+  });
+});

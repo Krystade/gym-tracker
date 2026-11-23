@@ -13,7 +13,7 @@ import type { SetEntry } from './types';
 // the Sunday before), so it holds still all week and a refit later never re-judges a week gone by.
 
 export type { GoalHit, WeekCount, WeekGoals } from './goalHit';
-export { goalHit, goalWeekHit } from './goalHit';
+export { goalHit, goalsAt, goalWeekHit, type Goals } from './goalHit';
 
 /** The sessions goal as every goal week reads it: a whole number, 1 to 7 (2 when unset). */
 export const sessionGoalOf = (p: Pick<Profile, 'weeklyGoal'>): number => Math.min(7, Math.max(1, Math.round(p.weeklyGoal) || 2));
@@ -83,6 +83,20 @@ export function weekCount(entries: readonly SetEntry[], week: string, through?: 
   let sets = 0;
   for (const v of days.values()) sets += v;
   return { sessions: days.size, sets };
+}
+
+/** Each lifted day's fractional muscle-sets (each muscle capped a day, as Stats counts them): what metOn reads. */
+export const daySets = (entries: readonly SetEntry[]): Map<string, number> => dayTotals(entries, () => true);
+/** The first day from `from` to `to` (within one week) by which either goal was met, its days counted from `from`; null: not met. */
+export function metOn(days: ReadonlyMap<string, number>, from: string, to: string, g: WeekGoals): string | null {
+  let n = 0, sets = 0;
+  for (let d = from; d <= to; d = addDays(d, 1)) {
+    const v = days.get(d);
+    if (v == null) continue;
+    n++; sets += v;
+    if (goalHit({ sessions: n, sets }, g)) return d;
+  }
+  return null;
 }
 
 /** Each goal week of the log, oldest first: its Monday, the day it was met (the first day either goal was), and by which. */

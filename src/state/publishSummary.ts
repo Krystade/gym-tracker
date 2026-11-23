@@ -1,4 +1,5 @@
 import type { Cloud } from '../cloud/firebase';
+import { goalsFor } from '../domain/weekGoal';
 import { PUBLISH_MS, writeSummary } from '../cloud/summary';
 import { achievementsOf, shareOf, type Achievements } from '../domain/achievements';
 import type { Spend } from '../domain/buddies/gacha';
@@ -80,7 +81,7 @@ export async function publishSummary(c: Cloud, uid: string, db: PublishSource, n
   const sets = log.sets.filter((e) => !log.tombstones.has(e.id)), today = localDate(new Date(now));
   const p = { ...defaultProfile(), ...profile };
   const ach = achOf(sets, today, p, since, program, plans);
-  const s = summarize(sets, today, profile?.weeklyGoal ?? 2, sharedAch(ach, p.achHidden), await sharedBud(db, sets, today, p, ach));
+  const s = summarize(sets, today, goalsFor(p, sets), sharedAch(ach, p.achHidden), await sharedBud(db, sets, today, p, ach));
   const hash = hashOf(summaryKey(s));
   if (last?.hash === hash) { setPref(scope(uid), NAME, { ...last, checked: now }); return false; }
   setPref(scope(uid), NAME, { hash: last?.hash ?? '', at: last?.at ?? 0, checked: now });

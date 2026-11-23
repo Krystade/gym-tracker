@@ -40,6 +40,11 @@ describe('activityOf', () => {
     const entries = [s('2026-10-12', 'Bench Press', 140, 8)];
     expect(activityOf(entries, null, [], TODAY).week).not.toHaveProperty('ach');
     expect(activityOf(entries, null, [], TODAY, undefined, 'UTC', undefined, 3).week.ach).toBe(3);
+    // Either goal met (owner, 2026-11-22): `met` quiets the reminder; sent only when true, and only beside a goal.
+    expect(activityOf(entries, null, [], TODAY, 3, 'UTC')).not.toHaveProperty('met');
+    expect(activityOf(entries, null, [], TODAY, 3, 'UTC', undefined, undefined, 1).met).toBe(true);
+    expect(activityOf(entries, null, [], TODAY, 1, 'UTC').met).toBe(true);
+    expect(activityOf(entries, null, [], TODAY, undefined, 'UTC', undefined, undefined, 1)).not.toHaveProperty('met');
     expect(activityOf(entries, null, [], TODAY, undefined, 'UTC', undefined, 5000).week.ach).toBe(999);
   });
 

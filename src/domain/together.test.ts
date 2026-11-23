@@ -10,6 +10,7 @@ import {
 } from './together';
 import { geohash, neighbours } from './place';
 import type { Flag, SetEntry } from './types';
+import type { Goals } from './goalHit';
 
 // Synthetic people and gyms only. Times are UTC; dates are the sets' own.
 const MON = '2026-11-02'; // a Monday
@@ -48,7 +49,7 @@ const together = (friends: FriendSide[], ledger: Ledger = NO_LEDGER) => ({ frien
 const ctx = (friends: FriendSide[], over: Partial<Context> = {}, ledger: Ledger = NO_LEDGER): Context =>
   ({ profile: { ...defaultProfile(), weeklyGoal: 2 }, today: TODAY, since: START, together: together(friends, ledger), ...over });
 const unlocks = (mine: SetEntry[], c: Context, id: string) => achievements(mine, c).unlocks.filter((u) => u.id === id);
-const steps = (mine: SetEntry[], friends: FriendSide[], ledger: Ledger = NO_LEDGER, since = START, goal = 2, today = TODAY) =>
+const steps = (mine: SetEntry[], friends: FriendSide[], ledger: Ledger = NO_LEDGER, since = START, goal: Goals = 2, today = TODAY) =>
   togetherSteps(effective(mine, since, goal, together(friends, ledger), today));
 
 describe('trained together: the same place and the same time, both live; neither alone (owner 2026-10-29)', () => {
@@ -215,6 +216,19 @@ describe('same week, crew streak and full house: each against their own goal', (
   it('the rings: this week against each one’s goal, a friend who hasn’t started left out', () => {
     const r = weekRings(mine, START, 2, [friend('ana', ana, { goal: 3 }), friend('sam', sam, { goal: 1 }), friend('kai', ana, { start: null })], TODAY);
     expect(r).toEqual([{ uid: null, sessions: 2, goal: 2, met: true }, { uid: 'ana', sessions: 3, goal: 3, met: true }, { uid: 'sam', sessions: 1, goal: 1, met: true }]);
+  });
+  it('either goal counts (owner, 2026-11-22): a ring and a Same week met by the sets goal, yours or theirs, short of the sessions', () => {
+    // One session each this week, 8 sets of Bench each: short of 3 sessions, past a sets goal of 4.
+    const me1 = visit(day(14), '07:00', 8), them1 = visit(day(15), '12:00', 8);
+    const short = weekRings(me1, START, 3, [friend('ana', them1, { goal: 3 })], TODAY);
+    expect(short.map((r) => r.met)).toEqual([false, false]);
+    const rings = weekRings(me1, START, { sessions: 3, sets: 4 }, [friend('ana', them1, { goal: 3, setGoal: 4 })], TODAY);
+    expect(rings).toEqual([{ uid: null, sessions: 1, goal: 3, met: true }, { uid: 'ana', sessions: 1, goal: 3, met: true }]);
+    const w = weekStart(day(14));
+    expect(windowPairs(me1, START, 3, [friend('ana', them1, { goal: 3, setGoal: 4 })], TODAY).pairs.ana?.week.has(w) ?? false).toBe(false);
+    expect(windowPairs(me1, START, () => ({ sessions: 3, sets: 4 }), [friend('ana', them1, { goal: 3 })], TODAY).pairs.ana?.week.has(w) ?? false).toBe(false);
+    expect(windowPairs(me1, START, () => ({ sessions: 3, sets: 4 }), [friend('ana', them1, { goal: 3, setGoal: 4 })], TODAY).pairs.ana.week.get(w)).toBe(day(15));
+    expect(steps(me1, [friend('ana', them1, { goal: 3, setGoal: 4 })], NO_LEDGER, START, { sessions: 3, sets: 4 })['same-week'].length).toBe(1);
   });
 });
 

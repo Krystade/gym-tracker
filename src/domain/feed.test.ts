@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { weekCount } from './weekGoal';
 import type { SetEntry } from './types';
 import { defaultProfile } from './profile';
 import {
@@ -80,9 +81,18 @@ describe('usualSession: how many working sets fill a person’s ring', () => {
 describe('goalWeek: this week against their own goal', () => {
   it('counts lifting days from Monday, never cardio-only days, and says whether today met it', () => {
     const sets = [...s('Bench Press', 3, {}, '2026-10-12'), ...cardio(30, '2026-10-13'), ...s('Barbell Squat', 4, {}, '2026-10-11'), ...s('Lat Pulldown', 3)];
-    expect(goalWeek(sets, TODAY, 2)).toEqual({ sessions: 2, cardioDays: 1, goal: 2, met: true, metToday: true });
+    expect(goalWeek(sets, TODAY, 2)).toEqual({ sessions: 2, cardioDays: 1, goal: 2, met: true, by: 'sessions', metToday: true });
     expect(goalWeek(sets, TODAY, 3)).toMatchObject({ sessions: 2, met: false, metToday: false });
     expect(goalWeek(sets, TODAY, 1)).toMatchObject({ met: true, metToday: false }); // Monday met it
+  });
+  it('either goal counts (owner, 2026-11-22): the sets goal met is a goal week short of the sessions, a friend’s too, and today’s sets can be the ones', () => {
+    const sets = [...s('Bench Press', 3, {}, '2026-10-12'), ...s('Lat Pulldown', 3)];
+    const mon = weekCount(sets, TODAY, '2026-10-12').sets, all = weekCount(sets, TODAY).sets, mid = (mon + all) / 2;
+    expect(mon).toBeLessThan(all);
+    expect(goalWeek(sets, TODAY, { sessions: 4, sets: mid })).toMatchObject({ sessions: 2, goal: 4, met: true, by: 'sets', metToday: true });
+    expect(goalWeek(sets, TODAY, { sessions: 4, sets: mon })).toMatchObject({ met: true, by: 'sets', metToday: false }); // Monday's sets met it
+    expect(goalWeek(sets, TODAY, { sessions: 4, sets: all + 1 })).toMatchObject({ met: false, by: null });
+    expect(goalWeek(sets, TODAY, () => ({ sessions: 2, sets: mid }))).toMatchObject({ met: true, by: 'both' });
   });
 });
 

@@ -14,7 +14,7 @@ import { addedLoad, bodyShare } from './learn/bodyweight';
 import { rate, rateBand, trend, type BodyDay } from './body';
 import { framingOf, POSES, SHOTS, type PhotoMeta } from './photos';
 import { effective, togetherSteps, TOGETHER_IDS, type Seen, type TogetherCtx } from './together';
-import { goalsFor, goalWeekDays, sessionGoalOf } from './weekGoal';
+import { goalsFor, goalWeekDays } from './weekGoal';
 
 // Achievements (.superpowers/redesign/achievements/plan.md): facts about a log, never stored as earned. Like records
 // (domain/records), each is worked out from the sets, the stored profile and the day plans, so an edit, a delete, a rename or a
@@ -139,7 +139,6 @@ const chrono = (a: SetEntry, b: SetEntry) => (a.date < b.date ? -1 : a.date > b.
 export const lifted = (e: SetEntry) => !e.flags.includes('warmup') && !isCardioEntry(e);
 /** A set that may count for strength: lifted, reps done, not a hold, and neither a set that hurt (a tingle is no pain: types.hurts) nor a light-week set. */
 const earns = (e: SetEntry) => lifted(e) && e.reps != null && e.reps >= 1 && !hurts(e) && !e.flags.some((f) => f === 'partial' || f === 'hold' || f === 'light');
-const goalOf = (p: Context['profile']) => sessionGoalOf(p);
 
 /** A value that only goes up, as dated steps: the day it first reached each value (and, for Together, who with). */
 export type Steps = { date: string; value: number; lift?: string; with?: string[]; gym?: string }[];
@@ -595,8 +594,8 @@ export function togetherOf(entries: readonly SetEntry[], ctx: Context): Seen | n
   const t = ctx.together;
   if (!t) return null;
   const hit = TOG.get(entries);
-  if (hit && hit.n === entries.length && hit.ctx.together === t && hit.ctx.today === ctx.today && hit.ctx.since === ctx.since && goalOf(hit.ctx.profile) === goalOf(ctx.profile)) return hit.v;
-  const v = effective(entries, ctx.since, goalOf(ctx.profile), t, ctx.today);
+  if (hit && hit.n === entries.length && hit.ctx.together === t && hit.ctx.today === ctx.today && hit.ctx.since === ctx.since && hit.ctx.profile === ctx.profile) return hit.v;
+  const v = effective(entries, ctx.since, goalsFor(ctx.profile, entries), t, ctx.today);
   TOG.set(entries, { n: entries.length, ctx, v });
   return v;
 }

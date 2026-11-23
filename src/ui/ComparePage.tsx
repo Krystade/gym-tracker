@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type RefObject } from 'react';
+import type { Goals } from '../domain/goalHit';
 import { loadCloud } from '../cloud/firebase';
 import type { Friend } from '../cloud/friends';
 import { activeProfileDb } from '../db/db';
@@ -50,7 +51,7 @@ interface Row {
 
 export function ComparePage({ uid, myName, entries, today, goal, onBack, onView, onOpenMine }: {
   uid: string; /** This phone's person, for your avatar. */ myName?: string; /** Your whole log: your summary is worked out here, not read. */ entries: SetEntry[];
-  today: string; /** Your sessions-a-week goal. */ goal: number; onBack: () => void; onView: (f: Friend) => void; onOpenMine: () => void;
+  today: string; /** Your weekly goals (either met makes a goal week: domain/goalHit). */ goal: Goals; onBack: () => void; onView: (f: Friend) => void; onOpenMine: () => void;
 }) {
   const [owner] = useState(activeProfileDb);
   const kept = <T,>(name: string, ok: (x: unknown) => x is T, dflt: T): T => { const v = getPref<unknown>(owner, name); return ok(v) ? v : dflt; };

@@ -10,6 +10,7 @@ import { readinessPlanned, slotVolume, type PlanDay, type WeekPlan } from '../do
 import { addDays, weeklyMuscleSets, weekStart } from '../domain/analytics';
 import { weekDaySet } from '../domain/learn/readiness';
 import { targetFor } from '../domain/profile';
+import { goalsFor } from '../domain/weekGoal';
 
 // Readiness S4: what the READY tile, the week strip and the Why sheet say, from learn/schedule.readinessPlanned. Pure, so every
 // string they show can be checked (by the day only, owner Q2: no clock time anywhere) without a browser.
@@ -50,7 +51,7 @@ export function readyMorning(input: ReadyInput): Planned {
 export const readyNow = (i: ReadyInput): Planned => planned(i);
 
 function planned(i: ReadyInput): Planned {
-  return readinessPlanned({ entries: i.entries, body: i.body, weeklyGoal: i.profile.weeklyGoal, program: i.program, plans: i.plans, quick: i.quick, today: i.today, tz: i.tz, tapped: i.tapped, profile: i.profile });
+  return readinessPlanned({ entries: i.entries, body: i.body, weeklyGoal: i.profile.weeklyGoal, setGoal: goalsFor(i.profile, i.entries)(i.today).sets, program: i.program, plans: i.plans, quick: i.quick, today: i.today, tz: i.tz, tapped: i.tapped, profile: i.profile });
 }
 
 /**

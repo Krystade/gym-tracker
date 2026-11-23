@@ -3,7 +3,8 @@ import { monthOf, type CloudMonth, type MetaItems } from '../domain/cloud';
 import { itemShort, latestOf, messageOk, thread, toClear, unreadOf, type InboxDoc, type PresetKey, type ThreadItem } from '../domain/messages';
 import { cleanStatus } from '../domain/crew';
 import { stickerOk } from '../domain/sticker';
-import { defaultProfile } from '../domain/profile';
+import { defaultProfile, type Profile as Settings } from '../domain/profile';
+import { minimumsOf, ownSetGoal, SET_GOAL_MAX } from '../domain/weekGoal';
 import { isPlaceKey } from '../domain/place';
 import { newToken, type Invite } from '../domain/invite';
 import { CHANGE_GAP_MS, nextChangeAt } from '../domain/friendNames';
@@ -289,6 +290,11 @@ export interface FriendWindow {
   /** Their sessions-a-week goal, from the settings read that brings the status (none: a window kept by an older version). */
   goal?: number;
   /**
+   * Their sets-a-week goal, from the same read: their hand-set one, else their profile's weekly minimums added up (as stored,
+   * not refitted to their log here). Either goal met makes their goal week (domain/goalHit). None: unknown (an older window).
+   */
+  setGoal?: number;
+  /**
    * The day their achievements count from (their synced `achievements` item), from the same read: Together counts from the
    * later of theirs and yours (domain/together). Null: they haven't started (an older app). None: a window kept by an older version.
    */
@@ -317,11 +323,11 @@ export async function readFriendWindow(c: Cloud, uid: string, from: string, to: 
   const kept = prev?.basis && prev.from <= from ? { ...prev, basis: prev.basis } : null;
   const need = want.filter((m) => kept?.basis.months[m] !== times[m]);
   // Their goal, start and key came with the status from a newer version only: a window kept without them reads their settings once more.
-  const keptGoal = kept?.win.goal, keptStart = kept?.win.start, keptLoc = kept?.win.loc;
+  const keptGoal = kept?.win.goal, keptSetGoal = kept?.win.setGoal, keptStart = kept?.win.start, keptLoc = kept?.win.loc;
   const [months, bits] = await Promise.all([
     readMonths(c, uid, need, want),
     metaAt !== undefined && kept?.basis.meta === metaAt && keptGoal !== undefined && keptStart !== undefined && keptLoc !== undefined
-      ? { status: kept.win.status, goal: keptGoal, start: keptStart, loc: keptLoc } : readSettingsBits(c, uid),
+      ? { status: kept.win.status, goal: keptGoal, setGoal: keptSetGoal, start: keptStart, loc: keptLoc } : readSettingsBits(c, uid),
   ]);
   const sets = want.flatMap((m) => months.get(m)?.sets ?? kept?.win.sets.filter((s) => monthOf(s.date) === m) ?? []).filter((s) => s.date >= from);
   const prs: Record<string, string[]> = {};
@@ -329,7 +335,7 @@ export async function readFriendWindow(c: Cloud, uid: string, from: string, to: 
     const p = months.has(m) ? months.get(m)!.prs : kept?.win.prs?.[m];
     if (p) prs[m] = p;
   }
-  return { sets, status: bits.status, goal: bits.goal, start: bits.start, loc: bits.loc, prs, basis: { months: Object.fromEntries(want.map((m) => [m, times[m]])), ...(metaAt !== undefined && { meta: metaAt }) } };
+  return { sets, status: bits.status, goal: bits.goal, ...(bits.setGoal != null && { setGoal: bits.setGoal }), start: bits.start, loc: bits.loc, prs, basis: { months: Object.fromEntries(want.map((m) => [m, times[m]])), ...(metaAt !== undefined && { meta: metaAt }) } };
 }
 /** A month as a friend's window keeps it: its sets, and the PR ids its document carries (none: an older app wrote it). */
 interface MonthRead { sets: SetEntry[]; prs?: string[] }
@@ -349,21 +355,33 @@ async function readMonths({ F, db }: Cloud, uid: string, need: string[], want: s
  * From their settings document, only the status phrase, the sessions-a-week goal (2, the app's default, when unset or odd), the
  * day their achievements count from (null: none, or not a day) and their Location for Together key (null: off, or not a key).
  */
-async function readSettingsBits({ F, db }: Cloud, uid: string): Promise<{ status: string; goal: number; start: string | null; loc: string | null }> {
+async function readSettingsBits({ F, db }: Cloud, uid: string): Promise<{ status: string; goal: number; setGoal?: number; start: string | null; loc: string | null }> {
   const items = (await F.getDoc(F.doc(db, `users/${uid}/meta/profile`))).data()?.items as Record<string, string> | undefined;
-  let status = '', goal = defaultProfile().weeklyGoal, start: string | null = null, loc: string | null = null;
+  let status = '', goal = defaultProfile().weeklyGoal, setGoal: number | undefined, start: string | null = null, loc: string | null = null;
   try {
     const v = items?.achievements ? JSON.parse(items.achievements) as unknown : null;
     if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) start = v;
   } catch { /* not a day */ }
   try { status = items?.status ? cleanStatus(JSON.parse(items.status)) : ''; } catch { /* not a phrase */ }
   try {
-    const p = items?.profile ? JSON.parse(items.profile) as { weeklyGoal?: unknown; placeKey?: unknown } | null : undefined;
+    const p = items?.profile ? JSON.parse(items.profile) as Partial<Settings> | null : undefined;
     const g = p?.weeklyGoal, k = p?.placeKey;
     if (typeof g === 'number' && Number.isInteger(g) && g >= 1 && g <= 7) goal = g;
     if (isPlaceKey(k)) loc = k;
+    if (p && typeof p === 'object') setGoal = friendSetGoal(p);
   } catch { /* not a profile */ }
-  return { status, goal, start, loc };
+  return { status, goal, ...(setGoal != null && { setGoal }), start, loc };
+}
+/** A friend's sets goal from their stored profile: hand-set, else the minimums of their ranges (odd or missing ranges: the defaults). */
+function friendSetGoal(p: Partial<Settings>): number | undefined {
+  const own = ownSetGoal(p as Pick<Settings, 'setGoal'>);
+  if (own != null) return own;
+  const d = defaultProfile();
+  const ok = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object';
+  const tiers = ok(p.tiers) ? { ...d.tiers, ...p.tiers } as Settings['tiers'] : d.tiers;
+  const targets = ok(p.targets) && Object.values(p.targets).every((r) => Array.isArray(r) && r.every((n) => typeof n === 'number' && Number.isFinite(n))) ? { ...d.targets, ...p.targets } as Settings['targets'] : d.targets;
+  const n = minimumsOf({ tiers, targets });
+  return n >= 1 && n <= SET_GOAL_MAX ? n : undefined;
 }
 
 /** A gym a friend sent you, waiting under Friends until you add it or dismiss it. */

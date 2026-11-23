@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { goalsFor, type Goals } from '../domain/weekGoal';
 import { achievementsOf, gained, highest, togetherOf, type Achievements, type BodyCtx, type Context, type Unlock } from '../domain/achievements';
 import type { Profile } from '../domain/profile';
 import type { DayPlan, Program } from '../domain/program';
@@ -80,12 +81,12 @@ export const useTogetherNames = (): TogetherNames | undefined => useContext(AchC
  * What counts toward Together on `today` (domain/together), for a family's "With" list and Full house's rings: null signed
  * out, or before the start day is read. Only ever on your own phone.
  */
-export function useTogetherSeen(entries: readonly SetEntry[], today: string): { seen: Seen; together: Together; since: string; goal: number } | null {
+export function useTogetherSeen(entries: readonly SetEntry[], today: string): { seen: Seen; together: Together; since: string; goal: Goals } | null {
   const c = useContext(AchCtx);
   return useMemo(() => {
     if (!c?.since || !c.together) return null;
     const seen = togetherOf(entries, contextOf({ ...c, since: c.since }, today));
-    return seen && { seen, together: c.together, since: c.since, goal: c.profile.weeklyGoal };
+    return seen && { seen, together: c.together, since: c.since, goal: goalsFor(c.profile, entries) };
   }, [c, entries, today]);
 }
 

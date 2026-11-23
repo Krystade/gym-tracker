@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { friendGoals } from '../domain/together';
 import { cloudError, loadCloud } from '../cloud/firebase';
 import { readFriend, type Friend, type FriendData, type FriendNews } from '../cloud/friends';
 import { addDays, weekStart } from '../domain/analytics';
@@ -89,15 +90,15 @@ function Profile({ uid, friend, entries, today, news, onBack, onMessage, onDeep,
   }, [uid, friend, from, today]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Their sets in the 8 weeks and their PR ids: new only when their line is read again, so their Stats tiles work out once a read.
-  const line = useMemo(() => (w ? { sets: w.win.sets.filter((e) => e.date >= from && e.date <= today), prs: friendPrs(w.win), goal: w.win.goal ?? 2 } : null), [w, from, today]);
+  const line = useMemo(() => (w ? { sets: w.win.sets.filter((e) => e.date >= from && e.date <= today), prs: friendPrs(w.win), goal: w.win.goal ?? 2, goals: friendGoals(w.win) } : null), [w, from, today]);
   const v = useMemo(() => {
     if (!line) return null;
     const now = Date.now();
-    const { sets, prs, goal } = line;
+    const { sets, prs, goals } = line;
     const day = sets.filter((e) => e.date === today);
     const last = latestSession(sets);
     return {
-      sets, prs, day, live: liveSince(day, now), week: goalWeek(sets, today, goal), streak: weekStreak(sets, today, goal, 8),
+      sets, prs, day, live: liveSince(day, now), week: goalWeek(sets, today, goals), streak: weekStreak(sets, today, goals, 8),
       prsWeek: sets.filter((e) => prs.has(e.id) && e.date >= weekStart(today)).length,
       card: last ? sessionCard(sets, last.date, prs, now) : null, shared: progressRows(entries, sets, addDays(today, -55), today),
       ring: ringSets(day), usual: usualSession(sets, today),

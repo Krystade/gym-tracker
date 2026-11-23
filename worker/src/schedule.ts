@@ -91,10 +91,11 @@ export const restsOn = (reminder: { learn?: boolean }, rest: readonly string[] |
 
 /**
  * Whether the reminder due now goes out on local day `today`: the kind on; nothing logged today (the whole point); one a day,
- * however the plan moved; with learning on, none once this week's sessions reach his goal (a JITAI rule, Nahum-Shani 2018: only
+ * however the plan moved; with learning on, none once this week meets his goal (its sessions or its sets) (a JITAI rule, Nahum-Shani 2018: only
  * when needed) and none on a rest date of his week plan (readiness S5).
  */
-export function remindToday(prefs: { kinds: { remind: boolean }; reminder: { learn?: boolean } }, act: { date: string; week: { start: string; sessions: number }; goal?: number; rest?: readonly string[] } | undefined, remindedOn: string | undefined, today: string): boolean {
-  const met = prefs.reminder.learn !== false && act?.goal != null && act.week.start === weekStart(today) && act.week.sessions >= act.goal;
+export function remindToday(prefs: { kinds: { remind: boolean }; reminder: { learn?: boolean } }, act: { date: string; week: { start: string; sessions: number }; goal?: number; met?: true; rest?: readonly string[] } | undefined, remindedOn: string | undefined, today: string): boolean {
+  // Met: either goal, as the app judged it (act.met), or the sessions goal from the count (an app from before act.met).
+  const met = prefs.reminder.learn !== false && act?.goal != null && act.week.start === weekStart(today) && (act.met === true || act.week.sessions >= act.goal);
   return prefs.kinds.remind && act?.date !== today && !met && remindedOn !== today && !restsOn(prefs.reminder, act?.rest, today);
 }

@@ -2,6 +2,7 @@ import { addDays, weekStart } from './analytics';
 import { isCardioEntry } from './cardio';
 import { parsePlace, samePlace, type Place } from './place';
 import type { SetEntry } from './types';
+import { daySets, goalsAt, metOn, type Goals, type WeekGoals } from './weekGoal';
 
 // Together (achievements plan §10, owner 2026-10-22: yes to all ten). Six families about you and your friends, worked out on
 // your phone from raw sets: yours (only you write them) and each friend's Crew window (only they write theirs), never from
@@ -40,6 +41,8 @@ export interface FriendSide {
   start?: string | null;
   /** Their sessions-a-week goal. */
   goal: number;
+  /** Their sets-a-week goal, from their settings (none: an older window, so only the sessions goal counts). */
+  setGoal?: number;
   /** Their sets from `from` on (the Crew window). */
   sets: readonly SetEntry[];
   /** The window's first day: a day before it isn't a rest day, it's unknown. */
@@ -152,6 +155,10 @@ function weekDays(by: Map<string, SetEntry[]>, w: string, lo: string, hi: string
   return out;
 }
 
+/** A friend's goals: their sessions goal (2 when unknown), and their sets goal where their settings carry one. */
+export const friendGoals = (f: { goal?: number | null; setGoal?: number | null }): ((week: string) => WeekGoals) =>
+  goalsAt({ sessions: f.goal ?? 2, ...(f.setGoal != null && { sets: f.setGoal }) });
+
 /** Their summary said they met their goal in week `w` (52 weeks ending at their summary day's week). */
 function summaryMet(met: FriendSide['met'], w: string): boolean {
   if (!met || !isDay(met.day) || typeof met.met !== 'string' || !/^[01]{52}$/.test(met.met)) return false;
@@ -161,9 +168,9 @@ function summaryMet(met: FriendSide['met'], w: string): boolean {
 
 /** What the windows show now, per friend: the ledger's bits as they'd be read from today's sets. `gyms`: each together day's gym. */
 export interface Seen { pairs: Record<string, Pair>; gyms: Record<string, Map<string, Met>> }
-export function windowPairs(mine: readonly SetEntry[], since: string, goal: number, friends: readonly FriendSide[], today: string): Seen {
+export function windowPairs(mine: readonly SetEntry[], since: string, goal: Goals, friends: readonly FriendSide[], today: string): Seen {
   const pairs: Record<string, Pair> = {}, gyms: Record<string, Map<string, Met>> = {};
-  const my = byDate(mine, since, today);
+  const my = byDate(mine, since, today), myGoals = goalsAt(goal), myDays = daySets(mine.filter((e) => e.date >= since && e.date <= today));
   for (const f of friends) {
     const s = pairStart(since, f.start);
     if (!s || !isDay(f.from)) continue;
@@ -178,14 +185,15 @@ export function windowPairs(mine: readonly SetEntry[], since: string, goal: numb
       if (m) { tog.add(d); at.set(d, m); }
     }
     // Weeks, from the pair's start: their sets where the window holds every day counted, their summary where it doesn't.
-    const theirGoal = Math.min(7, Math.max(1, Math.round(f.goal) || 2)), myGoal = Math.min(7, Math.max(1, Math.round(goal) || 2));
+    // Either goal met makes a goal week (domain/goalHit), each side's own goals; the week is reached on the later side's day.
+    const theirGoals = friendGoals(f), theirDays = daySets(f.sets.filter((e) => e.date >= lo && e.date <= today));
     const summaryFrom = weekStart(s) === s ? s : addDays(weekStart(s), 7); // only weeks wholly after the start
     for (let w = weekStart(f.met && summaryFrom < weekStart(lo) ? summaryFrom : lo); w <= today; w = addDays(w, 7)) {
       const first = later(w, s), last = addDays(w, 6) < today ? addDays(w, 6) : today;
-      const mineIn = weekDays(my, w, first, last, lifted);
-      if (mineIn.length < myGoal) continue;
-      const theirsIn = weekDays(theirs, w, later(first, f.from), last, lifted);
-      if (theirsIn.length >= theirGoal) week.set(w, later(mineIn[myGoal - 1], theirsIn[theirGoal - 1]));
+      const mineOn = metOn(myDays, first, last, myGoals(w));
+      if (!mineOn) continue;
+      const theirsOn = metOn(theirDays, later(first, f.from), last, theirGoals(w));
+      if (theirsOn) week.set(w, later(mineOn, theirsOn));
       else if (f.from > first && w >= summaryFrom && summaryMet(f.met, w)) week.set(w, last);
     }
     if (day.size || week.size) { pairs[f.uid] = { day, tog, week }; gyms[f.uid] = at; }
@@ -288,15 +296,15 @@ export function decodeLedger(x: unknown): Ledger {
  * Per friend, what counts now: the ledger with today's windows added, each day one you still trained on (and each week one you
  * still met your goal in), from your start and, for a friend still here, theirs. `gyms`: together days the windows show.
  */
-export function effective(mine: readonly SetEntry[], since: string, goal: number, t: TogetherCtx, today: string): Seen {
+export function effective(mine: readonly SetEntry[], since: string, goal: Goals, t: TogetherCtx, today: string): Seen {
   const seen = windowPairs(mine, since, goal, t.friends, today);
   const all = mergeLedgers(t.ledger, seen.pairs);
   const my = byDate(mine, since, today);
-  const myGoal = Math.min(7, Math.max(1, Math.round(goal) || 2));
+  const myGoals = goalsAt(goal), myDays = daySets(mine.filter((e) => e.date >= since && e.date <= today));
   const metWeek = new Map<string, boolean>();
   const met = (w: string) => {
     let v = metWeek.get(w);
-    if (v === undefined) metWeek.set(w, v = weekDays(my, w, later(w, since), today, lifted).length >= myGoal);
+    if (v === undefined) metWeek.set(w, v = metOn(myDays, later(w, since), addDays(w, 6) < today ? addDays(w, 6) : today, myGoals(w)) != null);
     return v;
   };
   const startOf = new Map(t.friends.map((f) => [f.uid, pairStart(since, f.start)]));
@@ -380,17 +388,17 @@ export function withList(seen: Seen, id: TogetherId): WithRow[] {
 
 /** This week, against each one's own goal: you, and each friend who has started (Full house's rings). Counted as the weeks are. */
 export interface Ring { uid: string | null; sessions: number; goal: number; met: boolean }
-export function weekRings(mine: readonly SetEntry[], since: string, goal: number, friends: readonly FriendSide[], today: string): Ring[] {
+export function weekRings(mine: readonly SetEntry[], since: string, goal: Goals, friends: readonly FriendSide[], today: string): Ring[] {
   const w = weekStart(today);
-  const myGoal = Math.min(7, Math.max(1, Math.round(goal) || 2));
+  const myGoal = goalsAt(goal)(w);
   const mineIn = weekDays(byDate(mine, since, today), w, later(w, since), today, lifted).length;
-  const out: Ring[] = [{ uid: null, sessions: mineIn, goal: myGoal, met: mineIn >= myGoal }];
+  const out: Ring[] = [{ uid: null, sessions: mineIn, goal: myGoal.sessions, met: metOn(daySets(mine.filter((e) => e.date >= since && e.date <= today)), later(w, since), today, myGoal) != null }];
   for (const f of friends) {
     const s = pairStart(since, f.start);
     if (!s) continue;
-    const g = Math.min(7, Math.max(1, Math.round(f.goal) || 2));
-    const n = weekDays(byDate(f.sets, later(s, f.from), today), w, later(later(w, s), f.from), today, lifted).length;
-    out.push({ uid: f.uid, sessions: n, goal: g, met: n >= g });
+    const g = friendGoals(f)(w), from = later(later(w, s), f.from);
+    const n = weekDays(byDate(f.sets, later(s, f.from), today), w, from, today, lifted).length;
+    out.push({ uid: f.uid, sessions: n, goal: g.sessions, met: metOn(daySets(f.sets.filter((e) => e.date >= from && e.date <= today)), from, today, g) != null });
   }
   return out;
 }
