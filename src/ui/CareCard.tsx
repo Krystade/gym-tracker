@@ -4,7 +4,7 @@ import type { SetEntry } from '../domain/types';
 import { fmtWeight, plural } from '../domain/format';
 
 const cap = (r: string) => r[0].toUpperCase() + r.slice(1);
-const SEV = ['', 'mild', 'moderate', 'sharp'];
+const SEV = ['tingle', 'mild', 'moderate', 'sharp'];
 const WarnIcon = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
     <path d="M8 1.8 15 14H1z" strokeLinejoin="round" /><path d="M8 6v4" /><circle cx="8" cy="12" r="0.6" fill="currentColor" />
@@ -34,7 +34,7 @@ export function CareBody({ entries, today, who, weeks = 8 }: { entries: SetEntry
             <p className="muted small care-axis"><span>{plural(weeks, 'week')} ago</span><span>this week</span></p>
             <ul className="care-ex">
               {r.byExercise.slice(0, 3).map((x) => (
-                <li key={x.exercise}><b>{x.exercise}</b><span className="muted small">{plural(x.sets, 'set')} · avg {fmtWeight(x.avgWeight)} lb{x.maxSeverity ? ` · worst ${SEV[x.maxSeverity]}` : ''}</span></li>
+                <li key={x.exercise}><b>{x.exercise}</b><span className="muted small">{plural(x.sets, 'set')} · avg {fmtWeight(x.avgWeight)} lb{x.maxSeverity != null ? ` · worst ${SEV[x.maxSeverity]}` : ''}</span></li>
               ))}
             </ul>
           </div>

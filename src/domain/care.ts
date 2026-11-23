@@ -114,9 +114,13 @@ export function swapSuggestions(exercise: string, entries: SetEntry[], today: st
   return out.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)).slice(0, limit);
 }
 
+/** The worst severity on these sets, a tingle (0) counted (owner, 2026-11-22: "worst" left a tingle out); null: none logged one. */
+const worstOf = (xs: readonly SetEntry[]): number | null => xs.reduce<number | null>((a, x) => (x.painSeverity == null ? a : Math.max(a ?? 0, x.painSeverity)), null);
+
 export interface RegionReport {
   region: Region; weekly: number[]; total: number; rising: boolean;
-  byExercise: { exercise: string; sets: number; maxSeverity: number; avgWeight: number }[];
+  /** `maxSeverity`: the worst severity logged on its pain sets, a tingle (0) included; null: none had one. */
+  byExercise: { exercise: string; sets: number; maxSeverity: number | null; avgWeight: number }[];
 }
 
 /** Pain-flagged sets per region per week (oldest first, ending with this week): tingles too, the one place they count (the trend). */
@@ -141,7 +145,7 @@ export function painReport(entries: SetEntry[], today: string, weeks = 8): Regio
       rising: [n - 1, n - 2].some((k) => k >= 2 && weekly[k - 2] < weekly[k - 1] && weekly[k - 1] < weekly[k]),
       byExercise: [...ex.entries()].map(([exercise, xs]) => ({
         exercise, sets: xs.length,
-        maxSeverity: Math.max(0, ...xs.map((x) => x.painSeverity ?? 0)),
+        maxSeverity: worstOf(xs),
         avgWeight: Math.round(xs.reduce((a, x) => a + x.weight, 0) / xs.length),
       })).sort((a, b) => b.sets - a.sets),
     };

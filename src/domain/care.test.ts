@@ -126,6 +126,12 @@ describe('painReport', () => {
     expect(r[0].weekly).toEqual([0, 1, 1, 0]);
     expect(r[0].byExercise[0]).toMatchObject({ exercise: 'Skullcrusher', sets: 2, maxSeverity: 3, avgWeight: 45 });
   });
+  it('its worst severity counts a tingle (owner, 2026-11-22), and is null when no set logged one', () => {
+    const t = (date: string, sev?: 0 | 1) => s(date, 'Skullcrusher', { flags: ['pain'], painRegion: 'elbow', ...(sev != null && { painSeverity: sev }) });
+    expect(painReport([t('2026-09-22', 0)], '2026-09-30', 4)[0].byExercise[0].maxSeverity).toBe(0);
+    expect(painReport([t('2026-09-22', 0), t('2026-09-23', 1)], '2026-09-30', 4)[0].byExercise[0].maxSeverity).toBe(1);
+    expect(painReport([t('2026-09-22')], '2026-09-30', 4)[0].byExercise[0].maxSeverity).toBeNull();
+  });
   it('calls a region rising only after two consecutive weekly increases', () => {
     const once = [p('2026-09-29', 'Skullcrusher'), p('2026-09-29', 'Skullcrusher')]; // [0,0,0,2]: one jump
     expect(painReport(once, '2026-09-30', 4)[0].rising).toBe(false);

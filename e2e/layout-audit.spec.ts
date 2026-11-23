@@ -709,6 +709,8 @@ test('Today: Ready with nothing short of fresh (round 68: no tile, Body map ›)
   await expect(d).toBeVisible();
   await expect(page.locator('html')).toHaveClass(/sheet-lock/);
   await expect(d.locator('.why-table tbody tr').first()).toBeVisible();
+  await expect(d.locator('.why-hero > b')).toHaveCount(0); // nothing short of fresh: no number here either (owner, 2026-11-22)
+  await expect(d.locator('.why-v')).not.toBeEmpty();
   await expect(d).toContainText(/research \d+% · you \d+%/);
   expect((await d.innerText()).match(CLOCK)).toBeNull();
   await check(page, info, found, 'ready-why', [], '[role=dialog]');

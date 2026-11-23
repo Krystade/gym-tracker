@@ -1,7 +1,7 @@
 import { platesOf } from '../domain/plates';
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
 import type { Profile } from '../domain/profile';
-import { planToRecord, quickDay } from '../domain/program';
+import { adherence, planToRecord, quickDay } from '../domain/program';
 import type { SetsStore } from '../state/useSets';
 import type { SettingsStore } from '../state/useSettings';
 import type { ProgramStore } from '../state/useProgram';
@@ -33,7 +33,7 @@ import type { BodyStore } from '../state/useBody';
 import type { GymsStore } from '../state/useGyms';
 import { availableSet } from '../domain/equipment';
 import { PROGRAM_LIFTS } from '../domain/catalog';
-import { addDays } from '../domain/analytics';
+import { addDays, weekStart } from '../domain/analytics';
 import type { ThreadWith } from './ThreadSheet';
 import { TodayDigest } from './WeekDigest';
 import { SuggestedToday } from './SuggestedToday';
@@ -64,6 +64,8 @@ import { DeloadPrompt, LightWeekLine } from './DeloadPrompt';
 import { ReadyCard, WeekCard } from './ReadyTile';
 import { goalsFor, weekCount } from '../domain/weekGoal';
 import { WeekRings } from './WeekRings';
+import { StatsSheet } from './StatsSheet';
+import { WeekSheet } from './StatsTiles';
 import { readyMorning, readyNow, stripView, suggestedDay, type ReadyInput } from './readyView';
 import { PastDay, PlannedDay } from './DayReview';
 import { restDatesOf } from '../push/activity';
@@ -104,6 +106,8 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   onOpenDay?: (date: string) => void;
 }) {
   const [picking, setPicking] = useState(false);
+  // The rings tapped: the week as Stats' "This week" shows it (owner, 2026-11-22), for the week of the day shown.
+  const [weekOpen, setWeekOpen] = useState(false);
   // Owner, 2026-10-23: a day tapped in Ready's Week row, shown in today's place, read only (a future day: its plan). Never kept:
   // the app opens on today, and so does coming back to it after 5 minutes away.
   const [look, setLook] = useState<string | null>(null);
@@ -449,7 +453,9 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
   return (
     <div ref={outer}><div ref={inner}>
       <div className={`today-head has-rings${up ? ' rings-up' : ''}`}>
-        <WeekRings count={week.count} goals={week.goals} className="today-rings" />
+        <button type="button" className="today-rings" aria-haspopup="dialog" aria-label="This week" onClick={() => setWeekOpen(true)}>
+          <WeekRings count={week.count} goals={week.goals} />
+        </button>
         <div className="day-switch" data-tour="day">
           <button className="mini" aria-label="Previous day" onClick={() => onDay(addDays(date, -1))}><Icon name="chev-left" size={28} sw={2} /></button>
           <h1>{fmtDay(date, today)}</h1>
@@ -457,6 +463,13 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
         </div>
         {lead && onOpenBuddies && <TodayLead def={lead.def} name={lead.name} held={lead.held} onOpen={onOpenBuddies} />}
       </div>
+      {weekOpen && (
+        <StatsSheet title="This week" onClose={() => setWeekOpen(false)}>
+          <p className="st-sub">Week of <b>{new Date(`${weekStart(date)}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</b></p>
+          <WeekSheet entries={store.entries} profile={profile} today={date}
+            program={programs.program ? adherence(programs.program, programs.plans, store.entries, addDays(date, -27), date) : null} />
+        </StatsSheet>
+      )}
       {/* Which gym only matters once there's a choice of them. */}
       {gyms.gyms.length > 1 && gyms.active && <button className="gym-line" onClick={onOpenGym}><span>at <b className="pname">{gyms.active.name}</b></span><Icon name="chev-right" size={16} sw={2} /></button>}
       {/* Owner Q5: the tile at the top of Today, about today only; the Energy chips in it. */}

@@ -87,7 +87,8 @@ export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpe
         </div>
       </section>
       {strip && !weekRow && <WeekStrip s={strip} />}
-      {why && <WhySheet w={whyView(r, input, sys, slots)} t={t} onClose={() => setWhy(false)} onAllMuscles={() => { setWhy(false); setMuscles(true); }}
+      {/* Owner, 2026-11-22: no muscle short of fresh, no number on Why either (as on the tile); the verdict and body map stay. */}
+      {why && <WhySheet w={whyView(r, input, sys, slots)} t={shown ? t : { ...t, number: null }} onClose={() => setWhy(false)} onAllMuscles={() => { setWhy(false); setMuscles(true); }}
         onMuscle={(m) => { setWhy(false); setMuscle({ m, from: 'why' }); }} />}
       {muscles && (
         <StatsSheet title="Sets per muscle" onClose={() => setMuscles(false)}>

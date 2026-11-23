@@ -609,9 +609,12 @@ h3 { font-size: var(--fs-sm); margin: 12px 0 4px; color: var(--muted); font-weig
    and ellipses before it runs under them. A tall lead buddy hangs into that end (TodayScreen leadFit): then they go up onto the
    arrows' row, just right of the arrows, clear of the widest buddy (BOX.today, 160px from the right). */
 .today-head.has-rings { position: relative; }
-.today-head > .today-rings { position: absolute; top: 50px; right: 0; z-index: 1; }
+.today-head > .today-rings { position: absolute; top: 47px; right: -3px; z-index: 1; }
+/* A tap on the rings opens the week (owner, 2026-11-22): a bare button, the rings its face, 44px tall. */
+button.today-rings { display: inline-flex; align-items: center; min-height: 44px; padding: 3px; margin: 0; border: 0; border-radius: 22px; background: none; color: inherit; font: inherit; cursor: pointer; }
+button.today-rings:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .today-head.has-rings:not(.rings-up) .day-switch h1 { padding-right: 96px; }
-.today-head.rings-up > .today-rings { top: 3px; right: auto; left: 84px; }
+.today-head.rings-up > .today-rings { top: 0; right: auto; left: 81px; }
 .goal-row.sets-goal { margin-top: 16px; }
 /* "at Garage ›" under the day: quiet, a full-width 44px tap target pulled up into the head's gap. */
 .gym-line { width: 100%; justify-content: flex-start; margin: -12px 0 8px; padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--fs-sub); font-weight: 400; gap: 4px; }
@@ -1822,6 +1825,7 @@ h1 + .card > h2#notify-h { position: absolute; width: 1px; height: 1px; padding:
   border-radius: var(--r-sm); background: var(--fill); color: var(--accent-text); font-variant-numeric: tabular-nums; }
 /* Beside the name when it fits, else first on the line under it (with Test due, after it): never stranded mid-row. */
 .card-head > .pts-pill { margin-right: auto; margin-bottom: 4px; }
+.fold-meta > .pts-pill { padding: 1px 7px; }
 .card-head .test-badge:has(+ .pts-pill) { margin-right: 0; }
 .finish-head .pts-pill { margin-right: 10px; }
 .finish-pts { margin-top: 12px; display: grid; gap: 8px; }

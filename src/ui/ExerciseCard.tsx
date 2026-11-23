@@ -285,7 +285,7 @@ function LiftCard({ exercise, date, today: realToday = date, store, settings, on
     const offer = on ? [...left.filter((x) => sameExercise(x, on)), ...left.filter((x) => !sameExercise(x, on))] : left;
     return (
       <section className="card folded" data-card={exercise.toLowerCase()} onClickCapture={onTouch}>
-        <FoldLine name={exercise} done={complete} count={foldText} pr={today.some((x) => prs.has(x.id))} best={top ? fmtSet(top) : null} test={testDueNow}
+        <FoldLine name={exercise} done={complete} count={foldText} pr={today.some((x) => prs.has(x.id))} best={top ? fmtSet(top) : null} test={testDueNow} pts={pts}
           onClick={() => { unfold(); if (testDueNow) setSeekTest((n) => n + 1); }} />
         {/* The set that finished the lift folds its card: its points rise off the folded line instead. */}
         {rise && <span key={rise.id} className="pts-rise" aria-hidden="true" onAnimationEnd={() => setRise(null)}>+{rise.n}</span>}

@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { INCOME } from '../domain/buddies/points';
 import type { SetsStore } from '../state/useSets';
 import type { CardioData, SetEntry } from '../domain/types';
 import { byOrderDone, lastSession, sameExercise } from '../domain/stats';
@@ -124,10 +125,12 @@ export function CardioCard({ exercise, date, today: realToday = date, store, onO
   const start: CardioData = { seconds: target.minutes * 60, ...(prev?.miles != null && { miles: prev.miles }), ...(target.aim != null && target.unit === 'mi' && { miles: target.aim }),
     ...(target.aim != null && target.unit === 'floors' && { floors: target.aim }), ...(target.incline != null && { incline: target.incline }), ...(target.level != null && { level: target.level }) };
 
+  // Its buddy points today (domain/buddies/points: a point per 3 cardio minutes), as a lift card shows its sets' (owner, 2026-11-22).
+  const pts = Math.floor(bouts.reduce((a, x) => a + (x.cardio?.seconds ?? 0), 0) / 60 / INCOME.cardioMin);
   if (complete && !opened) {
     return (
       <section className="card folded" data-card={exercise.toLowerCase()}>
-        <FoldLine name={exercise} done count="✓" pr={bouts.some((x) => prs.has(x.id))} best={fmtCardio(bouts.at(-1)!.cardio!)} onClick={() => setOpened(true)} />
+        <FoldLine name={exercise} done count="✓" pr={bouts.some((x) => prs.has(x.id))} best={fmtCardio(bouts.at(-1)!.cardio!)} pts={pts} onClick={() => setOpened(true)} />
         {pr && <p role="status" className="pr">{pr}</p>}
         <AchLines us={ach.lines} onOpen={openAch} />
       </section>
@@ -146,6 +149,7 @@ export function CardioCard({ exercise, date, today: realToday = date, store, onO
     <section className="card" data-card={exercise.toLowerCase()}>
       <header className="card-head">
         <button className="link" onClick={() => onOpen(exercise)}>{exercise}</button>
+        {pts > 0 && <span className="pts-pill" aria-label={`${pts} ${pts === 1 ? 'point' : 'points'} from ${exercise} today`}>+{pts} pts</span>}
         {complete && <button className="mini" aria-expanded="true" onClick={() => setOpened(false)}>Fold</button>}
       </header>
       {last && <p className="muted card-last">Last ({fmtDay(last.date, realToday)}): <span className="nw">{last.sets.map((s) => fmtCardio(s.cardio!)).join(' · ')}</span></p>}
