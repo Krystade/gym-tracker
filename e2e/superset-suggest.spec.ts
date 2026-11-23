@@ -190,6 +190,12 @@ test('Ready’s number and verdict only when a muscle is short of fresh; the che
   await expect(ready.locator('.ready-tile')).toHaveCount(0);
   await expect(ready.locator('.ready-n')).toHaveCount(0);
   await expect(ready.getByRole('button', { name: /^Week/ })).toBeVisible();
+  // Body map › in the tile's place (owner, 2026-11-22): the same Why sheet, its body map and recovery.
+  await ready.getByRole('button', { name: /^Body map/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Why' }).locator('figure.bodymap path[data-m]').first()).toBeVisible();
+  await page.waitForTimeout(600); // the sheet's slide-in
+  await page.screenshot({ path: `${SHOTS}/body-map-sheet.png` });
+  await page.getByRole('dialog', { name: 'Why' }).getByRole('button', { name: 'Done' }).click();
   await page.screenshot({ path: `${SHOTS}/ready-hidden.png` });
 });
 

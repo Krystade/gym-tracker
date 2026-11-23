@@ -629,9 +629,7 @@ test('Finishing: the Finish bar, the summary in the plan’s place, and a sessio
 /** A clock time ("17:40", "7:05", "5pm"): owner Q2, by the day only, so none in the tile, the strip or the sheet (learn/readiness's detector). */
 const CLOCK = /\d{1,2}:\d{2}|\b\d{1,2}\s?(am|pm)\b/i;
 
-// Round 68 (owner, 2026-11-22): Ready's tile shows only when a muscle is short of fresh; this fixture recovers within a day, so the
-// tile and its Why › are hidden. Needs a short-of-fresh fixture, or an owner call on a Why entry while the tile is hidden.
-test.fixme('Today: the READY tile (new user, go, tight week, goal met, layoff), folded after a set, the Week row and its strip, the Why sheet to its end', async ({ page }, info) => {
+test('Today: Ready with nothing short of fresh (round 68: no tile, Body map ›), new user, go, tight week, goal met, layoff, folded after a set, the Week row and its strip, the Why sheet to its end', async ({ page }, info) => {
   test.setTimeout(240_000);
   const found: string[] = [];
   // PNGs of the screen as the phone shows it, when asked for (READY_PNG=<dir>).
@@ -680,6 +678,7 @@ test.fixme('Today: the READY tile (new user, go, tight week, goal met, layoff), 
   await expect(tile.locator('.ready-tile')).toHaveCount(0);
   await expect(tile.locator('.ready-n')).toHaveCount(0);
   await expect(tile.getByRole('group', { name: 'Energy' })).toBeVisible();
+  await expect(tile.getByRole('button', { name: /^Body map/ })).toBeVisible();
   await look('ready-new-user');
 
   // Ten weeks of Mon/Wed/Fri, a 3-day program built today (Tuesday), the goal 2: Go, the session, its sets, the week strip.
@@ -689,9 +688,9 @@ test.fixme('Today: the READY tile (new user, go, tight week, goal met, layoff), 
   await page.getByRole('textbox', { name: 'Days per week' }).fill('3');
   await page.getByRole('button', { name: 'Build program' }).click();
   await page.getByRole('button', { name: '‹ Back' }).click();
-  await expect(tile.locator('.ready-n')).toHaveText(/^(\d+|<1)$/);
-  await expect(tile.locator('.ready-verdict')).toHaveText('Go today');
-  await expect(tile).toContainText(/\d+ of \d+ sets at full strength/);
+  // Ten weeks of his pace leave every muscle fresh today: no number or verdict (round 68), the quiet Body map › in their place.
+  await expect(tile.locator('.ready-tile')).toHaveCount(0);
+  await expect(tile.getByRole('button', { name: /^Body map/ })).toBeVisible();
   await expect(strip).toHaveCount(0); // folded to the Week row
   await look('ready-go-week-row');
   await oneLine();
@@ -702,13 +701,10 @@ test.fixme('Today: the READY tile (new user, go, tight week, goal met, layoff), 
   await expect(strip.locator('.ws-days > li[data-today]')).toHaveCount(1);
   await expect(strip.locator('.ws-days > li').nth(1)).toHaveAttribute('data-today', 'true');
   await expect(strip.locator('.ws-days > li').nth(1)).toContainText('Today');
-  // Today's plan is the week plan's session for today (owner Q3), whichever day that is.
-  const planned = (await tile.locator('.ready-line b').first().textContent())!;
-  await expect(page.getByRole('region', { name: 'Today’s plan' })).toContainText(planned);
   await look('ready-go');
 
   // Why ›: the sheet, its muscles, sources, energy, deload, pain and the week's sets, to its end.
-  await tile.getByRole('button', { name: /^Why/ }).click();
+  await tile.getByRole('button', { name: /^Body map/ }).click();
   const d = page.getByRole('dialog', { name: 'Why' });
   await expect(d).toBeVisible();
   await expect(page.locator('html')).toHaveClass(/sheet-lock/);
@@ -725,7 +721,6 @@ test.fixme('Today: the READY tile (new user, go, tight week, goal met, layoff), 
 
   // Goal 6 from Tuesday: 6 days for 6 sessions, no spare day.
   await goal(6);
-  await expect(tile.locator('.ready-verdict')).toHaveText('Go today · tight week');
   await openWeek();
   await expect(strip.locator('.ws-days > li')).toHaveCount(7);
   await expect(strip.locator('.ws-days > li[data-mark=rest]')).toHaveCount(0);
@@ -742,14 +737,11 @@ test.fixme('Today: the READY tile (new user, go, tight week, goal met, layoff), 
   await tile.getByRole('button', { name: /Ready/ }).click();
   await expect(tile.getByRole('group', { name: 'Energy' })).toBeVisible();
   await look('ready-reopened');
-  await tile.getByRole('button', { name: 'Fold Ready' }).click();
-  await expect(tile.getByRole('group', { name: 'Energy' })).toHaveCount(0);
 
   // Wednesday, goal 1, met on Tuesday: a Go, "extra session optional", never Rest; the days ahead rest, "Goal met".
   await page.clock.resume();
   await goal(1);
   await at(add(DAY0, 1));
-  await expect(tile.locator('.ready-verdict')).toHaveText('Goal met · extra session optional');
   await openWeek();
   await expect(strip.locator('.ws-days > li[data-today]')).toHaveAttribute('data-mark', 'optional');
   // Tuesday's session, ticked done; Monday, not trained.
@@ -761,17 +753,14 @@ test.fixme('Today: the READY tile (new user, go, tight week, goal met, layoff), 
 
   // Eight days on from the last session: a layoff, always Go, said calmly.
   await at(add(DAY0, 8));
-  await expect(tile.locator('.ready-verdict')).toHaveText('Go today');
-  await expect(tile).toContainText('First session in 8 days');
+  await expect(tile.locator('.ready-tile')).toHaveCount(0);
   await look('ready-layoff');
   clean(found);
 });
 
 // ---- IA A1 (owner, 2026-10-21): Today's order, Ready's Weight and Week rows, the digest card, the past-workout line, Why's muscles. ----
 
-// Round 68 (owner, 2026-11-22): Ready's tile shows only when a muscle is short of fresh; this fixture recovers within a day, so the
-// tile and its Why › are hidden. Needs a short-of-fresh fixture, or an owner call on a Why entry while the tile is hidden.
-test.fixme('Today (IA A1): before training on a digest week with a ping, the Week row open, Why’s muscles, the digest open, mid-session, a new user', async ({ page: fresh, browser, request }, info) => {
+test('Today (IA A1): before training on a digest week with a ping, the Week row open, Why’s muscles, the digest open, mid-session, a new user', async ({ page: fresh, browser, request }, info) => {
   test.setTimeout(240_000);
   const found: string[] = [];
   // PNGs of the screen as the phone shows it, when asked for (IA_PNG=<dir>).
@@ -818,7 +807,7 @@ test.fixme('Today (IA A1): before training on a digest week with a ping, the Wee
   await expect(strip).toHaveCount(0);
 
   // Why ›: the muscles today's plan touches, then All muscles › (the Stats Muscles sheet) in its place.
-  await tile.getByRole('button', { name: /^Why/ }).click();
+  await tile.getByRole('button', { name: /^Body map/ }).click();
   const why = page.getByRole('dialog', { name: 'Why' });
   const mine = why.getByRole('list', { name: 'Today’s muscles' }).getByRole('listitem');
   await expect(mine.first()).toBeVisible();
@@ -1032,8 +1021,7 @@ test('Stats v2: the tiles, the lift, calendar, muscles and week sheets, every ra
 
 // ---- The body map (owner, 2026-10-22): Stats' Muscles sheet, the Why sheet, a lift from the catalog and one guessed from its name. ----
 
-// Round 68: Why › lives in the Ready tile, hidden on this fixture (nothing short of fresh); see the READY tile audit above.
-test.fixme('Body map: the Muscles sheet front and back, Why’s recovery, a known lift and a guessed one', async ({ page }, info) => {
+test('Body map: the Muscles sheet front and back, Why’s recovery, a known lift and a guessed one', async ({ page }, info) => {
   test.setTimeout(180_000);
   await phone(page);
   const found: string[] = [];
@@ -1052,7 +1040,7 @@ test.fixme('Body map: the Muscles sheet front and back, Why’s recovery, a know
   await d.getByRole('button', { name: 'Done' }).click();
 
   await goto(page, 'Today');
-  await page.getByRole('region', { name: 'Ready' }).getByRole('button', { name: /^Why/ }).click();
+  await page.getByRole('region', { name: 'Ready' }).getByRole('button', { name: /^Body map/ }).click();
   const why = page.getByRole('dialog', { name: 'Why' });
   await drawn(why);
   await check(page, info, found, 'bodymap-why', [], '[role=dialog]');

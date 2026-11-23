@@ -76,6 +76,8 @@ export function ReadyCard({ input, morning, body, worked, sys, slots = [], onOpe
       <section className="ready-card" aria-label="Ready" data-kind={shown ? t.kind : undefined} data-tile={shown ? undefined : 'hidden'}>
         {shown && <ReadyTile t={t} onWhy={() => setWhy(true)} onFold={worked ? () => setOpen(false) : undefined}
           week={strip && weekRow ? <WeekToggle s={strip} open={weekOpen} onToggle={() => setWeekOpen(!weekOpen)} /> : undefined} />}
+        {/* Owner, 2026-11-22: with the tile hidden, a quiet link in its place still opens Why's body map and recovery. */}
+        {!shown && <p className="ready-quiet"><button type="button" className="ready-link" onClick={() => setWhy(true)}>Body map <Icon name="chev-right" size={16} sw={2} /></button></p>}
         <div className="ready-checkin">
           <Energy body={body} date={input.today} />
           <CycleRow date={input.today} />
