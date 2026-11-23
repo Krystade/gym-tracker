@@ -115,3 +115,45 @@ describe('painFit: how likely a lift is to hurt next time (item 08, b: person �
     expect(PAIN_LIFTS.length).toBe(6);
   });
 });
+
+describe('the calibration toward his overall rate (round 69: risks above ½ ran overconfident in a walk-forward backtest)', () => {
+  const T: PainTruth = { base: 0.03, own: 0.6, region: 0.25, h: 28 };
+  it('λ is the least-squares line through his running rate that fits the earlier sessions’ outcomes, held to [0, 1] with a ridge toward 1', () => {
+    for (let seed = 1; seed <= 4; seed++) {
+      for (const truth of [T, { base: 0.08, own: 0, region: 0, h: 28 }]) {
+        const f = painFit(painLog(seed, { sessions: 300, truth }).entries);
+        let num = 1, den = 1, A = 0;
+        f.trace.forEach((x, s) => { const b = (A + 1) / (s + 2), d = x.p - b; num += d * (x.y - b); den += d * d; A += x.y; });
+        expect(f.lambda, `seed ${seed}`).toBeCloseTo(Math.min(1, Math.max(0, num / den)), 12);
+      }
+    }
+    expect(painFit([]).lambda).toBe(1); // nothing to learn from: the grid as it is
+  });
+  it('a day’s risk is his rate plus λ times the grid’s distance from it, its SD shrunk alike, a never-done lift’s too', () => {
+    const { entries } = painLog(3, { sessions: 300, truth: { base: 0.08, own: 0, region: 0, h: 28 } });
+    const f = painFit(entries), d = addDays(last(entries), 2);
+    for (const name of [...PAIN_LIFTS.map((l) => l.name), 'Skullcrusher']) {
+      const r = f.risk(name, d);
+      expect(r.p, name).toBeCloseTo(f.base + f.lambda * (r.raw - f.base), 12);
+      expect(Math.abs(r.p - f.base)).toBeLessThanOrEqual(Math.abs(r.raw - f.base) + 1e-12);
+    }
+  });
+  it('on logs pain behaves as the model says, it leaves the risk almost as it was and costs nothing on sessions it hasn’t seen', () => {
+    let cal = 0, raw = 0, n = 0;
+    for (let seed = 1; seed <= 4; seed++) {
+      const { entries, days } = painLog(seed, { sessions: 300, truth: T });
+      expect(painFit(entries).lambda, `seed ${seed}`).toBeGreaterThan(0.9);
+      for (const d of days.filter((_, i) => i >= 100 && i % 10 === 0)) {
+        const f = painFit(entries.filter((e) => e.date < d));
+        for (const l of PAIN_LIFTS) {
+          const day = entries.filter((e) => e.date === d && e.exercise === l.name);
+          if (!day.length) continue;
+          const r = f.risk(l.name, d), y = day.some((e) => e.flags.includes('pain')) ? 1 : 0;
+          cal += (r.p - y) ** 2; raw += (r.raw - y) ** 2; n++;
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(200);
+    expect(cal / n).toBeLessThan(raw / n + 0.001);
+  });
+});

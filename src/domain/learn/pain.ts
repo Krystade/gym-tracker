@@ -51,6 +51,8 @@ export const HALF_LIVES = [7, 14, 28, 56, 112, 224] as const;
 /** Prior strengths of the family and person levels, in lift-sessions: from barely a session to a strong pull. */
 const STRENGTHS = [0.5, 1, 2, 4, 8, 16, 32, 64, 128] as const;
 const NH = HALF_LIVES.length, NS = STRENGTHS.length, NC = NH * NS * NS;
+/** The calibration's ridge toward λ = 1 (c; see fitPain): as much as one lift-session predicted a whole 1 from his rate. */
+const SHRINK_PULL = 1;
 /** Days a fade is tabulated for; longer is gone (2^(−4000/224) < 1e-5). */
 const MAXD = 4000;
 const FADE = HALF_LIVES.map((h) => { const t = new Float64Array(MAXD + 1); for (let d = 0; d <= MAXD; d++) t[d] = 2 ** (-d / h); return t; });
@@ -122,6 +124,8 @@ export interface PainRisk {
   sd: number;
   /** P(this lift's rate is above its family's): its own sessions say it hurts more than lifts like it. */
   worse: number;
+  /** p before the calibration (see fitPain): the grid's own. */
+  raw: number;
 }
 export interface PainFit {
   /** Lift-sessions and those with pain. */
@@ -132,8 +136,10 @@ export interface PainFit {
   h: [number, number][];
   /** Log marginal likelihood of the log under the model (nats), and under his overall rate alone (the flat baseline). */
   logScore: number; flatScore: number;
-  /** Each lift-session's predicted p (the posterior-weighted grid) and whether it hurt: for calibration checks. */
+  /** Each lift-session's predicted p (the posterior-weighted grid, before calibration) and whether it hurt: for calibration checks. */
   trace: { p: number; y: number }[];
+  /** How far a risk is kept from his overall rate (1: as the grid says, 0: his rate alone): the calibration (see fitPain). */
+  lambda: number;
   /** The risk for a lift's session on `date` (on or after the log's last day). */
   risk(exercise: string, date: string): PainRisk;
 }
@@ -195,31 +201,45 @@ export function fitPain(entries: readonly SetEntry[], upTo = Infinity): PainFit 
   const lix = new Map(keys.map((k, i) => [k, i])), rix = new Map(regions.map((r, i) => [r, i]));
 
   let trace: { p: number; y: number }[] | null = null;
+  // Each lift-session's predicted p, the grid weighted by its posterior (only the cells that carry weight, by half-life).
+  const traced = () => {
+    if (trace) return trace;
+    const p = new Float64Array(S);
+    for (let hi = 0; hi < NH; hi++) {
+      const cells: [number, number, number][] = [];
+      for (let mf = 0; mf < NS; mf++) for (let mp = 0; mp < NS; mp++) { const wc = w[perCell(hi, mf, mp)]; if (wc >= 1e-9) cells.push([wc, STRENGTHS[mf], STRENGTHS[mp]]); }
+      if (!cells.length) continue;
+      // The faded counts again for this half-life (the fit kept only the last one's).
+      const la = new Float64Array(L), ln = new Float64Array(L), ld = new Int32Array(L), ra = new Float64Array(R), rn = new Float64Array(R), rd = new Int32Array(R);
+      for (let s = 0; s < S; s++) {
+        const { lift: l, region: r, day, y } = ev[s];
+        const fl = fade(hi, day - ld[l]), fr = fade(hi, day - rd[r]);
+        const a = la[l] * fl, n = ln[l] * fl, ar = ra[r] * fr, nr = rn[r] * fr, af = Math.max(0, ar - a), nf = Math.max(0, nr - n);
+        for (const [wc, MF, MP] of cells) p[s] += wc * (a + MF * (af + MP * piP[s]) / (nf + MP)) / (n + MF);
+        la[l] = a + y; ln[l] = n + 1; ld[l] = day; ra[r] = ar + y; rn[r] = nr + 1; rd[r] = day;
+      }
+    }
+    return (trace = ev.map((x, s) => ({ p: p[s], y: x.y })));
+  };
+  // The calibration (round 69, owner 2026-11-22: risks above ½ ran overconfident in a walk-forward backtest): a day's risk is pulled
+  // toward his overall rate by λ, p' = π_P + λ·(p − π_P). λ is fitted (b) to the lift-sessions before the day, each its predicted
+  // p against what happened, by least squares on the Brier score (the line through his running rate at each session that fits the
+  // outcomes best), held to [0, 1], with a ridge toward λ = 1 (SHRINK_PULL, c: no pull without evidence). Walk-forward, as every
+  // fit here: a day's λ is from the days before it. Checked with scripts/backtest.ts: the Brier score and the log loss went down.
+  let lambda: number | null = null;
+  const shrink = () => {
+    if (lambda != null) return lambda;
+    const t = traced();
+    let num = SHRINK_PULL, den = SHRINK_PULL;
+    for (let s = 0; s < S; s++) { const d = t[s].p - piP[s]; num += d * (t[s].y - piP[s]); den += d * d; }
+    return (lambda = Math.min(1, Math.max(0, num / den)));
+  };
   // A screen asks for the same lift on the same day many times (every render): each once.
   const asked = new Map<string, PainRisk>();
   const fit: PainFit = {
     sessions: S, pains: A, base, h, logScore, flatScore: flat,
-    get trace() {
-      if (trace) return trace;
-      const p = new Float64Array(S);
-      for (let hi = 0; hi < NH; hi++) {
-        // The faded counts again for this half-life (the fit kept only the last one's).
-        const la = new Float64Array(L), ln = new Float64Array(L), ld = new Int32Array(L), ra = new Float64Array(R), rn = new Float64Array(R), rd = new Int32Array(R);
-        for (let s = 0; s < S; s++) {
-          const { lift: l, region: r, day, y } = ev[s];
-          const fl = fade(hi, day - ld[l]), fr = fade(hi, day - rd[r]);
-          const a = la[l] * fl, n = ln[l] * fl, ar = ra[r] * fr, nr = rn[r] * fr;
-          for (let mf = 0; mf < NS; mf++) for (let mp = 0; mp < NS; mp++) {
-            const wc = w[perCell(hi, mf, mp)];
-            if (wc < 1e-9) continue;
-            const pF = (Math.max(0, ar - a) + STRENGTHS[mp] * piP[s]) / (Math.max(0, nr - n) + STRENGTHS[mp]);
-            p[s] += wc * (a + STRENGTHS[mf] * pF) / (n + STRENGTHS[mf]);
-          }
-          la[l] = a + y; ln[l] = n + 1; ld[l] = day; ra[r] = ar + y; rn[r] = nr + 1; rd[r] = day;
-        }
-      }
-      return (trace = ev.map((x, s) => ({ p: p[s], y: x.y })));
-    },
+    get trace() { return traced(); },
+    get lambda() { return shrink(); },
     risk(exercise, date) {
       const memo = `${liftKey(exercise)}|${date}`;
       const hit = asked.get(memo);
@@ -242,7 +262,9 @@ export function fitPain(entries: readonly SetEntry[], upTo = Infinity): PainFit 
           worse += wc * (1 - betaCdf(pF, al, be));
         }
       }
-      const out = { p, sd: Math.sqrt(Math.max(0, m2 - p * p)), worse };
+      // Calibrated toward his overall rate (see λ above); its SD shrinks by the same factor, the lift-against-family odds don't move.
+      const k = shrink();
+      const out = { p: base + k * (p - base), sd: k * Math.sqrt(Math.max(0, m2 - p * p)), worse, raw: p };
       if (asked.size > 500) asked.clear();
       asked.set(memo, out);
       return out;
