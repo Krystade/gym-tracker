@@ -4,6 +4,7 @@ import path from 'node:path';
 import { addFriend, goto, openProgram } from './nav';
 import { audit, check, clean, lines, notched, renderCheck, TOP } from './layout';
 import { deloadLog, SIM_LIFTS, simDay } from '../src/domain/learn/deloadSim.sample';
+import { simulateRecovery } from '../src/domain/learn/recoverySim.sample';
 import { account, atGym, befriend, boardPost, iso, log, named, onBoard, ownerAccount, ping, placed, put, rand, session, signedIn, Ts, verify, type Seeded } from './seed';
 import { convertedRows, pasteRows, toCsv as dupesCsv, TWINS } from './fixtures/dupes';
 import { friendLog, publish, summaryOf } from './fixtures/compare';
@@ -757,6 +758,95 @@ test('Today: Ready with nothing short of fresh (round 68: no tile, Body map ›)
   await at(add(DAY0, 8));
   await expect(tile.locator('.ready-tile')).toHaveCount(0);
   await look('ready-layoff');
+  clean(found);
+});
+
+/**
+ * A lifter whose log shows real fatigue (learn/recoverySim.sample: a synthetic lifter of known recovery, energy moving his day):
+ * 40 sessions, every one with its energy, the last yesterday, Monday. The ten weeks above never tire him (every set the same
+ * reps), so nothing there is short of fresh; here yesterday's muscles are, and the tile shows.
+ */
+async function fatigued(page: Page) {
+  const sim = simulateRecovery(1, { sessions: 40, energy: { slope: 0.02 } });
+  const shift = Math.round((Date.parse(`${add(DAY0, -1)}T12:00:00Z`) - Date.parse(`${sim.entries.at(-1)!.date}T12:00:00Z`)) / 864e5);
+  const sets = sim.entries.map((e) => ({ ...e, id: e.id.replace(e.date, add(e.date, shift)), date: add(e.date, shift), loggedAt: e.loggedAt && new Date(Date.parse(e.loggedAt) + shift * 864e5).toISOString() }));
+  const body = sim.body.map((d) => ({ ...d, date: add(d.date, shift) }));
+  await page.evaluate(async ({ sets, body }) => {
+    const db = await new Promise<IDBDatabase>((ok, no) => { const r = indexedDB.open('gym-tracker'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+    const tx = db.transaction(['sets', 'body'], 'readwrite');
+    for (const s of sets) tx.objectStore('sets').put(s);
+    for (const d of body) tx.objectStore('body').put(d);
+    await new Promise((ok, no) => { tx.oncomplete = ok; tx.onerror = () => no(tx.error); });
+    db.close();
+  }, { sets, body });
+  await page.reload();
+}
+
+test('Today: the READY tile with a muscle short of fresh (go, tight week, goal met, folded after a set, a layoff on a low-energy day)', async ({ page }, info) => {
+  test.setTimeout(180_000);
+  const found: string[] = [];
+  const png = async (name: string) => { if (process.env.READY_PNG) await page.screenshot({ path: `${process.env.READY_PNG}/${info.project.name}-${name}.png` }); };
+  const tile = page.getByRole('region', { name: 'Ready' });
+  const look = async (state: string) => {
+    const text = await tile.innerText();
+    expect(text.match(CLOCK), text).toBeNull(); // by the day only (owner Q2)
+    await check(page, info, found, state, [], '.ready-card');
+    await png(state);
+  };
+  const at = async (day: string) => { await page.clock.setSystemTime(new Date(`${day}T18:00:00`)); await page.reload(); await goto(page, 'Today'); };
+  const goal = async (n: number) => { await goto(page, 'Weekly goal'); await page.getByRole('textbox', { name: 'Sessions per week goal' }).fill(String(n)); await goto(page, 'Today'); };
+
+  // Tuesday, yesterday's session in him, a 3-day program built today, the goal 2 (one done): Go, the number, the session's sets.
+  await phone(page);
+  await expect(page.getByRole('button', { name: 'Add exercise' })).toBeVisible();
+  await fatigued(page);
+  await goto(page, 'Today');
+  await openProgram(page);
+  await page.getByRole('textbox', { name: 'Days per week' }).fill('3');
+  await page.getByRole('button', { name: 'Build program' }).click();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  await expect(tile.locator('.ready-n')).toHaveText(/^(\d+|<1)$/);
+  await expect(tile.locator('.ready-verdict')).toHaveText('Go today');
+  await expect(tile).toContainText(/\d+ of \d+ sets at full strength/);
+  // Today's plan is the week plan's session for today (owner Q3), whichever day that is.
+  const planned = (await tile.locator('.ready-line b').first().textContent())!;
+  await expect(page.getByRole('region', { name: 'Today’s plan' })).toContainText(planned);
+  await look('ready-short-go');
+
+  // Goal 7 from Tuesday, Monday done: 6 days for 6 sessions, no spare day.
+  await goal(7);
+  await expect(tile.locator('.ready-verdict')).toHaveText('Go today · tight week');
+  await look('ready-short-tight');
+  // Goal 1, met on Monday: a Go, "extra session optional", never Rest.
+  await goal(1);
+  await expect(tile.locator('.ready-verdict')).toHaveText('Goal met · extra session optional');
+  await look('ready-short-goal-met');
+  await goal(2);
+
+  // The day's first set: the tile folds to one line; a tap opens it again (today's set in), and Fold Ready folds it.
+  const card = await addCard(page, 'DB Curl');
+  await logSet(page, card, '18:05:00', '45', '10');
+  await expect(tile.getByRole('button', { name: /Ready/ })).toHaveAttribute('aria-expanded', 'false');
+  await expect(tile.getByRole('group', { name: 'Energy' })).toHaveCount(0);
+  await look('ready-short-folded');
+  await tile.getByRole('button', { name: /Ready/ }).click();
+  await expect(tile.getByRole('group', { name: 'Energy' })).toBeVisible();
+  await expect(tile.locator('.ready-n')).toBeVisible();
+  await look('ready-short-reopened');
+  await tile.getByRole('button', { name: 'Fold Ready' }).click();
+  await expect(tile.getByRole('group', { name: 'Energy' })).toHaveCount(0);
+  await expect(tile.getByRole('button', { name: /Ready/ })).toHaveAttribute('aria-expanded', 'false');
+
+  // Eight days on from today's set: fresh, so no tile at his usual energy; Energy 1 (his low days read weaker) puts a muscle
+  // short of fresh, and the tile says a layoff is always a go, calmly.
+  await page.clock.resume();
+  await at(add(DAY0, 8));
+  await expect(tile.locator('.ready-tile')).toHaveCount(0);
+  await tile.getByRole('group', { name: 'Energy' }).getByRole('button', { name: '1', exact: true }).click();
+  await expect(tile.locator('.ready-n')).toHaveText(/^(\d+|<1)$/);
+  await expect(tile.locator('.ready-verdict')).toHaveText('Go today');
+  await expect(tile).toContainText('First session in 8 days');
+  await look('ready-short-layoff');
   clean(found);
 });
 
