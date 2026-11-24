@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { goto, sendRequest } from './nav';
+import { tapAndSync } from './synced';
 
 // A notification tap lands where it says, whatever the app was doing: a friend's push on their thread, the recap on the
 // week's digest. The tap arrives as the URL a push carries (`navigate`, `#open=<route>`): a launch on it, or a hash change
@@ -43,8 +44,7 @@ async function person(browser: Browser) {
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
   await account.getByLabel('Password').fill(PASSWORD);
-  await account.getByRole('button', { name: 'Create account' }).click();
-  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account, account.getByRole('button', { name: 'Create account' }));
   await goto(page, 'Friends');
   await friends(page).getByRole('textbox', { name: 'Username' }).fill(name);
   await friends(page).getByRole('button', { name: 'Save username' }).click();

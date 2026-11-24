@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { goto, sendRequest } from './nav';
+import { tapAndSync } from './synced';
 
 // A deploy that lands just after a notification tap (the app checks for one each time it comes to the front, and
 // switches to it with a reload) must not close what the tap opened: it waits until the app is next in the background.
@@ -22,8 +23,7 @@ async function person(browser: Browser) {
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
   await account.getByLabel('Password').fill(PASSWORD);
-  await account.getByRole('button', { name: 'Create account' }).click();
-  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account, account.getByRole('button', { name: 'Create account' }));
   await goto(page, 'Friends');
   await friends(page).getByRole('textbox', { name: 'Username' }).fill(name);
   await friends(page).getByRole('button', { name: 'Save username' }).click();
@@ -100,8 +100,7 @@ test('a deploy taking over just after a tap keeps the thread it opened, and swit
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`${b.name}@test.local`);
   await account.getByLabel('Password').fill(PASSWORD);
-  await account.getByRole('button', { name: 'Sign in' }).click();
-  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account, account.getByRole('button', { name: 'Sign in' }));
   await goto(page, 'Stats');
 
   // The tap: A's thread opens.

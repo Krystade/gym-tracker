@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { addFriend, goto } from './nav';
 import { fetches, recordRenders, rendersAbove, watchRenders } from './renders';
+import { tapAndSync } from './synced';
 
 // Fields keep what's typed when something read in the background lands inside the keystroke. A friend-cache read (or any
 // state change) that comes back between the field changing and React's own listener seeing it re-rendered the field; a
@@ -20,8 +21,7 @@ async function signedIn(page: Page) {
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
   await account.getByLabel('Password').fill(PASSWORD);
-  await account.getByRole('button', { name: 'Create account' }).click();
-  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account, account.getByRole('button', { name: 'Create account' }));
   await goto(page, 'Friends');
   await friends(page).getByRole('textbox', { name: 'Username' }).fill(name);
   await friends(page).getByRole('button', { name: 'Save username' }).click();

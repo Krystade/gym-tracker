@@ -3,6 +3,7 @@ import { expect, test, type APIRequestContext, type Browser, type Page } from '@
 import { addFriend, goto } from './nav';
 import { account, befriend, EMU, iso, log, ping, session, signedIn, type Seeded } from './seed';
 import { FIRESTORE } from './emu';
+import { tapAndSync } from './synced';
 
 // Friends as a feed (round 18) against the local Auth and Firestore emulators: synthetic accounts and numbers, put there as an
 // admin (e2e/seed.ts). Today at 18:00 (Sunday when today is a Monday, so the day before is in the same week); the emulator's
@@ -258,8 +259,7 @@ async function person(browser: Browser, today: { lift: string; sets: [number, nu
   const acct = page.getByRole('region', { name: 'Account' });
   await acct.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
   await acct.getByLabel('Password').fill(PASSWORD);
-  await acct.getByRole('button', { name: 'Create account' }).click();
-  await expect(acct.getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, acct, acct.getByRole('button', { name: 'Create account' }));
   await goto(page, 'Friends');
   await friends(page).getByRole('textbox', { name: 'Username' }).fill(name);
   await friends(page).getByRole('button', { name: 'Save username' }).click();

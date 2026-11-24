@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { goto } from './nav';
 import { DOCS } from './emu';
+import { tapAndSync } from './synced';
 
 // Two phones on one account, against the local Auth and Firestore emulators (round 10). Synthetic users only.
 const T = new Date('2026-10-02T18:00:00');
@@ -22,8 +23,7 @@ async function enter(page: Page, mail: string, how: 'Create account' | 'Sign in'
   await goto(page, 'Account');
   await account(page).getByRole('textbox', { name: 'Email' }).fill(mail);
   await account(page).getByLabel('Password').fill(PASSWORD);
-  await account(page).getByRole('button', { name: how }).click();
-  await expect(account(page).getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account(page), account(page).getByRole('button', { name: how }));
 }
 async function logBench(page: Page, weight: string, reps: string) {
   await page.getByRole('button', { name: 'Add exercise' }).click();
@@ -43,8 +43,7 @@ async function editWeight(page: Page, weight: string) {
 }
 async function syncNow(page: Page) {
   await goto(page, 'Account');
-  await account(page).getByRole('button', { name: 'Sync now' }).click();
-  await expect(account(page).getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account(page), account(page).getByRole('button', { name: 'Sync now' }));
 }
 
 /** A document of this account, read past the rules (the emulator's owner token). */

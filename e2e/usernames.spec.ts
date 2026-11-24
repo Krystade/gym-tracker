@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { addFriend, goto, sendRequest } from './nav';
+import { tapAndSync } from './synced';
 
 // Changing your username, and private tags for friends, against the local Auth and Firestore emulators. Synthetic users only.
 const T = new Date(new Date().setHours(18, 0, 0, 0));
@@ -19,8 +20,7 @@ async function person(browser: Browser) {
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
   await account.getByLabel('Password').fill(PASSWORD);
-  await account.getByRole('button', { name: 'Create account' }).click();
-  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account, account.getByRole('button', { name: 'Create account' }));
   await goto(page, 'Friends');
   await friends(page).getByRole('textbox', { name: 'Username' }).fill(name);
   await friends(page).getByRole('button', { name: 'Save username' }).click();

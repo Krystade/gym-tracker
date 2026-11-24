@@ -3,6 +3,7 @@ import { expect, test, type Browser, type Page } from '@playwright/test';
 import { addFriend, goto } from './nav';
 import { drag, mid } from './finger';
 import { DOCS } from './emu';
+import { tapAndSync } from './synced';
 
 // Pings and messages between two synthetic accounts on the local Auth and Firestore emulators, on the iPhone 13 mini's
 // 375×812 with its notch and home-bar insets served into the CSS (headless browsers report 0).
@@ -43,8 +44,7 @@ async function person(browser: Browser) {
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
   await account.getByLabel('Password').fill(PASSWORD);
-  await account.getByRole('button', { name: 'Create account' }).click();
-  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account, account.getByRole('button', { name: 'Create account' }));
   await goto(page, 'Friends');
   await friends(page).getByRole('textbox', { name: 'Username' }).fill(name);
   await friends(page).getByRole('button', { name: 'Save username' }).click();

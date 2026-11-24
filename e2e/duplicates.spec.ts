@@ -3,6 +3,7 @@ import { goto } from './nav';
 import { DOCS } from './emu';
 import { account, put, signedIn } from './seed';
 import { asSets, convertedRows, DIFFERING, IDENTICAL, MONTH, PASTE, PASTE_ONLY, pasteRows, toCsv, TWINS } from './fixtures/dupes';
+import { tapAndSync } from './synced';
 
 // Round 20: the same notes log imported twice. The import guards hold the second copy back; More → Duplicate imports removes
 // one that got in anyway, through the store's delete, so it stays gone on every phone and through every re-import.
@@ -93,8 +94,7 @@ const T = new Date('2026-10-20T18:00:00');
 const acct = (page: Page) => page.getByRole('region', { name: 'Account' });
 async function syncNow(page: Page) {
   await goto(page, 'Account');
-  await acct(page).getByRole('button', { name: 'Sync now' }).click();
-  await expect(acct(page).getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, acct(page), acct(page).getByRole('button', { name: 'Sync now' }));
   await goto(page, 'Backup'); // the counts and Duplicate imports are Backup's
 }
 type Value = { stringValue?: string; mapValue?: { fields?: Record<string, Value> }; arrayValue?: { values?: Value[] } };

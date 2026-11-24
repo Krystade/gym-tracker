@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { addFriend, goto, sendRequest } from './nav';
+import { tapAndSync } from './synced';
 
 // The fixed chrome on an iPhone after a picker or keyboard: the owner's 13 mini showed the tab bar halfway up the screen
 // with the page below it, and a time input's "6:00 PM" over the clock. iOS 26 leaves visualViewport offset from the
@@ -272,8 +273,7 @@ async function onFriends(page: Page) {
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
   await account.getByLabel('Password').fill('synthetic-pass-1');
-  await account.getByRole('button', { name: 'Create account' }).click();
-  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account, account.getByRole('button', { name: 'Create account' }));
   await goto(page, 'Friends');
   const friends = page.getByRole('region', { name: 'Friends', exact: true });
   return { name, friends, username: friends.getByRole('textbox', { name: 'Username' }) };

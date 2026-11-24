@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { goto } from './nav';
+import { tapAndSync } from './synced';
 
 // Tags he manages: built-ins shown or hidden, his own added and removed, saved on the set and synced. Synthetic data only.
 const T = new Date('2026-10-02T18:00:00');
@@ -136,8 +137,7 @@ async function enter(page: Page, mail: string, how: 'Create account' | 'Sign in'
   await goto(page, 'Account');
   await account(page).getByRole('textbox', { name: 'Email' }).fill(mail);
   await account(page).getByLabel('Password').fill(PASSWORD);
-  await account(page).getByRole('button', { name: how }).click();
-  await expect(account(page).getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account(page), account(page).getByRole('button', { name: how }));
 }
 
 test('the tag row and a set’s tags reach another phone on the same account', async ({ browser }) => {

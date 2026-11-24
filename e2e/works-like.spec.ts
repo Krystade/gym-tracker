@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { goto, statsSheet } from './nav';
+import { tapAndSync } from './synced';
 
 // Round 15, stage 4: "Works like…" on a custom lift's page makes it count as a catalog lift, in Stats too, and the choice
 // syncs to the other phone. Local Auth and Firestore emulators; synthetic users only.
@@ -22,8 +23,7 @@ async function enter(page: Page, mail: string, how: 'Create account' | 'Sign in'
   await goto(page, 'Account');
   await account(page).getByRole('textbox', { name: 'Email' }).fill(mail);
   await account(page).getByLabel('Password').fill(PASSWORD);
-  await account(page).getByRole('button', { name: how }).click();
-  await expect(account(page).getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account(page), account(page).getByRole('button', { name: how }));
 }
 
 test('Works like… makes a custom lift count as the catalog lift, in Stats, and on the other phone after a sync', async ({ browser }) => {

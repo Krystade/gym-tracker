@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { addFriend, goto, openProgram } from './nav';
+import { tapAndSync } from './synced';
 
 // Friends against the local Auth and Firestore emulators. Synthetic users only.
 // Today at 18:00: the emulator checks invite expiry against the real clock, so a fixed date goes stale within a week.
@@ -39,8 +40,7 @@ async function person(browser: Browser, opts: { bench?: boolean; gym?: string } 
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
   await account.getByLabel('Password').fill(PASSWORD);
-  await account.getByRole('button', { name: 'Create account' }).click();
-  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account, account.getByRole('button', { name: 'Create account' }));
   await goto(page, 'Friends');
   await friends(page).getByRole('textbox', { name: 'Username' }).fill(name);
   await friends(page).getByRole('button', { name: 'Save username' }).click();

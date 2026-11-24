@@ -2,6 +2,7 @@ import { expect, test, type Browser, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { addFriend, goto, moreRow, openProgram, type MoreRow } from './nav';
+import { tapAndSync } from './synced';
 
 // Every screen and overlay at four phone sizes, with a notched phone's safe areas. Headless browsers report insets of 0,
 // so the shipped CSS and HTML are served with each env(safe-area-inset-*) replaced by the 13 mini's: 47px top, 34px bottom.
@@ -355,8 +356,7 @@ async function person(browser: Browser, bench = false) {
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
   await account.getByLabel('Password').fill('synthetic-pass-1');
-  await account.getByRole('button', { name: 'Create account' }).click();
-  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account, account.getByRole('button', { name: 'Create account' }));
   await goto(page, 'Friends');
   const friends = page.getByRole('region', { name: 'Friends', exact: true });
   await friends.getByRole('textbox', { name: 'Username' }).fill(name);

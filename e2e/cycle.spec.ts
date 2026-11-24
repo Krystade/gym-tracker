@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { addFriend, goto as tab } from './nav';
 import { DOCS, FIRESTORE } from './emu';
+import { tapAndSync } from './synced';
 
 // Cycle phase: opt-in per profile, one tap under Energy, private. Synthetic data only.
 const cycle = (page: Page) => page.getByRole('group', { name: 'Cycle' });
@@ -162,8 +163,7 @@ async function person(browser: Browser) {
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`${name}@test.local`);
   await account.getByLabel('Password').fill(PASSWORD);
-  await account.getByRole('button', { name: 'Create account' }).click();
-  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account, account.getByRole('button', { name: 'Create account' }));
   await tab(page, 'Friends');
   await friends(page).getByRole('textbox', { name: 'Username' }).fill(name);
   await friends(page).getByRole('button', { name: 'Save username' }).click();
@@ -236,8 +236,7 @@ test('a new phone that takes the account’s setting turns it on where it stands
   const account = page.getByRole('region', { name: 'Account' });
   await account.getByRole('textbox', { name: 'Email' }).fill(`u${rand()}@test.local`);
   await account.getByLabel('Password').fill(PASSWORD);
-  await account.getByRole('button', { name: 'Create account' }).click();
-  await expect(account.getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account, account.getByRole('button', { name: 'Create account' }));
   await tab(page, 'Cycle');
   await expect(sw).toHaveAttribute('aria-checked', 'true'); // no reload
   await ctx.close();

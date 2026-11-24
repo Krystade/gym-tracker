@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { goto } from './nav';
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { tapAndSync } from './synced';
 
 // Accounts against the local Auth and Firestore emulators (the app uses them on 127.0.0.1). Synthetic users only.
 const T = new Date('2026-10-02T18:00:00');
@@ -17,11 +18,20 @@ async function phone(browser: Browser) {
   await page.goto('/');
   return page;
 }
-async function enter(page: Page, mail: string, how: 'Create account' | 'Sign in', password = PASSWORD) {
+async function fillIn(page: Page, mail: string, password: string) {
   await goto(page, 'Account');
   await account(page).getByRole('textbox', { name: 'Email' }).fill(mail);
   await account(page).getByLabel('Password').fill(password);
-  await account(page).getByRole('button', { name: how }).click();
+}
+/** Creates the account or signs in, and waits out the first sync (e2e/synced). */
+async function enter(page: Page, mail: string, how: 'Create account' | 'Sign in') {
+  await fillIn(page, mail, PASSWORD);
+  await tapAndSync(page, account(page), account(page).getByRole('button', { name: how }));
+}
+/** A sign-in that is meant to be refused: tapped, not waited on. */
+async function refused(page: Page, mail: string, password = PASSWORD) {
+  await fillIn(page, mail, password);
+  await account(page).getByRole('button', { name: 'Sign in' }).click();
 }
 async function logBench(page: Page, weight: string, reps: string) {
   await goto(page, 'Today');
@@ -38,8 +48,7 @@ async function logBench(page: Page, weight: string, reps: string) {
 }
 async function syncNow(page: Page) {
   await goto(page, 'Account');
-  await account(page).getByRole('button', { name: 'Sync now' }).click();
-  await expect(account(page).getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account(page), account(page).getByRole('button', { name: 'Sync now' }));
 }
 
 test('a set logged on one phone reaches another that signs in, both ways, and a delete follows', async ({ browser }) => {
@@ -48,10 +57,8 @@ test('a set logged on one phone reaches another that signs in, both ways, and a 
   await logBench(a, '135', '8');
   await enter(a, mail, 'Create account');
   await expect(account(a)).toContainText(`Signed in as ${mail}`);
-  await expect(account(a).getByRole('status')).toHaveText(/^Synced/);
 
   await enter(b, mail, 'Sign in');
-  await expect(account(b).getByRole('status')).toHaveText(/^Synced/);
   await goto(b, 'Today');
   await expect(rows(b)).toHaveCount(1);
   await expect(rows(b).first()).toContainText('135 × 8');
@@ -109,14 +116,13 @@ test('a wrong password says so, and signing out keeps the log on the phone', asy
   const a = await phone(browser);
   await logBench(a, '100', '10');
   await enter(a, mail, 'Create account');
-  await expect(account(a).getByRole('status')).toHaveText(/^Synced/);
   await account(a).getByRole('button', { name: 'Sign out' }).click();
   await expect(account(a).getByRole('button', { name: 'Sign in' })).toBeVisible();
   await goto(a, 'Today');
   await expect(rows(a)).toHaveCount(1);
 
   const b = await phone(browser);
-  await enter(b, mail, 'Sign in', 'not-the-password');
+  await refused(b, mail, 'not-the-password');
   await expect(account(b).getByRole('alert')).toHaveText('Wrong email or password.');
 });
 
@@ -125,7 +131,6 @@ test('deleting the account removes the login and the cloud copy', async ({ brows
   const a = await phone(browser);
   await logBench(a, '100', '10');
   await enter(a, mail, 'Create account');
-  await expect(account(a).getByRole('status')).toHaveText(/^Synced/);
   await account(a).getByText('Delete account', { exact: true }).click();
   await account(a).getByLabel('Password to confirm').fill(PASSWORD);
   await account(a).getByRole('button', { name: 'Delete account and cloud copy' }).click();
@@ -134,6 +139,6 @@ test('deleting the account removes the login and the cloud copy', async ({ brows
   await expect(rows(a)).toHaveCount(1); // the phone's own log stays
 
   const b = await phone(browser);
-  await enter(b, mail, 'Sign in');
+  await refused(b, mail);
   await expect(account(b).getByRole('alert')).toHaveText('Wrong email or password.');
 });

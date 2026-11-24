@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { goto } from './nav';
 import { DOCS } from './emu';
+import { tapAndSync } from './synced';
 
 // Undo after a delete that has already synced, against the local Auth and Firestore emulators. Synthetic users only.
 const T = new Date(new Date().setHours(18, 0, 0, 0));
@@ -22,8 +23,7 @@ async function cloudMonth(page: Page): Promise<{ sets: number; deleted: string[]
 }
 async function syncNow(page: Page) {
   await goto(page, 'Account');
-  await account(page).getByRole('button', { name: 'Sync now' }).click();
-  await expect(account(page).getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account(page), account(page).getByRole('button', { name: 'Sync now' }));
 }
 
 test('Undo after a synced delete keeps the set through the next syncs and a reload', async ({ page }) => {
@@ -40,8 +40,7 @@ test('Undo after a synced delete keeps the set through the next syncs and a relo
   await goto(page, 'Account');
   await account(page).getByRole('textbox', { name: 'Email' }).fill(`u${Math.random().toString(36).slice(2, 10)}@test.local`);
   await account(page).getByLabel('Password').fill('synthetic-pass-1');
-  await account(page).getByRole('button', { name: 'Create account' }).click();
-  await expect(account(page).getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account(page), account(page).getByRole('button', { name: 'Create account' }));
   await expect.poll(() => cloudMonth(page)).toEqual({ sets: 1, deleted: [] });
 
   // Delete, and let the sync a few seconds later carry the delete up while the Undo offer is still there.

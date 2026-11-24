@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { goto } from './nav';
 import { DOCS } from './emu';
+import { lastSync, syncEnds, syncSettles, tapAndSync } from './synced';
 
 // A set edited on a phone while that phone's sync is out (round 10): the sync's import or delete was worked out before the edit,
 // so it must not land on it. The phone's Firestore commit is held, as a slow connection would hold it, while the edit is made.
@@ -25,8 +26,7 @@ async function enter(page: Page, mail: string, how: 'Create account' | 'Sign in'
   await goto(page, 'Account');
   await account(page).getByRole('textbox', { name: 'Email' }).fill(mail);
   await account(page).getByLabel('Password').fill(PASSWORD);
-  await account(page).getByRole('button', { name: how }).click();
-  await expect(account(page).getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account(page), account(page).getByRole('button', { name: how }));
 }
 async function logBench(page: Page, weight: string, reps: string) {
   await page.getByRole('button', { name: 'Add exercise' }).click();
@@ -46,8 +46,7 @@ async function editWeight(page: Page, weight: string) {
 }
 async function syncNow(page: Page) {
   await goto(page, 'Account');
-  await account(page).getByRole('button', { name: 'Sync now' }).click();
-  await expect(account(page).getByRole('status')).toHaveText(/^Synced/);
+  await tapAndSync(page, account(page), account(page).getByRole('button', { name: 'Sync now' }));
 }
 /** Starts a sync on this phone and holds its first commit to the cloud; `release` lets it through. */
 async function syncHeld(page: Page) {
@@ -88,13 +87,13 @@ async function twoPhones(browser: Browser) {
   await enter(b, mail, 'Sign in');
   await goto(b, 'Today');
   await expect(rows(b).first()).toContainText('135 × 8');
-  // Signing in changed each phone's log, and a change syncs 3 s later (useCloud QUIET_MS): run that sync now and let it finish,
-  // so it can't be the one a test's syncHeld catches (round 33: after a quick delete on A, B's own caught the hold).
+  // Signing in can change a phone's log, and a change syncs 3 s later (useCloud QUIET_MS): run that sync now, if there is one,
+  // and let it finish, so it can't be the one a test's syncHeld catches (round 33: after a quick delete on A, B's own caught the
+  // hold). Not every sign-in sets one off, so this waits for none to be running rather than for one to end.
   for (const p of [a, b]) {
     await p.clock.runFor(3500);
     await goto(p, 'Account');
-    await expect(account(p).getByRole('button', { name: 'Sync now' })).toBeEnabled();
-    await expect(account(p).getByRole('status')).toHaveText(/^Synced/);
+    await syncSettles(account(p), account(p).getByRole('button', { name: 'Sync now' }));
   }
   return [a, b];
 }
@@ -107,9 +106,10 @@ test('an edit made while the sync brings another phone’s older edit of that se
 
   const release = await syncHeld(b); // B's sync has read the cloud's 140 and is about to take it
   await editWeight(b, '150');
+  const before = await lastSync(b);
   release();
   await goto(b, 'Account');
-  await expect(account(b).getByRole('status')).toHaveText(/^Synced/);
+  await syncEnds(b, account(b), before, 'the held sync and its follow-up');
   await expect.poll(() => cloudWeights(b)).toEqual([150]); // its follow-up sync sent the edit up
   await goto(b, 'Today');
   await expect(rows(b)).toHaveCount(1);
@@ -134,9 +134,10 @@ test('an edit made while the sync brings another phone’s delete of that set: t
 
   const release = await syncHeld(b); // B's sync has read A's delete and is about to make it here
   await editWeight(b, '150');
+  const before = await lastSync(b);
   release();
   await goto(b, 'Account');
-  await expect(account(b).getByRole('status')).toHaveText(/^Synced/);
+  await syncEnds(b, account(b), before, 'the held sync and its follow-up');
   await expect.poll(() => cloudWeights(b)).toEqual([150]);
   await goto(b, 'Today');
   await expect(rows(b)).toHaveCount(1);
