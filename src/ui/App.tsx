@@ -199,8 +199,11 @@ function Shell({ people, gyms }: { people: PeopleStore; gyms: GymsStore }) {
       {thread && me && <ThreadSheet key={thread.uid} me={me} friend={thread} gyms={gyms} onClose={() => setThread(null)} onChanged={bumpNews}
         onViewLog={(f) => { setThread(null); nav.view(f); }} />}
       {tour && <Walkthrough onClose={() => setTour(false)} />}
-      {/* The rest's end, over any screen: a tap closes what's open and goes to the lift's card on Today. */}
-      <RestBanner onGo={(lift) => { closeSheets(); setThread(null); setViewing(null); setComparing(false); closeAll(); setTab('today'); askForLift(lift); }} />
+      {/* The rest's end, over any screen: a tap closes what's open and goes to the lift's card on Today, today's (owner,
+          2026-11-23: every sheet (closeSheets), the chat, a friend's page or Compare, More's screens (closeAll), the walkthrough
+          (not marked seen: it comes back next time), a past day open on Today; leaving a tab closes what's in it, a pull's show
+          or the camera; Today's own pickers go in TodayScreen, as it takes the lift). */}
+      <RestBanner onGo={(lift) => { closeSheets(); setThread(null); setViewing(null); setComparing(false); closeAll(); setTour(false); setLogDay(null); setTab('today'); askForLift(lift); }} />
       <nav className="tabs" aria-label="Sections">
         {TABS.map(([t, label]) => (
           <button key={t} data-tour={t} aria-current={current(t) ? 'page' : undefined} onClick={() => { setTab(t); setViewing(null); setComparing(false); if (t === 'today') setLogDay(null); closeAll(); }}>

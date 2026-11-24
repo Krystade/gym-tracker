@@ -336,11 +336,13 @@ export function TodayScreen({ me, who, store, settings, programs, body, gyms, pr
     if (form && form.getBoundingClientRect().bottom > floor) form.scrollIntoView({ block: 'nearest' });
   }, [switchTo]);
   // The rest banner tapped (on any screen): that lift's card comes up the same way, opened (and added, should it be the plan's
-  // next lift without a card yet). Taken once.
+  // next lift without a card yet). Taken once. A picker in the cards' place (Add exercise, Swap) goes first (owner, 2026-11-23);
+  // a Week row day shown in today's place has the rest bar on screen, so no banner comes over it.
   const ask = useLiftAsk();
   useEffect(() => {
     if (!ask) return;
     takeLiftAsk();
+    setPicking(false); setSwapFor(null);
     goTo(ask.lift);
     setSwitchTo({ to: ask.lift });
   }, [ask]);
