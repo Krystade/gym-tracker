@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SetEntry } from './types';
-import { defaultSettings, estimateRir, isProgressionSet, isTest, isWorking, nextTarget, priorE1rm, rirOffset, settingsKey } from './progression';
+import { awayFitOf, defaultSettings, estimateRir, isProgressionSet, isTest, isWorking, nextTarget, priorE1rm, rirOffset, settingsKey, TARGET_RULES } from './progression';
+import { addDays } from './analytics';
 import { prKinds } from './records';
 
 let seq = 0;
@@ -425,5 +426,66 @@ describe('per-set targets after a layoff (owner, 2026-11-21)', () => {
     expect(nextTarget(hi, 'Curl', S, '2026-02-01')!.perSet).toEqual([12, 12, 12]);
     const mid = [s('2026-01-01', 1, 30, 11), s('2026-01-01', 2, 30, 10), s('2026-01-01', 3, 30, 8)];
     expect(nextTarget(mid, 'Curl', S, '2026-02-01')!.perSet).toEqual([10, 10, 10]);
+  });
+});
+
+// Owner, 2026-11-23 (learn/away; scripts/backtest-rules §G): a per-day term on top of the rep rule, learned from his log.
+describe('days since the lift: a learned term on the rep rule', () => {
+  /** 3 × 30 lb sessions, gaps of 2 and 12 days by turns: after 12 days he beats last time by 2 reps a set, after 2 he's 2 short. */
+  function alternating(n: number, start = '2026-01-01'): { log: SetEntry[]; last: string; lastReps: number } {
+    const log: SetEntry[] = [];
+    let d = start, reps = 8;
+    for (let i = 0; i < n; i++) {
+      if (i > 0) { const long = i % 2 === 1; d = addDays(d, long ? 12 : 2); reps += long ? 2 : -2; }
+      for (let k = 1; k <= 3; k++) log.push(s(d, k, 30, reps));
+    }
+    return { log, last: d, lastReps: reps };
+  }
+  const OFF = { ...TARGET_RULES, away: false };
+  it('his sessions pin a slope: 12 days away aims higher, 2 days lower, with its line; without the term, the rule alone', () => {
+    const { log, last, lastReps } = alternating(20);
+    expect(lastReps).toBe(10); // the last gap was 12 days
+    const fit = awayFitOf(log);
+    expect(fit.n).toBe(19);
+    expect(fit.c).toBeGreaterThan(0.3);
+    const long = nextTarget(log, 'Curl', S, addDays(last, 12))!, base = nextTarget(log, 'Curl', S, addDays(last, 12), null, false, OFF)!;
+    expect(base.perSet).toEqual([10, 10, 10]);
+    expect(long.perSet).toEqual([12, 12, 12]); // +2 a set, at the range's top
+    expect(long.why).toContain('12 days away: +2 reps a set');
+    expect(long.parts.find((p) => p.key === 'away')).toMatchObject({ what: '12 days since last time', evidence: { ev: 'b' } });
+    expect(long.parts.find((p) => p.key === 'away')!.value).toMatch(/^\+2 reps a set: 0\.\d+ more a set for each day past your usual \d+(\.\d)? days$/);
+    const short = nextTarget(log, 'Curl', S, addDays(last, 2))!;
+    expect(short.perSet).toEqual([8, 8, 8]);
+    expect(short.parts.find((p) => p.key === 'away')!.value).toMatch(/^−2 reps a set: 0\.\d+ fewer a set for each day under your usual/);
+    expect(nextTarget(log, 'Curl', S, addDays(last, 2), null, false, OFF)!.perSet).toEqual([10, 10, 10]);
+  });
+  it('never past the range’s top: a set aimed at 12 of 8–12 stays there', () => {
+    const { log, last } = alternating(20);
+    const S2 = { ...S, repMax: 11 };
+    expect(nextTarget(log, 'Curl', S2, addDays(last, 12))!.perSet).toEqual([11, 11, 11]);
+  });
+  it('from 15 days on, the layoff rule alone', () => {
+    const { log, last } = alternating(20);
+    const t = nextTarget(log, 'Curl', S, addDays(last, 15))!;
+    expect(t.parts.some((p) => p.key === 'layoff')).toBe(true);
+    expect(t.parts.some((p) => p.key === 'away')).toBe(false);
+    expect(t).toEqual(nextTarget(log, 'Curl', S, addDays(last, 15), null, false, OFF));
+  });
+  it('learned only from the days before: a target doesn’t move under him while he trains', () => {
+    const { log, last } = alternating(20);
+    const day = addDays(last, 12);
+    const before = nextTarget(log, 'Curl', S, day)!;
+    expect(nextTarget([...log, s(day, 1, 30, 20), s(day, 2, 30, 20)], 'Curl', S, day)).toEqual(before);
+  });
+  it('days away that tell nothing (the same reps whatever the gap) move nothing', () => {
+    const { log, last } = alternating(20);
+    const flat = log.map((x) => ({ ...x, reps: 9 }));
+    expect(awayFitOf(flat).c).toBe(0);
+    for (const gap of [2, 12]) expect(nextTarget(flat, 'Curl', S, addDays(last, gap))).toEqual(nextTarget(flat, 'Curl', S, addDays(last, gap), null, false, OFF));
+  });
+  it('too few sessions: no fit, the rule alone', () => {
+    const { log, last } = alternating(6);
+    expect(awayFitOf(log).c).toBe(0);
+    expect(nextTarget(log, 'Curl', S, addDays(last, 12))).toEqual(nextTarget(log, 'Curl', S, addDays(last, 12), null, false, OFF));
   });
 });

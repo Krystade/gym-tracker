@@ -9,7 +9,9 @@
 // and again walk-forward, its parameters chosen afresh on the dates before each date. Anything that needs logged RIR or set
 // times can only use the days that have them (the app's own sessions), split the same way. `--body`: the app's body CSV (for
 // energy 1–5); `--settings`: the lift settings as a JSON array of ExerciseSettings (saved ranges and rests).
-// The log is personal data: keep it, the body file and the output out of the repo. Nothing is sent anywhere.
+// §G (days since the lift, learn/away): "the rule" everywhere here is nextTarget without that term (NO_AWAY), `shipped` with it.
+// The log is personal data: keep it, the body file and the output out of the repo (AWAY_DIFFS=1 prints dates and lifts). Nothing
+// is sent anywhere.
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -28,7 +30,8 @@ import { overlap } from '../src/domain/learn/tags';
 import { isCardio, isCardioEntry } from '../src/domain/cardio';
 import { isHold } from '../src/domain/care';
 import { bodyShare } from '../src/domain/learn/bodyweight';
-import { defaultSettings, isTraining, isWorking, nextTarget, priorE1rm, resolveSettings, settingsKey, type ExerciseSettings, type Target } from '../src/domain/progression';
+import { awayFitOf, awayPoints as appAwayPoints, defaultSettings, isTraining, isWorking, LAYOFF_AVERAGE_DAYS, nextTarget, priorE1rm, resolveSettings, settingsKey, TARGET_RULES, type ExerciseSettings, type Target } from '../src/domain/progression';
+import { AWAY_CAP, AWAY_PRIOR_SD, awayShift, awaySlope, type AwayPoint } from '../src/domain/learn/away';
 import { nextSet, suggest, type Suggestion } from '../src/domain/suggest';
 import { isIsolation, restFor, sessionMinutes, usualMinutes, SET_WORK, type Step } from '../src/domain/timing';
 import { kneeAfter } from '../src/domain/learn/rest';
@@ -43,6 +46,7 @@ const opt = (k: string) => { const i = args.indexOf(k); return i >= 0 ? args[i +
 const file = args.find((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--')));
 if (!file) { console.error('usage: npx jiti scripts/backtest-rules.ts log.csv [--body body.csv] [--settings settings.json] [--out result.json] [--tz Area/City]'); process.exit(1); }
 const TZ = opt('--tz') ?? 'UTC';
+const NO_AWAY = { ...TARGET_RULES, away: false };
 const TRAIN_SHARE = 0.7;
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -216,6 +220,8 @@ interface Row {
   shown: { weight: number | null; reps: number } | null;
   cap: { pred: number; now: Terms; d: Terms | null; kappa: number; e1rm: number; days: number; w: number; habit: number } | null;
   ext: number | null;
+  /** The target as the app makes it, the days-away term (learn/away) in, learned before the day: `rule` is the rule without it. */
+  shipped: number | null;
   ns: { app: number; base: number; rir: number | null; top: number; dX: number; raised: boolean } | null;
 }
 const rows: Row[] = [];
@@ -234,14 +240,17 @@ for (const D of dates) {
   const timed = hard.length > 0 && times.every(Number.isFinite);
   const gap = core?.gap ?? 180;
   const tAct = timed ? times.map((x) => (x - times[0]) / 1000) : hard.map((_, i) => i * gap);
-  const perLift = new Map<string, { t: Target | null; T: Tgt | null; sug: Suggestion | null }>();
+  const perLift = new Map<string, { t: Target | null; ts: Target | null; T: Tgt | null; sug: Suggestion | null }>();
   for (let a = 0; a < hard.length; a++) {
     const e = hard[a];
     if (!measured(e)) continue;
     const L = e.exercise, key = liftKey(L), st = stOf(L);
     if (!perLift.has(key)) {
       let t: Target | null = null;
-      try { t = nextTarget(before, L, st, D, null); } catch { t = null; }
+      // The rule without the days-away term (§G scores that term on top of it), and as the app ships it.
+      try { t = nextTarget(before, L, st, D, null, false, NO_AWAY); } catch { t = null; }
+      let ts: Target | null = null;
+      try { ts = nextTarget(before, L, st, D, null); } catch { ts = null; }
       let T: Tgt | null = null;
       const train = t ? t.last.filter(isTraining) : [];
       if (t && train.length && t.kind !== 'test' && t.kind !== 'carry') {
@@ -259,15 +268,16 @@ for (const D of dates) {
       }
       let sug: Suggestion | null = null;
       try { sug = suggest(before, L, st, D, null); } catch { /* none */ }
-      perLift.set(key, { t, T, sug });
+      perLift.set(key, { t, ts, T, sug });
     }
-    const { t, T, sug } = perLift.get(key)!;
+    const { t, ts, T, sug } = perLift.get(key)!;
     const mine = hard.slice(0, a).filter((x) => liftKey(x.exercise) === key);
     const k = mine.filter(isTraining).length;
     const prevOwn = mine.at(-1), pi = prevOwn ? hard.indexOf(prevOwn) : -1;
     const inter = prevOwn ? hard.slice(pi + 1, a).some((x) => liftKey(x.exercise) !== key) : null;
     const rest = timed && prevOwn ? tAct[a] - tAct[pi] : null;
-    const rule = t && t.weight === e.weight && (t.perSet || t.reps != null) ? (t.perSet ? t.perSet[Math.min(k, t.perSet.length - 1)] : t.reps) : null;
+    const ruleOf = (x: Target | null) => (x && x.weight === e.weight && (x.perSet || x.reps != null) ? (x.perSet ? x.perSet[Math.min(k, x.perSet.length - 1)] : x.reps) : null);
+    const rule = ruleOf(t);
     const lastTrain = t ? t.last.filter((x) => isTraining(x) && T && x.weight === T.top) : [];
     const sameSet = lastTrain.length ? lastTrain[Math.min(k, lastTrain.length - 1)] : null;
     let cap: Row['cap'] = null;
@@ -299,7 +309,7 @@ for (const D of dates) {
     }
     rows.push({ date: D, app: appDay.has(D), lift: L, key, k, weight: e.weight, reps: e.reps as number, rir: e.rir ?? null, e, timed, iso: isIsolation(L), inter, rest,
       T: T && T.weight === e.weight ? T : null, rule, lastSame: sameSet && sameSet.weight === e.weight ? (unspot(sameSet).reps as number) : null,
-      shown: e.target ? { weight: e.target.weight, reps: e.target.reps } : null, cap, ext: null, ns });
+      shown: e.target ? { weight: e.target.weight, reps: e.target.reps } : null, cap, ext: null, ns, shipped: ruleOf(ts) });
   }
 }
 
@@ -519,6 +529,66 @@ const stackOut = {
   withDiff: capRows.filter((r) => r.cap!.d).length,
   dSpread: { same: r3(sdOf(capRows.filter((r) => r.cap!.d).map((r) => r.cap!.d!.same))), cross: r3(sdOf(capRows.filter((r) => r.cap!.d).map((r) => r.cap!.d!.cross))), gamma: r3(sdOf(capRows.filter((r) => r.cap!.d).map((r) => r.cap!.d!.gamma))) },
 };
+
+// ---- G. Days since the lift: a learned per-day coefficient on top of the rule (learn/away, owner 2026-11-23) -----------------
+// The rule's targets less the layoff rule's (15+ days: each set at last time's average) and anything not the rep rule: there the
+// term never applies. x: days since the lift's last session (1–14). Fitted per fold on its training rows' lift-sessions (one point
+// each: its mean miss of the rule), with the prior learn/away ships and others; rounded as a target is.
+const awayX = (r: Row) => (r.T?.repPath && r.T.days >= 1 && r.T.days < LAYOFF_AVERAGE_DAYS ? r.T.days : null);
+function awayPoints(xs: Row[]): AwayPoint[] {
+  const by = new Map<string, { x: number; d: number[] }>();
+  for (const r of xs) { const x = awayX(r); if (x == null || r.rule == null) continue; const k = `${r.date}|${r.key}`; const p = by.get(k) ?? { x: Math.min(AWAY_CAP, x), d: [] }; p.d.push(r.reps - r.rule); by.set(k, p); }
+  return [...by].map(([k, p]) => ({ x: p.x, r: mean(p.d), date: k.split('|')[0], key: k.split('|')[1] }));
+}
+/** The rule's target moved by `shift` reps, as progression does it: up never past the range's top (a set already past it keeps its reps), down never under 1. */
+const shifted = (rule: number, shift: number, max: number) => (shift > 0 ? Math.min(Math.max(rule, max), rule + shift) : Math.max(Math.min(rule, 1), rule + shift));
+/** `from`: the sets the fit reads (every set, or each lift-session's first); `to`: the sets it moves. */
+const awayCand = (sd: number, round = true, from: 'all' | 'first' = 'all', to: 'all' | 'first' = 'all'): Cand<Row> => ({
+  name: `days away, prior SD ${sd}${round ? '' : ', unrounded'}${from === 'first' ? ', fitted on first sets' : ''}${to === 'first' ? ', first sets moved' : ''}`, params: 1, fit: (train) => {
+  const f = awaySlope(awayPoints(from === 'first' ? train.filter((r) => r.k === 0) : train), sd);
+  return (r) => { if (r.rule == null) return null; const x = awayX(r); if (x == null || !r.T || (to === 'first' && r.k > 0)) return r.rule; return round ? shifted(r.rule, awayShift(f, x, LAYOFF_AVERAGE_DAYS), r.T.max) : r.rule + f.c * (Math.min(AWAY_CAP, x) - f.ref); };
+} });
+const AWAY_SDS = [0.025, AWAY_PRIOR_SD, 0.1, Infinity];
+const awayRows = atRule.filter((r) => awayX(r) != null);
+function awayOutOf() {
+  const all = cv(atRule, [fixed<Row>(vName(CURRENT), 0, RULE), ...AWAY_SDS.map((s) => awayCand(s))], RULE, FOLDS);
+  const shipped = cv(atRule, [awayCand(AWAY_PRIOR_SD)], RULE, FOLDS);
+  const unrounded = cv(atRule, AWAY_SDS.map((s) => awayCand(s, false)), RULE, FOLDS);
+  const firsts = atRule.filter((r) => r.k === 0);
+  const whole = awaySlope(awayPoints(atRule)), wholeOls = awaySlope(awayPoints(atRule), Infinity);
+  const firstOls = awaySlope(awayPoints(firsts), Infinity), firstShrunk = awaySlope(awayPoints(firsts));
+  // The readiness proxy's own rows (§C: first sets, every rule row, 15+ days counted as 14), for where its 0.1 a day came from.
+  const proxyRows = rRows.filter((x) => x.ruleResid != null && x.since != null);
+  const proxyOls = creg(proxyRows.map((x) => [Math.min(14, x.since!)]), proxyRows.map((x) => x.ruleResid!), proxyRows.map((x) => x.date), ['days']);
+  const proxyUnder15 = proxyRows.filter((x) => x.since! < LAYOFF_AVERAGE_DAYS);
+  const proxyOlsUnder15 = creg(proxyUnder15.map((x) => [x.since!]), proxyUnder15.map((x) => x.ruleResid!), proxyUnder15.map((x) => x.date), ['days']);
+  // What ships: the app's own replay and fit (progression awayPoints, awayFitOf), refitted before each date (walk-forward).
+  const shippedRows = atRule.filter((r) => r.shipped != null);
+  const appCv = cv(shippedRows, [fixed<Row>('as the app ships it', 0, (r) => r.shipped)], RULE, FOLDS);
+  // The replay against the rule's own rows: the same lift-sessions, and the same mean miss on them.
+  const mine = awayPoints(atRule), app = appAwayPoints(learnable(log));
+  const appBy = new Map(app.map((p) => [`${p.date}|${p.key}`, p]));
+  const both = mine.filter((p) => appBy.has(`${p.date}|${p.key}`));
+  const lastFit = awayFitOf(logBefore(log, addDays(dates.at(-1)!, 1)));
+  return { rows: awayRows.length, liftSessions: mine.length,
+    app: { ...strip(appCv), differs: shippedRows.filter((r) => r.shipped !== r.rule).length, rows: shippedRows.length,
+      lastFit: { c: r3(lastFit.c), sd: r3(lastFit.sd), ref: r2(lastFit.ref), ols: r3(lastFit.ols), n: lastFit.n } },
+    replay: { rule: mine.length, app: app.length, both: both.length, sameMiss: both.filter((p) => Math.abs(appBy.get(`${p.date}|${p.key}`)!.r - p.r) < 1e-9).length,
+      // AWAY_DIFFS=1: each lift-session where they differ (dates and lift names: personal, so only on asking).
+      diffs: process.env.AWAY_DIFFS ? [...mine.filter((p) => !appBy.has(`${p.date}|${p.key}`)).map((p) => ['rule only', p.date, p.key, p.x, r2(p.r)]),
+        ...app.filter((p) => !mine.some((q) => q.date === p.date && q.key === p.key)).map((p) => ['app only', p.date, p.key, p.x, r2(p.r)]),
+        ...both.filter((p) => Math.abs(appBy.get(`${p.date}|${p.key}`)!.r - p.r) >= 1e-9).map((p) => ['miss', p.date, p.key, p.x, r2(p.r), r2(appBy.get(`${p.date}|${p.key}`)!.r)])] : undefined },
+    firstSets: { ols: r3(firstOls.c), olsSd: r3(firstOls.sd), c: r3(firstShrunk.c), n: firstOls.n, ref: r2(firstOls.ref) },
+    proxy: { n: proxyRows.length, slope: proxyOls && r3(proxyOls.coef.days.b), se: proxyOls && r3(proxyOls.coef.days.se),
+      under15: { n: proxyUnder15.length, slope: proxyOlsUnder15 && r3(proxyOlsUnder15.coef.days.b), se: proxyOlsUnder15 && r3(proxyOlsUnder15.coef.days.se) } },
+    variants: strip(cv(atRule, [awayCand(AWAY_PRIOR_SD, true, 'first', 'first'), awayCand(AWAY_PRIOR_SD, true, 'first', 'all'), awayCand(Infinity, true, 'first', 'first'), awayCand(Infinity, true, 'first', 'all'), awayCand(Infinity, false, 'first', 'first')], RULE, FOLDS)).table
+      .map((t) => ({ name: t.name, mae: t.mae, vsRule: t.vsBase })),
+    xSpread: { p5: quant(awayRows.map((r) => awayX(r)!), 0.05), median: median(awayRows.map((r) => awayX(r)!)), p95: quant(awayRows.map((r) => awayX(r)!), 0.95) },
+    whole: { c: r3(whole.c), sd: r3(whole.sd), ref: r2(whole.ref), ols: r3(wholeOls.c), olsSd: r3(wholeOls.sd), n: whole.n,
+      moves: awayRows.filter((r) => awayShift(whole, awayX(r)!, LAYOFF_AVERAGE_DAYS) !== 0).length },
+    shipped: strip(shipped), all: strip(all), unrounded: strip(unrounded),
+    onFirstSets: strip(cv(firsts, [awayCand(AWAY_PRIOR_SD)], RULE, FOLDS)) };
+}
 
 // ---- A. Next set: the RIR raise, and cross-lift / any-set fatigue since the lift's last set ---------------------------------
 const nsRows = rows.filter((r) => r.ns && r.ns.app != null);
@@ -932,7 +1002,7 @@ async function main() {
   const out = { generated: new Date().toISOString(), split, data: { sets: raw.length, dates: dates.length, appDays: appDates.length, energyDays: body.filter((d) => d.energy != null).length,
     painSeverity: log.filter((e) => e.painSeverity != null).length, enteredLate: log.filter((e) => e.enteredAt).length, savedSettings: saved.size },
     folds: { all: FOLDS, app: APP_FOLDS }, randomSplit: randomSplit(), rate: rateOut, setTime: setTimeOut(),
-    progression: progressionOut, stack: stackOut, growthRates: GROWTH_RATES, nextSet: nextSetOut, strength: strengthOut, tau: tauOut, rest: restOut, readiness: readinessOut(), sessions: sessionsOut(), growth: growthOut() };
+    progression: progressionOut, stack: stackOut, away: awayOutOf(), growthRates: GROWTH_RATES, nextSet: nextSetOut, strength: strengthOut, tau: tauOut, rest: restOut, readiness: readinessOut(), sessions: sessionsOut(), growth: growthOut() };
   const o = opt('--out');
   if (o) writeFileSync(o, JSON.stringify(out, null, 1));
   const g = (x: { picks: Record<string, number>; cv: { mae: number | null; base: { mae: number | null }; vsBase: { diff: number | null; se: number | null; n?: number } } }) => `${JSON.stringify(x.picks)}: CV ${x.cv.mae} vs rule ${x.cv.base.mae} (${x.cv.vsBase.diff} ± ${x.cv.vsBase.se}, n ${x.cv.vsBase.n})`;
@@ -946,6 +1016,11 @@ async function main() {
   console.log('B rule + c·dFat:', stackOut.ruleFat.coefAll, g(stackOut.ruleFat));
   console.log('B rule + c·trend:', stackOut.ruleTrend.coefAll, g(stackOut.ruleTrend));
   console.log('A rule + terms:', stackOut.ruleTerms.coefAll, g(stackOut.ruleTerms));
+  const awayOut = out.away;
+  console.log('G days away:', JSON.stringify(awayOut.whole), 'shipped', g(awayOut.shipped), '| on first sets', g(awayOut.onFirstSets), JSON.stringify({ first: awayOut.firstSets, proxy: awayOut.proxy }));
+  console.log('G variants:', JSON.stringify(awayOut.variants));
+  console.log('G app:', g(awayOut.app), JSON.stringify({ differs: awayOut.app.differs, rows: awayOut.app.rows, lastFit: awayOut.app.lastFit, replay: awayOut.replay }));
+  console.log('G table:', JSON.stringify(awayOut.all.table.map((t) => [t.name, t.mae, t.vsBase.diff, t.vsBase.se])), JSON.stringify(awayOut.unrounded.table.map((t) => [t.name, t.mae, t.vsBase.diff, t.vsBase.se])));
   console.log('A next set:', JSON.stringify(nextSetOut.all), g(nextSetOut.crossGamma));
   console.log('5 set time:', JSON.stringify(out.setTime).slice(0, 1500));
   console.log('A strength raw:', Object.fromEntries(Object.entries(strengthOut.raw).map(([k, v]) => [k, v.mae])));

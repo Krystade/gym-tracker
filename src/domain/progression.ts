@@ -1,14 +1,17 @@
 import { liftKey } from './ids';
 import { resolveLift } from './lifts';
-import { e1rm, estimateWeightForReps, sessionsFor, learnable } from './stats';
-import type { SetEntry } from './types';
+import { e1rm, estimateWeightForReps, sessionsFor, learnable, liftIndex, perLog } from './stats';
+import { isCardio } from './cardio';
+import { AWAY_CAP, awayShift, awaySlope, type AwayFit, type AwayPoint } from './learn/away';
+import { hurts, type SetEntry } from './types';
+import { addDays } from './analytics';
 import { isHold, isHoldLift, isTimedSet } from './care';
 import { coreBefore, logBefore } from './learn';
 import { dropsOf, type Drop } from './learn/jump';
 import { floorRung, ladderOf, nextRung, prevRung, type Ladder } from './learn/ladder';
 import { isLight, LIGHT } from './learn/deload';
 import { fitRange, type RangeFit } from './learn/range';
-import { painGate, painWhy, type PainGate } from './painPlan';
+import { painGate, painWhy, SETTLE_DAYS, type PainGate } from './painPlan';
 import { addedLoad, bodyShare } from './learn/bodyweight';
 import { tagsOf } from './learn/tags';
 import type { TrainingGoal } from './profile';
@@ -180,7 +183,7 @@ export interface Target {
 export type Evidence = { ev: 'a'; cite: string } | { ev: 'b'; method: string } | { ev: 'c'; note: string };
 /** Which input a line is. */
 export type TargetInput = 'last' | 'seed' | 'test' | 'range' | 'goal' | 'progress' | 'hits' | 'rir' | 'step' | 'drop' | 'fit'
-  | 'pain' | 'light' | 'plan' | 'sets' | 'bodyweight' | 'new' | 'stack' | 'layoff';
+  | 'pain' | 'light' | 'plan' | 'sets' | 'bodyweight' | 'new' | 'stack' | 'layoff' | 'away';
 /** One input to a target: `what` it is (and the `date` it's from), its `value` here, and its evidence. */
 export interface TargetPart { key: TargetInput; what: string; value: string; evidence: Evidence; date?: string }
 
@@ -315,8 +318,18 @@ export const isTraining = (s: SetEntry): boolean => isWorking(s) && !isTest(s);
  * rules are the defaults. `plusOneRir`: the reps in reserve logged on a set that earn it +1 next time. `toppedSessions`: how many
  * sessions running must top the range before the weight goes up.
  */
-export interface TargetRules { plusOneRir: number; toppedSessions: number }
-export const TARGET_RULES: TargetRules = { plusOneRir: 2, toppedSessions: 2 };
+export interface TargetRules { plusOneRir: number; toppedSessions: number;
+  /** The days-since-the-lift term on the rep rule (learn/away, awayStep); left out: as TARGET_RULES has it. */
+  away?: boolean }
+/**
+ * `away` on (owner, 2026-11-23): scripts/backtest-rules §G, rolling-origin CV on his log (369 sets the rule aimed, 5 blocks): the
+ * shipped term (prior SD 0.05, rounded) scored the rule's own MAE, 1.491 against 1.491 (0 ± 0), and as the app runs it (this
+ * replay, refitted before each day) it moved 0 of 541 targets. His sessions don't support a per-day effect inside 1–14 days yet
+ * (unshrunk, 0.034 ± 0.047 reps a day, which would cost +0.019 ± 0.017 MAE; kept, 0.018, at most 0.16 of a rep), so it moves no
+ * target today, and only will once his log pins one. The 0.1 a day the readiness proxy found came from layoffs (15+ days, where
+ * the layoff rule already aims at last time's average): under 15 days, first sets show −0.012 ± 0.042.
+ */
+export const TARGET_RULES: TargetRules = { plusOneRir: 2, toppedSessions: 2, away: true };
 
 /** `gym`: where the lift is done today, when known: a Full stack session elsewhere doesn't hold this gym's weight (see `fullStack`). */
 export function nextTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings, date: string, planned?: number | null, light = false,
@@ -387,6 +400,62 @@ export function layoffStep(last: SetEntry[], max: number, away: number): { aimed
   const parts: TargetPart[] = [{ key: 'layoff', what: `${away} days since last time`, value: `each set at last time’s average, ${Math.round(mean * 10) / 10} reps`,
     evidence: { ev: 'b', method: `your log, replayed: after ${LAYOFF_AVERAGE_DAYS}+ days away, last time’s average foretold your sets better than last time’s same set` } }];
   return { aimed: last.map(() => each), rule, parts };
+}
+
+/**
+ * His lift-sessions the rep rule aimed, replayed on `log`, as learn/away's points: each session 1–14 days after the lift's one
+ * before it (light weeks skipped, as the rule skips them), its training sets at that session's top weight against repStep's
+ * targets from it (the k-th set against the k-th target, the extra ones against the last), as their mean miss; a session pain
+ * held or eased (painGate) left out. A replay, not the rule itself (nextTarget would be a target per session, each with its own
+ * learned step and drop): the class's range for the +1 (a saved range isn't in the log), and Full stack or a range topped twice
+ * are replayed as the rep rule; the backtest (§G) counts how often that differs from the rule.
+ */
+export function awayPoints(log: readonly SetEntry[]): AwayPoint[] {
+  const out: AwayPoint[] = [];
+  const hurtDays = [...new Set(log.filter(hurts).map((e) => e.date))];
+  for (const sets of liftIndex(log).values()) {
+    const exercise = sets[sets.length - 1].exercise;
+    if (isCardio(exercise) || isHoldLift(exercise, log) || bodyShare(exercise) != null) continue;
+    const max = defaultSettings(exercise, false).repMax;
+    const sessions = sessionsFor(log, exercise).filter((x) => !lightSession(x.sets));
+    for (let i = 0; i + 1 < sessions.length; i++) {
+      const now = sessions[i], last = sessions[i + 1];
+      const away = Math.round((Date.parse(`${now.date}T12:00:00Z`) - Date.parse(`${last.date}T12:00:00Z`)) / 864e5);
+      if (away < 1 || away >= LAYOFF_AVERAGE_DAYS) continue;
+      const train = last.sets.filter(isTraining);
+      if (!train.length) continue; // only tests (or nothing whole): not the rep rule
+      const top = Math.max(...train.map((x) => x.weight));
+      // Pain held or eased it: not the rep rule. painGate reads the lift's last day and the 3 days before (SETTLE_DAYS), so with no
+      // pain logged from the older of those on, it has nothing to gate (and the log before the day needn't be cut for it).
+      const from = addDays(now.date, -SETTLE_DAYS) < last.date ? addDays(now.date, -SETTLE_DAYS) : last.date;
+      if (!(top > 0) || (hurtDays.some((d) => d >= from && d < now.date) && painGate(logBefore(log, now.date), exercise, now.date))) continue;
+      const { aimed } = repStep(train.filter((x) => x.weight === top).map(unspotted), max);
+      // Set k (counting the day's training sets at any weight, as the card does) against target k, at the target's weight.
+      let k = 0, miss = 0, n = 0;
+      for (const x of now.sets) {
+        if (!isTraining(x)) continue;
+        if (x.weight === top && (x.reps as number) <= 30 && !x.flags.includes('bodyweight')) { miss += (x.reps as number) - aimed[Math.min(k, aimed.length - 1)]; n++; }
+        k++;
+      }
+      if (n) out.push({ x: Math.min(AWAY_CAP, away), r: miss / n, date: now.date, key: liftKey(exercise) });
+    }
+  }
+  return out;
+}
+/** learn/away's fit on a log (once per log array): what `date`'s targets use, from the log before it (logBefore). */
+export const awayFitOf: (log: readonly SetEntry[]) => AwayFit = perLog((log) => awaySlope(awayPoints(learnable(log))));
+/**
+ * The rep rule's sets moved by the days-since-the-lift term (learn/away): `shift` reps a set, up never past `max` (a set already
+ * past it keeps its reps), down never under 1. Its line says so; a shift that moves no set changes nothing.
+ */
+function awayStep(rep: { aimed: number[]; rule: string; parts: TargetPart[] }, shift: number, max: number, away: number, fit: AwayFit): { aimed: number[]; rule: string; parts: TargetPart[] } {
+  const aimed = rep.aimed.map((a) => (shift > 0 ? Math.min(Math.max(a, max), a + shift) : Math.max(Math.min(a, 1), a + shift)));
+  if (aimed.every((a, i) => a === rep.aimed[i])) return rep;
+  const by = `${shift > 0 ? '+' : '−'}${Math.abs(shift)} rep${Math.abs(shift) === 1 ? '' : 's'} a set`;
+  const per = Math.round(Math.abs(fit.c) * 100) / 100, usual = Math.round(fit.ref * 10) / 10;
+  return { aimed, rule: `${rep.rule} · ${away} days away: ${by}`, parts: [...rep.parts, { key: 'away', what: `${away} days since last time`,
+    value: `${by}: ${per} ${(fit.c > 0) === (away > fit.ref) ? 'more' : 'fewer'} a set for each day ${away > fit.ref ? 'past' : 'under'} your usual ${usual} days`,
+    evidence: { ev: 'b', method: `learned from ${fit.n} of your sessions, held toward no effect until they show one` } }] };
 }
 
 /**
@@ -627,8 +696,12 @@ function baseTarget(entries: SetEntry[], exercise: string, st: ExerciseSettings,
   const uncapped = capless || stacked;
   // Days since the lift was last done (any session of it): 15+ and each set aims at last time's average (layoffStep).
   const away = Math.round((Date.parse(`${date}T12:00:00Z`) - Date.parse(`${before[0].date}T12:00:00Z`)) / 864e5);
+  // Under the layoff's 15 days, a loaded lift's sets move by the days-since-the-lift term (learn/away), learned before the day.
+  const awayFit = (rules.away ?? TARGET_RULES.away) && !unit && !body && top > 0 && away < LAYOFF_AVERAGE_DAYS ? awayFitOf(logBefore(entries, date)) : null;
+  const shift = awayFit ? awayShift(awayFit, away, LAYOFF_AVERAGE_DAYS) : 0;
   const rep = unit ? holdStep(before.slice(Math.max(0, at)), atTop, repMax)
     : away >= LAYOFF_AVERAGE_DAYS ? layoffStep(atTop.map(unspotted), uncapped ? Infinity : repMax, away)
+    : shift ? awayStep(repStep(atTop.map(unspotted), uncapped ? Infinity : repMax, rules.plusOneRir), shift, uncapped ? Infinity : repMax, away, awayFit!)
     : repStep(atTop.map(unspotted), uncapped ? Infinity : repMax, rules.plusOneRir);
   const { aimed, rule } = rep;
   // A plan with more sets than last time: the extra sets aim at the last one's number.
