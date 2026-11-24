@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PACE, planSeconds, restFor, paces, switchFor, perSessionForMinutes, perSetSeconds, restAfter, restSeconds, sessionDay, setWork, setWorks, shorterRest, SHORTER, SHORTER_FLOOR, sessionMinutes, SET_WORK, stepsLeft, stepsOf, suggestTime, usualMinutes } from './timing';
+import { DEFAULT_PACE, planSeconds, restFor, paces, switchFor, perSessionForMinutes, perSetSeconds, restAfter, restSeconds, sessionDay, setWork, setWorks, shorterRest, WORK_HI, WORK_LO, workBounds, SHORTER, SHORTER_FLOOR, sessionMinutes, SET_WORK, stepsLeft, stepsOf, suggestTime, usualMinutes } from './timing';
 import { coldGaps, gapModel } from './learn/switch';
 import { supersets } from './superset';
 import type { SetEntry } from './types';
@@ -358,6 +358,35 @@ describe('a set’s own time (owner, 2026-11-22): his median once 5 sets are tim
   it('a start tapped after the set (under 5 s), a card left open (over 5 min) and warm-ups are not his set time', () => {
     const log = [2, 400, 31, 33, 35, 37].map((w, i) => timedSet(i, w)).concat(timedSet(20, 30, 'Cable Curl', { flags: ['warmup'] }));
     expect(setWorks(log).get('cable curl')).toEqual({ median: 34, n: 4 });
+  });
+  it('once 5 are timed, a lift’s own spread trims what the fixed range lets through: a start tapped in the rest, one mid-set', () => {
+    // Five sets at 30–34 s, a start tapped in the rest (200 s, 210 s) and one tapped mid-set (9 s): all inside 5–300 s.
+    const log = [30, 31, 32, 33, 34, 200, 210, 9].map((w, i) => timedSet(i, w));
+    const b = workBounds(log.map((e) => e.workS!));
+    expect(b.lo).toBeGreaterThan(9);
+    expect(b.lo).toBeLessThanOrEqual(30);
+    expect(b.hi).toBeGreaterThanOrEqual(34);
+    expect(b.hi).toBeLessThan(200);
+    // The median is the real sets' (the fixed range alone gave 32.5, pulled up by the two); all 8 still count as timed.
+    expect(setWorks(log).get('cable curl')).toEqual({ median: 32, n: 8 });
+  });
+  it('the trim waits for 5 timed sets, never cuts closer than ×÷ 2, and stays inside 5–300 s', () => {
+    expect(workBounds([30, 31, 32, 200])).toEqual({ lo: WORK_LO, hi: WORK_HI });
+    // Timed very evenly (no spread at all): a set of other reps at 70 s is still his; 90 s and 15 s are not.
+    const even = workBounds([40, 40, 40, 40, 40]);
+    expect(even.lo).toBeCloseTo(20, 6);
+    expect(even.hi).toBeCloseTo(80, 6);
+    expect(setWorks([40, 40, 40, 40, 70, 90, 15].map((w, i) => timedSet(i, w))).get('cable curl')).toEqual({ median: 40, n: 7 });
+    // Long sets: ×2 would pass 300 s, the range's top stands.
+    expect(workBounds([240, 250, 260, 270, 280]).hi).toBe(WORK_HI);
+    expect(workBounds([5, 6, 6, 7, 8]).lo).toBe(WORK_LO);
+  });
+  it('a wide habit keeps its wide sets: the trim is 3 robust SDs on ln s, so it widens with the spread', () => {
+    // A lift he does for 6 and for 15 reps: 25–75 s, all kept.
+    const xs = [25, 30, 35, 45, 55, 65, 75];
+    const b = workBounds(xs);
+    expect(xs.every((t) => t >= b.lo && t <= b.hi)).toBe(true);
+    expect(b.hi / b.lo).toBeGreaterThan(4);
   });
   it('the switch takes off his set time, and the plan adds it per set', () => {
     const lines = switchFor(coldGaps(), 'Cable Curl', 'Cable Pushdown', {}, { seconds: 30, learned: 6 });

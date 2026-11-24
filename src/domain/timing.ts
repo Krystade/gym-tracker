@@ -100,9 +100,33 @@ export const REP_S = 4;
 export const SET_WORK = REP_S * 10;
 /** A lift's own set time is used once it has this many timed sets (owner, 2026-11-22). */
 export const WORK_MIN = 5;
-/** A start-to-save time outside this (s) isn't a set: a start tapped after it, or a card left open. */
-const WORK_LO = 5, WORK_HI = 300;
-/** Per lift, the median of its timed sets' own time (SetEntry.workS; working sets, within WORK_LO–WORK_HI), and how many. */
+/**
+ * A start-to-save time outside this (s) can't be a set: a start tapped after it, or a card left open. Checked on synthetic sets
+ * (scripts/work-bounds.ts: 4–12 s to set up and save, 2–4 s a rep, a heavy single 3–6 s, 1–23 reps): all 40,000 of them are
+ * inside, the shortest 5 s and the longest 133 s.
+ */
+export const WORK_LO = 5, WORK_HI = 300;
+/** Per lift, the trim (on ln s) once it has WORK_MIN timed sets: median ± WORK_K robust SDs (1.4826 · MAD), never closer than ×÷ WORK_SPAN. */
+export const WORK_K = 3, WORK_SPAN = 2;
+/**
+ * Which of a lift's start-to-save times are its sets: within WORK_LO–WORK_HI, and once WORK_MIN of them are, within its own
+ * spread too (owner, 2026-11-23: the fixed range was a guess). On synthetic sets with 10–25 % mistakes (a start tapped mid-set,
+ * one tapped in the rest, a card left open) the fixed range kept 59–68 % of the mistakes and this keeps 8–23 % from 8 sets on
+ * (22–35 % at 5), dropping 0.1–0.4 % of real sets; the median is as close or closer with any mistakes, and within 0.1 point
+ * with none (scripts/work-bounds.ts). On ln s, as set times are skewed; the ×÷ 2 floor keeps a lift he times very evenly from
+ * losing a set of other reps.
+ */
+export function workBounds(times: readonly number[]): { lo: number; hi: number } {
+  const ok = times.filter((t) => t >= WORK_LO && t <= WORK_HI);
+  if (ok.length < WORK_MIN) return { lo: WORK_LO, hi: WORK_HI };
+  const ls = ok.map(Math.log), m = median(ls);
+  const h = Math.max(WORK_K * 1.4826 * median(ls.map((x) => Math.abs(x - m))), Math.log(WORK_SPAN));
+  return { lo: Math.max(WORK_LO, Math.exp(m - h)), hi: Math.min(WORK_HI, Math.exp(m + h)) };
+}
+/**
+ * Per lift, the median of its timed sets' own time (SetEntry.workS; working sets, within workBounds), and how many it has timed
+ * (within WORK_LO–WORK_HI: the trim moves the median, never whether it counts as his).
+ */
 export const setWorks: (entries: readonly SetEntry[]) => Map<string, { median: number; n: number }> = perLog((entries) => {
   const by = new Map<string, number[]>();
   for (const e of entries) {
@@ -110,7 +134,7 @@ export const setWorks: (entries: readonly SetEntry[]) => Map<string, { median: n
     const k = settingsKey(e.exercise), xs = by.get(k);
     if (xs) xs.push(e.workS); else by.set(k, [e.workS]);
   }
-  return new Map([...by].map(([k, xs]) => [k, { median: median(xs), n: xs.length }]));
+  return new Map([...by].map(([k, xs]) => { const b = workBounds(xs); return [k, { median: median(xs.filter((t) => t >= b.lo && t <= b.hi)), n: xs.length }]; }));
 });
 /**
  * How long a set of `exercise` takes, s: its own median set time once WORK_MIN of its sets are timed (`learned`: how many), else
