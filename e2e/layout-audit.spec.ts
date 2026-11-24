@@ -242,8 +242,8 @@ test('The board: posts with long names and the ✓, a held post, your own, ⋯, 
   // You past the gate, with a long display name; Medal verified, 30 characters with an accent; a stranger at the username cap;
   // a newcomer not yet through the gate. All usernames at the 20-character cap. Synthetic words only.
   const [me, medal, stranger, newcomer] = await Promise.all([long('me'), long('medal'), long('ask'), long('new')].map((n) => account(request, n)));
-  await onBoard(request, me, 'Alexandra Montgomery-Okafor 🏋️‍♀️');
-  await onBoard(request, medal, 'Maximiliana Rodríguez-Castillo');
+  await onBoard(request, me, 'Alexandra Montgomery-Okafor 🏋️‍♀️', T);
+  await onBoard(request, medal, 'Maximiliana Rodríguez-Castillo', T);
   await verify(request, medal);
   const ids = {
     long: await boardPost(request, medal, `Anyone tried 5/3/1 with a deload every 3rd week instead of 4th? Elbows feel better already. ${'Long words like supercalifragilisticexpialidocious and 💪🏋️‍♀️🔥 wrap too. '.repeat(2)}`.slice(0, 280), 3, { name: 'Maximiliana Rodríguez-Castillo', likes: 12 }),

@@ -150,11 +150,14 @@ export async function signedIn(browser: Browser, who: Seeded, time: Date, setup?
 
 /**
  * Past the board's gate (social S3): the profile two days old, the rules accepted (no verified email since r28). `createdAt`
- * stays on the profile with the username and display name (put replaces a document whole).
+ * stays on the profile with the username and display name (put replaces a document whole). `clock`: the page's installed time,
+ * when it runs behind the real one (the layout audit's Sunday 18:00 on a Monday evening): two days before the earlier of the two,
+ * so the app's own gate (its clock) and firestore.rules (the server's) both see a day-old account.
  */
-export async function onBoard(request: APIRequestContext, who: Seeded, dn = who.name) {
-  await put(request, `users/${who.uid}`, { username: who.name, displayName: dn, createdAt: new Ts(Date.now() - 2 * 864e5) });
-  await put(request, `users/${who.uid}/private/board`, { ok: true, at: new Ts(Date.now() - 864e5) });
+export async function onBoard(request: APIRequestContext, who: Seeded, dn = who.name, clock?: Date) {
+  const t = Math.min(Date.now(), clock?.getTime() ?? Infinity);
+  await put(request, `users/${who.uid}`, { username: who.name, displayName: dn, createdAt: new Ts(t - 2 * 864e5) });
+  await put(request, `users/${who.uid}/private/board`, { ok: true, at: new Ts(t - 864e5) });
 }
 
 /** A board post by them, as the app writes one, `minsAgo` minutes old; its id back. */

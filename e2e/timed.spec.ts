@@ -26,6 +26,9 @@ test('the stopwatch fills a hold’s seconds; the set logs as seconds and the re
   await expect(card.getByRole('group', { name: 'RIR' })).toHaveCount(0);
   const add = card.getByRole('button', { name: 'Add set' });
 
+  // The stopwatch reads the clock; installed, it also flows with real time, so a Stop click slowed by load read late (46 for
+  // 42 in a full run). Paused from Start to Stop, only the time run here passes.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   await card.getByRole('button', { name: 'Start hold' }).click();
   await page.clock.runFor(12_400);
   const stop = card.getByRole('button', { name: /^Stop/ });
@@ -36,6 +39,7 @@ test('the stopwatch fills a hold’s seconds; the set logs as seconds and the re
   await page.clock.runFor(30_000);
   await stop.click();
   await expect(secs).toHaveValue('42');
+  await page.clock.resume();
   await card.getByRole('button', { name: 'Seconds up' }).click();
   await expect(secs).toHaveValue('47'); // ± steps 5 s
   await add.click();

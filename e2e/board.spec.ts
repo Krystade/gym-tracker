@@ -281,12 +281,13 @@ async function switches(page: Page, sw: Record<string, boolean>) {
 test('the owner closes the board: "Board closed", no Post, posts still read; open, Post is back', async ({ browser, request }) => {
   const m = await account(request);
   await onBoard(request, m);
-  await boardPost(request, m, `Still readable ${rand()}`, 5);
+  const text = `Still readable ${rand()}`; // its own words: a repeat run leaves the others on the same board
+  await boardPost(request, m, text, 5);
   const page = await signedIn(browser, m, new Date(), (p) => switches(p, { board: true }));
   await toBoard(page);
   await expect(board(page).getByRole('status').filter({ hasText: 'Board closed' })).toHaveText('Board closed · the app’s owner closed posting for now. You can still read it.');
   await expect(board(page).getByRole('button', { name: 'Post', exact: true })).toHaveCount(0);
-  await expect(board(page).locator('.bd-card', { hasText: 'Still readable' })).toBeVisible();
+  await expect(board(page).locator('.bd-card', { hasText: text })).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('board-closed.png') });
   await page.context().close();
   const again = await signedIn(browser, m, new Date(), (p) => switches(p, { board: false }));
