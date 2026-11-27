@@ -4,7 +4,7 @@ import type { DayPlan, Program, Slot } from '../domain/program';
 import type { Profile } from '../domain/profile';
 import type { SetEntry } from '../domain/types';
 import type { Systemic } from '../domain/learn/deload';
-import { dayLabel, readinessModel, type Readiness, type SessionReady } from '../domain/learn/readiness';
+import { dayLabel, readinessModel, type EnergyFit, type Readiness, type SessionReady } from '../domain/learn/readiness';
 import { P_FRESH } from '../domain/learn/recovery';
 import { readinessPlanned, slotVolume, type PlanDay, type WeekPlan } from '../domain/learn/schedule';
 import { addDays, weeklyMuscleSets, weekStart } from '../domain/analytics';
@@ -76,7 +76,10 @@ export interface TileView {
    * that may hurt counts less, as in the number), so the two always agree.
    */
   session: string | null; sets: string | null;
-  /** The next fresh day, as a day: "Fresh today", "Fresh by Thu"; on a rest day the next session: "Next: Day B · Sat". */
+  /**
+   * The next fresh day, as a day: "Fresh today", "Fresh by Thu"; "Muscles recovered · energy low" when its muscles are fresh
+   * today but low energy is what costs the sets (energyPulls); on a rest day the next session: "Next: Day B · Sat".
+   */
   fresh: string | null;
   /** One calm line: a layoff, no history yet, nothing to read. */
   note: string | null;
@@ -107,6 +110,25 @@ export function readyShown(r: Planned): boolean {
 
 export const shownNumber = (n: number | null): string | null => (n == null ? null : n < 1 ? '<1' : String(Math.round(n)));
 
+/** (owner, 2026-11-26) In "Fresh today"'s place when low energy, not recovery, is what costs the session its sets. */
+export const ENERGY_LOW = 'Muscles recovered · energy low';
+/**
+ * (owner, 2026-11-26) Whether today's low energy, more than recovery, is what pulls the session's sets at full strength down: his
+ * energy today under his usual, its shift a weaker day, and the sets that shift costs (Σ sets · (P recovered − P full), pain-
+ * weighted as Ready counts them) more than recovery's own shortfall (Σ sets · (1 − P recovered), the same weights). Then a
+ * session whose muscles are fresh today reads ENERGY_LOW, never "Fresh today" beside a low count.
+ */
+export function energyPulls(sr: Pick<SessionReady, 'lifts'>, e: Pick<EnergyFit, 'today' | 'usual' | 'shift'>): boolean {
+  if (e.today == null || e.usual == null || !(e.today < e.usual) || !(e.shift.mean < 0)) return false;
+  let energy = 0, recovery = 0;
+  for (const l of sr.lifts) {
+    const w = l.sets * (1 - l.pain);
+    energy += w * (l.pRecovered - l.pFull);
+    recovery += w * (1 - l.pRecovered);
+  }
+  return energy > recovery;
+}
+
 export function tileView(r: Planned): TileView {
   const s = tileSession(r);
   const today = r.today;
@@ -121,7 +143,7 @@ export function tileView(r: Planned): TileView {
   if (v.kind === 'rest') {
     const next = r.plan?.days.find((d) => d.train && d.date > today);
     fresh = next ? `Next: ${next.session?.name ?? 'train'} · ${dayLabel(next.date, today)}` : null;
-  } else if (sr.freshBy) fresh = sr.freshBy <= today ? 'Fresh today' : `Fresh by ${dayLabel(sr.freshBy, today)}`;
+  } else if (sr.freshBy) fresh = sr.freshBy > today ? `Fresh by ${dayLabel(sr.freshBy, today)}` : energyPulls(sr, r.energy) ? ENERGY_LOW : 'Fresh today';
   return {
     number: shownNumber(sr.ready), verdict: v.label, kind: v.kind, session: s.name,
     sets: sr.total > 0 && sr.ready != null ? `${Math.round((sr.ready * sr.total) / 100)} of ${sr.total} sets at full strength` : null, fresh, note,

@@ -812,6 +812,9 @@ test('Today: the READY tile with a muscle short of fresh (go, tight week, goal m
   const planned = (await tile.locator('.ready-line b').first().textContent())!;
   await expect(page.getByRole('region', { name: 'Today’s plan' })).toContainText(planned);
   await look('ready-short-go');
+  // At his usual energy nothing but recovery moves the count, so its muscles fresh today read plainly so (owner, 2026-11-26).
+  await expect(tile.locator('.ready-line').first()).toContainText(/ · fresh today$/);
+  await expect(tile).not.toContainText('energy low');
 
   // Goal 7 from Tuesday, Monday done: 6 days for 6 sessions, no spare day.
   await goal(7);
@@ -838,7 +841,7 @@ test('Today: the READY tile with a muscle short of fresh (go, tight week, goal m
   await expect(tile.getByRole('button', { name: /Ready/ })).toHaveAttribute('aria-expanded', 'false');
 
   // Eight days on from today's set: fresh, so no tile at his usual energy; Energy 1 (his low days read weaker) puts a muscle
-  // short of fresh, and the tile says a layoff is always a go, calmly.
+  // short of fresh, and the tile says a layoff is always a go, calmly, and that energy, not recovery, is what's low.
   await page.clock.resume();
   await at(add(DAY0, 8));
   await expect(tile.locator('.ready-tile')).toHaveCount(0);
@@ -846,6 +849,9 @@ test('Today: the READY tile with a muscle short of fresh (go, tight week, goal m
   await expect(tile.locator('.ready-n')).toHaveText(/^(\d+|<1)$/);
   await expect(tile.locator('.ready-verdict')).toHaveText('Go today');
   await expect(tile).toContainText('First session in 8 days');
+  // The muscles are recovered and Energy 1 is what costs the sets: said so, never "fresh today" beside the low count (owner, 2026-11-26).
+  await expect(tile.locator('.ready-line').first()).toContainText(/\d+ of \d+ sets at full strength · muscles recovered · energy low$/);
+  await expect(tile).not.toContainText('fresh today');
   await look('ready-short-layoff');
   clean(found);
 });

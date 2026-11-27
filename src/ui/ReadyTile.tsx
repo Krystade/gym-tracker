@@ -114,7 +114,8 @@ export function WeekCard({ s, shown, onPick }: { s: StripView; shown: string; on
 }
 
 export function ReadyTile({ t, onWhy, onFold, week }: { t: TileView; onWhy: () => void; onFold?: () => void; /** The Week row's toggle, on the top line. */ week?: ReactNode }) {
-  const inline = !!t.session && !!t.fresh?.startsWith('Fresh');
+  // Every fresh line but a rest day's "Next: …" rides on the session's line ("Muscles recovered · energy low" too).
+  const inline = !!t.session && !!t.fresh && t.kind !== 'rest';
   return (
     <div className="ready-tile">
       <div className="ready-top">
@@ -129,7 +130,7 @@ export function ReadyTile({ t, onWhy, onFold, week }: { t: TileView; onWhy: () =
         {t.number != null && <b className="ready-n" aria-label={`Ready ${t.number}`}>{t.number}</b>}
         <div className="ready-say">
           <p className="ready-verdict">{t.verdict}</p>
-          {/* "Fresh today" rides on the session's line (IA A1: a line less above the plan); "Next: …" keeps its own. */}
+          {/* "Fresh today" (or "muscles recovered · energy low") rides on the session's line (IA A1); "Next: …" keeps its own. */}
           {t.session && <p className="ready-line"><b>{t.session}</b>{t.sets && <> · {t.sets}</>}{inline && <> · {t.fresh!.charAt(0).toLowerCase()}{t.fresh!.slice(1)}</>}</p>}
           {t.fresh && !inline && <p className="ready-line">{t.fresh}</p>}
         </div>

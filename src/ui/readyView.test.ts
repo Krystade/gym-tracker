@@ -6,7 +6,7 @@ import type { DayPlan, Program, Slot } from '../domain/program';
 import type { SetEntry } from '../domain/types';
 import { simulateRecovery } from '../domain/learn/recoverySim.sample';
 import { ReadyTile, WeekRow, WeekStrip, WhyBody } from './ReadyTile';
-import { readyNow, shownNumber, stripView, suggestedDay, tileView, todayMuscles, whyView, type ReadyInput } from './readyView';
+import { ENERGY_LOW, energyPulls, readyNow, shownNumber, stripView, suggestedDay, tileView, todayMuscles, whyView, type Planned, type ReadyInput } from './readyView';
 
 // Readiness S4: every string the READY tile, the week strip and the Why sheet render, over synthetic weeks (every weekday, every
 // goal, sore legs, a light week, a layoff, a new user). Owner Q2: a day, never a clock time; and never a 0 for a number.
@@ -165,4 +165,40 @@ describe('the READY tile, the week strip and the Why sheet, rendered', () => {
     expect(goalMet.length).toBeGreaterThan(0);
     for (const x of goalMet) expect(x.s!.days[0].mark).toBe('optional');
   }, 60_000);
+});
+
+// Owner, 2026-11-26: a low count from low energy, the muscles recovered, says so; "Fresh today" only when energy isn't the cause.
+describe('the tile’s fresh line: energy against recovery', () => {
+  const lift = (pRecovered: number, pFull: number, sets = 4, pain = 0) => ({ exercise: 'DB Curl', sets, pFull, pain, pRecovered });
+  const low = { today: 1, usual: 3, shift: { mean: -0.05, sd: 0.01 } };
+  it('energyPulls: only below his usual, with a weaker shift, and costing more sets than recovery does (table)', () => {
+    const rows: [string, Parameters<typeof energyPulls>[0], Parameters<typeof energyPulls>[1], boolean][] = [
+      ['recovered, energy costs 3 of 4', { lifts: [lift(1, 0.25)] }, low, true],
+      ['recovery costs more', { lifts: [lift(0.4, 0.3)] }, low, false],
+      ['equal costs: not energy', { lifts: [lift(0.75, 0.5)] }, low, false],
+      ['energy at his usual', { lifts: [lift(1, 0.25)] }, { ...low, today: 3 }, false],
+      ['no energy logged', { lifts: [lift(1, 0.25)] }, { ...low, today: null }, false],
+      ['no shift (energy moves nothing)', { lifts: [lift(1, 1)] }, { ...low, shift: { mean: 0, sd: 0 } }, false],
+      ['a stronger shift', { lifts: [lift(0.9, 0.95)] }, { ...low, shift: { mean: 0.05, sd: 0 } }, false],
+      ['pain weighs both alike', { lifts: [lift(1, 0.5, 4, 0.5), lift(0.6, 0.6, 4, 0)] }, low, false],
+    ];
+    for (const [name, sr, e, want] of rows) expect(energyPulls(sr, e), name).toBe(want);
+  });
+  it('tileView: fresh today and energy pulling it down reads ENERGY_LOW; otherwise "Fresh today" (pair)', () => {
+    const r = readyNow(input({ goal: 3 }));
+    const s = r.plan!.days[0].train ? r.plan!.days[0].ready! : r.best!;
+    const at = (lifts: ReturnType<typeof lift>[], e: typeof low): Planned => {
+      const sr = { ...s, lifts, freshBy: r.today };
+      return { ...r, verdict: { kind: 'go', why: 'default', label: 'Go today' }, energy: { ...r.energy, ...e }, best: r.best && { ...r.best, ...sr },
+        plan: r.plan && { ...r.plan, days: [{ ...r.plan.days[0], ready: sr }, ...r.plan.days.slice(1)] } };
+    };
+    const lowT = tileView(at([lift(1, 0.25)], low));
+    expect(lowT.fresh).toBe(ENERGY_LOW);
+    const html = renderToStaticMarkup(h(ReadyTile, { t: lowT, onWhy: () => {} }));
+    expect(text(html)).toContain('· muscles recovered · energy low');
+    expect(html).not.toContain('resh today');
+    const plain = tileView(at([lift(0.6, 0.5)], low));
+    expect(plain.fresh).toBe('Fresh today');
+    expect(text(renderToStaticMarkup(h(ReadyTile, { t: plain, onWhy: () => {} })))).toContain('· fresh today');
+  });
 });

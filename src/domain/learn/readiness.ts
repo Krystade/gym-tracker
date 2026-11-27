@@ -375,6 +375,11 @@ export interface LiftReady {
   exercise: string; sets: number;
   /** P(full strength) of each of its sets, and P(it hurts) (learn/pain). */
   pFull: number; pain: number;
+  /**
+   * P(full strength) from recovery alone: today's energy shift left out (pFull itself on any other day, or while energy moves
+   * nothing). pFull against it is what the energy shift costs; 1 against it, what recovery does.
+   */
+  pRecovered: number;
 }
 export interface SessionReady {
   /** 0–100: the mean over its working sets of P(full strength) × (1 − pain risk); null with no working lift sets. */
@@ -446,9 +451,10 @@ export function readinessModel(entries: readonly SetEntry[], body: readonly Body
     for (const s of slots) {
       if (!isLiftSlot(s)) continue;
       const pFull = liftFull(recovery, s.exercise, hour, shift, cache);
+      const pRecovered = shift.mean === 0 && shift.sd === 0 ? pFull : liftFull(recovery, s.exercise, hour, NO_SHIFT, cache);
       const fp = firstPain(entries);
       const pain = fp != null && fp <= painAt ? painRisk(entries, s.exercise, painAt).p : 0;
-      lifts.push({ exercise: s.exercise, sets: s.sets, pFull, pain });
+      lifts.push({ exercise: s.exercise, sets: s.sets, pFull, pain, pRecovered });
       const v = resolveLift(s.exercise).m;
       if (v) for (const [m, w] of Object.entries(v) as [Muscle, number][]) if (w >= MAIN_SHARE) main.add(m);
     }
